@@ -174,7 +174,7 @@ public class PostHogTest {
 
   @Test
   public void identify() {
-    posthog.identify("tim", new Traits().putValue("username", "f2tim"), null);
+    posthog.identify("tim", new Properties().putValue("username", "f2tim"), null);
 
     verify(integration)
         .identify(
@@ -183,14 +183,14 @@ public class PostHogTest {
                   @Override
                   protected boolean matchesSafely(IdentifyPayload item) {
                     return item.distinctId().equals("tim")
-                        && item.traits().get("username").equals("f2tim");
+                        && item.userProperties().get("username").equals("f2tim");
                   }
                 }));
   }
 
   @Test
   public void identifyUpdatesCache() {
-    posthog.identify("foo", new Traits().putValue("bar", "qaz"), null);
+    posthog.identify("foo", new Properties().putValue("bar", "qaz"), null);
 
     assertThat(traits)
         .contains(MapEntry.entry("distinctId", "foo"))

@@ -46,7 +46,7 @@ public class SampleApp extends Application {
 
     // Initialize a new instance of the PostHog client.
     PostHog.Builder builder =
-        new PostHog.Builder(this, POSTHOG_API_KEY, "http://064a410f.ngrok.io")
+        new PostHog.Builder(this, POSTHOG_API_KEY, "http://5dc546a8.ngrok.io")
             .captureApplicationLifecycleEvents()
             .recordScreenViews();
 

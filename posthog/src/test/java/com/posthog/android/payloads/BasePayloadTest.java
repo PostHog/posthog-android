@@ -49,7 +49,7 @@ public class BasePayloadTest {
             new AliasPayload.Builder().alias("new_alias"),
             new CapturePayload.Builder().event("event"),
             new ScreenPayload.Builder().name("name"),
-            new IdentifyPayload.Builder().traits(ImmutableMap.<String, Object>of("foo", "bar")));
+            new IdentifyPayload.Builder().userProperties(ImmutableMap.<String, Object>of("foo", "bar")));
   }
 
   @Test
@@ -88,7 +88,7 @@ public class BasePayloadTest {
   }
 
   @Test
-  public void invalidUserIdThrows() {
+  public void invalidDistinctIdThrows() {
     for (int i = 1; i < builders.size(); i++) {
       Builder builder = builders.get(i);
 
@@ -138,7 +138,7 @@ public class BasePayloadTest {
   }
 
   @Test
-  public void requiresUserIdOrAnonymousId() {
+  public void requiresDistinctIdOrAnonymousId() {
     for (int i = 1; i < builders.size(); i++) {
       Builder builder = builders.get(i);
       try {

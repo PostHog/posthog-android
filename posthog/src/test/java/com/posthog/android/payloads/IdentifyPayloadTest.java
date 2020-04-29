@@ -38,22 +38,22 @@ public class IdentifyPayloadTest {
   public void invalidTraitsThrows() {
     try {
       //noinspection CheckResult,ConstantConditions
-      new IdentifyPayload.Builder().traits(null);
+      new IdentifyPayload.Builder().userProperties(null);
       Assert.fail();
     } catch (NullPointerException e) {
-      assertThat(e).hasMessage("traits == null");
+      assertThat(e).hasMessage("userProperties == null");
     }
   }
 
   @Test
-  public void traits() {
+  public void userProperties() {
     IdentifyPayload payload =
         new IdentifyPayload.Builder()
             .distinctId("distinct_id")
-            .traits(ImmutableMap.of("foo", "bar"))
+            .userProperties(ImmutableMap.of("foo", "bar"))
             .build();
-    assertThat(payload.traits()).isEqualTo(ImmutableMap.of("foo", "bar"));
-    assertThat(payload).containsEntry(IdentifyPayload.TRAITS_KEY, ImmutableMap.of("foo", "bar"));
+    assertThat(payload.userProperties()).isEqualTo(ImmutableMap.of("foo", "bar"));
+    assertThat(payload).containsEntry(IdentifyPayload.USER_PROPERTIES_KEY, ImmutableMap.of("foo", "bar"));
   }
 
   @Test

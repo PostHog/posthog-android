@@ -40,7 +40,7 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 import com.posthog.android.PostHog;
-import com.posthog.android.Traits;
+import com.posthog.android.Properties;
 import uk.co.chrisjenx.calligraphy.CalligraphyContextWrapper;
 
 public class MainActivity extends Activity {
@@ -76,7 +76,7 @@ public class MainActivity extends Activity {
     if (isNullOrEmpty(id)) {
       Toast.makeText(this, R.string.id_required, Toast.LENGTH_LONG).show();
     } else {
-      PostHog.with(this).identify(id, new Traits().putValue("name", "my name").putValue("email", "user@posthog.com"));
+      PostHog.with(this).identify(id, new Properties().putValue("name", "my name").putValue("email", "user@posthog.com"));
     }
   }
 

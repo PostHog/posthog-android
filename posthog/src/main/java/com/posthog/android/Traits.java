@@ -81,7 +81,7 @@ public class Traits extends ValueMap {
    * Private API, users should call {@link com.posthog.android.PostHog#identify(String)}
    * instead. Note that this is unable to enforce it, users can easily do traits.put(id, ..);
    */
-  Traits putUserId(String id) {
+  Traits putDistinctId(String id) {
     return putValue(DISTINCT_ID_KEY, id);
   }
 

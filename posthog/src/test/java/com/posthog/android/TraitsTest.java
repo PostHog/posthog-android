@@ -53,7 +53,7 @@ public class TraitsTest {
   }
 
   @Test
-  public void newInvocationHasNoUserId() throws Exception {
+  public void newInvocationHasNoDistinctId() throws Exception {
     assertThat(traits.distinctId()).isNull();
   }
 
@@ -64,9 +64,9 @@ public class TraitsTest {
 
   @Test
   public void distinctIdOrAnonymousId() throws Exception {
-    assertThat(new Traits().putUserId("foo").putAnonymousId("bar").currentId()) //
+    assertThat(new Traits().putDistinctId("foo").putAnonymousId("bar").currentId()) //
         .isEqualTo("foo");
-    assertThat(new Traits().putUserId("foo").currentId()).isEqualTo("foo");
+    assertThat(new Traits().putDistinctId("foo").currentId()).isEqualTo("foo");
     assertThat(new Traits().putAnonymousId("bar").currentId()) //
         .isEqualTo("bar");
     assertThat(new Traits().currentId()).isNull();

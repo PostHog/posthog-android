@@ -30,7 +30,7 @@ import static com.posthog.android.internal.Utils.isNullOrEmpty;
 
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import com.posthog.android.Traits;
+import com.posthog.android.Properties;
 import com.posthog.android.internal.Private;
 import java.util.Collections;
 import java.util.Date;
@@ -39,7 +39,7 @@ import java.util.Map;
 
 public class IdentifyPayload extends BasePayload {
 
-  static final String TRAITS_KEY = "$set";
+  static final String USER_PROPERTIES_KEY = "$set";
   static final String ANON_DISTINCT_ID_KEY = "$anon_distinct_id";
 
   IdentifyPayload(
@@ -48,21 +48,21 @@ public class IdentifyPayload extends BasePayload {
       @NonNull Map<String, Object> properties,
       @Nullable String distinctId,
       @Nullable String anonymousId,
-      @NonNull Map<String, Object> traits) {
+      @NonNull Map<String, Object> userProperties) {
     super(Type.identify, "$identify", messageId, timestamp, properties, distinctId);
-    put(TRAITS_KEY, traits);
+    put(USER_PROPERTIES_KEY, userProperties);
     properties.put(ANON_DISTINCT_ID_KEY, anonymousId);
   }
 
   /**
-   * A dictionary of traits you know about a user, for example email or name. We have a collection
+   * A dictionary of properties you know about a user, for example email or name. We have a collection
    * of special traits that we recognize with semantic meaning, which you should always use when
    * recording that information. You can also add any custom traits that are specific to your
    * project to the dictionary, like friendCount or subscriptionType.
    */
   @NonNull
-  public Traits traits() {
-    return getValueMap(TRAITS_KEY, Traits.class);
+  public Properties userProperties() {
+    return getValueMap(USER_PROPERTIES_KEY, Properties.class);
   }
 
   @Override
@@ -79,7 +79,7 @@ public class IdentifyPayload extends BasePayload {
   /** Fluent API for creating {@link IdentifyPayload} instances. */
   public static class Builder extends BasePayload.Builder<IdentifyPayload, Builder> {
 
-    private Map<String, Object> traits;
+    private Map<String, Object> userProperties;
 
     public Builder() {
       // Empty constructor.
@@ -88,13 +88,13 @@ public class IdentifyPayload extends BasePayload {
     @Private
     Builder(IdentifyPayload identify) {
       super(identify);
-      traits = identify.traits();
+      userProperties = identify.userProperties();
     }
 
     @NonNull
-    public Builder traits(@NonNull Map<String, ?> traits) {
-      assertNotNull(traits, "traits");
-      this.traits = Collections.unmodifiableMap(new LinkedHashMap<>(traits));
+    public Builder userProperties(@NonNull Map<String, ?> userProperties) {
+      assertNotNull(userProperties, "userProperties");
+      this.userProperties = Collections.unmodifiableMap(new LinkedHashMap<>(userProperties));
       return this;
     }
 
@@ -104,7 +104,7 @@ public class IdentifyPayload extends BasePayload {
         @NonNull Date timestamp,
         @NonNull Map<String, Object> properties,
         String distinctId) {
-      return new IdentifyPayload(messageId, timestamp, properties, distinctId, anonymousId, traits);
+      return new IdentifyPayload(messageId, timestamp, properties, distinctId, anonymousId, userProperties);
     }
 
     @Override

@@ -320,19 +320,19 @@ public class PostHog {
 
   // PostHog API
 
-  /** @see #identify(String, Traits, Options) */
+  /** @see #identify(String, Properties, Options) */
   public void identify(@NonNull String distinctId) {
     identify(distinctId, null, null);
   }
 
-  /** @see #identify(String, Traits, Options) */
-  public void identify(@NonNull Traits traits) {
-    identify(null, traits, null);
+  /** @see #identify(String, Properties, Options) */
+  public void identify(@NonNull Properties userProperties) {
+    identify(null, userProperties, null);
   }
 
-  /** @see #identify(String, Traits, Options) */
-  public void identify(@NonNull String distinctId, @NonNull Traits traits) {
-    identify(distinctId, traits, null);
+  /** @see #identify(String, Properties, Options) */
+  public void identify(@NonNull String distinctId, @NonNull Properties userProperties) {
+    identify(distinctId, userProperties, null);
   }
 
   /**
@@ -341,20 +341,20 @@ public class PostHog {
    *
    * <p>Traits and distinctId will be automatically cached and available on future sessions for the same
    * user. To update a trait on the server, call identify with the same user id (or null). You can
-   * also use {@link #identify(Traits)} for this purpose.
+   * also use {@link #identify(Properties)} for this purpose.
    *
    * @param distinctId Unique identifier which you recognize a user by in your own database. If this is
    *     null or empty, any previous id we have (could be the anonymous id) will be used.
-   * @param newTraits Traits about the user.
+   * @param userProperties Traits about the user.
    * @param options To configure the call.
    * @throws IllegalArgumentException if both {@code distinctId} and {@code newTraits} are not provided
    */
   public void identify(
       final @Nullable String distinctId,
-      final @Nullable Traits newTraits,
+      final @Nullable Properties userProperties,
       final @Nullable Options options) {
     assertNotShutdown();
-    if (isNullOrEmpty(distinctId) && isNullOrEmpty(newTraits)) {
+    if (isNullOrEmpty(distinctId) && isNullOrEmpty(userProperties)) {
       throw new IllegalArgumentException("Either distinctId or some traits must be provided.");
     }
 
@@ -364,12 +364,11 @@ public class PostHog {
           public void run() {
             Traits traits = traitsCache.get();
             if (!isNullOrEmpty(distinctId)) {
-              traits.putUserId(distinctId);
+              traits.putDistinctId(distinctId);
             }
-            if (!isNullOrEmpty(newTraits)) {
-              traits.putAll(newTraits);
+            if (!isNullOrEmpty(userProperties)) {
+              traits.putAll(userProperties);
             }
-
             traitsCache.set(traits); // Save the new traits
 
             final Options finalOptions;
@@ -379,8 +378,15 @@ public class PostHog {
               finalOptions = options;
             }
 
+            final Properties finalUserProperties;
+            if (userProperties == null) {
+              finalUserProperties = EMPTY_PROPERTIES;
+            } else {
+              finalUserProperties = userProperties;
+            }
+
             IdentifyPayload.Builder builder =
-                new IdentifyPayload.Builder().traits(traitsCache.get());
+                new IdentifyPayload.Builder().userProperties(finalUserProperties);
             fillAndEnqueue(builder, finalOptions);
           }
         });
@@ -505,7 +511,7 @@ public class PostHog {
    * data as one. This is an advanced method, but it is required to manage user identities
    * successfully sometimes.
    *
-   * Note that when calling {@Link PostHog#identify}, the anonymous ID of the user is automatically
+   * Note that when calling identify, the anonymous ID of the user is automatically
    * aliased to the new distinct ID. You do not need to call alias manually then.
    *
    * <p>Usage:

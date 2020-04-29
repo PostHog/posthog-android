@@ -76,9 +76,8 @@
         android:layout_height="1dp"/>
 
     <Button
-            android:text="Send Alias"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:id="@+id/action_alias"/>
+            android:layout_height="wrap_content" android:id="@+id/action_alias" android:text="@string/alias_button"/>
     <Button
         android:id="@+id/action_flush"
         android:text="@string/flush"

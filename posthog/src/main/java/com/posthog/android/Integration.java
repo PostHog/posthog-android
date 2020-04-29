@@ -75,21 +75,21 @@ public abstract class Integration<T> {
   public void onActivityDestroyed(Activity activity) {}
 
   /**
-   * @see PostHog#identify(String, com.posthog.Traits, com.posthog.Options)
+   * @see PostHog#identify(String, com.posthog.android.Properties, com.posthog.android.Options)
    */
   public void identify(IdentifyPayload identify) {}
 
   /**
-   * @see PostHog#capture(String, com.posthog.android.Properties, com.posthog.Options)
+   * @see PostHog#capture(String, com.posthog.android.Properties, com.posthog.android.Options)
    */
   public void capture(CapturePayload capture) {}
 
-  /** @see PostHog#alias(String, com.posthog.Options) */
+  /** @see PostHog#alias(String, com.posthog.android.Options) */
   public void alias(AliasPayload alias) {}
 
   /**
    * @see PostHog#screen(String, com.posthog.android.Properties,
-   *     com.posthog.Options)
+   *     com.posthog.android.Options)
    */
   public void screen(ScreenPayload screen) {}
 

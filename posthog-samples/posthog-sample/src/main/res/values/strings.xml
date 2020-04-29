@@ -37,6 +37,7 @@
   <string name="flush">Flush Events</string>
 
   <string name="identify_button">Identify User</string>
+  <string name="alias_button">Send Alias</string>
   <string name="identify_distinct_id">Type in an ID to identify or alias the user</string>
   <string name="id_required">User ID should not be blank or empty</string>
 
