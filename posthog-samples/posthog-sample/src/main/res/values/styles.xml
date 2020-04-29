@@ -1,0 +1,50 @@
+<!--
+  ~ The MIT License (MIT)
+  ~
+  ~ Copyright (c) 2014 Segment, Inc.
+  ~
+  ~ Copyright (c) 2020 Hiberly Inc.
+  ~
+  ~ Permission is hereby granted, free of charge, to any person obtaining a copy
+  ~ of this software and associated documentation files (the "Software"), to deal
+  ~ in the Software without restriction, including without limitation the rights
+  ~ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  ~ copies of the Software, and to permit persons to whom the Software is
+  ~ furnished to do so, subject to the following conditions:
+  ~
+  ~ The above copyright notice and this permission notice shall be included in all
+  ~ copies or substantial portions of the Software.
+  ~
+  ~ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  ~ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  ~ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  ~ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  ~ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  ~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  ~ SOFTWARE.
+  -->
+
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+  <style name="AppTheme" parent="android:Theme.Holo.Light.DarkActionBar">
+    <item name="android:textViewStyle">@style/AppTheme.Widget.TextView</item>
+    <item name="android:actionBarStyle">@style/AppTheme.ActionBarStyle</item>
+  </style>
+
+  <style name="AppTheme.ActionBarStyle" parent="@android:style/Widget.Holo.Light.ActionBar.Solid.Inverse">
+    <item name="android:titleTextStyle">@style/AppTheme.ActionBar.TitleTextStyle</item>
+    <item name="android:background">#00386c</item>
+  </style>
+
+  <style name="AppTheme.ActionBar.TitleTextStyle" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Title.Inverse">
+    <item name="fontPath">fonts/Aleo-Regular.otf</item>
+  </style>
+
+  <!-- This is an parent for AppTheme.Widget.TextView. It's empty, but it is definitely used. -->
+  <style name="AppTheme.Widget" tools:ignore="UnusedResources"/>
+
+  <style name="AppTheme.Widget.TextView" parent="android:Widget.Holo.Light.TextView">
+    <item name="fontPath">fonts/CircularStd-Book.otf</item>
+  </style>
+
+</resources>

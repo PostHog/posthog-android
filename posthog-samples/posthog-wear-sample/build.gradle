@@ -1,0 +1,22 @@
+apply plugin: 'com.android.application'
+
+apply from: rootProject.file('gradle/android.gradle')
+
+android {
+  defaultConfig {
+    minSdkVersion rootProject.ext.minSdkVersionWear
+  }
+
+  lintOptions {
+    // Since this is just a sample app, it's ok to ignore these warnings.
+    disable 'IconMissingDensityFolder', 'GoogleAppIndexingWarning', 'AllowBackup'
+  }
+}
+
+dependencies {
+  implementation project(':posthog')
+  implementation project(':posthog-wear')
+  // TODO: Update this dependency alongside the GPS dependency in posthog-wear.
+  //noinspection GradleDependency
+  implementation 'com.google.android.support:wearable:2.1.0'
+}

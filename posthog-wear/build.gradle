@@ -1,0 +1,13 @@
+apply plugin: 'com.android.library'
+
+apply from: rootProject.file('gradle/android.gradle')
+
+dependencies {
+  api project(':posthog')
+
+  // TODO: we should update this dependency.
+  //noinspection GradleDependency
+  api 'com.google.android.gms:play-services-wearable:10.2.6'
+}
+
+apply from: rootProject.file('gradle/gradle-mvn-push.gradle')
