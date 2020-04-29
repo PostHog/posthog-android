@@ -26,7 +26,7 @@
   -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.posthog.sample">
+    package="com.posthog.android.sample">
 
   <!-- Required for internet. -->
   <uses-permission android:name="android.permission.INTERNET"/>
@@ -59,7 +59,7 @@
     </activity>
 
     <service
-        android:name="com.posthog.PhonePostHogListenerService">
+        android:name="com.posthog.android.PhonePostHogListenerService">
       <intent-filter>
         <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
         <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
