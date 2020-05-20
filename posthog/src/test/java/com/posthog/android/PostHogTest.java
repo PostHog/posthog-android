@@ -118,7 +118,7 @@ public class PostHogTest {
     when(application.getPackageName()).thenReturn("com.foo");
     when(application.getPackageManager()).thenReturn(packageManager);
 
-    posthogContext = createContext();
+    posthogContext = createContext().putValue("$lib", "posthog-android-custom-lib");
 
     SharedPreferences sharedPreferences =
         RuntimeEnvironment.application.getSharedPreferences("posthog-test-qaz", MODE_PRIVATE);
@@ -183,7 +183,8 @@ public class PostHogTest {
                   @Override
                   protected boolean matchesSafely(IdentifyPayload item) {
                     return item.distinctId().equals("tim")
-                        && item.userProperties().get("username").equals("f2tim");
+                        && item.userProperties().get("username").equals("f2tim")
+                        && item.properties().get("$lib").equals("posthog-android-custom-lib");
                   }
                 }));
   }
@@ -234,7 +235,9 @@ public class PostHogTest {
                   protected boolean matchesSafely(CapturePayload payload) {
                     return payload.event().equals("wrote tests")
                         && //
-                        payload.properties().get("url").equals("github.com");
+                        payload.properties().get("url").equals("github.com")
+                        &&
+                        payload.properties().get("$lib").equals("posthog-android-custom-lib");
                   }
                 }));
   }
@@ -267,7 +270,9 @@ public class PostHogTest {
                   protected boolean matchesSafely(ScreenPayload payload) {
                     return payload.name().equals("saw tests")
                         && //
-                        payload.properties().get("url").equals("github.com");
+                        payload.properties().get("url").equals("github.com")
+                        &&
+                        payload.properties().get("$lib").equals("posthog-android-custom-lib");
                   }
                 }));
   }
@@ -319,7 +324,9 @@ public class PostHogTest {
                                         && //
                                         payload.properties().get("alias").equals("foo")
                                         && //
-                                        payload.properties().get("distinct_id").equals(anonymousId);
+                                        payload.properties().get("distinct_id").equals(anonymousId)
+                                        &&
+                                        payload.properties().get("$lib").equals("posthog-android-custom-lib");
                               }
                             }));
 
