@@ -640,6 +640,11 @@ public class PostHog {
     return posthogContext;
   }
 
+  public String getAnonymousId() {
+    Traits traits = traitsCache.get();
+    return traits.anonymousId();
+  }
+
   /** Creates a {@link StatsSnapshot} of the current stats for this instance. */
   public StatsSnapshot getSnapshot() {
     return stats.createSnapshot();
