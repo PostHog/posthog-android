@@ -854,7 +854,9 @@ public class PostHog {
       }
       // Make a defensive copy
       this.defaultOptions = new Options();
-
+      for (Map.Entry<String, Object> entry : defaultOptions.context().entrySet()) {
+        this.defaultOptions.putContext(entry.getKey(), entry.getValue());
+      }
       return this;
     }
 

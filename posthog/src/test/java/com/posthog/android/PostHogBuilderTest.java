@@ -29,6 +29,7 @@ import static android.Manifest.permission.INTERNET;
 import static android.content.pm.PackageManager.PERMISSION_DENIED;
 import static com.posthog.android.PostHog.Builder;
 import static com.posthog.android.PostHog.API_KEY_RESOURCE_IDENTIFIER;
+import static com.posthog.android.TestUtils.grantPermission;
 import static com.posthog.android.TestUtils.mockApplication;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
@@ -37,6 +38,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.initMocks;
 
+import android.Manifest;
 import android.app.Application;
 import android.content.Context;
 import android.content.res.Resources;
@@ -46,7 +48,9 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.RuntimeEnvironment;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(constants = BuildConfig.class, sdk = 18, manifest = Config.NONE)
@@ -249,6 +253,23 @@ public class PostHogBuilderTest {
     } catch (IllegalArgumentException expected) {
       assertThat(expected).hasMessage("LogLevel must not be null.");
     }
+  }
+
+  @Test
+  public void invalidDefaultOptionsThrowsException() throws Exception {
+    try {
+      new Builder(context, "foo").defaultOptions(null);
+      fail("Setting null defaultOptions should throw exception.");
+    } catch (IllegalArgumentException expected) {
+      assertThat(expected).hasMessage("defaultOptions must not be null.");
+    }
+  }
+
+  @Test
+  public void defaultOptionsCopiesContext() throws Exception {
+    grantPermission(RuntimeEnvironment.application, Manifest.permission.INTERNET);
+    PostHog posthog = new Builder(RuntimeEnvironment.application, "foo").defaultOptions(new Options().putContext("$lib", "custom-library")).build();
+    assertThat(posthog.defaultOptions.context().get("$lib")).isEqualTo("custom-library");
   }
 
   private void mockApiKeyInResources(Context context, String apiKey) {
