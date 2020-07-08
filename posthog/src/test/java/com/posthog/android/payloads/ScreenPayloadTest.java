@@ -73,7 +73,7 @@ public class ScreenPayloadTest {
   @Test
   public void properties() {
     ScreenPayload payload = builder.name("name").properties(ImmutableMap.of("foo", "bar")).build();
-    assertThat(payload.properties()).isEqualTo(ImmutableMap.of("foo", "bar", "$screen", "name"));
+    assertThat(payload.properties()).isEqualTo(ImmutableMap.of("foo", "bar", "$screen_name", "name"));
   }
 
   @Test
