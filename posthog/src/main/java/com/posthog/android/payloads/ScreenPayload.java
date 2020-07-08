@@ -49,7 +49,7 @@ public class ScreenPayload extends BasePayload {
       @Nullable String distinctId,
       @Nullable String name) {
 
-    super(Type.screen, "$screen", messageId, timestamp, properties, distinctId);
+    super(Type.screen, "$screen_name", messageId, timestamp, properties, distinctId);
 
     if (!isNullOrEmpty(name)) {
       properties.put(NAME_KEY, name);
