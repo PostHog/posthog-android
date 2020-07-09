@@ -39,7 +39,7 @@ import java.util.Map;
 
 public class ScreenPayload extends BasePayload {
 
-  static final String NAME_KEY = "$screen";
+  static final String NAME_KEY = "$screen_name";
 
   @Private
   ScreenPayload(
@@ -49,7 +49,7 @@ public class ScreenPayload extends BasePayload {
       @Nullable String distinctId,
       @Nullable String name) {
 
-    super(Type.screen, "$screen_name", messageId, timestamp, properties, distinctId);
+    super(Type.screen, "$screen", messageId, timestamp, properties, distinctId);
 
     if (!isNullOrEmpty(name)) {
       properties.put(NAME_KEY, name);
