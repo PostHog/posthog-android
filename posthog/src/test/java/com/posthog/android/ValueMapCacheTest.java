@@ -38,35 +38,35 @@ import org.robolectric.annotation.Config;
 @Config(manifest = Config.NONE)
 public class ValueMapCacheTest {
 
-  private ValueMap.Cache<Traits> traitsCache;
+  private ValueMap.Cache<Properties> propertiesCache;
   private Cartographer cartographer;
 
   @Before
   public void setUp() {
     cartographer = Cartographer.INSTANCE;
-    traitsCache =
+    propertiesCache =
         new ValueMap.Cache<>(
-            RuntimeEnvironment.application, cartographer, "traits-cache-test", "tag", Traits.class);
-    traitsCache.delete();
-    assertThat(traitsCache.get()).isNullOrEmpty();
+            RuntimeEnvironment.application, cartographer, "properties-cache-test", "tag", Properties.class);
+    propertiesCache.delete();
+    assertThat(propertiesCache.get()).isNullOrEmpty();
   }
 
   @Test
   public void save() throws Exception {
-    Traits traits = new Traits().putValue("foo", "bar");
-    traitsCache.set(traits);
-    assertThat(traitsCache.get()).isEqualTo(traits);
+    Properties properties = new Properties().putValue("foo", "bar");
+    propertiesCache.set(properties);
+    assertThat(propertiesCache.get()).isEqualTo(properties);
   }
 
   @Test
   public void cacheWithSameKeyHasSameValue() throws Exception {
-    assertThat(traitsCache.isSet()).isFalse();
-    Traits traits = new Traits().putValue("foo", "bar");
-    traitsCache.set(traits);
+    assertThat(propertiesCache.isSet()).isFalse();
+    Properties properties = new Properties().putValue("foo", "bar");
+    propertiesCache.set(properties);
 
-    ValueMap.Cache<Traits> traitsCacheDuplicate =
+    ValueMap.Cache<Properties> propertiesCacheDuplicate =
         new ValueMap.Cache<>(
-            RuntimeEnvironment.application, cartographer, "traits-cache-test", "tag", Traits.class);
-    assertThat(traitsCacheDuplicate.isSet()).isTrue();
+            RuntimeEnvironment.application, cartographer, "properties-cache-test", "tag", Properties.class);
+    assertThat(propertiesCacheDuplicate.isSet()).isTrue();
   }
 }

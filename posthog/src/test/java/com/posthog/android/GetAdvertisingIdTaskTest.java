@@ -48,7 +48,7 @@ public class GetAdvertisingIdTaskTest {
   public void getAdvertisingId() throws Exception {
     CountDownLatch latch = new CountDownLatch(1);
     PostHogContext context =
-        PostHogContext.create(RuntimeEnvironment.application, new Traits(), true);
+        PostHogContext.create(RuntimeEnvironment.application, new Properties(), true);
     AsyncTask<Context, Void, Pair<String, Boolean>> task =
         new GetAdvertisingIdTask(context, latch, Logger.with(PostHog.LogLevel.VERBOSE));
     task.execute(RuntimeEnvironment.application);
@@ -64,7 +64,7 @@ public class GetAdvertisingIdTaskTest {
     CountDownLatch latch = new CountDownLatch(1);
 
     PostHogContext posthogContext =
-        PostHogContext.create(RuntimeEnvironment.application, new Traits(),true);
+        PostHogContext.create(RuntimeEnvironment.application, new Properties(),true);
 
     AsyncTask<Context, Void, Pair<String, Boolean>> task =
         new GetAdvertisingIdTask(posthogContext, latch, Logger.with(PostHog.LogLevel.VERBOSE));
@@ -85,7 +85,7 @@ public class GetAdvertisingIdTaskTest {
     CountDownLatch latch = new CountDownLatch(1);
 
     PostHogContext posthogContext =
-        PostHogContext.create(RuntimeEnvironment.application, new Traits(),true);
+        PostHogContext.create(RuntimeEnvironment.application, new Properties(),true);
 
     AsyncTask<Context, Void, Pair<String, Boolean>> task =
         new GetAdvertisingIdTask(posthogContext, latch, Logger.with(PostHog.LogLevel.VERBOSE));

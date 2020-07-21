@@ -261,13 +261,13 @@ public class ValueMapTest {
   @Test
   public void getValueMapWithClass() {
     valueMap.put("foo", "not a map");
-    assertThat(valueMap.getValueMap("foo", Traits.class)).isNull();
+    assertThat(valueMap.getValueMap("foo", Properties.class)).isNull();
   }
 
   @Test
   public void getList() {
     valueMap.put("foo", "not a list");
-    assertThat(valueMap.getList("foo", Traits.class)).isNull();
+    assertThat(valueMap.getList("foo", Properties.class)).isNull();
   }
 
   @Test
