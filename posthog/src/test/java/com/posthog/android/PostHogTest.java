@@ -87,7 +87,7 @@ import org.robolectric.annotation.Config;
 @RunWith(RobolectricTestRunner.class)
 @Config(manifest = Config.NONE)
 public class PostHogTest {
-  @Mock Traits.Cache traitsCache;
+  @Mock Properties.Cache propertiesCache;
   @Mock Options defaultOptions;
   @Spy PostHogNetworkExecutorService networkExecutor;
   @Spy ExecutorService posthogExecutor = new SynchronousExecutor();
@@ -96,7 +96,7 @@ public class PostHogTest {
   @Mock Integration integration;
   private BooleanPreference optOut;
   private Application application;
-  private Traits traits;
+  private Properties properties;
   private PostHogContext posthogContext;
   private PostHog posthog;
 
@@ -106,8 +106,8 @@ public class PostHogTest {
 
     initMocks(this);
     application = mockApplication();
-    traits = Traits.create();
-    when(traitsCache.get()).thenReturn(traits);
+    properties = Properties.create();
+    when(propertiesCache.get()).thenReturn(properties);
 
     PackageInfo packageInfo = new PackageInfo();
     packageInfo.versionCode = 100;
@@ -129,7 +129,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(VERBOSE),
@@ -168,7 +168,7 @@ public class PostHogTest {
     try {
       posthog.identify(null, null, null);
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessage("Either distinctId or some traits must be provided.");
+      assertThat(e).hasMessage("Either distinctId or some properties must be provided.");
     }
   }
 
@@ -193,10 +193,10 @@ public class PostHogTest {
   public void identifyUpdatesCache() {
     posthog.identify("foo", new Properties().putValue("bar", "qaz"), null);
 
-    assertThat(traits)
+    assertThat(properties)
         .contains(MapEntry.entry("distinctId", "foo"))
         .contains(MapEntry.entry("bar", "qaz"));
-    verify(traitsCache).set(traits);
+    verify(propertiesCache).set(properties);
     verify(integration)
         .identify(
             argThat(
@@ -311,7 +311,7 @@ public class PostHogTest {
 
   @Test
   public void alias() {
-    final String anonymousId = traits.anonymousId();
+    final String anonymousId = properties.anonymousId();
     posthog.alias("foo");
 
     verify(integration)
@@ -354,23 +354,23 @@ public class PostHogTest {
   }
 
   @Test
-  public void resetClearsTraitsAndUpdatesContext() {
+  public void resetClearsPropertiesAndUpdatesContext() {
     posthog.reset();
 
-    verify(traitsCache).delete();
-    verify(traitsCache)
+    verify(propertiesCache).delete();
+    verify(propertiesCache)
         .set(
             argThat(
-                new TypeSafeMatcher<Traits>() {
+                new TypeSafeMatcher<Properties>() {
                   @Override
-                  protected boolean matchesSafely(Traits traits) {
-                    return !isNullOrEmpty(traits.anonymousId());
+                  protected boolean matchesSafely(Properties properties) {
+                    return !isNullOrEmpty(properties.anonymousId());
                   }
 
                   @Override
                   public void describeTo(Description description) {}
                 }));
-    assertThat(traitsCache.get()).hasSize(1).containsKey("anonymousId");
+    assertThat(propertiesCache.get()).hasSize(1).containsKey("anonymousId");
   }
 
   @Test
@@ -517,7 +517,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -600,7 +600,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -665,7 +665,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -732,7 +732,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -801,7 +801,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -870,7 +870,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -931,7 +931,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1002,7 +1002,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1064,7 +1064,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1127,7 +1127,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1214,7 +1214,7 @@ public class PostHogTest {
             application,
             networkExecutor,
             stats,
-            traitsCache,
+            propertiesCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),

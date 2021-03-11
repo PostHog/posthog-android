@@ -51,17 +51,17 @@ import org.robolectric.annotation.Config;
 public class PostHogContextTest {
 
   private PostHogContext context;
-  private Traits traits;
+  private Properties properties;
 
   @Before
   public void setUp() {
-    traits = Traits.create();
+    properties = Properties.create();
     context = createContext();
   }
 
   @Test
   public void create() {
-    context = PostHogContext.create(RuntimeEnvironment.application, traits, true);
+    context = PostHogContext.create(RuntimeEnvironment.application, properties, true);
     assertThat(context) //
         .containsKey("$locale") //
         .containsEntry("$user_agent", "undefined") //
@@ -89,10 +89,10 @@ public class PostHogContextTest {
 
   @Test
   public void createWithoutDeviceIdCollection() {
-    context = PostHogContext.create(RuntimeEnvironment.application, traits, false);
+    context = PostHogContext.create(RuntimeEnvironment.application, properties, false);
 
     assertThat(context) //
-        .containsEntry("$device_id", traits.anonymousId())
+        .containsEntry("$device_id", properties.anonymousId())
         .containsEntry("$device_manufacturer", "unknown")
         .containsEntry("$device_model", "unknown")
         .containsEntry("$device_name", "unknown");

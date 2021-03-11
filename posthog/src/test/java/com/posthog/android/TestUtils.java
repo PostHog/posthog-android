@@ -64,7 +64,7 @@ public final class TestUtils {
             + "messageId\":\"a161304c-498c-4830-9291-fcfb8498877b\","
             + "\"type\":\"capture\","
             + "\"channel\":\"mobile\","
-            + "\"context\":{\"traits\":{}},"
+            + "\"context\":{\"properties\":{}},"
             + "\"distinctId\":\"distinctId\","
             + "\"timestamp\":\"2014-12-15T13:32:44-0700\","
             + "\"event\":\"foo\","

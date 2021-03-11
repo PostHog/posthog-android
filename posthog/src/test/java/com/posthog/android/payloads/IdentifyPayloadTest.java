@@ -35,7 +35,7 @@ import org.junit.Test;
 public class IdentifyPayloadTest {
 
   @Test
-  public void invalidTraitsThrows() {
+  public void invalidPropertiesThrows() {
     try {
       //noinspection CheckResult,ConstantConditions
       new IdentifyPayload.Builder().userProperties(null);

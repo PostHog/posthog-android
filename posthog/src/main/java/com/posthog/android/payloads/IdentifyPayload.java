@@ -56,8 +56,8 @@ public class IdentifyPayload extends BasePayload {
 
   /**
    * A dictionary of properties you know about a user, for example email or name. We have a collection
-   * of special traits that we recognize with semantic meaning, which you should always use when
-   * recording that information. You can also add any custom traits that are specific to your
+   * of special properties that we recognize with semantic meaning, which you should always use when
+   * recording that information. You can also add any custom properties that are specific to your
    * project to the dictionary, like friendCount or subscriptionType.
    */
   @NonNull

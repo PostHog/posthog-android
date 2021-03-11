@@ -94,14 +94,14 @@ public class PostHog {
   @Private static final Properties EMPTY_PROPERTIES = new Properties();
   private static final String VERSION_KEY = "version";
   private static final String BUILD_KEY = "build";
-  private static final String TRAITS_KEY = "traits";
+  private static final String PROPERTIES_KEY = "properties";
 
   private final Application application;
   final ExecutorService networkExecutor;
   final Stats stats;
   private final @NonNull List<Middleware> middlewares;
   @Private final Options defaultOptions;
-  @Private final Traits.Cache traitsCache;
+  @Private final Properties.Cache propertiesCache;
   @Private final PostHogContext posthogContext;
   private final Logger logger;
   final String tag;
@@ -181,7 +181,7 @@ public class PostHog {
       Application application,
       ExecutorService networkExecutor,
       Stats stats,
-      Traits.Cache traitsCache,
+      Properties.Cache propertiesCache,
       PostHogContext posthogContext,
       Options defaultOptions,
       @NonNull Logger logger,
@@ -204,7 +204,7 @@ public class PostHog {
     this.application = application;
     this.networkExecutor = networkExecutor;
     this.stats = stats;
-    this.traitsCache = traitsCache;
+    this.propertiesCache = propertiesCache;
     this.posthogContext = posthogContext;
     this.defaultOptions = defaultOptions;
     this.logger = logger;
@@ -337,17 +337,17 @@ public class PostHog {
 
   /**
    * Identify lets you tie one of your users and their actions to a recognizable {@code distinctId}. It
-   * also lets you record {@code traits} about the user, like their email, name, account type, etc.
+   * also lets you record {@code properties} about the user, like their email, name, account type, etc.
    *
-   * <p>Traits and distinctId will be automatically cached and available on future sessions for the same
+   * <p>Properties and distinctId will be automatically cached and available on future sessions for the same
    * user. To update a trait on the server, call identify with the same user id (or null). You can
    * also use {@link #identify(Properties)} for this purpose.
    *
    * @param distinctId Unique identifier which you recognize a user by in your own database. If this is
    *     null or empty, any previous id we have (could be the anonymous id) will be used.
-   * @param userProperties Traits about the user.
+   * @param userProperties Properties about the user.
    * @param options To configure the call.
-   * @throws IllegalArgumentException if both {@code distinctId} and {@code newTraits} are not provided
+   * @throws IllegalArgumentException if both {@code distinctId} and {@code newProperties} are not provided
    */
   public void identify(
       final @Nullable String distinctId,
@@ -355,21 +355,21 @@ public class PostHog {
       final @Nullable Options options) {
     assertNotShutdown();
     if (isNullOrEmpty(distinctId) && isNullOrEmpty(userProperties)) {
-      throw new IllegalArgumentException("Either distinctId or some traits must be provided.");
+      throw new IllegalArgumentException("Either distinctId or some properties must be provided.");
     }
 
     posthogExecutor.submit(
         new Runnable() {
           @Override
           public void run() {
-            Traits traits = traitsCache.get();
+            Properties properties = propertiesCache.get();
             if (!isNullOrEmpty(distinctId)) {
-              traits.putDistinctId(distinctId);
+              properties.putDistinctId(distinctId);
             }
             if (!isNullOrEmpty(userProperties)) {
-              traits.putAll(userProperties);
+              properties.putAll(userProperties);
             }
-            traitsCache.set(traits); // Save the new traits
+            propertiesCache.set(properties); // Save the new properties
 
             final Options finalOptions;
             if (options == null) {
@@ -576,10 +576,10 @@ public class PostHog {
 
     contextCopy = contextCopy.unmodifiableCopy();
 
-    Traits traits = traitsCache.get();
+    Properties properties = propertiesCache.get();
     builder.context(contextCopy);
-    builder.anonymousId(traits.anonymousId());
-    String distinctId = traits.distinctId();
+    builder.anonymousId(properties.anonymousId());
+    String distinctId = properties.distinctId();
     if (!isNullOrEmpty(distinctId)) {
       builder.distinctId(distinctId);
     }
@@ -641,8 +641,8 @@ public class PostHog {
   }
 
   public String getAnonymousId() {
-    Traits traits = traitsCache.get();
-    return traits.anonymousId();
+    Properties properties = propertiesCache.get();
+    return properties.anonymousId();
   }
 
   /** Creates a {@link StatsSnapshot} of the current stats for this instance. */
@@ -685,14 +685,14 @@ public class PostHog {
    */
   public void reset() {
     SharedPreferences sharedPreferences = Utils.getPostHogSharedPreferences(application, tag);
-    // LIB-1578: only remove traits, preserve BUILD and VERSION keys in order to to fix over-sending
+    // LIB-1578: only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
     // of 'Application Installed' events and under-sending of 'Application Updated' events
     SharedPreferences.Editor editor = sharedPreferences.edit();
-    editor.remove(TRAITS_KEY + "-" + tag);
+    editor.remove(PROPERTIES_KEY + "-" + tag);
     editor.apply();
 
-    traitsCache.delete();
-    traitsCache.set(Traits.create());
+    propertiesCache.delete();
+    propertiesCache.set(Properties.create());
     runOnMainThread(IntegrationOperation.RESET);
   }
 
@@ -1004,15 +1004,15 @@ public class PostHog {
           new BooleanPreference(
               getPostHogSharedPreferences(application, tag), OPT_OUT_PREFERENCE_KEY, false);
 
-      Traits.Cache traitsCache = new Traits.Cache(application, cartographer, tag);
-      if (!traitsCache.isSet() || traitsCache.get() == null) {
-        Traits traits = Traits.create();
-        traitsCache.set(traits);
+      Properties.Cache propertiesCache = new Properties.Cache(application, cartographer, tag);
+      if (!propertiesCache.isSet() || propertiesCache.get() == null) {
+        Properties properties = Properties.create();
+        propertiesCache.set(properties);
       }
 
       Logger logger = Logger.with(logLevel);
       PostHogContext posthogContext =
-          PostHogContext.create(application, traitsCache.get(), collectDeviceID);
+          PostHogContext.create(application, propertiesCache.get(), collectDeviceID);
       CountDownLatch advertisingIdLatch = new CountDownLatch(1);
       posthogContext.attachAdvertisingId(application, advertisingIdLatch, logger);
 
@@ -1027,7 +1027,7 @@ public class PostHog {
           application,
           networkExecutor,
           stats,
-          traitsCache,
+          propertiesCache,
           posthogContext,
           defaultOptions,
           logger,

@@ -74,9 +74,9 @@ import java.util.concurrent.CountDownLatch;
  *
  * <p>PostHogContext is not persisted to disk, and is filled each time the app starts.
  *
- * <p>On the topic of the thread safety of traits, whilst this class utilises LinkedHashMap, writes
+ * <p>On the topic of the thread safety of properties, whilst this class utilises LinkedHashMap, writes
  * to this map only occur from within the handler thread. Meanwhile reads are served immutable
- * copies of traits mitigating the risk of data races with the exception of clients of this library
+ * copies of properties mitigating the risk of data races with the exception of clients of this library
  * modifying nested data structures after passing them to this library. This concern could be
  * mitigated by deep rather than shallow copying (e.g. via de-serialiation and re-serialisation),
  * however this would contribute a performance penalty.
@@ -121,10 +121,10 @@ public class PostHogContext extends ValueMap {
    * is thread safe.
    */
   static synchronized PostHogContext create(
-      Context context, Traits traits, boolean collectDeviceId) {
+      Context context, Properties properties, boolean collectDeviceId) {
     PostHogContext posthogContext = new PostHogContext(new NullableConcurrentHashMap<String, Object>());
     posthogContext.putApp(context);
-    posthogContext.putDevice(context, traits, collectDeviceId);
+    posthogContext.putDevice(context, properties, collectDeviceId);
     posthogContext.putLibrary();
     posthogContext.put(LOCALE_KEY, Locale.getDefault().getLanguage() + "-" + Locale.getDefault().getCountry());
     posthogContext.putNetwork(context);
@@ -191,8 +191,8 @@ public class PostHogContext extends ValueMap {
   }
 
   /** Fill this instance with device info from the provided {@link Context}. */
-  void putDevice(Context context, Traits traits, boolean collectDeviceID) {
-    String identifier = collectDeviceID ? getDeviceId(context) : traits.anonymousId();
+  void putDevice(Context context, Properties properties, boolean collectDeviceID) {
+    String identifier = collectDeviceID ? getDeviceId(context) : properties.anonymousId();
     put(DEVICE_ID_KEY, identifier);
     put(DEVICE_MANUFACTURER_KEY, Build.MANUFACTURER);
     put(DEVICE_MODEL_KEY, Build.MODEL);
