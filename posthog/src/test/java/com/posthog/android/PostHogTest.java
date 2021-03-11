@@ -909,6 +909,71 @@ public class PostHogTest {
   }
 
   @Test
+  public void trackDeepLinks_nullData() {
+    PostHog.INSTANCES.clear();
+
+    final AtomicReference<Application.ActivityLifecycleCallbacks> callback =
+            new AtomicReference<>();
+    doNothing()
+            .when(application)
+            .registerActivityLifecycleCallbacks(
+                    argThat(
+                            new NoDescriptionMatcher<Application.ActivityLifecycleCallbacks>() {
+                              @Override
+                              protected boolean matchesSafely(Application.ActivityLifecycleCallbacks item) {
+                                callback.set(item);
+                                return true;
+                              }
+                            }));
+
+    posthog =
+          new PostHog(
+                  application,
+                  networkExecutor,
+                  stats,
+                  propertiesCache,
+                  posthogContext,
+                  defaultOptions,
+                  Logger.with(NONE),
+                  "qaz",
+                  client,
+                  Cartographer.INSTANCE,
+                  "foo",
+                  "https://app.posthog.com",
+                  DEFAULT_FLUSH_QUEUE_SIZE,
+                  DEFAULT_FLUSH_INTERVAL,
+                  posthogExecutor,
+                  true,
+                  new CountDownLatch(0),
+                  false,
+                  false,
+                  optOut,
+                  Crypto.none(),
+                  Collections.<Middleware>emptyList(),
+                  integration
+          );
+
+    Activity activity = mock(Activity.class);
+
+    Intent intent = mock(Intent.class);
+
+    when(activity.getIntent()).thenReturn(intent);
+    when(intent.getData()).thenReturn(null);
+
+    callback.get().onActivityCreated(activity, new Bundle());
+
+    verify(integration, never())
+            .capture(
+                    argThat(
+                            new NoDescriptionMatcher<CapturePayload>() {
+                              @Override
+                              protected boolean matchesSafely(CapturePayload payload) {
+                                return payload.event().equals("Deep Link Opened");
+                              }
+                            }));
+  }
+
+  @Test
   public void registerActivityLifecycleCallbacks() throws NameNotFoundException {
     PostHog.INSTANCES.clear();
 
