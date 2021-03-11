@@ -1,3 +1,8 @@
+## 1.1.2 - 2021-03-11
+
+- Fix NullPointerException in PostHogActivityLifecycleCallbacks
+- Refactor properties
+
 ## 1.1.1 - 2020-07-09
 
 - Fix a bug where the name of the event changed to `$screen` instead of the key for the event screen
