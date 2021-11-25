@@ -804,7 +804,7 @@ public class PostHog {
      */
     public Builder flushQueueSize(int flushQueueSize) {
       if (flushQueueSize <= 0) {
-        throw new IllegalArgumentException("flushQueueSize must be greater than or equal to zero.");
+        throw new IllegalArgumentException("flushQueueSize must be greater than zero.");
       }
       // 250 is a reasonably high number to trigger queue size flushes.
       // The queue may go over this size (as much as 1000), but you should flush much before then.
