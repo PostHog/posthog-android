@@ -41,11 +41,14 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.annotation.RequiresApi;
+
 import com.posthog.android.payloads.AliasPayload;
 import com.posthog.android.payloads.BasePayload;
 import com.posthog.android.payloads.IdentifyPayload;
@@ -95,6 +98,7 @@ public class PostHog {
   private static final String VERSION_KEY = "version";
   private static final String BUILD_KEY = "build";
   private static final String PROPERTIES_KEY = "properties";
+  private static final String SEND_FEATURE_FLAGS_KEY = "send_feature_flags";
 
   private final Application application;
   final ExecutorService networkExecutor;
@@ -423,6 +427,7 @@ public class PostHog {
 
     posthogExecutor.submit(
         new Runnable() {
+          @RequiresApi(api = Build.VERSION_CODES.N)
           @Override
           public void run() {
             final Options finalOptions;
@@ -437,6 +442,18 @@ public class PostHog {
               finalProperties = EMPTY_PROPERTIES;
             } else {
               finalProperties = properties;
+            }
+
+            // Send feature flags with capture call
+            final boolean shouldSendFeatureFlags = false;
+            if (
+                    options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
+                    (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
+            ) {
+              shouldSendFeatureFlags = true;
+            }
+            if (shouldSendFeatureFlags) {
+
             }
 
             CapturePayload.Builder builder =
@@ -562,6 +579,11 @@ public class PostHog {
       logger.debug(
           "Advertising ID may not be collected because the API did not respond within 15 seconds.");
     }
+  }
+
+  @Private
+  void getFlagVariants() {
+
   }
 
   @Private
