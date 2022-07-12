@@ -50,6 +50,7 @@ import java.util.UUID;
 public class Properties extends ValueMap {
   private static final String ANONYMOUS_ID_KEY = "anonymousId";
   private static final String DISTINCT_ID_KEY = "distinctId";
+  private static final String GROUPS_KEY = "groups";
   /**
    * Create a new Properties instance with an anonymous ID. PostHog client can be called on any
    * thread, so this instance is thread safe.
@@ -94,6 +95,14 @@ public class Properties extends ValueMap {
 
   public String anonymousId() {
     return getString(ANONYMOUS_ID_KEY);
+  }
+
+  Properties putGroups(ValueMap groups) {
+    return putValue(GROUPS_KEY, groups);
+  }
+
+  public ValueMap groups() {
+    return getValueMap(GROUPS_KEY);
   }
 
   /**

@@ -123,6 +123,7 @@ public class PostHog {
   private final ExecutorService posthogExecutor;
   private final BooleanPreference optOut;
   private final Integration integration;
+  private final PostHogFeatureFlags featureFlags;
 
   volatile boolean shutdown;
 
@@ -204,7 +205,9 @@ public class PostHog {
       BooleanPreference optOut,
       Crypto crypto,
       @NonNull List<Middleware> middlewares,
-      Integration integration) {
+      Integration integration,
+      PostHogFeatureFlags featureFlags
+      ) {
     this.application = application;
     this.networkExecutor = networkExecutor;
     this.stats = stats;
@@ -225,6 +228,10 @@ public class PostHog {
     this.crypto = crypto;
     this.middlewares = middlewares;
     this.integration = integration != null ? integration : PostHogIntegration.FACTORY.create(this);
+    this.featureFlags = featureFlags != null ? featureFlags :
+            new PostHogFeatureFlags.Builder()
+                    .posthog(this)
+                    .logger(this.logger).build();
 
     namespaceSharedPreferences();
 
@@ -445,7 +452,7 @@ public class PostHog {
             }
 
             // Send feature flags with capture call
-            final boolean shouldSendFeatureFlags = false;
+            boolean shouldSendFeatureFlags = false;
             if (
                     options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
                     (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
@@ -569,6 +576,114 @@ public class PostHog {
         });
   }
 
+  /** @see #group(String, String, Map) */
+  public void group(@NonNull String groupType, @NonNull String groupKey) {
+    group(groupType, groupKey, null);
+  }
+
+  /**
+   * Alpha feature: don't use unless you know what you're doing!
+   *
+   * Sets group analytics information for subsequent events and reloads feature flags.
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   posthog.group("organization", "org::5");
+   * </code> </pre>
+   *
+   * @param groupType Group type
+   * @param groupKey Group key
+   * @param groupPropertiesToSet Optional properties to set for group
+   * @throws IllegalArgumentException if groupType or groupKey is null or empty
+   */
+  public void group(final @NonNull String groupType, final @NonNull String groupKey, final @Nullable Map<String, Object> groupPropertiesToSet) {
+    assertNotShutdown();
+    if (isNullOrEmpty(groupType) || isNullOrEmpty(groupKey)) {
+      throw new IllegalArgumentException("groupType and groupKey must not be null or empty.");
+    }
+
+    Properties properties = propertiesCache.get();
+    ValueMap newGroups = properties.groups();
+    newGroups.putValue(groupType, groupKey);
+    properties.putGroups(newGroups);
+
+    if (groupPropertiesToSet != null) {
+      Properties captureProperties = new Properties()
+              .putValue("$group_type", groupType)
+              .putValue("$group_key", groupKey)
+              .putValue("$group_set", groupPropertiesToSet);
+
+      capture("$groupidentify", captureProperties);
+    }
+  }
+
+  // Feature Flags
+  /** @see #isFeatureEnabled(String, Map) */
+  public Boolean isFeatureEnabled(@NonNull String key) {
+    return isFeatureEnabled(key, null);
+  }
+
+  /**
+   * See if feature flag is enabled for user.
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   if(posthog.isFeatureEnabled('beta-feature')) { // do something }
+   * </code> </pre>
+   *
+   * @param key flag key
+   * @param options options (optional) If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
+   * @throws IllegalArgumentException if key is empty
+   */
+  public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Map<String, Object> options) {
+    assertNotShutdown();
+    if (isNullOrEmpty(key)) {
+      throw new IllegalArgumentException("key must not be null or empty.");
+    }
+    return this.featureFlags.isFeatureEnabled();
+  }
+
+  /** @see #getFeatureFlag(String, Map) */
+  public String getFeatureFlag(@NonNull String key) {
+    return getFeatureFlag(key, null);
+  }
+
+  /**
+   * Get feature flag's value for user.
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   if(posthog.getFeatureFlag('my-flag') === 'some-variant') { // do something }
+   * </code> </pre>
+   *
+   * @param key flag key
+   * @param options options (optional) If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
+   * @throws IllegalArgumentException if key is empty
+   */
+  public String getFeatureFlag(final @NonNull String key, final @Nullable Map<String, Object> options) {
+    assertNotShutdown();
+    if (isNullOrEmpty(key)) {
+      throw new IllegalArgumentException("key must not be null or empty.");
+    }
+    return this.featureFlags.getFeatureFlag();
+  }
+
+  /**
+   * Reload feature flags cached in PostHog instance
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   posthog.reloadFeatureFlags()
+   * </code> </pre>
+   */
+  public void reloadFeatureFlags() {
+    this.featureFlags.reloadFeatureFlags();
+  }
+
   private void waitForAdvertisingId() {
     try {
       advertisingIdLatch.await(15, TimeUnit.SECONDS);
@@ -579,11 +694,6 @@ public class PostHog {
       logger.debug(
           "Advertising ID may not be collected because the API did not respond within 15 seconds.");
     }
-  }
-
-  @Private
-  void getFlagVariants() {
-
   }
 
   @Private
@@ -1068,7 +1178,7 @@ public class PostHog {
           optOut,
           crypto,
           middlewares,
-          null);
+          null, null);
     }
   }
 

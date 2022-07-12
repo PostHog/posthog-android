@@ -32,7 +32,7 @@ import uk.co.chrisjenx.calligraphy.CalligraphyConfig;
 
 public class SampleApp extends Application {
 
-  private static final String POSTHOG_API_KEY = "8jVz0YZ2YPtP7eL1I5l5RQIp-WcuFeD3pZO8c0YDMx4";
+  private static final String POSTHOG_API_KEY = "phc_X8B6bhR1QgQKP1WdpFLN82LxLxgZ7WPXDgJyRyvIpib";
 
   @Override
   public void onCreate() {
@@ -46,7 +46,7 @@ public class SampleApp extends Application {
 
     // Initialize a new instance of the PostHog client.
     PostHog.Builder builder =
-        new PostHog.Builder(this, POSTHOG_API_KEY, "http://d37f3802.ngrok.io")
+        new PostHog.Builder(this, POSTHOG_API_KEY, "https://app.posthog.com")
             .captureApplicationLifecycleEvents()
             .recordScreenViews();
 
