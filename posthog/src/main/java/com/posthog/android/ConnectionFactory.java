@@ -25,7 +25,6 @@
  */
 package com.posthog.android;
 
-import android.util.Base64;
 import com.posthog.core.BuildConfig;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -59,6 +58,8 @@ public class ConnectionFactory {
    */
   public HttpURLConnection decide(String host) throws IOException {
     HttpURLConnection connection = openConnection(host + "/decide/?v=2");
+    connection.setRequestProperty("Content-Type", "application/json");
+    connection.setRequestProperty("Accept", "application/json");
     connection.setDoOutput(true);
     return connection;
   }

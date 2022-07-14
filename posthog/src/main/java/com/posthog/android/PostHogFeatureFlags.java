@@ -1,64 +1,116 @@
 package com.posthog.android;
 
+import static com.posthog.android.Persistence.ACTIVE_FEATURE_FLAGS_KEY;
+import static com.posthog.android.Persistence.ENABLED_FEATURE_FLAGS_KEY;
 import static com.posthog.android.internal.Utils.closeQuietly;
 
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+
+import com.google.gson.Gson;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
+/**
+ * Handles the caching, polling, and fetching of feature flags.
+ */
 public class PostHogFeatureFlags {
     private PostHog posthog;
-    private Boolean overrideWarning;
     private Map<String, Boolean> flagCallReported;
     private Boolean reloadFeatureFlagsQueued;
     private Boolean reloadFeatureFlagsInAction;
-    private String $anon_distinct_id;
+    private Boolean featureFlagsLoaded;
     private final Logger logger;
+    private final Client client;
 
     private PostHogFeatureFlags(
             PostHog posthog,
-            Boolean overrideWarning,
             Map<String, Boolean> flagCallReported,
             Boolean reloadFeatureFlagsQueued,
             Boolean reloadFeatureFlagsInAction,
-            String $anon_distinct_id,
-            Logger logger
+            Logger logger,
+            Client client
     ) {
         this.posthog = posthog;
-        this.overrideWarning = overrideWarning || false;
         this.flagCallReported = flagCallReported;
         this.reloadFeatureFlagsQueued = reloadFeatureFlagsQueued || false;
         this.reloadFeatureFlagsInAction = reloadFeatureFlagsInAction || false;
-        this.$anon_distinct_id = $anon_distinct_id;
+        this.featureFlagsLoaded = false;
         this.logger = logger;
+        this.client = client;
     }
 
     public List<String> getFlags() {
         return new ArrayList<String>(this.getFlagVariants().keySet());
     }
 
-    public Map<String, Object> getFlagVariants() {
+    public ValueMap getFlagVariants() {
+        Persistence persistence = this.posthog.persistenceCache.get();
+        return persistence.enabledFeatureFlags();
     }
 
-    public String getFeatureFlag() {
+    public String getFeatureFlag(final @NonNull String key, final @Nullable Map<String, Object> options) {
+        if (!this.featureFlagsLoaded) {
+            throw new IllegalStateException(String.format("getFeatureFlag for key %s failed. Feature flags didn't load in time.", key));
+        }
+        String flagValue = this.getFlagVariants().getString(key);
+        if ((Boolean) options.get("send_event") && !this.flagCallReported.get(key)) {
+            this.flagCallReported.put(key, true);
+            this.posthog.capture(
+                    "$feature_flag_called",
+                    new Properties()
+                            .putValue("$feature_flag", key)
+                            .putValue("$feature_flag_response", flagValue));
+        }
+        return flagValue;
     }
 
-    public Boolean isFeatureEnabled() {
+    public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Map<String, Object> options) {
+        if (!this.featureFlagsLoaded) {
+            throw new IllegalStateException(String.format("isFeatureEnabled for key %s failed. Feature flags didn't load in time.", key));
+        }
+        return this.getFeatureFlag(key, options) != null;
     }
 
-    public Object override() {
-    }
-
+    /**
+     * Reloads feature flags asynchronously.
+     * <p>
+     * Constraints:
+     * <p>
+     * 1. Avoid parallel requests
+     * 2. Delay a few milliseconds after each reloadFeatureFlags call to batch subsequent changes together
+     * 3. Don't call this during initial load (as /decide will be called instead), see PostHog.java
+     */
     public void reloadFeatureFlags() {
+        if (!this.reloadFeatureFlagsQueued) {
+            this.reloadFeatureFlagsQueued = true;
+            this.startReloadTimer();
+        }
     }
 
     private void startReloadTimer() {
-        CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
-            // Your code here executes after 5 seconds!
-        });
+        if (this.reloadFeatureFlagsQueued && !this.reloadFeatureFlagsInAction) {
+            new Thread(() -> {
+                try {
+                    Thread.sleep(5);
+                    this.reloadFeatureFlagsQueued = false;
+                    this.reloadFeatureFlagsRequest();
+                } catch (Exception e) {
+                    System.err.println(e);
+                }
+            }).start();
+        }
     }
 
     private void setReloadingPaused(Boolean isPaused) {
@@ -69,93 +121,86 @@ public class PostHogFeatureFlags {
         this.reloadFeatureFlagsQueued = false;
     }
 
+    private void receivedFeatureFlags(HashMap response) {
+        ValueMap flags = (ValueMap) response.get("featureFlags");
+        Persistence persistence = this.posthog.persistenceCache.get();
+
+        if (flags != null) {
+            persistence.putEnabledFeatureFlags(flags);
+            persistence.putActiveFeatureFlags(new ArrayList(flags.keySet()));
+        } else {
+            persistence.put(ACTIVE_FEATURE_FLAGS_KEY, null);
+            persistence.put(ENABLED_FEATURE_FLAGS_KEY, null);
+        }
+    }
+
     private void reloadFeatureFlagsRequest() {
         this.setReloadingPaused(true);
-        String token = this.posthog.apiKey;
-        String distinctId = this.posthog.propertiesCache.get().distinctId();
+        this.featureFlagsLoaded = true;
 
-
-        logger.verbose(" in queue.");
-        int payloadsUploaded = 0;
+        logger.verbose(" reloading feature flags.");
+        Properties properties = this.posthog.propertiesCache.get();
         Client.Connection connection = null;
         try {
             // Open a connection.
-            connection = client.batch();
+            connection = client.decide();
+            HttpURLConnection con = connection.connection;
 
-            // Write the payloads into the OutputStream.
-            PostHogIntegration.BatchPayloadWriter writer =
-                    new PostHogIntegration.BatchPayloadWriter(connection.os) //
-                            .beginObject() //
-                            .writeApiKey(client.apiKey)
-                            .beginBatchArray();
-            PostHogIntegration.PayloadWriter payloadWriter = new PostHogIntegration.PayloadWriter(writer, crypto);
-            payloadQueue.forEach(payloadWriter);
-            writer.endBatchArray().endObject().close();
-            // Don't use the result of QueueFiles#forEach, since we may not upload the last element.
-            payloadsUploaded = payloadWriter.payloadCount;
+            // Construct payload
+            JSONObject payload = new JSONObject();
+            payload.put("token", this.posthog.apiKey);
+            payload.put("distinct_id", properties.distinctId());
+            payload.put("groups", properties.groups());
+            payload.put("$anon_distinct_id", properties.anonymousId());
+            String stringifiedPayload = payload.toString();
 
-            // Upload the payloads.
-            connection.close();
-        } catch (Client.HTTPException e) {
-            if (e.is4xx() && e.responseCode != 429) {
-                // Simply log and proceed to remove the rejected payloads from the queue.
-                logger.error(e, "Payloads were rejected by server. Marked for removal.");
-                try {
-                    payloadQueue.remove(payloadsUploaded);
-                } catch (IOException e1) {
-                    logger.error(e, "Unable to remove " + payloadsUploaded + " payload(s) from queue.");
-                }
-                return;
-            } else {
-                logger.error(e, "Error while uploading payloads");
-                return;
+            // Write payload to output stream
+            OutputStream os = con.getOutputStream();
+            byte[] input = stringifiedPayload.getBytes("utf-8");
+            os.write(input, 0, input.length);
+
+            // Read response from input stream
+            BufferedReader br = new BufferedReader(
+                    new InputStreamReader(con.getInputStream(), "utf-8")
+            );
+            StringBuilder response = new StringBuilder();
+            String responseLine = null;
+            while ((responseLine = br.readLine()) != null) {
+                response.append(responseLine.trim());
             }
+            HashMap<String, Object> mapResponse = new Gson().fromJson(response.toString(), HashMap.class);
+
+            this.receivedFeatureFlags(mapResponse);
+
+            // :TRICKY: Reload - start another request if queued!
+            this.setReloadingPaused(false);
+            this.startReloadTimer();
+
+        } catch (Client.HTTPException e) {
+            logger.error(e, "Error while sending reload feature flags request");
+            return;
         } catch (IOException e) {
-            logger.error(e, "Error while uploading payloads");
+            logger.error(e, "Error while sending reload feature flags request");
+            return;
+        } catch (JSONException e) {
+            logger.error(e, "Error while creating payload");
             return;
         } finally {
             closeQuietly(connection);
         }
     }
 
+
     public static class Builder {
         private PostHog posthog;
-        private Boolean overrideWarning;
-        private Map<String, Boolean> flagCallReported;
-        private Boolean reloadFeatureFlagsQueued;
-        private Boolean reloadFeatureFlagsInAction;
-        private String $anon_distinct_id;
         private Logger logger;
+        private Client client;
 
-        public Builder() {}
+        public Builder() {
+        }
 
         public Builder posthog(PostHog posthog) {
             this.posthog = posthog;
-            return this;
-        }
-
-        Builder overrideWarning(Boolean overrideWarning) {
-            this.overrideWarning = overrideWarning;
-            return this;
-        }
-
-        Builder flagCallReported(Map<String, Boolean> flagCallReported) {
-            this.flagCallReported = flagCallReported;
-            return this;
-        }
-
-        Builder reloadFeatureFlagsQueued(Boolean reloadFeatureFlagsQueued) {
-            this.reloadFeatureFlagsQueued = reloadFeatureFlagsQueued;
-            return this;
-        }
-
-        Builder reloadFeatureFlagsInAction(Boolean reloadFeatureFlagsInAction) {
-            this.reloadFeatureFlagsInAction = reloadFeatureFlagsInAction;
-            return this;
-        }
-
-        Builder $anon_distinct_id(String $anon_distinct_id) {
-            this.$anon_distinct_id = $anon_distinct_id;
             return this;
         }
 
@@ -164,15 +209,19 @@ public class PostHogFeatureFlags {
             return this;
         }
 
+        Builder client(Client client) {
+            this.client = client;
+            return this;
+        }
+
         public PostHogFeatureFlags build() {
             return new PostHogFeatureFlags(
                     posthog,
-                    overrideWarning,
-                    flagCallReported,
-                    reloadFeatureFlagsQueued,
-                    reloadFeatureFlagsInAction,
-                    $anon_distinct_id,
-                    logger
+                    null,
+                    null,
+                    null,
+                    logger,
+                    client
             );
         }
     }

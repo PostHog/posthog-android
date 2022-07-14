@@ -106,6 +106,7 @@ public class PostHog {
   private final @NonNull List<Middleware> middlewares;
   @Private final Options defaultOptions;
   @Private final Properties.Cache propertiesCache;
+  @Private final Persistence.Cache persistenceCache;
   @Private final PostHogContext posthogContext;
   private final Logger logger;
   final String tag;
@@ -187,6 +188,7 @@ public class PostHog {
       ExecutorService networkExecutor,
       Stats stats,
       Properties.Cache propertiesCache,
+      Persistence.Cache persistenceCache,
       PostHogContext posthogContext,
       Options defaultOptions,
       @NonNull Logger logger,
@@ -212,6 +214,7 @@ public class PostHog {
     this.networkExecutor = networkExecutor;
     this.stats = stats;
     this.propertiesCache = propertiesCache;
+    this.persistenceCache = persistenceCache;
     this.posthogContext = posthogContext;
     this.defaultOptions = defaultOptions;
     this.logger = logger;
@@ -231,7 +234,9 @@ public class PostHog {
     this.featureFlags = featureFlags != null ? featureFlags :
             new PostHogFeatureFlags.Builder()
                     .posthog(this)
-                    .logger(this.logger).build();
+                    .logger(this.logger)
+                    .client(this.client)
+                    .build();
 
     namespaceSharedPreferences();
 
@@ -642,7 +647,7 @@ public class PostHog {
     if (isNullOrEmpty(key)) {
       throw new IllegalArgumentException("key must not be null or empty.");
     }
-    return this.featureFlags.isFeatureEnabled();
+    return this.featureFlags.isFeatureEnabled(key, options);
   }
 
   /** @see #getFeatureFlag(String, Map) */
@@ -668,7 +673,7 @@ public class PostHog {
     if (isNullOrEmpty(key)) {
       throw new IllegalArgumentException("key must not be null or empty.");
     }
-    return this.featureFlags.getFeatureFlag();
+    return this.featureFlags.getFeatureFlag(key, options);
   }
 
   /**
@@ -1142,6 +1147,12 @@ public class PostHog {
         propertiesCache.set(properties);
       }
 
+      Persistence.Cache persistenceCache = new Persistence.Cache(application, cartographer, tag);
+      if (!persistenceCache.isSet() || persistenceCache.get() == null) {
+        Persistence persistence = Persistence.create();
+        persistenceCache.set(persistence);
+      }
+
       Logger logger = Logger.with(logLevel);
       PostHogContext posthogContext =
           PostHogContext.create(application, propertiesCache.get(), collectDeviceID);
@@ -1160,6 +1171,7 @@ public class PostHog {
           networkExecutor,
           stats,
           propertiesCache,
+          persistenceCache,
           posthogContext,
           defaultOptions,
           logger,

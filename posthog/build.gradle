@@ -5,8 +5,9 @@ apply from: rootProject.file('gradle/android.gradle')
 
 dependencies {
   api rootProject.ext.deps.supportAnnotations
+    implementation 'com.google.code.gson:gson:2.9.0'
 
-  testImplementation 'junit:junit:4.13'
+    testImplementation 'junit:junit:4.13'
   testImplementation('org.robolectric:robolectric:3.5') {
     exclude group: 'commons-logging', module: 'commons-logging'
     exclude group: 'org.apache.httpcomponents', module: 'httpclient'

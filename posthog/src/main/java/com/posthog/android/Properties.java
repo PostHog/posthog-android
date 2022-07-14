@@ -27,14 +27,9 @@ package com.posthog.android;
 
 import static com.posthog.android.internal.Utils.isNullOrEmpty;
 import static com.posthog.android.internal.Utils.NullableConcurrentHashMap;
-import static com.posthog.android.internal.Utils.isNullOrEmpty;
-import com.posthog.android.internal.Private;
 import static java.util.Collections.unmodifiableMap;
 
 import android.content.Context;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
