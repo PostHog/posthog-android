@@ -18,6 +18,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,9 +44,9 @@ public class PostHogFeatureFlags {
             Client client
     ) {
         this.posthog = posthog;
-        this.flagCallReported = flagCallReported;
-        this.reloadFeatureFlagsQueued = reloadFeatureFlagsQueued || false;
-        this.reloadFeatureFlagsInAction = reloadFeatureFlagsInAction || false;
+        this.flagCallReported = flagCallReported == null ? Collections.emptyMap() : flagCallReported;
+        this.reloadFeatureFlagsQueued = reloadFeatureFlagsQueued == null ? false : reloadFeatureFlagsQueued;
+        this.reloadFeatureFlagsInAction = reloadFeatureFlagsInAction == null ? false : reloadFeatureFlagsInAction;
         this.featureFlagsLoaded = false;
         this.logger = logger;
         this.client = client;

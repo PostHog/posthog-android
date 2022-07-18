@@ -459,8 +459,10 @@ public class PostHog {
             // Send feature flags with capture call
             boolean shouldSendFeatureFlags = false;
             if (
-                    options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
-                    (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
+                    options != null &&
+                            !options.context().isEmpty() &&
+                            options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
+                            (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
             ) {
               shouldSendFeatureFlags = true;
             }
