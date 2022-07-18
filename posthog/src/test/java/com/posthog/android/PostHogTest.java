@@ -77,7 +77,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.robolectric.RobolectricTestRunner;
@@ -88,15 +87,18 @@ import org.robolectric.annotation.Config;
 @Config(manifest = Config.NONE)
 public class PostHogTest {
   @Mock Properties.Cache propertiesCache;
+  @Mock Persistence.Cache persistenceCache;
   @Mock Options defaultOptions;
   @Spy PostHogNetworkExecutorService networkExecutor;
   @Spy ExecutorService posthogExecutor = new SynchronousExecutor();
   @Mock Client client;
   @Mock Stats stats;
   @Mock Integration integration;
+  @Mock PostHogFeatureFlags postHogFeatureFlags;
   private BooleanPreference optOut;
   private Application application;
   private Properties properties;
+  private Persistence persistence;
   private PostHogContext posthogContext;
   private PostHog posthog;
 
@@ -108,6 +110,8 @@ public class PostHogTest {
     application = mockApplication();
     properties = Properties.create();
     when(propertiesCache.get()).thenReturn(properties);
+    persistence = Persistence.create();
+    when(persistenceCache.get()).thenReturn(persistence);
 
     PackageInfo packageInfo = new PackageInfo();
     packageInfo.versionCode = 100;
@@ -125,30 +129,33 @@ public class PostHogTest {
     optOut = new BooleanPreference(sharedPreferences, "opt-out-test", false);
 
     posthog =
-        new PostHog(
-            application,
-            networkExecutor,
-            stats,
-            propertiesCache,
-            posthogContext,
-            defaultOptions,
-            Logger.with(VERBOSE),
-            "qaz",
-            client,
-            Cartographer.INSTANCE,
-            "foo",
-            "https://app.posthog.com",
-            DEFAULT_FLUSH_QUEUE_SIZE,
-            DEFAULT_FLUSH_INTERVAL,
-            posthogExecutor,
-            false,
-            new CountDownLatch(0),
-            false,
-            false,
-            optOut,
-            Crypto.none(),
-            Collections.<Middleware>emptyList(),
-            integration);
+            new PostHog(
+                    application,
+                    networkExecutor,
+                    stats,
+                    propertiesCache,
+                    persistenceCache,
+                    posthogContext,
+                    defaultOptions,
+                    Logger.with(VERBOSE),
+                    "qaz",
+                    client,
+                    Cartographer.INSTANCE,
+                    "foo",
+                    "https://app.posthog.com",
+                    DEFAULT_FLUSH_QUEUE_SIZE,
+                    DEFAULT_FLUSH_INTERVAL,
+                    posthogExecutor,
+                    false,
+                    new CountDownLatch(0),
+                    false,
+                    false,
+                    optOut,
+                    Crypto.none(),
+                    Collections.<Middleware>emptyList(),
+                    integration,
+                    postHogFeatureFlags
+            );
 
     // Used by singleton tests.
     grantPermission(RuntimeEnvironment.application, Manifest.permission.INTERNET);
@@ -518,6 +525,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -536,7 +544,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     callback.get().onActivityCreated(null, null);
 
@@ -601,6 +609,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -619,7 +628,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     callback.get().onActivityCreated(null, null);
 
@@ -666,6 +675,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -684,7 +694,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     Activity activity = mock(Activity.class);
     PackageManager packageManager = mock(PackageManager.class);
@@ -733,6 +743,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -751,7 +762,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     final String expectedUrl = "app://capture.com/open?utm_id=12345&gclid=abcd&nope=";
 
@@ -802,6 +813,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -820,7 +832,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     final String expectedUrl = "app://capture.com/open?utm_id=12345&gclid=abcd&nope=";
 
@@ -871,6 +883,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -889,7 +902,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     Activity activity = mock(Activity.class);
 
@@ -932,6 +945,7 @@ public class PostHogTest {
                   networkExecutor,
                   stats,
                   propertiesCache,
+                  persistenceCache,
                   posthogContext,
                   defaultOptions,
                   Logger.with(NONE),
@@ -950,7 +964,8 @@ public class PostHogTest {
                   optOut,
                   Crypto.none(),
                   Collections.<Middleware>emptyList(),
-                  integration
+                  integration,
+                  postHogFeatureFlags
           );
 
     Activity activity = mock(Activity.class);
@@ -997,6 +1012,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1015,7 +1031,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     Activity activity = mock(Activity.class);
     Bundle bundle = new Bundle();
@@ -1068,6 +1084,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1086,7 +1103,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     callback.get().onActivityCreated(null, null);
     callback.get().onActivityResumed(null);
@@ -1130,6 +1147,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1148,7 +1166,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     Activity backgroundedActivity = mock(Activity.class);
     when(backgroundedActivity.isChangingConfigurations()).thenReturn(false);
@@ -1193,6 +1211,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1211,7 +1230,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     Activity backgroundedActivity = mock(Activity.class);
     when(backgroundedActivity.isChangingConfigurations()).thenReturn(false);
@@ -1280,6 +1299,7 @@ public class PostHogTest {
             networkExecutor,
             stats,
             propertiesCache,
+            persistenceCache,
             posthogContext,
             defaultOptions,
             Logger.with(NONE),
@@ -1298,7 +1318,7 @@ public class PostHogTest {
             optOut,
             Crypto.none(),
             Collections.<Middleware>emptyList(),
-            integration);
+            integration, postHogFeatureFlags);
 
     assertThat(posthog.shutdown).isFalse();
     posthog.shutdown();
