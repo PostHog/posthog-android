@@ -14,7 +14,6 @@ import java.util.Map;
  * Persistence layer is a cache map attached to a PostHog singleton instance
  */
 public class Persistence extends ValueMap {
-    public static final String ACTIVE_FEATURE_FLAGS_KEY = "$active_feature_flags";
     public static final String ENABLED_FEATURE_FLAGS_KEY = "$enabled_feature_flags";
 
     static Persistence create() {
@@ -45,15 +44,6 @@ public class Persistence extends ValueMap {
     public ValueMap enabledFeatureFlags() {
         return getValueMap(ENABLED_FEATURE_FLAGS_KEY);
     }
-
-    Persistence putActiveFeatureFlags(ArrayList<String> activeFeatureFlags) {
-        return putValue(ACTIVE_FEATURE_FLAGS_KEY, activeFeatureFlags);
-    }
-
-    public ArrayList<String> activeFeatureFlags() {
-        return (ArrayList<String>) get(ACTIVE_FEATURE_FLAGS_KEY);
-    }
-
 
     @Override
     public Persistence putValue(String key, Object value) {

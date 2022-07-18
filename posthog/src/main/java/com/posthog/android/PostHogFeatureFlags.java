@@ -1,6 +1,5 @@
 package com.posthog.android;
 
-import static com.posthog.android.Persistence.ACTIVE_FEATURE_FLAGS_KEY;
 import static com.posthog.android.Persistence.ENABLED_FEATURE_FLAGS_KEY;
 import static com.posthog.android.internal.Utils.closeQuietly;
 
@@ -128,9 +127,7 @@ public class PostHogFeatureFlags {
 
         if (flags != null) {
             persistence.putEnabledFeatureFlags(flags);
-            persistence.putActiveFeatureFlags(new ArrayList(flags.keySet()));
         } else {
-            persistence.put(ACTIVE_FEATURE_FLAGS_KEY, null);
             persistence.put(ENABLED_FEATURE_FLAGS_KEY, null);
         }
     }
