@@ -66,6 +66,8 @@ import com.posthog.android.payloads.ScreenPayload;
 import com.posthog.android.payloads.CapturePayload;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -94,7 +96,7 @@ public class PostHogTest {
   @Mock Client client;
   @Mock Stats stats;
   @Mock Integration integration;
-  @Mock PostHogFeatureFlags postHogFeatureFlags;
+  PostHogFeatureFlags postHogFeatureFlags;
   private BooleanPreference optOut;
   private Application application;
   private Properties properties;
@@ -111,6 +113,7 @@ public class PostHogTest {
     properties = Properties.create();
     when(propertiesCache.get()).thenReturn(properties);
     persistence = Persistence.create();
+    persistence.putEnabledFeatureFlags(new ValueMap().putValue("enabled-flag", true).putValue("multivariate-flag", "blah"));
     when(persistenceCache.get()).thenReturn(persistence);
 
     PackageInfo packageInfo = new PackageInfo();
@@ -247,6 +250,30 @@ public class PostHogTest {
                         payload.properties().get("$lib").equals("posthog-android-custom-lib");
                   }
                 }));
+  }
+
+  @Test
+  public void captureWithSendFeatureFlags() {
+    posthog.capture("capture with flags", new Properties().putValue("url", "github.com"), new Options().putContext("send_feature_flags", true));
+    verify(integration)
+            .capture(
+                    argThat(
+                            new NoDescriptionMatcher<CapturePayload>() {
+                              @Override
+                              protected boolean matchesSafely(CapturePayload payload) {
+                                return payload.event().equals("capture with flags")
+                                        && //
+                                        payload.properties().get("url").equals("github.com")
+                                        &&
+                                        payload.properties().get("$lib").equals("posthog-android-custom-lib")
+                                        &&
+                                        payload.properties().get("$feature/enabled-flag").equals(true)
+                                        &&
+                                        payload.properties().get("$feature/multivariate-flag").equals("blah")
+                                        &&
+                                        payload.properties().get("$active_feature_flags").equals(Arrays.asList("enabled-flag", "multivariate-flag"));
+                              }
+                            }));
   }
 
   @Test

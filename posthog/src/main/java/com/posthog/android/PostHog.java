@@ -472,7 +472,7 @@ public class PostHog {
 
               // Add all feature variants to event
               for (Map.Entry<String, Object> entry : flags.entrySet()) {
-                finalProperties.putFeatureFlag(entry.getKey(), entry.getValue().toString());
+                finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
               }
 
               // Add all feature flag keys to $active_feature_flags key

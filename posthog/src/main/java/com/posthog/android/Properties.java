@@ -105,7 +105,7 @@ public class Properties extends ValueMap {
     return getValueMap(GROUPS_KEY);
   }
 
-  Properties putFeatureFlag(String flagKey, String flagValue) {
+  Properties putFeatureFlag(String flagKey, Object flagValue) {
     return putValue(String.format("%s%s", FEATURE_FLAG_KEY_PREFIX, flagKey), flagValue);
   }
 
