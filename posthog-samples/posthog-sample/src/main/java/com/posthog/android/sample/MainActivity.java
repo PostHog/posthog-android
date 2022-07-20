@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
 
   @OnClick(R.id.action_capture_a)
   void onButtonAClicked() {
+    PostHog.with(this).isFeatureEnabled("enabled-flag");
     PostHog.with(this).capture("Button A Clicked");
   }
 

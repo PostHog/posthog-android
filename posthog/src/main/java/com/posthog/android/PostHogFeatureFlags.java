@@ -1,6 +1,7 @@
 package com.posthog.android;
 
 import static com.posthog.android.Persistence.ENABLED_FEATURE_FLAGS_KEY;
+import static com.posthog.android.internal.Utils.assertNotNull;
 import static com.posthog.android.internal.Utils.closeQuietly;
 
 import android.support.annotation.NonNull;
@@ -43,7 +44,7 @@ public class PostHogFeatureFlags {
             Client client
     ) {
         this.posthog = posthog;
-        this.flagCallReported = flagCallReported == null ? Collections.emptyMap() : flagCallReported;
+        this.flagCallReported = flagCallReported == null ? new HashMap() : flagCallReported;
         this.reloadFeatureFlagsQueued = reloadFeatureFlagsQueued == null ? false : reloadFeatureFlagsQueued;
         this.reloadFeatureFlagsInAction = reloadFeatureFlagsInAction == null ? false : reloadFeatureFlagsInAction;
         this.featureFlagsLoaded = false;
@@ -60,12 +61,12 @@ public class PostHogFeatureFlags {
         return persistence.enabledFeatureFlags();
     }
 
-    public String getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
+    public Object getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
         if (!this.featureFlagsLoaded) {
             throw new IllegalStateException(String.format("getFeatureFlag for key %s failed. Feature flags didn't load in time.", key));
         }
-        String flagValue = this.getFlagVariants().getString(key);
-        if ((Boolean) options.get("send_event") && !this.flagCallReported.get(key)) {
+        Object flagValue = this.getFlagVariants().get(key);
+        if (options != null && (Boolean) options.get("send_event") && this.flagCallReported.get(key) == null) {
             this.flagCallReported.put(key, true);
             this.posthog.capture(
                     "$feature_flag_called",
@@ -73,17 +74,25 @@ public class PostHogFeatureFlags {
                             .putValue("$feature_flag", key)
                             .putValue("$feature_flag_response", flagValue));
         }
-        if (!flagValue.isEmpty()) {
+        if (flagValue != null && flagValue != "") {
             return flagValue;
         }
-        return defaultValue.toString();
+        return defaultValue;
     }
 
-    public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Map<String, Object> options) {
+    public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Boolean defaultValue, final @Nullable Map<String, Object> options) {
         if (!this.featureFlagsLoaded) {
             throw new IllegalStateException(String.format("isFeatureEnabled for key %s failed. Feature flags didn't load in time.", key));
         }
-        return this.getFeatureFlag(key, false, options) != null;
+        Object value = this.getFeatureFlag(key, defaultValue, options);
+        if (value != null) {
+            if (value instanceof Boolean) {
+                return (Boolean) value;
+            }
+            // Multivariate case
+            return true;
+        }
+        return defaultValue;
     }
 
     /**
@@ -93,7 +102,7 @@ public class PostHogFeatureFlags {
      * <p>
      * 1. Avoid parallel requests
      * 2. Delay a few milliseconds after each reloadFeatureFlags call to batch subsequent changes together
-     * 3. Don't call this during initial load (as /decide will be called instead), see PostHog.java
+     * 3. Called once when building PostHogFeatureFlags instance (see build method)
      */
     public void reloadFeatureFlags() {
         if (!this.reloadFeatureFlagsQueued) {
@@ -116,6 +125,14 @@ public class PostHogFeatureFlags {
         }
     }
 
+    public Boolean isPostHogNull() {
+        return this.posthog == null;
+    }
+
+    public void putPostHog(PostHog posthog) {
+        this.posthog = assertNotNull(posthog, "posthog");
+    }
+
     private void setReloadingPaused(Boolean isPaused) {
         this.reloadFeatureFlagsInAction = isPaused;
     }
@@ -125,7 +142,7 @@ public class PostHogFeatureFlags {
     }
 
     private void receivedFeatureFlags(HashMap response) {
-        ValueMap flags = (ValueMap) response.get("featureFlags");
+        Map flags = (Map) response.get("featureFlags");
         Persistence persistence = this.posthog.persistenceCache.get();
 
         if (flags != null) {
@@ -135,9 +152,8 @@ public class PostHogFeatureFlags {
         }
     }
 
-    private void reloadFeatureFlagsRequest() {
+    protected void reloadFeatureFlagsRequest() {
         this.setReloadingPaused(true);
-        this.featureFlagsLoaded = true;
 
         logger.verbose(" reloading feature flags.");
         Properties properties = this.posthog.propertiesCache.get();
@@ -175,6 +191,7 @@ public class PostHogFeatureFlags {
 
             // :TRICKY: Reload - start another request if queued!
             this.setReloadingPaused(false);
+            this.featureFlagsLoaded = true;
             this.startReloadTimer();
 
         } catch (Client.HTTPException e) {
@@ -216,7 +233,7 @@ public class PostHogFeatureFlags {
         }
 
         public PostHogFeatureFlags build() {
-            return new PostHogFeatureFlags(
+            PostHogFeatureFlags instance = new PostHogFeatureFlags(
                     posthog,
                     null,
                     null,
@@ -224,6 +241,10 @@ public class PostHogFeatureFlags {
                     logger,
                     client
             );
+            if (posthog != null) {
+                instance.reloadFeatureFlags();
+            }
+            return instance;
         }
     }
 }

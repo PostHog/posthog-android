@@ -231,12 +231,15 @@ public class PostHog {
     this.crypto = crypto;
     this.middlewares = middlewares;
     this.integration = integration != null ? integration : PostHogIntegration.FACTORY.create(this);
-    this.featureFlags = featureFlags != null ? featureFlags :
-            new PostHogFeatureFlags.Builder()
-                    .posthog(this)
-                    .logger(this.logger)
-                    .client(this.client)
-                    .build();
+
+    if (featureFlags == null) {
+      featureFlags = new PostHogFeatureFlags.Builder()
+              .posthog(this)
+              .logger(this.logger)
+              .client(this.client)
+              .build();
+    }
+    this.featureFlags = featureFlags;
 
     namespaceSharedPreferences();
 
@@ -635,9 +638,14 @@ public class PostHog {
   }
 
   // Feature Flags
-  /** @see #isFeatureEnabled(String, Map) */
+  /** @see #isFeatureEnabled(String, Boolean, Map) */
   public Boolean isFeatureEnabled(@NonNull String key) {
-    return isFeatureEnabled(key, null);
+    return isFeatureEnabled(key, false, null);
+  }
+
+  /** @see #isFeatureEnabled(String, Boolean, Map) */
+  public Boolean isFeatureEnabled(@NonNull String key, @Nullable Boolean defaultValue) {
+    return isFeatureEnabled(key, defaultValue, null);
   }
 
   /**
@@ -650,21 +658,28 @@ public class PostHog {
    * </code> </pre>
    *
    * @param key flag key
+   * @param defaultValue default flag value
    * @param options options (optional) If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
    * @throws IllegalArgumentException if key is empty
    */
-  public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Map<String, Object> options) {
+  public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Boolean defaultValue, final @Nullable Map<String, Object> options) {
     assertNotShutdown();
     if (isNullOrEmpty(key)) {
       throw new IllegalArgumentException("key must not be null or empty.");
     }
-    return this.featureFlags.isFeatureEnabled(key, options);
+    return this.featureFlags.isFeatureEnabled(key, defaultValue, options);
   }
 
   /** @see #getFeatureFlag(String, Object, Map) */
-  public String getFeatureFlag(@NonNull String key) {
+  public Object getFeatureFlag(@NonNull String key) {
     return getFeatureFlag(key, false, null);
   }
+
+  /** @see #getFeatureFlag(String, Object, Map) */
+  public Object getFeatureFlag(@NonNull String key, @Nullable Object defaultValue) {
+    return getFeatureFlag(key, defaultValue, null);
+  }
+
 
   /**
    * Get feature flag's value for user.
@@ -680,7 +695,7 @@ public class PostHog {
    * @param options options (optional) If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
    * @throws IllegalArgumentException if key is empty
    */
-  public String getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
+  public Object getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
     assertNotShutdown();
     if (isNullOrEmpty(key)) {
       throw new IllegalArgumentException("key must not be null or empty.");
@@ -920,6 +935,7 @@ public class PostHog {
     private boolean recordScreenViews = false;
     private boolean captureDeepLinks = false;
     private Crypto crypto;
+    private Integration integration;
 
     /** Start building a new {@link PostHog} instance. */
     public Builder(Context context, String apiKey) {
@@ -1113,6 +1129,14 @@ public class PostHog {
       return this;
     }
 
+    /**
+     * Allows custom integration
+     */
+    public Builder integration(Integration integration) {
+      this.integration = assertNotNull(integration, "integration");
+      return this;
+    }
+
     /** Create a {@link PostHog} client. */
     public PostHog build() {
       if (isNullOrEmpty(tag)) {
@@ -1202,7 +1226,8 @@ public class PostHog {
           optOut,
           crypto,
           middlewares,
-          null, null);
+              integration,
+              null);
     }
   }
 

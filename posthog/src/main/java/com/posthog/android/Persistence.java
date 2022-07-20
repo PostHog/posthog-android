@@ -37,7 +37,7 @@ public class Persistence extends ValueMap {
         return new Persistence(unmodifiableMap(map));
     }
 
-    Persistence putEnabledFeatureFlags(ValueMap featureFlags) {
+    Persistence putEnabledFeatureFlags(Map featureFlags) {
         return putValue(ENABLED_FEATURE_FLAGS_KEY, featureFlags);
     }
 
