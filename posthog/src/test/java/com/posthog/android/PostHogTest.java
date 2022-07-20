@@ -66,7 +66,6 @@ import com.posthog.android.payloads.ScreenPayload;
 import com.posthog.android.payloads.CapturePayload;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;

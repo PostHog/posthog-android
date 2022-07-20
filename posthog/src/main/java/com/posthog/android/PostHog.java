@@ -661,9 +661,9 @@ public class PostHog {
     return this.featureFlags.isFeatureEnabled(key, options);
   }
 
-  /** @see #getFeatureFlag(String, Map) */
+  /** @see #getFeatureFlag(String, Object, Map) */
   public String getFeatureFlag(@NonNull String key) {
-    return getFeatureFlag(key, null);
+    return getFeatureFlag(key, false, null);
   }
 
   /**
@@ -676,15 +676,16 @@ public class PostHog {
    * </code> </pre>
    *
    * @param key flag key
+   * @param defaultValue default flag value
    * @param options options (optional) If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
    * @throws IllegalArgumentException if key is empty
    */
-  public String getFeatureFlag(final @NonNull String key, final @Nullable Map<String, Object> options) {
+  public String getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
     assertNotShutdown();
     if (isNullOrEmpty(key)) {
       throw new IllegalArgumentException("key must not be null or empty.");
     }
-    return this.featureFlags.getFeatureFlag(key, options);
+    return this.featureFlags.getFeatureFlag(key, defaultValue, options);
   }
 
   /**

@@ -26,7 +26,6 @@
 package com.posthog.android.sample;
 
 import android.app.Application;
-import android.util.Log;
 import com.posthog.android.PostHog;
 import uk.co.chrisjenx.calligraphy.CalligraphyConfig;
 

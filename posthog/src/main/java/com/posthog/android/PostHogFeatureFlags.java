@@ -60,7 +60,7 @@ public class PostHogFeatureFlags {
         return persistence.enabledFeatureFlags();
     }
 
-    public String getFeatureFlag(final @NonNull String key, final @Nullable Map<String, Object> options) {
+    public String getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
         if (!this.featureFlagsLoaded) {
             throw new IllegalStateException(String.format("getFeatureFlag for key %s failed. Feature flags didn't load in time.", key));
         }
@@ -73,14 +73,17 @@ public class PostHogFeatureFlags {
                             .putValue("$feature_flag", key)
                             .putValue("$feature_flag_response", flagValue));
         }
-        return flagValue;
+        if (!flagValue.isEmpty()) {
+            return flagValue;
+        }
+        return defaultValue.toString();
     }
 
     public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Map<String, Object> options) {
         if (!this.featureFlagsLoaded) {
             throw new IllegalStateException(String.format("isFeatureEnabled for key %s failed. Feature flags didn't load in time.", key));
         }
-        return this.getFeatureFlag(key, options) != null;
+        return this.getFeatureFlag(key, false, options) != null;
     }
 
     /**
