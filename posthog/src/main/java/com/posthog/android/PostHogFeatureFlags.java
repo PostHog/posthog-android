@@ -1,7 +1,7 @@
 package com.posthog.android;
 
 import static com.posthog.android.Persistence.ENABLED_FEATURE_FLAGS_KEY;
-import static com.posthog.android.internal.Utils.assertNotNull;
+import static com.posthog.android.internal.Utils.DEFAULT_FLAG_RELOAD_DEBOUNCE_INTERVAL;
 import static com.posthog.android.internal.Utils.closeQuietly;
 
 import android.support.annotation.NonNull;
@@ -18,7 +18,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,7 +114,7 @@ public class PostHogFeatureFlags {
         if (this.reloadFeatureFlagsQueued && !this.reloadFeatureFlagsInAction) {
             new Thread(() -> {
                 try {
-                    Thread.sleep(5);
+                    Thread.sleep(DEFAULT_FLAG_RELOAD_DEBOUNCE_INTERVAL);
                     this.reloadFeatureFlagsQueued = false;
                     this.reloadFeatureFlagsRequest();
                 } catch (Exception e) {
@@ -125,20 +124,8 @@ public class PostHogFeatureFlags {
         }
     }
 
-    public Boolean isPostHogNull() {
-        return this.posthog == null;
-    }
-
-    public void putPostHog(PostHog posthog) {
-        this.posthog = assertNotNull(posthog, "posthog");
-    }
-
     private void setReloadingPaused(Boolean isPaused) {
         this.reloadFeatureFlagsInAction = isPaused;
-    }
-
-    private void resetRequestQueue() {
-        this.reloadFeatureFlagsQueued = false;
     }
 
     private void receivedFeatureFlags(HashMap response) {

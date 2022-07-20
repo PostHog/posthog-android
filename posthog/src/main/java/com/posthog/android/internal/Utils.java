@@ -82,6 +82,7 @@ public final class Utils {
   public static final int DEFAULT_FLUSH_INTERVAL = 30 * 1000; // 30s
   public static final int DEFAULT_FLUSH_QUEUE_SIZE = 20;
   public static final boolean DEFAULT_COLLECT_DEVICE_ID = true;
+  public static final int DEFAULT_FLAG_RELOAD_DEBOUNCE_INTERVAL = 5; // 5ms
 
   /** Creates a mutable HashSet instance containing the given elements in unspecified order */
   public static <T> Set<T> newSet(T... values) {

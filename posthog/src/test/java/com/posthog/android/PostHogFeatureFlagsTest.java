@@ -11,7 +11,6 @@ import static org.mockito.MockitoAnnotations.initMocks;
 import android.Manifest;
 import android.content.pm.PackageManager;
 
-import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 import com.posthog.android.payloads.CapturePayload;
 
 import org.junit.After;
