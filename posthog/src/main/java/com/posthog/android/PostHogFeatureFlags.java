@@ -62,7 +62,8 @@ public class PostHogFeatureFlags {
 
     public Object getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
         if (!this.featureFlagsLoaded) {
-            throw new IllegalStateException(String.format("getFeatureFlag for key %s failed. Feature flags didn't load in time.", key));
+            this.logger.error(null, "getFeatureFlag for key %s failed. Feature flags didn't load in time.", key);
+            return defaultValue;
         }
         Object flagValue = this.getFlagVariants().get(key);
         if (options != null && (Boolean) options.get("send_event") && this.flagCallReported.get(key) == null) {
@@ -81,7 +82,8 @@ public class PostHogFeatureFlags {
 
     public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Boolean defaultValue, final @Nullable Map<String, Object> options) {
         if (!this.featureFlagsLoaded) {
-            throw new IllegalStateException(String.format("isFeatureEnabled for key %s failed. Feature flags didn't load in time.", key));
+            this.logger.error(null, "isFeatureEnabled for key %s failed. Feature flags didn't load in time.", key);
+            return defaultValue;
         }
         Object value = this.getFeatureFlag(key, defaultValue, options);
         if (value != null) {
@@ -115,12 +117,12 @@ public class PostHogFeatureFlags {
             new Thread(() -> {
                 try {
                     Thread.sleep(DEFAULT_FLAG_RELOAD_DEBOUNCE_INTERVAL);
-                    this.reloadFeatureFlagsQueued = false;
                     this.reloadFeatureFlagsRequest();
                 } catch (Exception e) {
                     System.err.println(e);
                 }
             }).start();
+            this.reloadFeatureFlagsQueued = false;
         }
     }
 
@@ -150,6 +152,10 @@ public class PostHogFeatureFlags {
             connection = client.decide();
             HttpURLConnection con = connection.connection;
 
+            if (properties.distinctId() == null) {
+                throw new IllegalArgumentException("Calling decide endpoint requires user to be identified before.");
+            }
+
             // Construct payload
             JSONObject payload = new JSONObject();
             payload.put("token", this.posthog.apiKey);
@@ -177,10 +183,12 @@ public class PostHogFeatureFlags {
             this.receivedFeatureFlags(mapResponse);
 
             // :TRICKY: Reload - start another request if queued!
-            this.setReloadingPaused(false);
             this.featureFlagsLoaded = true;
             this.startReloadTimer();
 
+        } catch (IllegalArgumentException e) {
+            logger.error(e, "Error while sending reload feature flags request");
+            return;
         } catch (Client.HTTPException e) {
             logger.error(e, "Error while sending reload feature flags request");
             return;
@@ -192,6 +200,7 @@ public class PostHogFeatureFlags {
             return;
         } finally {
             closeQuietly(connection);
+            this.setReloadingPaused(false);
         }
     }
 

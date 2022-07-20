@@ -27,6 +27,8 @@ package com.posthog.android.sample;
 
 import android.app.Application;
 import com.posthog.android.PostHog;
+import com.posthog.android.Properties;
+
 import uk.co.chrisjenx.calligraphy.CalligraphyConfig;
 
 public class SampleApp extends Application {
@@ -54,5 +56,8 @@ public class SampleApp extends Application {
 
     // Now anytime you call PostHog.with, the custom instance will be returned.
     PostHog posthog = PostHog.with(this);
+
+    // Identify from the getgo
+    PostHog.with(this).identify("test_distinct_id", new Properties().putValue("name", "my name").putValue("email", "user@posthog.com"));
   }
 }
