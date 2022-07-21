@@ -52,6 +52,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
 
+    <Button
+        android:id="@+id/action_is_feature_enabled"
+        android:text="@string/button_is_feature_enabled"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
+    <Button
+        android:id="@+id/action_get_feature_flag"
+        android:text="@string/button_get_feature_flag"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
     <View
         android:background="@android:color/black"
         android:layout_width="match_parent"

@@ -410,6 +410,12 @@ public class PostHog {
             fillAndEnqueue(builder, finalOptions);
           }
         });
+
+    // Reload feature flags whenever identity changes
+    Properties properties = propertiesCache.get();
+    if (properties.distinctId() != distinctId) {
+      this.reloadFeatureFlags();
+    }
   }
 
   /** @see #capture(String, Properties, Options) */
