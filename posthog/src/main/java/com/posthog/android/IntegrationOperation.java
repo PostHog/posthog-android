@@ -28,6 +28,7 @@ package com.posthog.android;
 import android.app.Activity;
 import android.os.Bundle;
 import com.posthog.android.payloads.AliasPayload;
+import com.posthog.android.payloads.GroupPayload;
 import com.posthog.android.payloads.IdentifyPayload;
 import com.posthog.android.payloads.ScreenPayload;
 import com.posthog.android.payloads.CapturePayload;
@@ -186,6 +187,20 @@ abstract class IntegrationOperation {
       @Override
       public String toString() {
         return aliasPayload.toString();
+      }
+    };
+  }
+
+  static IntegrationOperation group(final GroupPayload groupPayload) {
+    return new IntegrationOperation() {
+      @Override
+      void run(Integration<?> integration) {
+        integration.group(groupPayload);
+      }
+
+      @Override
+      public String toString() {
+        return groupPayload.toString();
       }
     };
   }

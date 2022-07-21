@@ -132,7 +132,8 @@ public abstract class BasePayload extends ValueMap {
     alias,
     identify,
     screen,
-    capture
+    capture,
+    group
   }
 
   public abstract static class Builder<P extends BasePayload, B extends Builder> {

@@ -1,20 +1,17 @@
 package com.posthog.android.payloads;
 
 import static com.posthog.android.internal.Utils.assertNotNull;
+import static com.posthog.android.internal.Utils.assertNotNullOrEmpty;
 
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import com.posthog.android.Properties;
 import com.posthog.android.internal.Private;
-import java.util.Collections;
+
 import java.util.Date;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class GroupPayload extends BasePayload {
-
-//   static final String USER_PROPERTIES_KEY = "$set";
-//   static final String ANON_DISTINCT_ID_KEY = "$anon_distinct_id";
 
   static final String GROUP_TYPE_KEY = "$group_type";
   static final String GROUP_KEY_KEY = "$group_key";
@@ -22,10 +19,17 @@ public class GroupPayload extends BasePayload {
 
 
   GroupPayload(
+      @NonNull String messageId,
+      @NonNull Date timestamp,
+      @NonNull Map<String, Object> properties,
+      @Nullable String distinctId,
       @NonNull String groupType,
       @NonNull String groupKey,
-      @Nullable Map<String, Object> properties) {
-    super(Type.group, groupType, groupKey, properties)
+      @Nullable Map<String, Object> groupProperties) {
+    super(Type.group, "$groupidentify", messageId, timestamp, properties, distinctId);
+    put(GROUP_TYPE_KEY, groupType);
+    put(GROUP_KEY_KEY, groupKey);
+    put(GROUP_SET_KEY, groupProperties);
   }
 
   /**
@@ -51,8 +55,8 @@ public class GroupPayload extends BasePayload {
    * A dictionary of properties that give more information about the group. 
    */
   @Nullable
-  public Properties properties() {
-    return getValueMap(PROPERTIES_KEY, Properties.class);
+  public Map<String, Object> groupProperties() {
+    return getValueMap(GROUP_SET_KEY, Properties.class);
   }
 
   @NonNull
@@ -66,7 +70,7 @@ public class GroupPayload extends BasePayload {
 
     private String groupType;
     private String groupKey;
-    private Map<String, Object> properties;
+    private Map<String, Object> groupProperties;
 
     public Builder() {
       // Empty constructor.
@@ -75,9 +79,9 @@ public class GroupPayload extends BasePayload {
     @Private
     Builder(GroupPayload group) {
       super(group);
-      groupType = group.group_type()
-      groupKey = group.group_key()
-      properties = group.properties()
+      groupType = group.groupType();
+      groupKey = group.groupKey();
+      groupProperties = group.properties();
     }
 
     @NonNull
@@ -92,14 +96,19 @@ public class GroupPayload extends BasePayload {
       return this;
     }
 
+    @NonNull
+    public Builder groupProperties(@NonNull Map<String, Object> groupProperties) {
+      this.groupProperties = assertNotNull(groupProperties, "groupProperties");
+      return this;
+    }
 
     @Override
-    GroupPayload realBuild(
-        @NonNull String groupType,
-        @NonNull String groupKey,
-        @Nullable Map<String, Object> properties,
-        ) {
-      return new GroupPayload(groupType, groupKey, properties);
+    protected GroupPayload realBuild(
+            @NonNull String messageId,
+            @NonNull Date timestamp,
+            @NonNull Map<String, Object> properties,
+            @Nullable String distinctId) {
+      return new GroupPayload(messageId, timestamp, properties, distinctId, groupType, groupKey, groupProperties);
     }
 
     @Override

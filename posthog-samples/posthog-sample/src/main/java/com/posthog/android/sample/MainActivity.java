@@ -87,6 +87,11 @@ public class MainActivity extends Activity {
     }
   }
 
+  @OnClick(R.id.action_group_identify)
+  void onGroupIdentify() {
+    PostHog.with(this).group("group-type", "group-key");
+  }
+
   @OnClick(R.id.action_identify)
   void onIdentifyButtonClicked() {
     String id = distinctId.getText().toString();

@@ -61,6 +61,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import com.posthog.android.TestUtils.NoDescriptionMatcher;
 import com.posthog.android.payloads.AliasPayload;
+import com.posthog.android.payloads.GroupPayload;
 import com.posthog.android.payloads.IdentifyPayload;
 import com.posthog.android.payloads.ScreenPayload;
 import com.posthog.android.payloads.CapturePayload;
@@ -368,10 +369,10 @@ public class PostHogTest {
   @Test
   public void invalidGroup() {
     try {
-      posthog.group(null);
+      posthog.group(null, null);
       fail("null group type or group key should throw error");
     } catch (IllegalArgumentException expected) {
-      assertThat(expected).hasMessage("groupType must not be null or empty.");
+      assertThat(expected).hasMessage("groupType and groupKey must not be null or empty.");
     }
   }
 
@@ -393,7 +394,7 @@ public class PostHogTest {
                   }
                 }
               )
-            )
+            );
   }
 
   @Test

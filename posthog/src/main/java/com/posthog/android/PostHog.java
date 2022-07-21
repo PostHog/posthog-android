@@ -60,6 +60,7 @@ import com.posthog.android.internal.Utils;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -602,9 +603,9 @@ public class PostHog {
         });
   }
 
-  /** @see #group(String, String, Map) */
+  /** @see #group(String, String, Properties, Options) */
   public void group(@NonNull String groupType, @NonNull String groupKey) {
-    group(groupType, groupKey, null);
+    group(groupType, groupKey, null, null);
   }
 
   /**
@@ -620,42 +621,58 @@ public class PostHog {
    *
    * @param groupType Group type
    * @param groupKey Group key
-   * @param groupPropertiesToSet Optional properties to set for group
+   * @param groupProperties Optional properties to set for group
+   * @param options To configure the call
    * @throws IllegalArgumentException if groupType or groupKey is null or empty
    */
-  public void group(final @NonNull String groupType, final @NonNull String groupKey, final @Nullable Map<String, Object> properties) {
+  public void group(final @NonNull String groupType, final @NonNull String groupKey, final @Nullable Properties groupProperties, final @Nullable Options options) {
     assertNotShutdown();
     if (isNullOrEmpty(groupType) || isNullOrEmpty(groupKey)) {
       throw new IllegalArgumentException("groupType and groupKey must not be null or empty.");
     }
 
-    final Map<String, String> existingGroups;
-    existingGroups = this.getGroups()
-    final Map<String, Object> newGroups;
-    newGroups = new HashMap(existingGroups)
-    newGroups.merge(groupType, groupKey)
-    Persistence persistence = this.posthog.persistenceCache.get();
-    persistence.put("$groups", newGroups)
+    final ValueMap existingGroups = this.getGroups();
+    ValueMap newGroups = existingGroups;
+    newGroups.putValue(groupType, groupKey);
+    Persistence persistence = this.persistenceCache.get();
+    persistence.putGroups(newGroups);
 
     posthogExecutor.submit(
         new Runnable() {
           @Override
           public void run() {
+            final Options finalOptions;
+            if (options == null) {
+              finalOptions = defaultOptions;
+            } else {
+              finalOptions = options;
+            }
+
+            final Properties finalGroupProperties;
+            if (groupProperties == null) {
+              finalGroupProperties = EMPTY_PROPERTIES;
+            } else {
+              finalGroupProperties = groupProperties;
+            }
+
             GroupPayload.Builder builder =
-                new GroupPayload.Builder().groupType(groupType).groupKey(groupKey).properties(properties);
-            fillAndEnqueue(builder);
+                new GroupPayload.Builder().groupType(groupType).groupKey(groupKey).groupProperties(finalGroupProperties);
+            fillAndEnqueue(builder, finalOptions);
           }
         });
 
     // If groups change, reload feature flags.
-    if (existingGroups.get(groupType) !== groupKey) {
-        this.reloadFeatureFlags()
+    if (existingGroups.get(groupType) != groupKey) {
+        this.reloadFeatureFlags();
     }
   }
 
-  public Map<String, Object> getGroups() {
-    Persistence persistence = this.posthog.persistenceCache.get();
-    return persistence.get("$groups") || new HashMap();
+  public ValueMap getGroups() {
+    ValueMap groups = this.persistenceCache.get().groups();
+    if (groups != null) {
+      return groups;
+    }
+    return new ValueMap();
   }
 
   // Feature Flags
