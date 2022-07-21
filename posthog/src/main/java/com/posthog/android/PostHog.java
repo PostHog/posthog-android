@@ -54,6 +54,7 @@ import com.posthog.android.payloads.BasePayload;
 import com.posthog.android.payloads.IdentifyPayload;
 import com.posthog.android.payloads.ScreenPayload;
 import com.posthog.android.payloads.CapturePayload;
+import com.posthog.android.payloads.GroupPayload;
 import com.posthog.android.internal.Private;
 import com.posthog.android.internal.Utils;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
@@ -616,25 +617,39 @@ public class PostHog {
    * @param groupPropertiesToSet Optional properties to set for group
    * @throws IllegalArgumentException if groupType or groupKey is null or empty
    */
-  public void group(final @NonNull String groupType, final @NonNull String groupKey, final @Nullable Map<String, Object> groupPropertiesToSet) {
+  public void group(final @NonNull String groupType, final @NonNull String groupKey, final @Nullable Map<String, Object> properties) {
     assertNotShutdown();
     if (isNullOrEmpty(groupType) || isNullOrEmpty(groupKey)) {
       throw new IllegalArgumentException("groupType and groupKey must not be null or empty.");
     }
 
-    Properties properties = propertiesCache.get();
-    ValueMap newGroups = properties.groups();
-    newGroups.putValue(groupType, groupKey);
-    properties.putGroups(newGroups);
+    final Map<String, String> existingGroups;
+    existingGroups = this.getGroups()
+    final Map<String, Object> newGroups;
+    newGroups = new HashMap(existingGroups)
+    newGroups.merge(groupType, groupKey)
+    Persistence persistence = this.posthog.persistenceCache.get();
+    persistence.put("$groups", newGroups)
 
-    if (groupPropertiesToSet != null) {
-      Properties captureProperties = new Properties()
-              .putValue("$group_type", groupType)
-              .putValue("$group_key", groupKey)
-              .putValue("$group_set", groupPropertiesToSet);
+    posthogExecutor.submit(
+        new Runnable() {
+          @Override
+          public void run() {
+            GroupPayload.Builder builder =
+                new GroupPayload.Builder().groupType(groupType).groupKey(groupKey).properties(properties);
+            fillAndEnqueue(builder);
+          }
+        });
 
-      capture("$groupidentify", captureProperties);
+    // If groups change, reload feature flags.
+    if (existingGroups.get(groupType) !== groupKey) {
+        this.reloadFeatureFlags()
     }
+  }
+
+  public Map<String, Object> getGroups() {
+    Persistence persistence = this.posthog.persistenceCache.get();
+    return persistence.get("$groups") || new HashMap();
   }
 
   // Feature Flags
@@ -774,6 +789,9 @@ public class PostHog {
         break;
       case screen:
         operation = IntegrationOperation.screen((ScreenPayload) payload);
+        break;
+      case group:
+        operation = IntegrationOperation.group((GroupPayload) payload);
         break;
       default:
         throw new AssertionError("unknown type " + payload.type());

@@ -366,6 +366,37 @@ public class PostHogTest {
   }
 
   @Test
+  public void invalidGroup() {
+    try {
+      posthog.group(null);
+      fail("null group type or group key should throw error");
+    } catch (IllegalArgumentException expected) {
+      assertThat(expected).hasMessage("groupType must not be null or empty.");
+    }
+  }
+
+  @Test
+  public void group() {
+    final String groupType = "group-type";
+    final String groupKey = "group-key";
+    posthog.group(groupType, groupKey);
+
+    verify(integration)
+            .group(
+              argThat(
+                new NoDescriptionMatcher<GroupPayload>() {
+                  @Override
+                  protected boolean matchesSafely(GroupPayload payload) {
+                    return payload.groupType().equals("group-type")
+                      && //
+                      payload.groupKey().equals("group-key");
+                  }
+                }
+              )
+            )
+  }
+
+  @Test
   public void flush() {
     posthog.flush();
 
