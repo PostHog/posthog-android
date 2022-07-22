@@ -51,6 +51,7 @@ public class Properties extends ValueMap {
   private static final String GROUPS_KEY = "groups";
   private static final String ACTIVE_FEATURE_FLAGS_KEY = "$active_feature_flags";
   private static final String FEATURE_FLAG_KEY_PREFIX = "$feature/";
+  private static final String SESSION_ID_KEY = "sessionId";
   /**
    * Create a new Properties instance with an anonymous ID. PostHog client can be called on any
    * thread, so this instance is thread safe.
@@ -95,6 +96,14 @@ public class Properties extends ValueMap {
 
   public String anonymousId() {
     return getString(ANONYMOUS_ID_KEY);
+  }
+
+  public putSessionId(String id) {
+    return putValue(SESSION_ID_KEY, id)
+  }
+
+  public String sessionId() {
+    return getString(SESSION_ID_KEY)
   }
 
   Properties putGroups(ValueMap groups) {
