@@ -101,6 +101,11 @@ class Client {
     return createPostConnection(connection);
   }
 
+  Connection decide() throws IOException {
+    HttpURLConnection connection = connectionFactory.decide(this.host);
+    return createPostConnection(connection);
+  }
+
   /** Represents an HTTP exception thrown for unexpected/non 2xx response codes. */
   static class HTTPException extends IOException {
     final int responseCode;

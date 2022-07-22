@@ -36,17 +36,25 @@ import static org.mockito.Mockito.when;
 
 import android.app.Application;
 import com.posthog.android.payloads.CapturePayload;
+
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Constructor;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.hamcrest.Description;
 import org.hamcrest.TypeSafeMatcher;
 import org.json.JSONObject;
+import org.mockito.internal.util.io.IOUtil;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.robolectric.RuntimeEnvironment;
@@ -109,6 +117,16 @@ public final class TestUtils {
         .when(application)
         .getSharedPreferences(anyString(), anyInt());
     return application;
+  }
+
+  public static ConnectionFactory mockDecideConnection(String host, Map response) throws IOException {
+    ConnectionFactory connectionFactory = mock(ConnectionFactory.class);
+    HttpURLConnection huc = mock(HttpURLConnection.class);
+    OutputStream os = mock(OutputStream.class);
+    when(huc.getInputStream()).thenReturn(new ByteArrayInputStream(response.toString().getBytes()));
+    when(huc.getOutputStream()).thenReturn(os);
+    when(connectionFactory.decide(host)).thenReturn(huc);
+    return connectionFactory;
   }
 
   public static <T extends ValueMap> T createValueMap(Map map, Class<T> clazz) {

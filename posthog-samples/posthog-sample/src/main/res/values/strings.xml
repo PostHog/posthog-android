@@ -33,6 +33,9 @@
 
   <string name="button_a">Button A</string>
   <string name="button_b">Button B</string>
+  <string name="button_is_feature_enabled">Is Feature Enabled</string>
+  <string name="button_get_feature_flag">Get Feature Flag</string>
+  <string name="button_group_identify">Identify group</string>
 
   <string name="flush">Flush Events</string>
 

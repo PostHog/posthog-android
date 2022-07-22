@@ -26,13 +26,14 @@
 package com.posthog.android.sample;
 
 import android.app.Application;
-import android.util.Log;
 import com.posthog.android.PostHog;
+import com.posthog.android.Properties;
+
 import uk.co.chrisjenx.calligraphy.CalligraphyConfig;
 
 public class SampleApp extends Application {
 
-  private static final String POSTHOG_API_KEY = "8jVz0YZ2YPtP7eL1I5l5RQIp-WcuFeD3pZO8c0YDMx4";
+  private static final String POSTHOG_API_KEY = "phc_X8B6bhR1QgQKP1WdpFLN82LxLxgZ7WPXDgJyRyvIpib";
 
   @Override
   public void onCreate() {
@@ -46,7 +47,7 @@ public class SampleApp extends Application {
 
     // Initialize a new instance of the PostHog client.
     PostHog.Builder builder =
-        new PostHog.Builder(this, POSTHOG_API_KEY, "http://d37f3802.ngrok.io")
+        new PostHog.Builder(this, POSTHOG_API_KEY, "https://app.posthog.com")
             .captureApplicationLifecycleEvents()
             .recordScreenViews();
 
@@ -55,5 +56,8 @@ public class SampleApp extends Application {
 
     // Now anytime you call PostHog.with, the custom instance will be returned.
     PostHog posthog = PostHog.with(this);
+
+    // Identify from the getgo
+    PostHog.with(this).identify("test_distinct_id", new Properties().putValue("name", "my name").putValue("email", "user@posthog.com"));
   }
 }

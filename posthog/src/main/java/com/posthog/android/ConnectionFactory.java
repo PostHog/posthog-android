@@ -25,7 +25,6 @@
  */
 package com.posthog.android;
 
-import android.util.Base64;
 import com.posthog.core.BuildConfig;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -54,7 +53,19 @@ public class ConnectionFactory {
   }
 
   /**
-   * Configures defaults for connections opened with {@link #batch(String)}.
+   * Return a {@link HttpURLConnection} that makes decide requests to {@code
+   * https://app.posthog.com/decide/?v=2}.
+   */
+  public HttpURLConnection decide(String host) throws IOException {
+    HttpURLConnection connection = openConnection(host + "/decide/?v=2");
+    connection.setRequestProperty("Content-Type", "application/json");
+    connection.setRequestProperty("Accept", "application/json");
+    connection.setDoOutput(true);
+    return connection;
+  }
+
+  /**
+   * Configures defaults for connections opened.
    */
   protected HttpURLConnection openConnection(String url) throws IOException {
     URL requestedURL;

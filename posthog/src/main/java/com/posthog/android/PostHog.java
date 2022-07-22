@@ -41,21 +41,26 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.annotation.RequiresApi;
+
 import com.posthog.android.payloads.AliasPayload;
 import com.posthog.android.payloads.BasePayload;
 import com.posthog.android.payloads.IdentifyPayload;
 import com.posthog.android.payloads.ScreenPayload;
 import com.posthog.android.payloads.CapturePayload;
+import com.posthog.android.payloads.GroupPayload;
 import com.posthog.android.internal.Private;
 import com.posthog.android.internal.Utils;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -95,6 +100,7 @@ public class PostHog {
   private static final String VERSION_KEY = "version";
   private static final String BUILD_KEY = "build";
   private static final String PROPERTIES_KEY = "properties";
+  private static final String SEND_FEATURE_FLAGS_KEY = "send_feature_flags";
 
   private final Application application;
   final ExecutorService networkExecutor;
@@ -102,6 +108,7 @@ public class PostHog {
   private final @NonNull List<Middleware> middlewares;
   @Private final Options defaultOptions;
   @Private final Properties.Cache propertiesCache;
+  @Private final Persistence.Cache persistenceCache;
   @Private final PostHogContext posthogContext;
   private final Logger logger;
   final String tag;
@@ -119,6 +126,7 @@ public class PostHog {
   private final ExecutorService posthogExecutor;
   private final BooleanPreference optOut;
   private final Integration integration;
+  private final PostHogFeatureFlags featureFlags;
 
   volatile boolean shutdown;
 
@@ -182,6 +190,7 @@ public class PostHog {
       ExecutorService networkExecutor,
       Stats stats,
       Properties.Cache propertiesCache,
+      Persistence.Cache persistenceCache,
       PostHogContext posthogContext,
       Options defaultOptions,
       @NonNull Logger logger,
@@ -200,11 +209,14 @@ public class PostHog {
       BooleanPreference optOut,
       Crypto crypto,
       @NonNull List<Middleware> middlewares,
-      Integration integration) {
+      Integration integration,
+      PostHogFeatureFlags featureFlags
+      ) {
     this.application = application;
     this.networkExecutor = networkExecutor;
     this.stats = stats;
     this.propertiesCache = propertiesCache;
+    this.persistenceCache = persistenceCache;
     this.posthogContext = posthogContext;
     this.defaultOptions = defaultOptions;
     this.logger = logger;
@@ -221,6 +233,15 @@ public class PostHog {
     this.crypto = crypto;
     this.middlewares = middlewares;
     this.integration = integration != null ? integration : PostHogIntegration.FACTORY.create(this);
+
+    if (featureFlags == null) {
+      featureFlags = new PostHogFeatureFlags.Builder()
+              .posthog(this)
+              .logger(this.logger)
+              .client(this.client)
+              .build();
+    }
+    this.featureFlags = featureFlags;
 
     namespaceSharedPreferences();
 
@@ -390,6 +411,12 @@ public class PostHog {
             fillAndEnqueue(builder, finalOptions);
           }
         });
+
+    // Reload feature flags whenever identity changes
+    Properties properties = propertiesCache.get();
+    if (properties.distinctId() != distinctId) {
+      this.reloadFeatureFlags();
+    }
   }
 
   /** @see #capture(String, Properties, Options) */
@@ -423,6 +450,7 @@ public class PostHog {
 
     posthogExecutor.submit(
         new Runnable() {
+          @RequiresApi(api = Build.VERSION_CODES.N)
           @Override
           public void run() {
             final Options finalOptions;
@@ -437,6 +465,29 @@ public class PostHog {
               finalProperties = EMPTY_PROPERTIES;
             } else {
               finalProperties = properties;
+            }
+
+            // Send feature flags with capture call
+            boolean shouldSendFeatureFlags = false;
+            if (
+                    options != null &&
+                            !options.context().isEmpty() &&
+                            options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
+                            (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
+            ) {
+              shouldSendFeatureFlags = true;
+            }
+            if (shouldSendFeatureFlags) {
+              ValueMap flags = featureFlags.getFlagVariants();
+              List<String> activeFlags = featureFlags.getFlags();
+
+              // Add all feature variants to event
+              for (Map.Entry<String, Object> entry : flags.entrySet()) {
+                finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
+              }
+
+              // Add all feature flag keys to $active_feature_flags key
+              finalProperties.putActiveFeatureFlags(activeFlags);
             }
 
             CapturePayload.Builder builder =
@@ -552,6 +603,157 @@ public class PostHog {
         });
   }
 
+  /** @see #group(String, String, Properties, Options) */
+  public void group(@NonNull String groupType, @NonNull String groupKey) {
+    group(groupType, groupKey, null, null);
+  }
+
+  /**
+   * Alpha feature: don't use unless you know what you're doing!
+   *
+   * Sets group analytics information for subsequent events and reloads feature flags.
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   posthog.group("organization", "org::5");
+   * </code> </pre>
+   *
+   * @param groupType Group type
+   * @param groupKey Group key
+   * @param groupProperties Optional properties to set for group
+   * @param options To configure the call
+   * @throws IllegalArgumentException if groupType or groupKey is null or empty
+   */
+  public void group(final @NonNull String groupType, final @NonNull String groupKey, final @Nullable Properties groupProperties, final @Nullable Options options) {
+    assertNotShutdown();
+    if (isNullOrEmpty(groupType) || isNullOrEmpty(groupKey)) {
+      throw new IllegalArgumentException("groupType and groupKey must not be null or empty.");
+    }
+
+    final ValueMap existingGroups = this.getGroups();
+    ValueMap newGroups = existingGroups;
+    newGroups.putValue(groupType, groupKey);
+    Persistence persistence = this.persistenceCache.get();
+    persistence.putGroups(newGroups);
+
+    posthogExecutor.submit(
+        new Runnable() {
+          @Override
+          public void run() {
+            final Options finalOptions;
+            if (options == null) {
+              finalOptions = defaultOptions;
+            } else {
+              finalOptions = options;
+            }
+
+            final Properties finalGroupProperties;
+            if (groupProperties == null) {
+              finalGroupProperties = EMPTY_PROPERTIES;
+            } else {
+              finalGroupProperties = groupProperties;
+            }
+
+            GroupPayload.Builder builder =
+                new GroupPayload.Builder().groupType(groupType).groupKey(groupKey).groupProperties(finalGroupProperties);
+            fillAndEnqueue(builder, finalOptions);
+          }
+        });
+
+    // If groups change, reload feature flags.
+    if (existingGroups.get(groupType) != groupKey) {
+        this.reloadFeatureFlags();
+    }
+  }
+
+  public ValueMap getGroups() {
+    ValueMap groups = this.persistenceCache.get().groups();
+    if (groups != null) {
+      return groups;
+    }
+    return new ValueMap();
+  }
+
+  // Feature Flags
+  /** @see #isFeatureEnabled(String, Boolean, Map) */
+  public Boolean isFeatureEnabled(@NonNull String key) {
+    return isFeatureEnabled(key, false, null);
+  }
+
+  /** @see #isFeatureEnabled(String, Boolean, Map) */
+  public Boolean isFeatureEnabled(@NonNull String key, @Nullable Boolean defaultValue) {
+    return isFeatureEnabled(key, defaultValue, null);
+  }
+
+  /**
+   * See if feature flag is enabled for user.
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   if(posthog.isFeatureEnabled('beta-feature')) { // do something }
+   * </code> </pre>
+   *
+   * @param key flag key
+   * @param defaultValue default flag value
+   * @param options options (optional) If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
+   * @throws IllegalArgumentException if key is empty
+   */
+  public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Boolean defaultValue, final @Nullable Map<String, Object> options) {
+    assertNotShutdown();
+    if (isNullOrEmpty(key)) {
+      throw new IllegalArgumentException("key must not be null or empty.");
+    }
+    return this.featureFlags.isFeatureEnabled(key, defaultValue, options);
+  }
+
+  /** @see #getFeatureFlag(String, Object, Map) */
+  public Object getFeatureFlag(@NonNull String key) {
+    return getFeatureFlag(key, false, null);
+  }
+
+  /** @see #getFeatureFlag(String, Object, Map) */
+  public Object getFeatureFlag(@NonNull String key, @Nullable Object defaultValue) {
+    return getFeatureFlag(key, defaultValue, null);
+  }
+
+
+  /**
+   * Get feature flag's value for user.
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   if(posthog.getFeatureFlag('my-flag') === 'some-variant') { // do something }
+   * </code> </pre>
+   *
+   * @param key flag key
+   * @param defaultValue default flag value
+   * @param options options (optional) If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
+   * @throws IllegalArgumentException if key is empty
+   */
+  public Object getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
+    assertNotShutdown();
+    if (isNullOrEmpty(key)) {
+      throw new IllegalArgumentException("key must not be null or empty.");
+    }
+    return this.featureFlags.getFeatureFlag(key, defaultValue, options);
+  }
+
+  /**
+   * Reload feature flags cached in PostHog instance
+   *
+   * <p>Usage:
+   *
+   * <pre> <code>
+   *   posthog.reloadFeatureFlags()
+   * </code> </pre>
+   */
+  public void reloadFeatureFlags() {
+    this.featureFlags.reloadFeatureFlags();
+  }
+
   private void waitForAdvertisingId() {
     try {
       advertisingIdLatch.await(15, TimeUnit.SECONDS);
@@ -610,6 +812,9 @@ public class PostHog {
         break;
       case screen:
         operation = IntegrationOperation.screen((ScreenPayload) payload);
+        break;
+      case group:
+        operation = IntegrationOperation.group((GroupPayload) payload);
         break;
       default:
         throw new AssertionError("unknown type " + payload.type());
@@ -771,6 +976,7 @@ public class PostHog {
     private boolean recordScreenViews = false;
     private boolean captureDeepLinks = false;
     private Crypto crypto;
+    private Integration integration;
 
     /** Start building a new {@link PostHog} instance. */
     public Builder(Context context, String apiKey) {
@@ -964,6 +1170,14 @@ public class PostHog {
       return this;
     }
 
+    /**
+     * Allows custom integration
+     */
+    public Builder integration(Integration integration) {
+      this.integration = assertNotNull(integration, "integration");
+      return this;
+    }
+
     /** Create a {@link PostHog} client. */
     public PostHog build() {
       if (isNullOrEmpty(tag)) {
@@ -1010,6 +1224,12 @@ public class PostHog {
         propertiesCache.set(properties);
       }
 
+      Persistence.Cache persistenceCache = new Persistence.Cache(application, cartographer, tag);
+      if (!persistenceCache.isSet() || persistenceCache.get() == null) {
+        Persistence persistence = Persistence.create();
+        persistenceCache.set(persistence);
+      }
+
       Logger logger = Logger.with(logLevel);
       PostHogContext posthogContext =
           PostHogContext.create(application, propertiesCache.get(), collectDeviceID);
@@ -1028,6 +1248,7 @@ public class PostHog {
           networkExecutor,
           stats,
           propertiesCache,
+          persistenceCache,
           posthogContext,
           defaultOptions,
           logger,
@@ -1046,7 +1267,8 @@ public class PostHog {
           optOut,
           crypto,
           middlewares,
-          null);
+              integration,
+              null);
     }
   }
 

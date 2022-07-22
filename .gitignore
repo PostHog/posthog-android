@@ -150,3 +150,6 @@ build/
 
 # Ignore Gradle GUI config
 gradle-app.setting
+
+# Jacoco
+/posthog/jacoco.exec

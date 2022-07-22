@@ -39,8 +39,11 @@ import android.widget.Toast;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
+
+import com.posthog.android.Options;
 import com.posthog.android.PostHog;
 import com.posthog.android.Properties;
+
 import uk.co.chrisjenx.calligraphy.CalligraphyContextWrapper;
 
 public class MainActivity extends Activity {
@@ -68,6 +71,25 @@ public class MainActivity extends Activity {
   @OnClick(R.id.action_capture_b)
   void onButtonBClicked() {
     PostHog.with(this).capture("Button B Clicked");
+  }
+
+  @OnClick(R.id.action_is_feature_enabled)
+  void onIsFeatureEnabledClick() {
+    if (PostHog.with(this).isFeatureEnabled("enabled-flag")) {
+      PostHog.with(this).capture("isFeatureEnabled test", null, new Options().putContext("send_feature_flags", true));
+    }
+  }
+
+  @OnClick(R.id.action_get_feature_flag)
+  void onGetFeatureFlagClick() {
+    if ((Boolean) PostHog.with(this).getFeatureFlag("enabled-flag")) {
+      PostHog.with(this).capture("getFeatureFlag test", null, new Options().putContext("send_feature_flags", true));
+    }
+  }
+
+  @OnClick(R.id.action_group_identify)
+  void onGroupIdentify() {
+    PostHog.with(this).group("group-type", "group-key");
   }
 
   @OnClick(R.id.action_identify)

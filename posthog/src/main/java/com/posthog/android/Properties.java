@@ -27,15 +27,13 @@ package com.posthog.android;
 
 import static com.posthog.android.internal.Utils.isNullOrEmpty;
 import static com.posthog.android.internal.Utils.NullableConcurrentHashMap;
-import static com.posthog.android.internal.Utils.isNullOrEmpty;
-import com.posthog.android.internal.Private;
 import static java.util.Collections.unmodifiableMap;
 
 import android.content.Context;
+
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,6 +48,9 @@ import java.util.UUID;
 public class Properties extends ValueMap {
   private static final String ANONYMOUS_ID_KEY = "anonymousId";
   private static final String DISTINCT_ID_KEY = "distinctId";
+  private static final String GROUPS_KEY = "groups";
+  private static final String ACTIVE_FEATURE_FLAGS_KEY = "$active_feature_flags";
+  private static final String FEATURE_FLAG_KEY_PREFIX = "$feature/";
   /**
    * Create a new Properties instance with an anonymous ID. PostHog client can be called on any
    * thread, so this instance is thread safe.
@@ -94,6 +95,30 @@ public class Properties extends ValueMap {
 
   public String anonymousId() {
     return getString(ANONYMOUS_ID_KEY);
+  }
+
+  Properties putGroups(ValueMap groups) {
+    return putValue(GROUPS_KEY, groups);
+  }
+
+  public ValueMap groups() {
+    return getValueMap(GROUPS_KEY);
+  }
+
+  Properties putFeatureFlag(String flagKey, Object flagValue) {
+    return putValue(String.format("%s%s", FEATURE_FLAG_KEY_PREFIX, flagKey), flagValue);
+  }
+
+  public String featureFlag(String flagKey) {
+    return getString(String.format("%s%s", FEATURE_FLAG_KEY_PREFIX, flagKey));
+  }
+
+  Properties putActiveFeatureFlags(List<String> flagKeys) {
+    return putValue(ACTIVE_FEATURE_FLAGS_KEY, flagKeys);
+  }
+
+  public ArrayList<String> activeFeatureFlags(String flagKey) {
+    return (ArrayList<String>) get(ACTIVE_FEATURE_FLAGS_KEY);
   }
 
   /**

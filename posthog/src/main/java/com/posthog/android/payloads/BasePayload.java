@@ -27,7 +27,6 @@ package com.posthog.android.payloads;
 
 import static com.posthog.android.internal.Utils.assertNotNull;
 import static com.posthog.android.internal.Utils.assertNotNullOrEmpty;
-import static com.posthog.android.internal.Utils.immutableCopyOf;
 import static com.posthog.android.internal.Utils.isNullOrEmpty;
 import static com.posthog.android.internal.Utils.parseISO8601Date;
 import static com.posthog.android.internal.Utils.toISO8601String;
@@ -35,8 +34,6 @@ import static com.posthog.android.internal.Utils.toISO8601String;
 import android.support.annotation.CheckResult;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import com.posthog.android.PostHogContext;
-import com.posthog.android.Properties;
 import com.posthog.android.ValueMap;
 import java.util.Collections;
 import java.util.Date;
@@ -135,7 +132,8 @@ public abstract class BasePayload extends ValueMap {
     alias,
     identify,
     screen,
-    capture
+    capture,
+    group
   }
 
   public abstract static class Builder<P extends BasePayload, B extends Builder> {

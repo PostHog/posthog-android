@@ -30,6 +30,7 @@ import android.os.Bundle;
 import android.support.annotation.NonNull;
 import com.posthog.android.payloads.AliasPayload;
 import com.posthog.android.payloads.CapturePayload;
+import com.posthog.android.payloads.GroupPayload;
 import com.posthog.android.payloads.IdentifyPayload;
 import com.posthog.android.payloads.ScreenPayload;
 
@@ -86,6 +87,9 @@ public abstract class Integration<T> {
 
   /** @see PostHog#alias(String, com.posthog.android.Options) */
   public void alias(AliasPayload alias) {}
+
+  /** @see PostHog#group(String, String, com.posthog.android.Properties) */
+  public void group(GroupPayload group) {}
 
   /**
    * @see PostHog#screen(String, com.posthog.android.Properties,

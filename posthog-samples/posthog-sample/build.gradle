@@ -8,6 +8,11 @@ android {
     disable 'IconMissingDensityFolder', 'GoogleAppIndexingWarning', 'AllowBackup'
   }
 
+  compileOptions {
+    sourceCompatibility 1.8
+    targetCompatibility 1.8
+  }
+
   defaultConfig {
     testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
   }

@@ -25,17 +25,13 @@
  */
 package com.posthog.android.payloads;
 
-import static com.posthog.android.internal.Utils.assertNotNull;
 import static com.posthog.android.internal.Utils.assertNotNullOrEmpty;
-import static com.posthog.android.internal.Utils.isNullOrEmpty;
 
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import com.posthog.android.Properties;
 import com.posthog.android.internal.Private;
-import java.util.Collections;
 import java.util.Date;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class CapturePayload extends BasePayload {
