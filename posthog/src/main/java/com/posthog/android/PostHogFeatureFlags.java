@@ -108,11 +108,11 @@ public class PostHogFeatureFlags {
     public void reloadFeatureFlags() {
         if (!this.reloadFeatureFlagsQueued) {
             this.reloadFeatureFlagsQueued = true;
-            this.startReloadTimer();
+            this.reloadFeatureFlagsWithDebounce();
         }
     }
 
-    private void startReloadTimer() {
+    private void reloadFeatureFlagsWithDebounce() {
         if (this.reloadFeatureFlagsQueued && !this.reloadFeatureFlagsInAction) {
             new Thread(() -> {
                 try {
@@ -184,7 +184,7 @@ public class PostHogFeatureFlags {
 
             // :TRICKY: Reload - start another request if queued!
             this.featureFlagsLoaded = true;
-            this.startReloadTimer();
+            this.reloadFeatureFlagsWithDebounce();
 
         } catch (IllegalArgumentException e) {
             logger.error(e, "Error while sending reload feature flags request");
