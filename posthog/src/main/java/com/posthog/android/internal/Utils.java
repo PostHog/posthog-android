@@ -81,6 +81,7 @@ public final class Utils {
   public static final String THREAD_PREFIX = "PostHog-";
   public static final int DEFAULT_FLUSH_INTERVAL = 30 * 1000; // 30s
   public static final int DEFAULT_FLUSH_QUEUE_SIZE = 20;
+  public static final int DEFAULT_SESSION_EXPIRATION_TIME = 1800; // 30 mins
   public static final boolean DEFAULT_COLLECT_DEVICE_ID = true;
   public static final int DEFAULT_FLAG_RELOAD_DEBOUNCE_INTERVAL = 5; // 5ms
 

@@ -120,6 +120,7 @@ public class PostHog {
   @Private final String host;
   final int flushQueueSize;
   final long flushIntervalInMillis;
+  final int sessionExpirationTimeSeconds;
   // Retrieving the advertising ID is asynchronous. This latch helps us wait to ensure the
   // advertising ID is ready.
   private final CountDownLatch advertisingIdLatch;
@@ -201,6 +202,7 @@ public class PostHog {
       String host,
       int flushQueueSize,
       long flushIntervalInMillis,
+      int sessionExpirationTimeSeconds,
       final ExecutorService posthogExecutor,
       final boolean shouldCaptureApplicationLifecycleEvents,
       CountDownLatch advertisingIdLatch,
@@ -227,6 +229,7 @@ public class PostHog {
     this.host = host;
     this.flushQueueSize = flushQueueSize;
     this.flushIntervalInMillis = flushIntervalInMillis;
+    this.sessionExpirationTimeSeconds = sessionExpirationTimeSeconds;
     this.advertisingIdLatch = advertisingIdLatch;
     this.optOut = optOut;
     this.posthogExecutor = posthogExecutor;
@@ -965,6 +968,7 @@ public class PostHog {
     private boolean collectDeviceID = Utils.DEFAULT_COLLECT_DEVICE_ID;
     private int flushQueueSize = Utils.DEFAULT_FLUSH_QUEUE_SIZE;
     private long flushIntervalInMillis = Utils.DEFAULT_FLUSH_INTERVAL;
+    private int sessionExpirationTimeSeconds = Utils.DEFAULT_SESSION_EXPIRATION_TIME;
     private Options defaultOptions;
     private String tag;
     private LogLevel logLevel;
@@ -1035,6 +1039,21 @@ public class PostHog {
         throw new IllegalArgumentException("flushInterval must be greater than zero.");
       }
       this.flushIntervalInMillis = timeUnit.toMillis(flushInterval);
+      return this;
+    }
+
+    /**
+     * Set the time in seconds at which the session expires. The client will automatically reset
+     * the session ID every {@code sessionExpirationTimeSeconds} duration.
+     *
+     * @throws IllegalArgumentException if the sessionExpirationTimeSeconds is less than or equal to zero.
+     */
+
+    public Builder sessionExpirationTimeSeconds(int sessionExpirationTimeSeconds) {
+      if (sessionExpirationTimeSeconds <= 0) {
+        throw new IllegalArgumentException("sessionExpirationTimeSeconds must be greater than zero.")
+      }
+      this.sessionExpirationTimeSeconds = sessionExpirationTimeSeconds;
       return this;
     }
 
@@ -1259,6 +1278,7 @@ public class PostHog {
           host,
           flushQueueSize,
           flushIntervalInMillis,
+          sessionExpirationTimeSeconds,
           executor,
           captureApplicationLifecycleEvents,
           advertisingIdLatch,
