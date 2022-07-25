@@ -398,6 +398,14 @@ public class PostHogTest {
   }
 
   @Test
+  public void createsSessionIdIfNotSet() {
+    assertThat(propertiesCache.sessionId()).isNullOrEmpty();
+    posthog.capture("test");
+    assertThat(propertiesCache.sessionId()).isInstanceOf(String);
+    assertThat(persistenceCache.sessionLastTimestamp()).isSameAs(Instant.now());
+  }
+
+  @Test
   public void flush() {
     posthog.flush();
 

@@ -98,13 +98,9 @@ public class Properties extends ValueMap {
     return getString(ANONYMOUS_ID_KEY);
   }
 
-  public putSessionId(String id) {
-    return putValue(SESSION_ID_KEY, id)
-  }
+  Properties putSessionId(String id) { return putValue(SESSION_ID_KEY, id); }
 
-  public String sessionId() {
-    return getString(SESSION_ID_KEY)
-  }
+  public String sessionId() { return getString(SESSION_ID_KEY); }
 
   Properties putGroups(ValueMap groups) {
     return putValue(GROUPS_KEY, groups);

@@ -59,11 +59,12 @@ import com.posthog.android.internal.Private;
 import com.posthog.android.internal.Utils;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -789,7 +790,9 @@ public class PostHog {
     if (!isNullOrEmpty(distinctId)) {
       builder.distinctId(distinctId);
     }
-    builder.properties.sessionId = getSessionId();
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      getSessionId();
+    }
     enqueue(builder.build());
   }
 
@@ -802,20 +805,20 @@ public class PostHog {
     chain.proceed(payload);
   }
 
-  String getSessionId() {
+  @RequiresApi(api = Build.VERSION_CODES.O)
+  void getSessionId() {
     Properties properties = propertiesCache.get();
     Persistence persistence = persistenceCache.get();
     String sessionId = properties.sessionId();
     Instant sessionLastTimestamp = persistence.sessionLastTimestamp();
-    sessionTimestamp = properties.sessionTimestamp || 0;
-    if (!sessionId || (Duration.between(Instant.now() - sessionTimestamp).getSeconds() > this.sessionExpirationTimeSeconds)) {
+    if (sessionId == null || (Duration.between(Instant.now(), sessionLastTimestamp).getSeconds() > this.sessionExpirationTimeSeconds)) {
       String newSessionId = UUID.randomUUID().toString();
-      this.putSessionId(newSessionId);
-      this.persistence.putSessionLastTimestamp(Instant.now());
-      return newSessionId;
+      properties.putSessionId(newSessionId);
+//      persistence.putSessionLastTimestamp(Instant.now());
+//      return newSessionId;
     }
-    this.persistence.putSessionLastTimestamp(Instant.now());
-    return sessionId;
+    persistence.putSessionLastTimestamp(Instant.now());
+//    return sessionId;
   }
 
   void run(BasePayload payload) {
@@ -1057,21 +1060,6 @@ public class PostHog {
         throw new IllegalArgumentException("flushInterval must be greater than zero.");
       }
       this.flushIntervalInMillis = timeUnit.toMillis(flushInterval);
-      return this;
-    }
-
-    /**
-     * Set the time in seconds at which the session expires. The client will automatically reset
-     * the session ID every {@code sessionExpirationTimeSeconds} duration.
-     *
-     * @throws IllegalArgumentException if the sessionExpirationTimeSeconds is less than or equal to zero.
-     */
-
-    public Builder sessionExpirationTimeSeconds(long sessionExpirationTimeSeconds) {
-      if (sessionExpirationTimeSeconds <= 0) {
-        throw new IllegalArgumentException("sessionExpirationTimeSeconds must be greater than zero.")
-      }
-      this.sessionExpirationTimeSeconds = sessionExpirationTimeSeconds;
       return this;
     }
 
