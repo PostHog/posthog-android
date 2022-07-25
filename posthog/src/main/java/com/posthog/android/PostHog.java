@@ -59,6 +59,7 @@ import com.posthog.android.internal.Private;
 import com.posthog.android.internal.Utils;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -120,7 +121,7 @@ public class PostHog {
   @Private final String host;
   final int flushQueueSize;
   final long flushIntervalInMillis;
-  final int sessionExpirationTimeSeconds;
+  final long sessionExpirationTimeSeconds;
   // Retrieving the advertising ID is asynchronous. This latch helps us wait to ensure the
   // advertising ID is ready.
   private final CountDownLatch advertisingIdLatch;
@@ -202,7 +203,7 @@ public class PostHog {
       String host,
       int flushQueueSize,
       long flushIntervalInMillis,
-      int sessionExpirationTimeSeconds,
+      long sessionExpirationTimeSeconds,
       final ExecutorService posthogExecutor,
       final boolean shouldCaptureApplicationLifecycleEvents,
       CountDownLatch advertisingIdLatch,
@@ -788,6 +789,7 @@ public class PostHog {
     if (!isNullOrEmpty(distinctId)) {
       builder.distinctId(distinctId);
     }
+    builder.properties.sessionId = getSessionId();
     enqueue(builder.build());
   }
 
@@ -798,6 +800,22 @@ public class PostHog {
     logger.verbose("Created payload %s.", payload);
     Middleware.Chain chain = new RealMiddlewareChain(0, payload, middlewares, this);
     chain.proceed(payload);
+  }
+
+  String getSessionId() {
+    Properties properties = propertiesCache.get();
+    Persistence persistence = persistenceCache.get();
+    String sessionId = properties.sessionId();
+    Instant sessionLastTimestamp = persistence.sessionLastTimestamp();
+    sessionTimestamp = properties.sessionTimestamp || 0;
+    if (!sessionId || (Duration.between(Instant.now() - sessionTimestamp).getSeconds() > this.sessionExpirationTimeSeconds)) {
+      String newSessionId = UUID.randomUUID().toString();
+      this.putSessionId(newSessionId);
+      this.persistence.putSessionLastTimestamp(Instant.now());
+      return newSessionId;
+    }
+    this.persistence.putSessionLastTimestamp(Instant.now());
+    return sessionId;
   }
 
   void run(BasePayload payload) {
@@ -968,7 +986,7 @@ public class PostHog {
     private boolean collectDeviceID = Utils.DEFAULT_COLLECT_DEVICE_ID;
     private int flushQueueSize = Utils.DEFAULT_FLUSH_QUEUE_SIZE;
     private long flushIntervalInMillis = Utils.DEFAULT_FLUSH_INTERVAL;
-    private int sessionExpirationTimeSeconds = Utils.DEFAULT_SESSION_EXPIRATION_TIME;
+    private long sessionExpirationTimeSeconds = Utils.DEFAULT_SESSION_EXPIRATION_TIME;
     private Options defaultOptions;
     private String tag;
     private LogLevel logLevel;
@@ -1049,7 +1067,7 @@ public class PostHog {
      * @throws IllegalArgumentException if the sessionExpirationTimeSeconds is less than or equal to zero.
      */
 
-    public Builder sessionExpirationTimeSeconds(int sessionExpirationTimeSeconds) {
+    public Builder sessionExpirationTimeSeconds(long sessionExpirationTimeSeconds) {
       if (sessionExpirationTimeSeconds <= 0) {
         throw new IllegalArgumentException("sessionExpirationTimeSeconds must be greater than zero.")
       }

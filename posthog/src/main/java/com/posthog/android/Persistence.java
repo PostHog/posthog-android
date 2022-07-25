@@ -6,6 +6,7 @@ import android.content.Context;
 
 import com.posthog.android.internal.Utils;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -16,6 +17,7 @@ import java.util.Map;
 public class Persistence extends ValueMap {
     public static final String ENABLED_FEATURE_FLAGS_KEY = "$enabled_feature_flags";
     public static final String GROUPS_KEY = "$groups";
+    public static final TimeUnit SESSION_LAST_TIMESTAMP = "session_last_timestamp";
 
     static Persistence create() {
         Persistence persistence = new Persistence();
@@ -52,6 +54,14 @@ public class Persistence extends ValueMap {
 
     public ValueMap groups() {
         return getValueMap(GROUPS_KEY);
+    }
+
+    Persistence putSessionLastTimestamp(Instant sessionLastTimestamp) {
+        return putValue(SESSION_LAST_TIMESTAMP, sessionLastTimestamp);
+    }
+
+    public Instant sessionLastTimestamp() {
+        return getValueMap(SESSION_LAST_TIMESTAMP);
     }
 
     @Override
