@@ -8,7 +8,9 @@ Specifically, the [Android integration](https://posthog.com/docs/integrations/an
 
 1. Install Android Studio
 2. Follow instructions here for setup https://developer.android.com/studio/run/emulator
-3. Select `posthog-sample` and the device on the top bar and click run
+3. Make sure you have Java 8 installed locally - `brew tap adoptopenjdk/openjdk && brew install --cask adoptopenjdk8`
+4. Change the JDK in IntelliJ to build using the correct version.
+5. Select `posthog-sample` and the device on the top bar and click run
 
 ## Questions?
 
