@@ -17,7 +17,7 @@ import java.util.Map;
 public class Persistence extends ValueMap {
     public static final String ENABLED_FEATURE_FLAGS_KEY = "$enabled_feature_flags";
     public static final String GROUPS_KEY = "$groups";
-    public static final TimeUnit SESSION_LAST_TIMESTAMP = "session_last_timestamp";
+    public static final String SESSION_LAST_TIMESTAMP = "session_last_timestamp";
 
     static Persistence create() {
         Persistence persistence = new Persistence();
@@ -61,7 +61,7 @@ public class Persistence extends ValueMap {
     }
 
     public Instant sessionLastTimestamp() {
-        return getValueMap(SESSION_LAST_TIMESTAMP);
+        return getInstant(SESSION_LAST_TIMESTAMP);
     }
 
     @Override

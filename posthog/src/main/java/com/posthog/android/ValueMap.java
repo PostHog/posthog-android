@@ -33,6 +33,7 @@ import android.content.SharedPreferences;
 import com.posthog.android.internal.Utils;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -320,6 +321,14 @@ public class ValueMap implements Map<String, Object> {
     } else {
       return null;
     }
+  }
+
+  public Instant getInstant(String key) {
+    Object value = get(key);
+    if (value instanceof Instant) {
+      return (Instant) value;
+    }
+    return Instant.now();
   }
 
   /**
