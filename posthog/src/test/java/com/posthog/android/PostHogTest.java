@@ -422,6 +422,14 @@ public class PostHogTest {
     assertThat(properties.sessionId()).isNotEqualTo(oldSessionId);
   }
 
+  @Test
+  public void resetSessionId() {
+    persistence.putSessionLastTimestamp(Instant.now());
+    properties.putSessionId("test-session-id");
+    posthog.resetSessionId();
+    assertThat(persistence.sessionLastTimestamp()).isNull();
+    assertThat(properties.sessionId()).isNull();
+  }
 
   @Test
   public void flush() {

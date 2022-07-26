@@ -920,6 +920,14 @@ public class PostHog {
   }
 
   /**
+   * Resets the current session ID
+   */
+  public void resetSessionId() {
+    propertiesCache.get().removeSessionId();
+    persistenceCache.get().putSessionLastTimestamp(null);
+  }
+
+  /**
    * Set the opt-out status for the current device and posthog client combination. This flag is
    * persisted across device reboots, so you can simply call this once during your application (such
    * as in a screen where a user can opt out of posthog capturing).

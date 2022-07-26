@@ -100,6 +100,8 @@ public class Properties extends ValueMap {
 
   Properties putSessionId(String id) { return putValue(SESSION_ID_KEY, id); }
 
+  Object removeSessionId() { return remove(SESSION_ID_KEY); }
+
   public String sessionId() { return getString(SESSION_ID_KEY); }
 
   Properties putGroups(ValueMap groups) {
