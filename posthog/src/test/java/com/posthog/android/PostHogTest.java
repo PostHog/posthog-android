@@ -68,6 +68,7 @@ import com.posthog.android.payloads.ScreenPayload;
 import com.posthog.android.payloads.CapturePayload;
 import com.posthog.android.internal.Utils.PostHogNetworkExecutorService;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
@@ -399,13 +400,28 @@ public class PostHogTest {
             );
   }
 
-//  @Test
-//  public void createsSessionIdIfNotSet() {
-//    assertThat(propertiesCache.sessionId()).isNullOrEmpty();
-//    posthog.capture("test");
-//    assertThat(propertiesCache.get()sessionId()).isInstanceOf(String.class);
-//    assertThat(persistenceCache.sessionLastTimestamp()).isSameAs(Instant.now());
-//  }
+  @Test
+  public void createsSessionIdIfNotSet() {
+    assertThat(properties.sessionId()).isNullOrEmpty();
+    assertThat(persistence.sessionLastTimestamp()).isNull();
+    posthog.capture("test");
+    assertThat(persistence.sessionLastTimestamp()).isInstanceOf(Instant.class);
+    assertThat(properties.sessionId()).isInstanceOf(String.class);
+  }
+
+  @Test
+  public void generatesNewSessionIdIfExpired() {
+    Instant oldSessionTimestamp = Instant.now().minusSeconds(DEFAULT_SESSION_EXPIRATION_TIME + 60);
+    String oldSessionId = "test-session-id";
+    persistence.putSessionLastTimestamp(oldSessionTimestamp);
+    properties.putSessionId(oldSessionId);
+    assertThat(properties.sessionId()).isEqualTo(oldSessionId);
+    assertThat(persistence.sessionLastTimestamp()).isEqualTo(oldSessionTimestamp);
+    posthog.capture("test"); // resets session ID and timestamp
+    assertThat(persistence.sessionLastTimestamp()).isNotEqualTo(oldSessionTimestamp);
+    assertThat(properties.sessionId()).isNotEqualTo(oldSessionId);
+  }
+
 
   @Test
   public void flush() {

@@ -328,7 +328,7 @@ public class ValueMap implements Map<String, Object> {
     if (value instanceof Instant) {
       return (Instant) value;
     }
-    return Instant.now();
+    return null;
   }
 
   /**

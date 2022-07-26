@@ -790,9 +790,7 @@ public class PostHog {
     if (!isNullOrEmpty(distinctId)) {
       builder.distinctId(distinctId);
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      getSessionId();
-    }
+    getSessionId();
     enqueue(builder.build());
   }
 
@@ -805,20 +803,16 @@ public class PostHog {
     chain.proceed(payload);
   }
 
-  @RequiresApi(api = Build.VERSION_CODES.O)
   void getSessionId() {
     Properties properties = propertiesCache.get();
     Persistence persistence = persistenceCache.get();
     String sessionId = properties.sessionId();
     Instant sessionLastTimestamp = persistence.sessionLastTimestamp();
-    if (sessionId == null || (Duration.between(Instant.now(), sessionLastTimestamp).getSeconds() > this.sessionExpirationTimeSeconds)) {
+    if (sessionId == null || (Duration.between(sessionLastTimestamp, Instant.now()).getSeconds() > this.sessionExpirationTimeSeconds)) {
       String newSessionId = UUID.randomUUID().toString();
       properties.putSessionId(newSessionId);
-//      persistence.putSessionLastTimestamp(Instant.now());
-//      return newSessionId;
     }
     persistence.putSessionLastTimestamp(Instant.now());
-//    return sessionId;
   }
 
   void run(BasePayload payload) {
