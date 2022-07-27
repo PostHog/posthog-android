@@ -494,7 +494,8 @@ public class PostHog {
               // Add all feature flag keys to $active_feature_flags key
               finalProperties.putActiveFeatureFlags(activeFlags);
             }
-
+            getSessionId();
+            finalProperties.putSessionId(propertiesCache.get().sessionId());
             CapturePayload.Builder builder =
                 new CapturePayload.Builder().event(event).properties(finalProperties);
             fillAndEnqueue(builder, finalOptions);
@@ -546,7 +547,8 @@ public class PostHog {
             } else {
               finalProperties = properties;
             }
-
+            getSessionId();
+            finalProperties.putSessionId(propertiesCache.get().sessionId());
             //noinspection deprecation
             ScreenPayload.Builder builder =
                 new ScreenPayload.Builder()
@@ -790,7 +792,6 @@ public class PostHog {
     if (!isNullOrEmpty(distinctId)) {
       builder.distinctId(distinctId);
     }
-    getSessionId();
     enqueue(builder.build());
   }
 
@@ -811,8 +812,8 @@ public class PostHog {
     if (sessionId == null || (Duration.between(sessionLastTimestamp, Instant.now()).getSeconds() > this.sessionExpirationTimeSeconds)) {
       String newSessionId = UUID.randomUUID().toString();
       properties.putSessionId(newSessionId);
+      persistence.putSessionLastTimestamp(Instant.now());
     }
-    persistence.putSessionLastTimestamp(Instant.now());
   }
 
   void run(BasePayload payload) {
