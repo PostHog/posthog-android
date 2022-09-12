@@ -850,6 +850,11 @@ public class PostHog {
     return properties.anonymousId();
   }
 
+  public String getDistinctId() {
+    Properties properties = propertiesCache.get();
+    return properties.distinctId();
+  }
+
   /** Creates a {@link StatsSnapshot} of the current stats for this instance. */
   public StatsSnapshot getSnapshot() {
     return stats.createSnapshot();
