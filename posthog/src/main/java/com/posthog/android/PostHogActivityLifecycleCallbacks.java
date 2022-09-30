@@ -82,7 +82,7 @@ class PostHogActivityLifecycleCallbacks implements Application.ActivityLifecycle
       }
 
       Intent intent = activity.getIntent();
-      if (intent == null || intent.getData() == null) {
+      if (intent == null || intent.getData() == null || !intent.getData().isHierarchical()) {
         return;
       }
 
