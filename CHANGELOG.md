@@ -1,3 +1,7 @@
+## 2.0.0 - 2022-08-29
+
+- Add support for groups, simplefeature flags, and  multivariate feature flags
+
 ## 1.1.2 - 2021-03-11
 
 - Fix NullPointerException in PostHogActivityLifecycleCallbacks
