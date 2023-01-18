@@ -467,15 +467,14 @@ public class PostHog {
               finalProperties = properties;
             }
 
-            // Send feature flags with capture call
-            boolean shouldSendFeatureFlags = false;
+            // Send feature flags with capture call by default
+            boolean shouldSendFeatureFlags = true;
             if (
-                    options != null &&
-                            !options.context().isEmpty() &&
-                            options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
-                            (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
+                    finalOptions != null &&
+                            !finalOptions.context().isEmpty() &&
+                            finalOptions.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean
             ) {
-              shouldSendFeatureFlags = true;
+              shouldSendFeatureFlags = (Boolean) finalOptions.context().get(SEND_FEATURE_FLAGS_KEY);
             }
             if (shouldSendFeatureFlags) {
               ValueMap flags = featureFlags.getFlagVariants();
