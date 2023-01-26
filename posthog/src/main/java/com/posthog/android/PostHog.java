@@ -482,12 +482,14 @@ public class PostHog {
               List<String> activeFlags = featureFlags.getFlags();
 
               // Add all feature variants to event
-              for (Map.Entry<String, Object> entry : flags.entrySet()) {
-                finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
-              }
+              if (!flags.equals(Persistence.EMPTY)) {
+                for (Map.Entry<String, Object> entry : flags.entrySet()) {
+                  finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
+                }
 
-              // Add all feature flag keys to $active_feature_flags key
-              finalProperties.putActiveFeatureFlags(activeFlags);
+                // Add all feature flag keys to $active_feature_flags key
+                finalProperties.putActiveFeatureFlags(activeFlags);
+              }
             }
 
             CapturePayload.Builder builder =

@@ -40,6 +40,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
+
 import org.json.JSONObject;
 
 /**
@@ -390,7 +392,9 @@ public class ValueMap implements Map<String, Object> {
     private final Cartographer cartographer;
     private final String key;
     private final Class<T> clazz;
-    private T value;
+    private final Object lock = new Object();
+
+    private volatile T value;
 
     Cache(Context context, Cartographer cartographer, String key, String tag, Class<T> clazz) {
       this.cartographer = cartographer;
@@ -401,13 +405,17 @@ public class ValueMap implements Map<String, Object> {
 
     T get() {
       if (value == null) {
-        String json = preferences.getString(key, null);
-        if (isNullOrEmpty(json)) return null;
-        try {
-          Map<String, Object> map = cartographer.fromJson(json);
-          value = create(map);
-        } catch (IOException ignored) {
-          return null;
+        synchronized (lock) {
+          if (value == null) {
+            String json = preferences.getString(key, null);
+            if (isNullOrEmpty(json)) return null;
+            try {
+              Map<String, Object> map = cartographer.fromJson(json);
+              value = create(map);
+            } catch (IOException ignored) {
+              return null;
+            }
+          }
         }
       }
       return value;
@@ -422,9 +430,11 @@ public class ValueMap implements Map<String, Object> {
     }
 
     void set(T value) {
-      this.value = value;
-      String json = cartographer.toJson(value);
-      preferences.edit().putString(key, json).apply();
+      synchronized (lock) {
+        this.value = value;
+        String json = cartographer.toJson(value);
+        preferences.edit().putString(key, json).apply();
+      }
     }
 
     void delete() {
