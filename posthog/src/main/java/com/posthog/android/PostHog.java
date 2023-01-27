@@ -399,12 +399,7 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalUserProperties;
-            if (userProperties == null) {
-              finalUserProperties = EMPTY_PROPERTIES;
-            } else {
-              finalUserProperties = userProperties;
-            }
+            final Properties finalUserProperties = this.prepareEventProperties(userProperties, finalOptions)
 
             IdentifyPayload.Builder builder =
                 new IdentifyPayload.Builder().userProperties(finalUserProperties);
@@ -460,40 +455,46 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalProperties;
-            if (properties == null) {
-              finalProperties = EMPTY_PROPERTIES;
-            } else {
-              finalProperties = properties;
-            }
-
-            // Send feature flags with capture call by default
-            boolean shouldSendFeatureFlags = true;
-            if (
-                    finalOptions != null &&
-                            !finalOptions.context().isEmpty() &&
-                            finalOptions.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean
-            ) {
-              shouldSendFeatureFlags = (Boolean) finalOptions.context().get(SEND_FEATURE_FLAGS_KEY);
-            }
-            if (shouldSendFeatureFlags) {
-              ValueMap flags = featureFlags.getFlagVariants();
-              List<String> activeFlags = featureFlags.getFlags();
-
-              // Add all feature variants to event
-              for (Map.Entry<String, Object> entry : flags.entrySet()) {
-                finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
-              }
-
-              // Add all feature flag keys to $active_feature_flags key
-              finalProperties.putActiveFeatureFlags(activeFlags);
-            }
+            final Properties finalProperties = this.prepareEventProperties(properties, finalOptions)
 
             CapturePayload.Builder builder =
                 new CapturePayload.Builder().event(event).properties(finalProperties);
             fillAndEnqueue(builder, finalOptions);
           }
         });
+  }
+
+  private Properties prepareEventProperties(final @Nullable Properties properties, final @NonNull Options options) {
+    final Properties finalProperties;
+    if (properties == null) {
+      finalProperties = EMPTY_PROPERTIES;
+    } else {
+      finalProperties = properties;
+    }
+
+    // Send feature flags with capture call
+    boolean shouldSendFeatureFlags = false;
+    if (
+      !options.context().isEmpty() &&
+      options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
+      (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
+    ) {
+      shouldSendFeatureFlags = true;
+    }
+    if (shouldSendFeatureFlags) {
+      ValueMap flags = featureFlags.getFlagVariants();
+      List<String> activeFlags = featureFlags.getFlags();
+
+      // Add all feature variants to event
+      for (Map.Entry<String, Object> entry : flags.entrySet()) {
+        finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
+      }
+
+      // Add all feature flag keys to $active_feature_flags key
+      finalProperties.putActiveFeatureFlags(activeFlags);
+    }
+
+    return finalProperties
   }
 
   /** @see #screen(String, Properties, Options) */
@@ -534,12 +535,7 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalProperties;
-            if (properties == null) {
-              finalProperties = EMPTY_PROPERTIES;
-            } else {
-              finalProperties = properties;
-            }
+            final Properties finalProperties = this.prepareEventProperties(properties, finalOptions)
 
             //noinspection deprecation
             ScreenPayload.Builder builder =
@@ -647,12 +643,7 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalGroupProperties;
-            if (groupProperties == null) {
-              finalGroupProperties = EMPTY_PROPERTIES;
-            } else {
-              finalGroupProperties = groupProperties;
-            }
+            final Properties finalGroupProperties = this.prepareEventProperties(groupProperties, finalOptions)
 
             GroupPayload.Builder builder =
                 new GroupPayload.Builder().groupType(groupType).groupKey(groupKey).groupProperties(finalGroupProperties);
