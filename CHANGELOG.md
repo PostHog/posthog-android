@@ -1,3 +1,7 @@
+## 2.0.1 - 2022-01-30
+
+- Feature flags will be sent with payloads by default. Default Options will be properly applied 
+
 ## 2.0.0 - 2022-08-29
 
 - Add support for groups, simplefeature flags, and  multivariate feature flags
