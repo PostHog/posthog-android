@@ -399,7 +399,7 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalUserProperties = this.prepareEventProperties(userProperties, finalOptions)
+            final Properties finalUserProperties = prepareEventProperties(userProperties, finalOptions);
 
             IdentifyPayload.Builder builder =
                 new IdentifyPayload.Builder().userProperties(finalUserProperties);
@@ -455,46 +455,13 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalProperties = this.prepareEventProperties(properties, finalOptions)
+            final Properties finalProperties = prepareEventProperties(properties, finalOptions);
 
             CapturePayload.Builder builder =
                 new CapturePayload.Builder().event(event).properties(finalProperties);
             fillAndEnqueue(builder, finalOptions);
           }
         });
-  }
-
-  private Properties prepareEventProperties(final @Nullable Properties properties, final @NonNull Options options) {
-    final Properties finalProperties;
-    if (properties == null) {
-      finalProperties = EMPTY_PROPERTIES;
-    } else {
-      finalProperties = properties;
-    }
-
-    // Send feature flags with capture call
-    boolean shouldSendFeatureFlags = false;
-    if (
-      !options.context().isEmpty() &&
-      options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
-      (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
-    ) {
-      shouldSendFeatureFlags = true;
-    }
-    if (shouldSendFeatureFlags) {
-      ValueMap flags = featureFlags.getFlagVariants();
-      List<String> activeFlags = featureFlags.getFlags();
-
-      // Add all feature variants to event
-      for (Map.Entry<String, Object> entry : flags.entrySet()) {
-        finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
-      }
-
-      // Add all feature flag keys to $active_feature_flags key
-      finalProperties.putActiveFeatureFlags(activeFlags);
-    }
-
-    return finalProperties
   }
 
   /** @see #screen(String, Properties, Options) */
@@ -535,7 +502,7 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalProperties = this.prepareEventProperties(properties, finalOptions)
+            final Properties finalProperties = prepareEventProperties(properties, finalOptions);
 
             //noinspection deprecation
             ScreenPayload.Builder builder =
@@ -643,7 +610,7 @@ public class PostHog {
               finalOptions = options;
             }
 
-            final Properties finalGroupProperties = this.prepareEventProperties(groupProperties, finalOptions)
+            final Properties finalGroupProperties = prepareEventProperties(groupProperties, finalOptions);
 
             GroupPayload.Builder builder =
                 new GroupPayload.Builder().groupType(groupType).groupKey(groupKey).groupProperties(finalGroupProperties);
@@ -742,6 +709,39 @@ public class PostHog {
    */
   public void reloadFeatureFlags() {
     this.featureFlags.reloadFeatureFlags();
+  }
+
+  private Properties prepareEventProperties(final @Nullable Properties properties, final @NonNull Options options) {
+    final Properties finalProperties;
+    if (properties == null) {
+      finalProperties = EMPTY_PROPERTIES;
+    } else {
+      finalProperties = properties;
+    }
+
+    // Send feature flags with capture call
+    boolean shouldSendFeatureFlags = false;
+    if (
+            !options.context().isEmpty() &&
+                    options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean &&
+                    (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY)
+    ) {
+      shouldSendFeatureFlags = true;
+    }
+    if (shouldSendFeatureFlags) {
+      ValueMap flags = featureFlags.getFlagVariants();
+      List<String> activeFlags = featureFlags.getFlags();
+
+      // Add all feature variants to event
+      for (Map.Entry<String, Object> entry : flags.entrySet()) {
+        finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
+      }
+
+      // Add all feature flag keys to $active_feature_flags key
+      finalProperties.putActiveFeatureFlags(activeFlags);
+    }
+
+    return finalProperties;
   }
 
   private void waitForAdvertisingId() {
