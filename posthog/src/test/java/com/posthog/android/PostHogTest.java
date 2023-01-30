@@ -277,6 +277,32 @@ public class PostHogTest {
   }
 
   @Test
+  public void captureWithSendFeatureFlagsByDefault() {
+    posthog.capture("capture with flags", new Properties().putValue("url", "github.com"));
+    verify(integration)
+            .capture(
+                    argThat(
+                            new NoDescriptionMatcher<CapturePayload>() {
+                              @Override
+                              protected boolean matchesSafely(CapturePayload payload) {
+                                return payload.event().equals("capture with flags")
+                                        && //
+                                        payload.properties().get("url").equals("github.com")
+                                        &&
+                                        payload.properties().get("$lib").equals("posthog-android-custom-lib")
+                                        &&
+                                        payload.properties().get("$feature/enabled-flag").equals(true)
+                                        &&
+                                        payload.properties().get("$feature/multivariate-flag").equals("blah")
+                                        &&
+                                        payload.properties().get("$active_feature_flags").equals(Arrays.asList("enabled-flag", "multivariate-flag"));
+                              }
+                            }));
+  }
+
+
+
+  @Test
   public void invalidScreen() throws Exception {
     try {
       posthog.screen(null);
