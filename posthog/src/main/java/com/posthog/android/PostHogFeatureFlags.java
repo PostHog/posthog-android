@@ -152,14 +152,15 @@ public class PostHogFeatureFlags {
             connection = client.decide();
             HttpURLConnection con = connection.connection;
 
-            if (properties.distinctId() == null) {
-                throw new IllegalArgumentException("Calling decide endpoint requires user to be identified before.");
-            }
 
             // Construct payload
             JSONObject payload = new JSONObject();
             payload.put("token", this.posthog.apiKey);
             payload.put("distinct_id", properties.distinctId());
+            if (properties.distinctId() == null) {
+                // Use anon id if distinct id doesn't exist since decide requires a distinct id
+                payload.put("distinct_id", properties.anonymousId());
+            }
             payload.put("groups", properties.groups());
             payload.put("$anon_distinct_id", properties.anonymousId());
             String stringifiedPayload = payload.toString();
