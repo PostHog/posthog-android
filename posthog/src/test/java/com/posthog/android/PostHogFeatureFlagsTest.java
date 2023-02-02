@@ -60,8 +60,8 @@ public class PostHogFeatureFlagsTest {
                 .integration(integration)
                 .executor(posthogExecutor)
                 .build();
-
         // Wait for flags to reload on initializing PostHog
+        posthog.identify("distinct_id");
         Thread.sleep(1000);
     }
 
