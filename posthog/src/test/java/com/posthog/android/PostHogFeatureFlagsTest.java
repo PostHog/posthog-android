@@ -60,7 +60,6 @@ public class PostHogFeatureFlagsTest {
                 .integration(integration)
                 .executor(posthogExecutor)
                 .build();
-
         // Wait for flags to reload on initializing PostHog
         Thread.sleep(1000);
     }
