@@ -181,13 +181,17 @@ public class PostHogFeatureFlags {
             }
             HashMap<String, Object> mapResponse = new Gson().fromJson(response.toString(), HashMap.class);
             if (mapResponse.containsKey("errorsWhileComputingFlags")) {
-
+                Persistence persistence = this.posthog.persistenceCache.get();
+                ValueMap currentFlags = persistence.enabledFeatureFlags();
+                currentFlags.putAll((Map) mapResponse.get("featureFlags"));
+                if (currentFlags != null) {
+                    persistence.putEnabledFeatureFlags(currentFlags);
+                }
             }
             int responseCode = con.getResponseCode();
             if (responseCode == 200) {
                 this.receivedFeatureFlags(mapResponse);
             }
-
 
             // :TRICKY: Reload - start another request if queued!
             this.featureFlagsLoaded = true;
