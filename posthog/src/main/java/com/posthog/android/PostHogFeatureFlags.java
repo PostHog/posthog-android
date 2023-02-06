@@ -180,8 +180,14 @@ public class PostHogFeatureFlags {
                 response.append(responseLine.trim());
             }
             HashMap<String, Object> mapResponse = new Gson().fromJson(response.toString(), HashMap.class);
+            if (mapResponse.containsKey("errorsWhileComputingFlags")) {
 
-            this.receivedFeatureFlags(mapResponse);
+            }
+            int responseCode = con.getResponseCode();
+            if (responseCode == 200) {
+                this.receivedFeatureFlags(mapResponse);
+            }
+
 
             // :TRICKY: Reload - start another request if queued!
             this.featureFlagsLoaded = true;
