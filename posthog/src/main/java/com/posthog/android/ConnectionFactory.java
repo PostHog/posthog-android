@@ -54,10 +54,10 @@ public class ConnectionFactory {
 
   /**
    * Return a {@link HttpURLConnection} that makes decide requests to {@code
-   * https://app.posthog.com/decide/?v=2}.
+   * https://app.posthog.com/decide/?v=3}.
    */
   public HttpURLConnection decide(String host) throws IOException {
-    HttpURLConnection connection = openConnection(host + "/decide/?v=2");
+    HttpURLConnection connection = openConnection(host + "/decide/?v=3");
     connection.setRequestProperty("Content-Type", "application/json");
     connection.setRequestProperty("Accept", "application/json");
     connection.setDoOutput(true);
