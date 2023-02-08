@@ -108,7 +108,7 @@ public class MiddlewareTest {
             .build();
 
     posthog.screen("foo");
-//    assertThat(payloadRef.get().name()).isEqualTo("foo");
+   assertThat(payloadRef.get().name()).isEqualTo("foo");
   }
 
   @Test
