@@ -1,0 +1,24 @@
+name: Android CI
+
+on:
+  - pull_request
+
+jobs:
+  tests:
+    name: Android tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Setup JDK 1.8
+        uses: actions/setup-java@v2
+        with:
+          java-version: '8'
+          distribution: 'adopt'
+
+      - name: Grant Permissions to gradlew
+        run: chmod +x gradlew
+
+      - name: Test
+        run: ./gradlew test
