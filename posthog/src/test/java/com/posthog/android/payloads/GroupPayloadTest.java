@@ -10,29 +10,22 @@ import org.junit.Test;
 
 public class GroupPayloadTest {
 
-  private GroupPayload.Builder builder;
-
-  @Before
-  public void setUp() {
-    builder = new GroupPayload.Builder().groupType("group-type").groupKey("group-key");
-  }
-
   @Test
   public void emptyArgumentsThrows() {
     try {
       //noinspection CheckResult,ConstantConditions
-      new GroupPayload.Builder();
+      new GroupPayload.Builder().groupType(null);
       fail();
     } catch (NullPointerException e) {
-      assertThat(e).hasMessage("group type cannot be null or empty");
+      assertThat(e).hasMessage("groupType cannot be null or empty");
     }
 
     try {
       //noinspection CheckResult,ConstantConditions
-      new GroupPayload.Builder().groupType("group-type");
+      new GroupPayload.Builder().groupKey(null);
       fail();
     } catch (NullPointerException e) {
-      assertThat(e).hasMessage("group key cannot be null or empty");
+      assertThat(e).hasMessage("groupKey cannot be null or empty");
     }
   }
 }
