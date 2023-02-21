@@ -1,4 +1,8 @@
-## 2.0.1 - 2022-01-30
+## 2.0.2 - 2023-02-21
+
+- Revert: Feature flags will be sent with payloads by default. Default Options will be properly applied 
+
+## 2.0.1 - 2023-01-30
 
 - Feature flags will be sent with payloads by default. Default Options will be properly applied 
 
