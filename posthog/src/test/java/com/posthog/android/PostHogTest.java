@@ -253,8 +253,8 @@ public class PostHogTest {
   }
 
   @Test
-  public void captureWithSendFeatureFlags() {
-    posthog.capture("capture with flags", new Properties().putValue("url", "github.com"), new Options().putContext("send_feature_flags", true));
+  public void captureWithSendFeatureFlagsByDefault() {
+    posthog.capture("capture with flags", new Properties().putValue("url", "github.com"));
     verify(integration)
             .capture(
                     argThat(
@@ -276,6 +276,30 @@ public class PostHogTest {
                             }));
   }
 
+  @Test
+  public void captureWithoutSendFeatureFlags() {
+    posthog.capture("capture with flags", new Properties().putValue("url", "github.com"), new Options().putContext("send_feature_flags", false));
+    verify(integration)
+            .capture(
+                    argThat(
+                            new NoDescriptionMatcher<CapturePayload>() {
+                              @Override
+                              protected boolean matchesSafely(CapturePayload payload) {
+                                return payload.event().equals("capture with flags")
+                                        && //
+                                        payload.properties().get("url").equals("github.com")
+                                        &&
+                                        payload.properties().get("$lib").equals("posthog-android-custom-lib")
+                                        &&
+                                        !payload.properties().get("$feature/enabled-flag").equals(true)
+                                        &&
+                                        !payload.properties().get("$feature/multivariate-flag").equals("blah")
+                                        &&
+                                        !payload.properties().get("$active_feature_flags").equals(Arrays.asList("enabled-flag", "multivariate-flag"));
+                              }
+                            }));
+  }
+  
   @Test
   public void invalidScreen() throws Exception {
     try {
@@ -306,7 +330,13 @@ public class PostHogTest {
                         && //
                         payload.properties().get("url").equals("github.com")
                         &&
-                        payload.properties().get("$lib").equals("posthog-android-custom-lib");
+                        payload.properties().get("$lib").equals("posthog-android-custom-lib")
+                        &&
+                        payload.properties().get("$feature/enabled-flag").equals(true)
+                        &&
+                        payload.properties().get("$feature/multivariate-flag").equals("blah")
+                        &&
+                        payload.properties().get("$active_feature_flags").equals(Arrays.asList("enabled-flag", "multivariate-flag"));
                   }
                 }));
   }
