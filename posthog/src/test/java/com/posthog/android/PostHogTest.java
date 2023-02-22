@@ -291,11 +291,11 @@ public class PostHogTest {
                                         &&
                                         payload.properties().get("$lib").equals("posthog-android-custom-lib")
                                         &&
-                                        !payload.properties().get("$feature/enabled-flag").equals(true)
+                                        payload.properties().get("$feature/enabled-flag") == null
                                         &&
-                                        !payload.properties().get("$feature/multivariate-flag").equals("blah")
+                                        payload.properties().get("$feature/multivariate-flag") == null
                                         &&
-                                        !payload.properties().get("$active_feature_flags").equals(Arrays.asList("enabled-flag", "multivariate-flag"));
+                                        payload.properties().get("$active_feature_flags") == null;
                               }
                             }));
   }

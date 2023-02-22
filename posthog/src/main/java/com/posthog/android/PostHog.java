@@ -541,6 +541,28 @@ public class PostHog {
               finalProperties = properties;
             }
 
+            // Send feature flags with capture call
+            boolean shouldSendFeatureFlags = true;
+            if (
+                    options != null &&
+                            !options.context().isEmpty() &&
+                            options.context().get(SEND_FEATURE_FLAGS_KEY) instanceof Boolean
+            ) {
+              shouldSendFeatureFlags = (Boolean) options.context().get(SEND_FEATURE_FLAGS_KEY);
+            }
+            if (shouldSendFeatureFlags) {
+              ValueMap flags = featureFlags.getFlagVariants();
+              List<String> activeFlags = featureFlags.getFlags();
+
+              // Add all feature variants to event
+              for (Map.Entry<String, Object> entry : flags.entrySet()) {
+                finalProperties.putFeatureFlag(entry.getKey(), entry.getValue());
+              }
+
+              // Add all feature flag keys to $active_feature_flags key
+              finalProperties.putActiveFeatureFlags(activeFlags);
+            }
+
             //noinspection deprecation
             ScreenPayload.Builder builder =
                 new ScreenPayload.Builder()
