@@ -1,3 +1,7 @@
+## 2.0.3 - 2023-01-30
+
+- Feature flags will be sent with payloads by default for capture and screen events. 
+
 ## 2.0.2 - 2023-02-21
 
 - Revert: Feature flags will be sent with payloads by default. Default Options will be properly applied 
