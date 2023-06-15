@@ -25,7 +25,7 @@
  */
 package com.posthog.android;
 
-import android.support.annotation.NonNull;
+import androidx.annotation.NonNull;
 import com.posthog.android.payloads.BasePayload;
 import java.util.List;
 

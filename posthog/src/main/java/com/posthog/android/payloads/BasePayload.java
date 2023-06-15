@@ -31,9 +31,9 @@ import static com.posthog.android.internal.Utils.isNullOrEmpty;
 import static com.posthog.android.internal.Utils.parseISO8601Date;
 import static com.posthog.android.internal.Utils.toISO8601String;
 
-import android.support.annotation.CheckResult;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
+import androidx.annotation.CheckResult;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import com.posthog.android.ValueMap;
 import java.util.Collections;
 import java.util.Date;

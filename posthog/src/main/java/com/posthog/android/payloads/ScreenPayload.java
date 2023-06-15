@@ -27,8 +27,8 @@ package com.posthog.android.payloads;
 
 import static com.posthog.android.internal.Utils.isNullOrEmpty;
 
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import com.posthog.android.Properties;
 import com.posthog.android.internal.Private;
 import java.util.Date;

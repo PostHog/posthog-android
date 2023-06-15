@@ -4,8 +4,8 @@ import static com.posthog.android.Persistence.ENABLED_FEATURE_FLAGS_KEY;
 import static com.posthog.android.internal.Utils.DEFAULT_FLAG_RELOAD_DEBOUNCE_INTERVAL;
 import static com.posthog.android.internal.Utils.closeQuietly;
 
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.google.gson.Gson;
 

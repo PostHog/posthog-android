@@ -27,7 +27,7 @@ package com.posthog.android;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
+import androidx.annotation.NonNull;
 import com.posthog.android.payloads.AliasPayload;
 import com.posthog.android.payloads.CapturePayload;
 import com.posthog.android.payloads.GroupPayload;
