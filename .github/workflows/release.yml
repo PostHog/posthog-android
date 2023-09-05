@@ -47,12 +47,6 @@ jobs:
       - name: Build AAR ⚙️🛠
         run: bash ./gradlew :posthog:assemble
 
-      #- name: Publish to GitHub Package Registry 🚀
-        #  run: bash ./gradlew :posthog:publish
-          #  env:
-          #     GPR_USER: ${{ github.actor }}
-      #    GPR_KEY: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create Release ✅
         id: create_release
         uses: actions/create-release@v1
