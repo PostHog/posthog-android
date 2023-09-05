@@ -26,7 +26,7 @@
 
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-  <style name="AppTheme" parent="android:Theme.Holo.Light.DarkActionBar">
+  <style name="AppTheme" parent="android:Theme.Holo.Light.NoActionBar">
     <item name="android:textViewStyle">@style/AppTheme.Widget.TextView</item>
     <item name="android:actionBarStyle">@style/AppTheme.ActionBarStyle</item>
   </style>
