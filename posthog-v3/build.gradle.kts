@@ -1,4 +1,6 @@
 import com.diffplug.spotless.LineEnding
+import io.gitlab.arturbosch.detekt.Detekt
+import io.gitlab.arturbosch.detekt.DetektCreateBaselineTask
 
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
@@ -12,6 +14,7 @@ plugins {
 
     // plugins
     id("com.diffplug.spotless") version "6.21.0" apply true
+    id("io.gitlab.arturbosch.detekt") version "1.23.1" apply true
 }
 
 spotless {
@@ -24,4 +27,16 @@ spotless {
         target("**/*.kts")
         ktlint()
     }
+}
+
+detekt {
+    buildUponDefaultConfig = true // preconfigure defaults
+    allRules = false // activate all available (even unstable) rules.
+}
+
+tasks.withType<Detekt>().configureEach {
+    jvmTarget = JavaVersion.VERSION_1_8.toString()
+}
+tasks.withType<DetektCreateBaselineTask>().configureEach {
+    jvmTarget = JavaVersion.VERSION_1_8.toString()
 }

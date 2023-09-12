@@ -28,7 +28,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = JavaVersion.VERSION_1_8.toString()
+    }
+
+    testOptions {
+        animationsDisabled = true
+    }
+
+    lint {
+        warningsAsErrors = true
+        checkDependencies = true
+
+        // lint runs only for debug build
+        checkReleaseBuilds = false
     }
 }
 
