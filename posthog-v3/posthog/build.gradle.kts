@@ -14,3 +14,7 @@ java {
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions.jvmTarget = JavaVersion.VERSION_1_8.toString()
 }
+
+kotlin {
+    explicitApi()
+}

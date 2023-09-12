@@ -18,6 +18,8 @@ plugins {
     id("com.diffplug.spotless") version "6.21.0" apply true
     id("io.gitlab.arturbosch.detekt") version "1.23.1" apply true
     id("org.jetbrains.kotlinx.binary-compatibility-validator") version "0.13.2" apply true
+
+    // TODO: add jacoco/codecov, dokka, gradle-versions-plugin, maven-publish
 }
 
 spotless {

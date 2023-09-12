@@ -25,6 +25,7 @@ android {
     }
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_1_8.toString()
+        // TODO: Do we need kotlinOptions.languageVersion?
     }
 
     testOptions {
@@ -38,6 +39,10 @@ android {
         // lint runs only for debug build
         checkReleaseBuilds = false
     }
+}
+
+kotlin {
+    explicitApi()
 }
 
 dependencies {
