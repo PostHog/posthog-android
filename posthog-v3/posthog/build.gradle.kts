@@ -18,3 +18,7 @@ tasks.withType<KotlinCompile>().configureEach {
 kotlin {
     explicitApi()
 }
+
+// To discuss: artifact name: com.posthog.java:posthog -> com.posthog:posthog
+// All pure Kotlin classes go here, it can be the new https://github.com/PostHog/posthog-java as well
+// Project will be Kotlin Multiplatform compatible as well

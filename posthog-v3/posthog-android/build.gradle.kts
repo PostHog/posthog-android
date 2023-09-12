@@ -57,3 +57,6 @@ dependencies {
 //    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 //    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
+
+// To discuss: artifact name: com.posthog.android:posthog -> com.posthog:posthog-android
+// All pure Kotlin classes that depend on the Android framework
