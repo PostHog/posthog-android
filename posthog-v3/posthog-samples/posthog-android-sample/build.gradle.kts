@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.posthog.android.sample"
-    compileSdk = 34
+    compileSdk = PosthogBuildConfig.Android.COMPILE_SDK
 
     defaultConfig {
         applicationId = "com.posthog.android.sample"
-        minSdk = 21
-        targetSdk = 34
+        minSdk = PosthogBuildConfig.Android.MIN_SDK
+        targetSdk = PosthogBuildConfig.Android.TARGET_SDK
         versionCode = 1
         versionName = "1.0"
 
@@ -21,7 +21,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -29,24 +29,26 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+        targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
     }
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8.toString()
+        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
     }
     buildFeatures {
         compose = true
     }
     composeOptions {
-        // compiler has to match kotlin version
-        // https://developer.android.com/jetpack/androidx/releases/compose-kotlin
-        kotlinCompilerExtensionVersion = "1.4.3" // kotlin 1.8.10
+        kotlinCompilerExtensionVersion = PosthogBuildConfig.Kotlin.COMPILER_EXTENSION_VERSION
     }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+
+    androidComponents.beforeVariants {
+        it.enable = !PosthogBuildConfig.shouldSkipDebugVariant(it.name)
     }
 }
 

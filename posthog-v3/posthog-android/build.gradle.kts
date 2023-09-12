@@ -5,10 +5,10 @@ plugins {
 
 android {
     namespace = "com.posthog.android"
-    compileSdk = 34
+    compileSdk = PosthogBuildConfig.Android.COMPILE_SDK
 
     defaultConfig {
-        minSdk = 21
+        minSdk = PosthogBuildConfig.Android.MIN_SDK
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -20,11 +20,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+        targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
     }
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8.toString()
+        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
         // TODO: Do we need kotlinOptions.languageVersion?
     }
 
@@ -38,6 +38,10 @@ android {
 
         // lint runs only for debug build
         checkReleaseBuilds = false
+    }
+
+    androidComponents.beforeVariants {
+        it.enable = !PosthogBuildConfig.shouldSkipDebugVariant(it.name)
     }
 }
 

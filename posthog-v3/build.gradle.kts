@@ -5,19 +5,17 @@ import io.gitlab.arturbosch.detekt.DetektCreateBaselineTask
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     // android
-    id("com.android.application") version "8.1.1" apply false
-    id("com.android.library") version "8.1.1" apply false
-    // kotlin version has to match kotlinCompilerExtensionVersion
-    kotlin("android") version "1.8.10" apply false
+    id("com.android.application") version PosthogBuildConfig.Android.AGP apply false
+    id("com.android.library") version PosthogBuildConfig.Android.AGP apply false
+    kotlin("android") version PosthogBuildConfig.Kotlin.KOTLIN apply false
 
     // jvm
-    // kotlin version has to match kotlinCompilerExtensionVersion
-    kotlin("jvm") version "1.8.10" apply false
+    kotlin("jvm") version PosthogBuildConfig.Kotlin.KOTLIN apply false
 
     // plugins
-    id("com.diffplug.spotless") version "6.21.0" apply true
-    id("io.gitlab.arturbosch.detekt") version "1.23.1" apply true
-    id("org.jetbrains.kotlinx.binary-compatibility-validator") version "0.13.2" apply true
+    id("com.diffplug.spotless") version PosthogBuildConfig.Plugins.SPOTLESS apply true
+    id("io.gitlab.arturbosch.detekt") version PosthogBuildConfig.Plugins.DETEKT apply true
+    id("org.jetbrains.kotlinx.binary-compatibility-validator") version PosthogBuildConfig.Plugins.API_VALIDATOR apply true
 
     // TODO: add jacoco/codecov, dokka, gradle-versions-plugin, maven-publish
 }
@@ -40,10 +38,10 @@ detekt {
 }
 
 tasks.withType<Detekt>().configureEach {
-    jvmTarget = JavaVersion.VERSION_1_8.toString()
+    jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
 }
 tasks.withType<DetektCreateBaselineTask>().configureEach {
-    jvmTarget = JavaVersion.VERSION_1_8.toString()
+    jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
 }
 
 apiValidation {

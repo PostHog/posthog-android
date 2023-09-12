@@ -7,12 +7,12 @@ plugins {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions.jvmTarget = JavaVersion.VERSION_1_8.toString()
+    kotlinOptions.jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
 }
 
 kotlin {
