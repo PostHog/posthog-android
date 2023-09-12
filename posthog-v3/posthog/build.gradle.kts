@@ -19,6 +19,12 @@ kotlin {
     explicitApi()
 }
 
+dependencies {
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:4.11.0"))
+    implementation("com.squareup.okhttp3:okhttp")
+}
+
 // To discuss: artifact name: com.posthog.java:posthog -> com.posthog:posthog
 // All pure Kotlin classes go here, it can be the new https://github.com/PostHog/posthog-java as well
-// Project will be Kotlin Multiplatform compatible as well
