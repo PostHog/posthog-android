@@ -2,7 +2,7 @@ name: 'Build'
 on:
   push:
     branches:
-      - posthog-v3
+      - v3
   pull_request:
 
 jobs:
