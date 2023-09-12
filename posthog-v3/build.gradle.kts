@@ -17,6 +17,7 @@ plugins {
     // plugins
     id("com.diffplug.spotless") version "6.21.0" apply true
     id("io.gitlab.arturbosch.detekt") version "1.23.1" apply true
+    id("org.jetbrains.kotlinx.binary-compatibility-validator") version "0.13.2" apply true
 }
 
 spotless {
@@ -41,4 +42,8 @@ tasks.withType<Detekt>().configureEach {
 }
 tasks.withType<DetektCreateBaselineTask>().configureEach {
     jvmTarget = JavaVersion.VERSION_1_8.toString()
+}
+
+apiValidation {
+    ignoredProjects.add("posthog-android-sample")
 }
