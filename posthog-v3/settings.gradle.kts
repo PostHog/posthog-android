@@ -17,7 +17,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PostHog"
-//rootProject.buildFileName = "build.gradle.kts"
+// rootProject.buildFileName = "build.gradle.kts"
 
 include(":posthog")
 include(":posthog-android")
