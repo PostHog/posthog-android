@@ -14,7 +14,6 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -22,7 +21,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -40,7 +39,7 @@ android {
         compose = true
     }
     composeOptions {
-        // compatibility with kotlin version
+        // compiler has to match kotlin version
         // https://developer.android.com/jetpack/androidx/releases/compose-kotlin
         kotlinCompilerExtensionVersion = "1.4.3" // kotlin 1.8.10
     }
