@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.config.KotlinCompilerVersion
+
 plugins {
     id("com.android.library")
     kotlin("android")
@@ -50,6 +52,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
 
     api(project(mapOf("path" to ":posthog")))
 
@@ -58,8 +61,4 @@ dependencies {
 //    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
 
-// To discuss: artifact name: com.posthog.android:posthog -> com.posthog:posthog-android
-// All pure Kotlin classes that depend on the Android framework.
-// Do we need to support Android wear? we dont mention in the docs, no commits last 3 years.
-// Not focusing on KMP either.
-// Will keep serialization via Gson for now (it uses reflection but its easier due to the dynamic properties).
+// Do we need to support Android wear? we dont mention in the docs, no commits last 3 years. (check if theres ant metadata and check the database)

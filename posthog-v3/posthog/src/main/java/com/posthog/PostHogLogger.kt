@@ -1,4 +1,5 @@
 package com.posthog
 
-class PostHogLogger {
+internal interface PostHogLogger {
+    fun log(message: String)
 }
