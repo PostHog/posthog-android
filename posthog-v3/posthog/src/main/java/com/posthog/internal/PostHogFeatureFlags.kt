@@ -16,7 +16,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
     @Volatile
     private var isFeatureFlagsLoaded = false
 
-    fun loadFeatureFlagsRequest(properties: Map<String, Any>) {
+    fun loadFeatureFlags(properties: Map<String, Any>) {
         executor.execute {
             if (isLoadingFeatureFlags.getAndSet(true)) {
                 config.logger?.log("Feature flags are being loaded already.")
@@ -32,6 +32,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
 
                 isFeatureFlagsLoaded = true
             } catch (e: Throwable) {
+                isFeatureFlagsLoaded = false
                 config.logger?.log("Loading feature flags failed: $e")
             }
 
@@ -46,6 +47,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
         val value: Any?
 
         synchronized(featureFlagsLock) {
+            // TODO: read featureFlags and featureFlagPayloads only?
             value = featureFlags?.get(key)
         }
 

@@ -154,6 +154,12 @@ public class PostHog {
         capture("\$identify", properties = props)
     }
 
+    public fun group(type: String, key: String, properties: Map<String, Any>? = null) {
+        if (!isEnabled()) {
+            return
+        }
+    }
+
     public fun reloadFeatureFlagsRequest() {
         if (!isEnabled()) {
             return
@@ -163,7 +169,7 @@ public class PostHog {
 
     private fun loadFeatureFlagsRequest() {
         val map = mapOf<String, Any>()
-        featureFlags?.loadFeatureFlagsRequest(buildProperties(map))
+        featureFlags?.loadFeatureFlags(buildProperties(map))
     }
 
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
@@ -173,11 +179,17 @@ public class PostHog {
         return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
     }
 
+    // TODO: getFeatureFlagPayload
+
     public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+        val flag = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+
+        // TODO: reportFeatureFlagCalled
+
+        return flag
     }
 
     public fun flush() {
@@ -185,6 +197,13 @@ public class PostHog {
             return
         }
         queue?.flush()
+    }
+
+    public fun reset() {
+        if (!isEnabled()) {
+            return
+        }
+        // TODO: reset stuff, delete cache
     }
 
     // TODO: groups, groupIdentify, group, feature flags, buildProperties (static context, dynamic context, distinct_id)
@@ -232,6 +251,10 @@ public class PostHog {
 
         public fun flush() {
             shared.flush()
+        }
+
+        public fun reset() {
+            shared.reset()
         }
 
         // TODO: add other methods

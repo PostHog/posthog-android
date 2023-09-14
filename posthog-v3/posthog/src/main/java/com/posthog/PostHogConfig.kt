@@ -12,6 +12,7 @@ public class PostHogConfig(
     public var maxBatchSize: Int = 10,
 //    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     public var flushIntervalSeconds: Int = 30,
+
     public var dataMode: PostHogDataMode = PostHogDataMode.ANY,
 ) {
     internal var logger: PostHogLogger? = null
