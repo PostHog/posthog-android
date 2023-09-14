@@ -39,7 +39,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
         }
     }
 
-    fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
+    fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
         if (!isFeatureFlagsLoaded) {
             return defaultValue
         }
@@ -54,5 +54,18 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
         } else {
             defaultValue
         }
+    }
+
+    fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
+        if (!isFeatureFlagsLoaded) {
+            return defaultValue
+        }
+        val value: Any?
+
+        synchronized(featureFlagsLock) {
+            value = featureFlags?.get(key)
+        }
+
+        return value ?: defaultValue
     }
 }

@@ -83,6 +83,7 @@ public class PostHog {
         }
 
         // distinctId is always present but it has to be nullable because the SDK may be disabled
+        // TODO: missing static, dynamic context
         distinctId?.let {
             props["distinct_id"] = it
         }
@@ -130,6 +131,29 @@ public class PostHog {
         capture("\$create_alias", properties = props)
     }
 
+    public fun identify(distinctId: String, properties: Map<String, Any>? = null) {
+        if (!isEnabled()) {
+            return
+        }
+
+        // TODO: reset feature flags, set anonymousId and distinctId
+//        val oldDistinctId = this.distinctId
+
+        val props = mutableMapOf<String, Any>()
+        props["distinct_id"] = distinctId
+        anonymousId?.let {
+            props["\$anon_distinct_id"] = it
+        }
+        properties?.let {
+            // Should $set be its own data class?
+            props["\$set"] = it
+        }
+
+        // TODO: does $set_once still exist?
+
+        capture("\$identify", properties = props)
+    }
+
     public fun reloadFeatureFlagsRequest() {
         if (!isEnabled()) {
             return
@@ -147,6 +171,20 @@ public class PostHog {
             return defaultValue
         }
         return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
+    }
+
+    public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any? {
+        if (!isEnabled()) {
+            return defaultValue
+        }
+        return featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+    }
+
+    public fun flush() {
+        if (!isEnabled()) {
+            return
+        }
+        queue?.flush()
     }
 
     // TODO: groups, groupIdentify, group, feature flags, buildProperties (static context, dynamic context, distinct_id)
@@ -186,6 +224,14 @@ public class PostHog {
 
         public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
             return shared.isFeatureEnabled(key, defaultValue = defaultValue)
+        }
+
+        public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any? {
+            return shared.getFeatureFlag(key, defaultValue = defaultValue)
+        }
+
+        public fun flush() {
+            shared.flush()
         }
 
         // TODO: add other methods

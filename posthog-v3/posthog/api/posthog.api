@@ -6,8 +6,13 @@ public final class com/posthog/PostHog {
 	public final fun capture (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun capture$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun close ()V
+	public final fun flush ()V
 	public final fun getAnonymousId ()Ljava/lang/String;
 	public final fun getDistinctId ()Ljava/lang/String;
+	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun identify (Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun identify$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog;Ljava/lang/String;ZILjava/lang/Object;)Z
 	public final fun reloadFeatureFlagsRequest ()V
@@ -20,6 +25,9 @@ public final class com/posthog/PostHog$Companion {
 	public final fun capture (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun capture$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun close ()V
+	public final fun flush ()V
+	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;ZILjava/lang/Object;)Z
 	public final fun reloadFeatureFlagsRequest ()V

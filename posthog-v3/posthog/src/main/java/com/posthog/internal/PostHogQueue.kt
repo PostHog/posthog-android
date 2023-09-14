@@ -56,11 +56,11 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
 
     private fun flushIfOverThreshold() {
         if (deque.size >= config.flushAt) {
-            flush()
+            flushBatch()
         }
     }
 
-    private fun canFlush(): Boolean {
+    private fun canFlushBatch(): Boolean {
         if (pausedUntil?.after(Date()) == true) {
             config.logger?.log("Queue is paused until $pausedUntil")
             return false
@@ -69,8 +69,16 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
         return true
     }
 
-    private fun flush() {
-        if (!canFlush()) {
+    private fun takeEvents(): List<PostHogEvent> {
+        val events: List<PostHogEvent>
+        synchronized(dequeLock) {
+            events = deque.take(config.maxBatchSize)
+        }
+        return events
+    }
+
+    private fun flushBatch() {
+        if (!canFlushBatch()) {
             config.logger?.log("Cannot flush the Queue.")
             return
         }
@@ -80,17 +88,40 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
             return
         }
 
-        val events: List<PostHogEvent>
+        executor.execute {
+            try {
+                batchEvents()
+            } catch (e: Throwable) {
+                // TODO: retry?
+                config.logger?.log("Flushing failed: $e")
+            }
+
+            pausedUntil = calculatePausedUntil()
+
+            isFlushing.set(false)
+        }
+    }
+
+    private fun batchEvents() {
+        val events = takeEvents()
+
+        api.batch(events)
+
         synchronized(dequeLock) {
-            events = deque.take(config.maxBatchSize)
+            deque.removeAll(events)
+        }
+    }
+
+    fun flush() {
+        if (isFlushing.getAndSet(true)) {
+            config.logger?.log("Queue is flushing.")
+            return
         }
 
         executor.execute {
             try {
-                api.batch(events)
-
-                synchronized(dequeLock) {
-                    deque.removeAll(events)
+                while (deque.isNotEmpty()) {
+                    batchEvents()
                 }
             } catch (e: Throwable) {
                 // TODO: retry?
@@ -105,7 +136,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
 
     private fun calculatePausedUntil(): Date {
         val cal = Calendar.getInstance()
-        cal.add(config.flushIntervalSeconds, Calendar.SECOND)
+        cal.add(Calendar.SECOND, config.flushIntervalSeconds)
         return cal.time
     }
 

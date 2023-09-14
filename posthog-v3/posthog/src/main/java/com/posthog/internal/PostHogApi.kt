@@ -41,14 +41,7 @@ internal class PostHogApi(private val config: PostHogConfig) {
 //  "timestamp": "2023-09-13T12:05:30.326Z"
 // }
 //        """.trimIndent()
-
-        val body = json.toRequestBody(mediaType)
-
-        val request = Request.Builder()
-            .url("${config.host}/batch")
-            .header("User-Agent", config.userAgent)
-            .post(body)
-            .build()
+        val request = makeRequest(json, "${config.host}/batch")
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
@@ -58,6 +51,16 @@ internal class PostHogApi(private val config: PostHogConfig) {
 // }
 //            """.trimIndent()
         }
+    }
+
+    private fun makeRequest(json: String, url: String): Request {
+        val body = json.toRequestBody(mediaType)
+
+        return Request.Builder()
+            .url(url)
+            .header("User-Agent", config.userAgent)
+            .post(body)
+            .build()
     }
 
     fun decide(properties: Map<String, Any>): Map<String, Any>? {
@@ -72,13 +75,7 @@ internal class PostHogApi(private val config: PostHogConfig) {
 //  "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
 // }
 //        """.trimIndent()
-        val body = json.toRequestBody(mediaType)
-
-        val request = Request.Builder()
-            .url("${config.host}/decide/?v=3")
-            .header("User-Agent", config.userAgent)
-            .post(body)
-            .build()
+        val request = makeRequest(json, "${config.host}/decide/?v=3")
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
