@@ -11,11 +11,15 @@ public final class com/posthog/PostHog {
 	public final fun getDistinctId ()Ljava/lang/String;
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public final fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun group$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun identify (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun identify$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog;Ljava/lang/String;ZILjava/lang/Object;)Z
 	public final fun reloadFeatureFlagsRequest ()V
+	public final fun reset ()V
 	public final fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun screen$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun setup (Lcom/posthog/PostHogConfig;)V
@@ -28,9 +32,12 @@ public final class com/posthog/PostHog$Companion {
 	public final fun flush ()V
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;ZILjava/lang/Object;)Z
 	public final fun reloadFeatureFlagsRequest ()V
+	public final fun reset ()V
 	public final fun setup (Lcom/posthog/PostHogConfig;)V
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHog;
 }

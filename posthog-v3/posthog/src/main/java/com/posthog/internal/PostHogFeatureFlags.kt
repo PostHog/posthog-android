@@ -12,6 +12,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
     private val featureFlagsLock = Any()
 
     private var featureFlags: Map<String, Any>? = null
+    private var featureFlagPayloads: Map<String, Any>? = null
 
     @Volatile
     private var isFeatureFlagsLoaded = false
@@ -24,10 +25,13 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
             }
 
             try {
-                val featureFlags = api.decide(properties)
+                val result = api.decide(properties)
+                val featureFlags = result?.get("featureFlags") as? Map<String, Any>
+                val featureFlagPayloads = result?.get("featureFlagPayloads") as? Map<String, Any>
 
                 synchronized(featureFlagsLock) {
                     this.featureFlags = featureFlags
+                    this.featureFlagPayloads = featureFlagPayloads
                 }
 
                 isFeatureFlagsLoaded = true
@@ -58,16 +62,24 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
         }
     }
 
-    fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
+    private fun readFeatureFlag(key: String, defaultValue: Any?, flags: Map<String, Any>?): Any? {
         if (!isFeatureFlagsLoaded) {
             return defaultValue
         }
         val value: Any?
 
         synchronized(featureFlagsLock) {
-            value = featureFlags?.get(key)
+            value = flags?.get(key)
         }
 
         return value ?: defaultValue
+    }
+
+    fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
+        return readFeatureFlag(key, defaultValue, featureFlags)
+    }
+
+    fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
+        return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
 }

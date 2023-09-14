@@ -20,9 +20,7 @@ public class PostHog {
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
 
-    private val retryDelay = 5.0
-    private val maxRetryDelay = 30.0
-    // TODO: flushTimer, reachability, retryCount, flagCallReported
+    // TODO: flushTimer, reachability, flagCallReported
 
     public fun setup(config: PostHogConfig) {
         synchronized(lock) {
@@ -179,8 +177,6 @@ public class PostHog {
         return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
     }
 
-    // TODO: getFeatureFlagPayload
-
     public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any? {
         if (!isEnabled()) {
             return defaultValue
@@ -190,6 +186,13 @@ public class PostHog {
         // TODO: reportFeatureFlagCalled
 
         return flag
+    }
+
+    public fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
+        if (!isEnabled()) {
+            return defaultValue
+        }
+        return featureFlags?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
     }
 
     public fun flush() {
@@ -247,6 +250,10 @@ public class PostHog {
 
         public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any? {
             return shared.getFeatureFlag(key, defaultValue = defaultValue)
+        }
+
+        public fun getFeatureFlagPayload(key: String, defaultValue: Any? = null): Any? {
+            return shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
         }
 
         public fun flush() {

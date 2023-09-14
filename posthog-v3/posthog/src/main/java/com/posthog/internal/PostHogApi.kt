@@ -114,6 +114,4 @@ internal class PostHogApi(private val config: PostHogConfig) {
 // }
 //            """.trimIndent()
     }
-
-    // TODO: get APIs
 }

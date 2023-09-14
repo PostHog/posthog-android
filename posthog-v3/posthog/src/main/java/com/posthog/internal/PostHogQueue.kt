@@ -9,6 +9,7 @@ import java.util.TimerTask
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
+import kotlin.math.min
 
 // TODO: move to disk cache instead of memory cache (using PostHogStorage)
 internal class PostHogQueue(private val config: PostHogConfig, private val storage: PostHogStorage, private val api: PostHogApi) {
@@ -17,6 +18,9 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
     private val dequeLock = Any()
     private val timerLock = Any()
     private var pausedUntil: Date? = null
+    private var retryCount = 0
+    private val retryDelaySeconds = 5
+    private val maxRetryDelaySeconds = 30
 
     @Volatile
     private var timer: Timer? = null
@@ -89,14 +93,17 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
         }
 
         executor.execute {
+            var retry = false
             try {
                 batchEvents()
+                retryCount = 0
             } catch (e: Throwable) {
-                // TODO: retry?
                 config.logger?.log("Flushing failed: $e")
+                retry = true
+                retryCount++
             }
 
-            pausedUntil = calculatePausedUntil()
+            calculateDelay(retry)
 
             isFlushing.set(false)
         }
@@ -113,30 +120,43 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
     }
 
     fun flush() {
+        if (!canFlushBatch()) {
+            config.logger?.log("Cannot flush the Queue.")
+            return
+        }
+
         if (isFlushing.getAndSet(true)) {
             config.logger?.log("Queue is flushing.")
             return
         }
 
         executor.execute {
+            var retry = false
             try {
                 while (deque.isNotEmpty()) {
                     batchEvents()
                 }
+                retryCount = 0
             } catch (e: Throwable) {
-                // TODO: retry?
                 config.logger?.log("Flushing failed: $e")
+                retry = true
+                retryCount++
             }
 
-            pausedUntil = calculatePausedUntil()
+            calculateDelay(retry)
 
             isFlushing.set(false)
         }
     }
 
-    private fun calculatePausedUntil(): Date {
+    private fun calculateDelay(retry: Boolean) {
+        val delay = if (retry) min(retryCount * retryDelaySeconds, maxRetryDelaySeconds) else config.flushIntervalSeconds
+        pausedUntil = calculatePausedUntil(delay)
+    }
+
+    private fun calculatePausedUntil(seconds: Int): Date {
         val cal = Calendar.getInstance()
-        cal.add(Calendar.SECOND, config.flushIntervalSeconds)
+        cal.add(Calendar.SECOND, seconds)
         return cal.time
     }
 
