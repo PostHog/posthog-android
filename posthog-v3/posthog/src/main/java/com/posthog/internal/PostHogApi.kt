@@ -20,11 +20,12 @@ internal class PostHogApi(private val config: PostHogConfig) {
     private val gson = GsonBuilder().apply {
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
     }.create()
-    private val gsonBodyType = object : TypeToken<PostHogBatchEvent>() {}.type
+    private val gsonBatchBodyType = object : TypeToken<PostHogBatchEvent>() {}.type
+    private val gsonDecideBodyType = object : TypeToken<Map<String, Any>>() {}.type
 
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
-        val json = gson.toJson(batch, gsonBodyType)
+        val json = gson.toJson(batch, gsonBatchBodyType)
 //        """
 // {
 //  "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
@@ -50,7 +51,7 @@ internal class PostHogApi(private val config: PostHogConfig) {
             .build()
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message)
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
 //            """
 // {
 //  "status": 1
@@ -59,5 +60,63 @@ internal class PostHogApi(private val config: PostHogConfig) {
         }
     }
 
-    // TODO: decide, get APIs
+    fun decide(properties: Map<String, Any>): Map<String, Any>? {
+        val map = mutableMapOf<String, Any>()
+        map.putAll(properties)
+        map["api_key"] = config.apiKey
+
+        val json = gson.toJson(map, gsonDecideBodyType)
+//        """
+// {
+//  "distinct_id": "1fc77c1a-5f98-43b3-bb77-7a2dd15fd13a",
+//  "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+// }
+//        """.trimIndent()
+        val body = json.toRequestBody(mediaType)
+
+        val request = Request.Builder()
+            .url("${config.host}/decide/?v=3")
+            .header("User-Agent", config.userAgent)
+            .post(body)
+            .build()
+
+        client.newCall(request).execute().use {
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
+
+            it.body?.let { body ->
+                return gson.fromJson(body.string(), gsonDecideBodyType)
+            }
+            return null
+        }
+//            """
+// {
+//  "config": {
+//    "enable_collect_everything": true
+//  },
+//  "toolbarParams": {},
+//  "isAuthenticated": false,
+//  "supportedCompression": [
+//    "gzip",
+//    "gzip-js"
+//  ],
+//  "featureFlags": {
+//    "4535-funnel-bar-viz": true
+//  },
+//  "sessionRecording": false,
+//  "errorsWhileComputingFlags": false,
+//  "featureFlagPayloads": {},
+//  "capturePerformance": true,
+//  "autocapture_opt_out": false,
+//  "autocaptureExceptions": false,
+//  "siteApps": [
+//    {
+//      "id": 21039,
+//      "url": "/site_app/21039/EOsOSePYNyTzHkZ3f4mjrjUap8Hy8o2vUTAc6v1ZMFP/576ac89bc8aed72a21d9b19221c2c626/"
+//    }
+//  ]
+// }
+//            """.trimIndent()
+    }
+
+    // TODO: get APIs
 }

@@ -2,7 +2,7 @@ package com.posthog
 
 import com.posthog.internal.PostHogLogger
 
-public data class PostHogConfig(
+public class PostHogConfig(
     // apiKey and host are immutable due to offline caching
     public val apiKey: String,
     public val host: String = "https://app.posthog.com",

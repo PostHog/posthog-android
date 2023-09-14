@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSessionManager
@@ -15,6 +16,7 @@ public class PostHog {
     private var config: PostHogConfig? = null
     private var storage: PostHogStorage? = null
     private var sessionManager: PostHogSessionManager? = null
+    private var featureFlags: PostHogFeatureFlags? = null
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
 
@@ -36,14 +38,17 @@ public class PostHog {
             sessionManager = PostHogSessionManager(storage)
             val api = PostHogApi(config)
             val queue = PostHogQueue(config, storage, api)
+            val featureFlags = PostHogFeatureFlags(config, api)
 
             this.api = api
             this.storage = storage
             this.config = config
             this.queue = queue
+            this.featureFlags = featureFlags
             enabled = true
 
             queue.start()
+            loadFeatureFlagsRequest()
         }
     }
 
@@ -125,6 +130,25 @@ public class PostHog {
         capture("\$create_alias", properties = props)
     }
 
+    public fun reloadFeatureFlagsRequest() {
+        if (!isEnabled()) {
+            return
+        }
+        loadFeatureFlagsRequest()
+    }
+
+    private fun loadFeatureFlagsRequest() {
+        val map = mapOf<String, Any>()
+        featureFlags?.loadFeatureFlagsRequest(buildProperties(map))
+    }
+
+    public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
+        if (!isEnabled()) {
+            return defaultValue
+        }
+        return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
+    }
+
     // TODO: groups, groupIdentify, group, feature flags, buildProperties (static context, dynamic context, distinct_id)
 
     private fun isEnabled(): Boolean {
@@ -154,6 +178,14 @@ public class PostHog {
 
         public fun capture(event: String, properties: Map<String, Any>? = null) {
             shared.capture(event, properties = properties)
+        }
+
+        public fun reloadFeatureFlagsRequest() {
+            shared.reloadFeatureFlagsRequest()
+        }
+
+        public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
+            return shared.isFeatureEnabled(key, defaultValue = defaultValue)
         }
 
         // TODO: add other methods

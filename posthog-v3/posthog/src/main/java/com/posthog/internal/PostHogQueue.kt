@@ -25,12 +25,11 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
     private var timerTask: TimerTask? = null
 
     // https://github.com/square/tape/blob/master/tape/src/main/java/com/squareup/tape2/QueueFile.java
-    @Volatile
     private var isFlushing = AtomicBoolean(false)
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
-    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory())
+    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogBatchThread"))
 
 //    init {
     // TOOD: load deque from disk
@@ -112,8 +111,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
 
     fun start() {
         synchronized(timerLock) {
-            timerTask?.cancel()
-            timer?.cancel()
+            stopTimer()
             val timer = Timer(true)
             val timerTask = timer.schedule(delay, delay) {
                 // early check to avoid more checks when its already flushing
@@ -128,9 +126,14 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
         }
     }
 
+    private fun stopTimer() {
+        timerTask?.cancel()
+        timer?.cancel()
+    }
+
     fun stop() {
         synchronized(timerLock) {
-            timer?.cancel()
+            stopTimer()
         }
     }
 }

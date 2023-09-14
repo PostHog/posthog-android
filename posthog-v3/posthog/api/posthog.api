@@ -8,6 +8,9 @@ public final class com/posthog/PostHog {
 	public final fun close ()V
 	public final fun getAnonymousId ()Ljava/lang/String;
 	public final fun getDistinctId ()Ljava/lang/String;
+	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
+	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog;Ljava/lang/String;ZILjava/lang/Object;)Z
+	public final fun reloadFeatureFlagsRequest ()V
 	public final fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun screen$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun setup (Lcom/posthog/PostHogConfig;)V
@@ -17,6 +20,9 @@ public final class com/posthog/PostHog$Companion {
 	public final fun capture (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun capture$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun close ()V
+	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
+	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;ZILjava/lang/Object;)Z
+	public final fun reloadFeatureFlagsRequest ()V
 	public final fun setup (Lcom/posthog/PostHogConfig;)V
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHog;
 }
@@ -24,17 +30,6 @@ public final class com/posthog/PostHog$Companion {
 public final class com/posthog/PostHogConfig {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun component3 ()Z
-	public final fun component4 ()I
-	public final fun component5 ()I
-	public final fun component6 ()I
-	public final fun component7 ()I
-	public final fun component8 ()Lcom/posthog/PostHogDataMode;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;)Lcom/posthog/PostHogConfig;
-	public static synthetic fun copy$default (Lcom/posthog/PostHogConfig;Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;ILjava/lang/Object;)Lcom/posthog/PostHogConfig;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getDataMode ()Lcom/posthog/PostHogDataMode;
 	public final fun getDebug ()Z
@@ -43,14 +38,12 @@ public final class com/posthog/PostHogConfig {
 	public final fun getHost ()Ljava/lang/String;
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
-	public fun hashCode ()I
 	public final fun setDataMode (Lcom/posthog/PostHogDataMode;)V
 	public final fun setDebug (Z)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
-	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/posthog/PostHogDataMode : java/lang/Enum {
