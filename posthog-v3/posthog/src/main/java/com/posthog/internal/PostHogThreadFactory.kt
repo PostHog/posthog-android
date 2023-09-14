@@ -1,10 +1,10 @@
-package com.posthog
+package com.posthog.internal
 
 import java.util.concurrent.ThreadFactory
 
 internal class PostHogThreadFactory : ThreadFactory {
-    override fun newThread(p0: Runnable): Thread {
-        return Thread(p0).apply {
+    override fun newThread(runnable: Runnable): Thread {
+        return Thread(runnable).apply {
             isDaemon = true
             name = "PostHogThreadFactory"
         }

@@ -1,6 +1,7 @@
-package com.posthog
+package com.posthog.internal
 
 import com.google.gson.annotations.SerializedName
+import com.posthog.PostHogEvent
 import java.util.Date
 
 internal data class PostHogBatchEvent(

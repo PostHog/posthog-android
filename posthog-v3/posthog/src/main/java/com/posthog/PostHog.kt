@@ -1,5 +1,11 @@
 package com.posthog
 
+import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogQueue
+import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.PostHogStorage
+
 public class PostHog {
     @Volatile
     private var enabled = false
@@ -29,12 +35,22 @@ public class PostHog {
             val storage = PostHogStorage(config)
             sessionManager = PostHogSessionManager(storage)
             val api = PostHogApi(config)
-            queue = PostHogQueue(config, storage, api)
+            val queue = PostHogQueue(config, storage, api)
 
             this.api = api
             this.storage = storage
             this.config = config
+            this.queue = queue
             enabled = true
+
+            queue.start()
+        }
+    }
+
+    public fun close() {
+        synchronized(lock) {
+            enabled = false
+            queue?.stop()
         }
     }
 
@@ -120,7 +136,7 @@ public class PostHog {
 
     public companion object {
         // TODO: make it private and rely only on static methods that forward to shared?
-        public val shared: PostHog = PostHog()
+        private val shared: PostHog = PostHog()
 
         public fun with(config: PostHogConfig): PostHog {
             val instance = PostHog()
@@ -130,6 +146,10 @@ public class PostHog {
 
         public fun setup(config: PostHogConfig) {
             shared.setup(config)
+        }
+
+        public fun close() {
+            shared.close()
         }
 
         public fun capture(event: String, properties: Map<String, Any>? = null) {

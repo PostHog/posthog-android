@@ -1,4 +1,4 @@
-package com.posthog
+package com.posthog.internal
 
 import java.util.UUID
 

@@ -1,4 +1,6 @@
-package com.posthog
+package com.posthog.internal
+
+import com.posthog.PostHogConfig
 
 internal class PostHogStorage(private val config: PostHogConfig) {
     // TODO: move to disk cache instead of memory cache

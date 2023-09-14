@@ -1,5 +1,6 @@
-package com.posthog
+package com.posthog.internal
 
+import com.posthog.PostHogConfig
 import okhttp3.Interceptor
 import okhttp3.MediaType
 import okhttp3.MultipartBody

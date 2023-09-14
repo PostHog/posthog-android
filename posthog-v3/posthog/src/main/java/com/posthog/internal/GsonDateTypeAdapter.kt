@@ -1,4 +1,4 @@
-package com.posthog
+package com.posthog.internal
 
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
@@ -7,6 +7,7 @@ import com.google.gson.JsonPrimitive
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.google.gson.internal.bind.util.ISO8601Utils
+import com.posthog.PostHogConfig
 import java.lang.reflect.Type
 import java.text.ParsePosition
 import java.util.Date

@@ -1,12 +1,13 @@
-package com.posthog
+package com.posthog.internal
 
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import com.posthog.PostHogConfig
+import com.posthog.PostHogEvent
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.IOException
 import java.util.Date
 
 internal class PostHogApi(private val config: PostHogConfig) {
@@ -23,7 +24,22 @@ internal class PostHogApi(private val config: PostHogConfig) {
 
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
-        val json = gson.toJson(batch, gsonBodyType) // {"api_key":"_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI","batch":[{"event":"testEvent","properties":{"testProperty":"testValue"},"timestamp":"2023-09-13T12:05:30.326Z"}],"timestamp":"2023-09-13T12:05:30.326Z"}
+        val json = gson.toJson(batch, gsonBodyType)
+//        """
+// {
+//  "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
+//  "batch": [
+//    {
+//      "event": "testEvent",
+//      "properties": {
+//        "testProperty": "testValue"
+//      },
+//      "timestamp": "2023-09-13T12:05:30.326Z"
+//    }
+//  ],
+//  "timestamp": "2023-09-13T12:05:30.326Z"
+// }
+//        """.trimIndent()
 
         val body = json.toRequestBody(mediaType)
 
@@ -34,9 +50,12 @@ internal class PostHogApi(private val config: PostHogConfig) {
             .build()
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw IOException("Unexpected code $it")
-            //                {"status": 1} - success
-// TODO: rete limit will be part of response in the future
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message)
+//            """
+// {
+//  "status": 1
+// }
+//            """.trimIndent()
         }
     }
 
