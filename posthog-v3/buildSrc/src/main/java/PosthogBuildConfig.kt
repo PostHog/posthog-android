@@ -23,6 +23,7 @@ object PosthogBuildConfig {
 
         // kotlin version has to match kotlinCompilerExtensionVersion
         val KOTLIN = "1.8.10"
+        val KOTLIN_COMPATIBILITY = "1.5"
     }
 
     object Plugins {

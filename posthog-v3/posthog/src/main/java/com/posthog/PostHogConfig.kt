@@ -7,7 +7,8 @@ public class PostHogConfig(
     public var flushAt: Int = 20,
     public var maxQueueSize: Int = 1000,
     public var maxBatchSize: Int = 10,
-    public var flushInterval: Int = 30, // seconds?
+//    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
+    public var flushIntervalSeconds: Int = 30,
     public var dataMode: PostHogDataMode = PostHogDataMode.ANY,
     public var storagePrefix: String? = null,
 ) {

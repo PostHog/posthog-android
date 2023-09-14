@@ -27,7 +27,7 @@ android {
     }
     kotlinOptions {
         jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
-        // TODO: Do we need kotlinOptions.languageVersion?
+        kotlinOptions.languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
     }
 
     testOptions {

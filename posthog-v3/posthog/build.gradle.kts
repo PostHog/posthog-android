@@ -14,6 +14,7 @@ java {
 
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions.jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
+    kotlinOptions.languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
 }
 
 kotlin {
