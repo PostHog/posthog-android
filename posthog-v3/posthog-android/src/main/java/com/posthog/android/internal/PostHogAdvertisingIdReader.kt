@@ -1,5 +1,4 @@
 package com.posthog.android.internal
 
 // GetAdvertisingIdTask
-class PostHogAdvertisingIdReader {
-}
+class PostHogAdvertisingIdReader

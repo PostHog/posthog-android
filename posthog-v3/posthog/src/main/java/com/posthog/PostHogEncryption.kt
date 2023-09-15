@@ -16,6 +16,5 @@ public abstract class PostHogEncryption {
         override fun encrypt(outputStream: OutputStream): OutputStream {
             return outputStream
         }
-
     }
 }

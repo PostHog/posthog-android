@@ -1,0 +1,4 @@
+public final class com/posthog/android/internal/PostHogAdvertisingIdReader {
+	public fun <init> ()V
+}
+

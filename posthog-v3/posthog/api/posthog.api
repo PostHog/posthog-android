@@ -43,11 +43,12 @@ public final class com/posthog/PostHog$Companion {
 }
 
 public final class com/posthog/PostHogConfig {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;Lcom/posthog/PostHogEncryption;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZIIIILcom/posthog/PostHogDataMode;Lcom/posthog/PostHogEncryption;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getDataMode ()Lcom/posthog/PostHogDataMode;
 	public final fun getDebug ()Z
+	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
@@ -55,6 +56,7 @@ public final class com/posthog/PostHogConfig {
 	public final fun getMaxQueueSize ()I
 	public final fun setDataMode (Lcom/posthog/PostHogDataMode;)V
 	public final fun setDebug (Z)V
+	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setMaxBatchSize (I)V
@@ -66,6 +68,12 @@ public final class com/posthog/PostHogDataMode : java/lang/Enum {
 	public static final field WIFI Lcom/posthog/PostHogDataMode;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PostHogDataMode;
 	public static fun values ()[Lcom/posthog/PostHogDataMode;
+}
+
+public abstract class com/posthog/PostHogEncryption {
+	public fun <init> ()V
+	public abstract fun decrypt (Ljava/io/InputStream;)Ljava/io/InputStream;
+	public abstract fun encrypt (Ljava/io/OutputStream;)Ljava/io/OutputStream;
 }
 
 public final class com/posthog/PostHogEvent {

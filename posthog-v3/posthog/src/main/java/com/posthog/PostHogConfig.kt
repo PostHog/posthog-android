@@ -14,7 +14,7 @@ public class PostHogConfig(
     public var flushIntervalSeconds: Int = 30,
 
     public var dataMode: PostHogDataMode = PostHogDataMode.ANY,
-    public var encryption: PostHogEncryption = PostHogEncryption.PostHogEncryptionNone()
+    public var encryption: PostHogEncryption = PostHogEncryption.PostHogEncryptionNone(),
 ) {
     internal var logger: PostHogLogger? = null
 
