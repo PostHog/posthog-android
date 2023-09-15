@@ -7,7 +7,9 @@ import com.posthog.PostHogEvent
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import okio.BufferedSink
+import java.io.OutputStream
 import java.util.Date
 
 internal class PostHogApi(private val config: PostHogConfig) {
@@ -25,7 +27,6 @@ internal class PostHogApi(private val config: PostHogConfig) {
 
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
-        val json = gson.toJson(batch, gsonBatchBodyType)
 //        """
 // {
 //  "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
@@ -41,7 +42,9 @@ internal class PostHogApi(private val config: PostHogConfig) {
 //  "timestamp": "2023-09-13T12:05:30.326Z"
 // }
 //        """.trimIndent()
-        val request = makeRequest(json, "${config.host}/batch")
+        val request = makeRequest("${config.host}/batch") {
+            gson.toJson(batch, gsonBatchBodyType, it.bufferedWriter())
+        }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
@@ -53,13 +56,19 @@ internal class PostHogApi(private val config: PostHogConfig) {
         }
     }
 
-    private fun makeRequest(json: String, url: String): Request {
-        val body = json.toRequestBody(mediaType)
+    private fun makeRequest(url: String, serializer: (outputStream: OutputStream) -> Unit): Request {
+        val requestBody = object : RequestBody() {
+            override fun contentType() = mediaType
+
+            override fun writeTo(sink: BufferedSink) {
+                serializer(sink.outputStream())
+            }
+        }
 
         return Request.Builder()
             .url(url)
             .header("User-Agent", config.userAgent)
-            .post(body)
+            .post(requestBody)
             .build()
     }
 
@@ -67,21 +76,23 @@ internal class PostHogApi(private val config: PostHogConfig) {
         val map = mutableMapOf<String, Any>()
         map.putAll(properties)
         map["api_key"] = config.apiKey
-
-        val json = gson.toJson(map, gsonDecideBodyType)
 //        """
 // {
 //  "distinct_id": "1fc77c1a-5f98-43b3-bb77-7a2dd15fd13a",
 //  "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
 // }
 //        """.trimIndent()
-        val request = makeRequest(json, "${config.host}/decide/?v=3")
+        val request = makeRequest("${config.host}/decide/?v=3") {
+            val writer = it.bufferedWriter()
+            gson.toJson(map, gsonDecideBodyType, writer)
+            writer.flush()
+        }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
 
             it.body?.let { body ->
-                return gson.fromJson(body.string(), gsonDecideBodyType)
+                return gson.fromJson(body.charStream().buffered(), gsonDecideBodyType)
             }
             return null
         }

@@ -99,6 +99,9 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
                 retryCount = 0
             } catch (e: Throwable) {
                 config.logger?.log("Flushing failed: $e")
+
+                // TODO: when do we actually drop those events? maybe they are broken for good
+                // and the SDK will be stuck at them
                 retry = true
                 retryCount++
             }
