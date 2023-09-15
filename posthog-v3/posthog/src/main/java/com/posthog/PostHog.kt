@@ -2,7 +2,6 @@ package com.posthog
 
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlags
-import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogStorage
@@ -28,9 +27,6 @@ public class PostHog {
                 println("Setup called despite already being setup!")
                 return
             }
-
-            // TODO: would be possible to toggle debug at runtime or during init only?
-            config.logger = config.logger ?: PostHogPrintLogger(config.debug)
 
             val storage = PostHogStorage(config)
             sessionManager = PostHogSessionManager(storage)
@@ -268,6 +264,5 @@ public class PostHog {
         }
 
         // TODO: add other methods
-        // TODO: is Stats a feature or just used by tests in posthog-android
     }
 }

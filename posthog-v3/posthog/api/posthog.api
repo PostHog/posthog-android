@@ -52,6 +52,7 @@ public final class com/posthog/PostHogConfig {
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
+	public final fun getLogger ()Lcom/posthog/PostHogLogger;
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
 	public final fun setDataMode (Lcom/posthog/PostHogDataMode;)V
@@ -59,6 +60,7 @@ public final class com/posthog/PostHogConfig {
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
+	public final fun setLogger (Lcom/posthog/PostHogLogger;)V
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
 }
@@ -90,5 +92,9 @@ public final class com/posthog/PostHogEvent {
 	public final fun getTimestamp ()Ljava/util/Date;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/posthog/PostHogLogger {
+	public abstract fun log (Ljava/lang/String;)V
 }
 

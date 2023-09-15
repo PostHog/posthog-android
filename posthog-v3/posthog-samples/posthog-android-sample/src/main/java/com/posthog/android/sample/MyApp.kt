@@ -1,8 +1,8 @@
 package com.posthog.android.sample
 
 import android.app.Application
-import com.posthog.PostHog
 import com.posthog.PostHogConfig
+import com.posthog.android.PostHogAndroid
 
 class MyApp : Application() {
     override fun onCreate() {
@@ -13,7 +13,7 @@ class MyApp : Application() {
 //            flushIntervalSeconds = 5
 //            flushAt = 1
         }
-        PostHog.setup(config)
+        PostHogAndroid.setup(applicationContext, config)
 
 //        val config2 = PostHogConfig("test")
 //        val postHog = PostHog.with(config2)

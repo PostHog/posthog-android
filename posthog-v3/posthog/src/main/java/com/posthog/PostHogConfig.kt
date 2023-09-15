@@ -1,6 +1,6 @@
 package com.posthog
 
-import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogPrintLogger
 
 public class PostHogConfig(
     // apiKey and host are immutable due to offline caching
@@ -16,7 +16,7 @@ public class PostHogConfig(
     public var dataMode: PostHogDataMode = PostHogDataMode.ANY,
     public var encryption: PostHogEncryption = PostHogEncryption.PostHogEncryptionNone(),
 ) {
-    internal var logger: PostHogLogger? = null
+    public var logger: PostHogLogger = PostHogPrintLogger(this)
 
     // TODO: read the repo name and version
     internal var userAgent: String = "posthog-android/3.0.0"

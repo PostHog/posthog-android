@@ -20,7 +20,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
     fun loadFeatureFlags(properties: Map<String, Any>) {
         executor.execute {
             if (isLoadingFeatureFlags.getAndSet(true)) {
-                config.logger?.log("Feature flags are being loaded already.")
+                config.logger.log("Feature flags are being loaded already.")
                 return@execute
             }
 
@@ -37,7 +37,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
                 isFeatureFlagsLoaded = true
             } catch (e: Throwable) {
                 isFeatureFlagsLoaded = false
-                config.logger?.log("Loading feature flags failed: $e")
+                config.logger.log("Loading feature flags failed: $e")
             }
 
             isLoadingFeatureFlags.set(false)

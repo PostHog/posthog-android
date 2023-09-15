@@ -20,7 +20,7 @@ internal class GsonDateTypeAdapter(private val config: PostHogConfig) : JsonDese
         return try {
             ISO8601Utils.parse(json?.asString, parsePosition)
         } catch (e: Throwable) {
-            config.logger?.log("${json?.asString} isn't a deserializable ISO8601 Date.")
+            config.logger.log("${json?.asString} isn't a deserializable ISO8601 Date.")
             null
         }
     }
@@ -30,7 +30,7 @@ internal class GsonDateTypeAdapter(private val config: PostHogConfig) : JsonDese
             val dateStr = ISO8601Utils.format(src, true)
             JsonPrimitive(dateStr)
         } catch (e: Throwable) {
-            config.logger?.log("$src isn't a serializable ISO8601 Date.")
+            config.logger.log("$src isn't a serializable ISO8601 Date.")
             null
         }
     }

@@ -46,14 +46,14 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
                 synchronized(dequeLock) {
                     first = deque.removeFirst()
                 }
-                config.logger?.log("Queue is full, the oldest event ${first.event} is dropped.")
+                config.logger.log("Queue is full, the oldest event ${first.event} is dropped.")
             } catch (ignore: NoSuchElementException) {}
         }
 
         synchronized(dequeLock) {
             deque.add(event)
         }
-        config.logger?.log("Queued event ${event.event}.")
+        config.logger.log("Queued event ${event.event}.")
 
         flushIfOverThreshold()
     }
@@ -66,7 +66,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
 
     private fun canFlushBatch(): Boolean {
         if (pausedUntil?.after(Date()) == true) {
-            config.logger?.log("Queue is paused until $pausedUntil")
+            config.logger.log("Queue is paused until $pausedUntil")
             return false
         }
 
@@ -83,12 +83,12 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
 
     private fun flushBatch() {
         if (!canFlushBatch()) {
-            config.logger?.log("Cannot flush the Queue.")
+            config.logger.log("Cannot flush the Queue.")
             return
         }
 
         if (isFlushing.getAndSet(true)) {
-            config.logger?.log("Queue is flushing.")
+            config.logger.log("Queue is flushing.")
             return
         }
 
@@ -98,7 +98,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
                 batchEvents()
                 retryCount = 0
             } catch (e: Throwable) {
-                config.logger?.log("Flushing failed: $e")
+                config.logger.log("Flushing failed: $e")
 
                 // TODO: when do we actually drop those events? maybe they are broken for good
                 // and the SDK will be stuck at them
@@ -124,12 +124,12 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
 
     fun flush() {
         if (!canFlushBatch()) {
-            config.logger?.log("Cannot flush the Queue.")
+            config.logger.log("Cannot flush the Queue.")
             return
         }
 
         if (isFlushing.getAndSet(true)) {
-            config.logger?.log("Queue is flushing.")
+            config.logger.log("Queue is flushing.")
             return
         }
 
@@ -141,7 +141,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
                 }
                 retryCount = 0
             } catch (e: Throwable) {
-                config.logger?.log("Flushing failed: $e")
+                config.logger.log("Flushing failed: $e")
                 retry = true
                 retryCount++
             }
@@ -170,7 +170,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
             val timerTask = timer.schedule(delay, delay) {
                 // early check to avoid more checks when its already flushing
                 if (isFlushing.get()) {
-                    config.logger?.log("Queue is flushing.")
+                    config.logger.log("Queue is flushing.")
                     return@schedule
                 }
                 flushIfOverThreshold()

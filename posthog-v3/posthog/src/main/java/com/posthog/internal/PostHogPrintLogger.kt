@@ -1,8 +1,11 @@
 package com.posthog.internal
 
-internal class PostHogPrintLogger(private val debug: Boolean) : PostHogLogger {
+import com.posthog.PostHogConfig
+import com.posthog.PostHogLogger
+
+internal class PostHogPrintLogger(private val config: PostHogConfig) : PostHogLogger {
     override fun log(message: String) {
-        if (!debug) {
+        if (!config.debug) {
             return
         }
         println(message)
