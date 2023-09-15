@@ -21,9 +21,12 @@ internal class PostHogApi(private val config: PostHogConfig) {
     private val mediaType = "application/json; charset=utf-8".toMediaType()
     private val gson = GsonBuilder().apply {
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
+            .setLenient()
     }.create()
     private val gsonBatchBodyType = object : TypeToken<PostHogBatchEvent>() {}.type
     private val gsonDecideBodyType = object : TypeToken<Map<String, Any>>() {}.type
+
+    // TODO: do we care about max queue size? apparently theres a 500kb hardlimit on the server
 
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
@@ -39,11 +42,15 @@ internal class PostHogApi(private val config: PostHogConfig) {
 //      "timestamp": "2023-09-13T12:05:30.326Z"
 //    }
 //  ],
-//  "timestamp": "2023-09-13T12:05:30.326Z"
+//  "timestamp": "2023-09-13T12:05:30.326Z",
+//  "sent_at": "2023-09-13T12:05:30.326Z",
 // }
 //        """.trimIndent()
         val request = makeRequest("${config.host}/batch") {
-            gson.toJson(batch, gsonBatchBodyType, it.bufferedWriter())
+            val writer = it.bufferedWriter()
+            batch.sentAt = Date()
+            gson.toJson(batch, gsonBatchBodyType, writer)
+            writer.flush()
         }
 
         client.newCall(request).execute().use {
@@ -89,6 +96,7 @@ internal class PostHogApi(private val config: PostHogConfig) {
         }
 
         client.newCall(request).execute().use {
+            // TODO: do we handle 429 differently?
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
 
             it.body?.let { body ->

@@ -79,6 +79,7 @@ public class PostHog {
         properties?.let {
             props.putAll(it)
         }
+        // TODO: message_id=messageId
 
         // distinctId is always present but it has to be nullable because the SDK may be disabled
         // TODO: missing static, dynamic context
@@ -136,6 +137,7 @@ public class PostHog {
 
         // TODO: reset feature flags, set anonymousId and distinctId
 //        val oldDistinctId = this.distinctId
+        // TODO: userProperties
 
         val props = mutableMapOf<String, Any>()
         props["distinct_id"] = distinctId
@@ -156,6 +158,7 @@ public class PostHog {
         if (!isEnabled()) {
             return
         }
+        // TODO: groupProperties, event $groupidentify
     }
 
     public fun reloadFeatureFlagsRequest() {
@@ -265,5 +268,6 @@ public class PostHog {
         }
 
         // TODO: add other methods
+        // TODO: is Stats a feature or just used by tests in posthog-android
     }
 }

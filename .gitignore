@@ -153,3 +153,6 @@ gradle-app.setting
 
 # Jacoco
 /posthog/jacoco.exec
+
+# eclipse
+.project/
