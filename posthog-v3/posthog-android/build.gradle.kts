@@ -28,6 +28,8 @@ android {
     kotlinOptions {
         jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
         kotlinOptions.languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
+        // remove when https://youtrack.jetbrains.com/issue/KT-37652 is fixed
+        freeCompilerArgs += "-Xexplicit-api=strict"
     }
 
     testOptions {
@@ -47,6 +49,8 @@ android {
     }
 }
 
+// See https://youtrack.jetbrains.com/issue/KT-37652
+// Also see kotlinOptions.freeCompilerArgs
 kotlin {
     explicitApi()
 }

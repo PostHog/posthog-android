@@ -18,6 +18,7 @@ public class PostHog {
     private var featureFlags: PostHogFeatureFlags? = null
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
+    private var context: PostHogContext? = null
 
     // TODO: flushTimer, reachability, flagCallReported
 
@@ -41,6 +42,10 @@ public class PostHog {
             this.featureFlags = featureFlags
             enabled = true
 
+            config.integrations.forEach {
+                it.install()
+            }
+
             queue.start()
             loadFeatureFlagsRequest()
         }
@@ -49,6 +54,11 @@ public class PostHog {
     public fun close() {
         synchronized(lock) {
             enabled = false
+
+            config?.integrations?.forEach {
+                it.uninstall()
+            }
+
             queue?.stop()
         }
     }
@@ -79,6 +89,14 @@ public class PostHog {
 
         // distinctId is always present but it has to be nullable because the SDK may be disabled
         // TODO: missing static, dynamic context
+        context?.getStaticContext()?.let {
+            props.putAll(it)
+        }
+
+        context?.getDynamicContext()?.let {
+            props.putAll(it)
+        }
+
         distinctId?.let {
             props["distinct_id"] = it
         }
@@ -264,5 +282,7 @@ public class PostHog {
         }
 
         // TODO: add other methods
+
+        // DISCUSS: Middleware, what does it stand for?
     }
 }

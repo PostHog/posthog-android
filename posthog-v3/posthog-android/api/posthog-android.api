@@ -8,12 +8,3 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 	public final fun with (Landroid/content/Context;Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHog;
 }
 
-public final class com/posthog/android/internal/PostHogAdvertisingIdReader {
-	public fun <init> ()V
-}
-
-public final class com/posthog/android/internal/PostHogUtilsKt {
-	public static final fun getPackageInfo (Landroid/content/Context;Lcom/posthog/PostHogConfig;)Landroid/content/pm/PackageInfo;
-	public static final fun getVersionCode (Landroid/content/pm/PackageInfo;)J
-}
-

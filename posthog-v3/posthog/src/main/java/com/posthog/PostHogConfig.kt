@@ -1,7 +1,5 @@
 package com.posthog
 
-import com.posthog.internal.PostHogPrintLogger
-
 public class PostHogConfig(
     // apiKey and host are immutable due to offline caching
     public val apiKey: String,
@@ -15,8 +13,10 @@ public class PostHogConfig(
 
     public var dataMode: PostHogDataMode = PostHogDataMode.ANY,
     public var encryption: PostHogEncryption = PostHogEncryption.PostHogEncryptionNone(),
+    public val integrations: MutableList<PostHogIntegration> = mutableListOf(),
 ) {
     public var logger: PostHogLogger = PostHogPrintLogger(this)
+    public var context: PostHogContext? = null
 
     // TODO: read the repo name and version
     internal var userAgent: String = "posthog-android/3.0.0"

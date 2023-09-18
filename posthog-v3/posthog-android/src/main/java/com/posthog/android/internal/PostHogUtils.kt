@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import com.posthog.PostHogConfig
 
-fun getPackageInfo(
+internal fun getPackageInfo(
     context: Context,
     config: PostHogConfig,
 ): PackageInfo? {
@@ -27,10 +27,21 @@ fun getPackageInfo(
     }
 }
 
-fun getVersionCode(packageInfo: PackageInfo): Long {
+internal fun getVersionCode(packageInfo: PackageInfo): Long {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         packageInfo.longVersionCode
     } else {
         packageInfo.versionCode.toLong()
     }
+}
+
+internal fun hasPermission(context: Context): Boolean {
+    return false
+}
+internal fun hasFeature(context: Context): Boolean {
+    return false
+}
+
+internal fun isConnected(context: Context): Boolean {
+    return false
 }

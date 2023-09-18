@@ -13,6 +13,7 @@ import java.io.OutputStream
 import java.util.Date
 
 internal class PostHogApi(private val config: PostHogConfig) {
+    // TODO: DEFAULT_READ_TIMEOUT_MILLIS, DEFAULT_CONNECT_TIMEOUT_MILLIS
     private val client = OkHttpClient.Builder()
         .addInterceptor(GzipRequestInterceptor(config))
         .build()
@@ -46,6 +47,7 @@ internal class PostHogApi(private val config: PostHogConfig) {
 //  "sent_at": "2023-09-13T12:05:30.326Z",
 // }
 //        """.trimIndent()
+        // TODO: MAX_PAYLOAD_SIZE, MAX_BATCH_SIZE
         val request = makeRequest("${config.host}/batch") {
             val writer = it.bufferedWriter()
             batch.sentAt = Date()
