@@ -142,6 +142,10 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
         synchronized(dequeLock) {
             deque.removeAll(files)
         }
+
+        files.forEach {
+            it.delete()
+        }
     }
 
     fun flush() {
@@ -210,6 +214,18 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
     fun stop() {
         synchronized(timerLock) {
             stopTimer()
+        }
+    }
+
+    fun clear() {
+        executor.execute {
+            synchronized(dequeLock) {
+                // TODO: probably have to sync due to timers
+                deque.forEach {
+                    it.delete()
+                }
+                deque.clear()
+            }
         }
     }
 }

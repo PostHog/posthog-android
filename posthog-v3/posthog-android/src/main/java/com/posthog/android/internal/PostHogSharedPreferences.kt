@@ -3,19 +3,45 @@ package com.posthog.android.internal
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import com.posthog.PostHogConfig
+import com.posthog.PostHogPreferences
 
-internal class PostHogSharedPreferences(context: Context, config: PostHogConfig) {
+internal class PostHogSharedPreferences(context: Context, config: PostHogConfig) :
+    PostHogPreferences {
 
     private val sharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)
     private val packageInfo = getPackageInfo(context, config)
 
-    fun getValue(key: String, defaultValue: Any? = null): Any? {
+    override fun getValue(key: String, defaultValue: Any?): Any? {
         return sharedPreferences.all[key] ?: defaultValue
     }
 
-    fun setValue(key: String, value: String) {
+    override fun setValue(key: String, value: Any) {
         val edit = sharedPreferences.edit()
-        edit.putString(key, value)
+
+        when (value) {
+            is Boolean -> {
+                edit.putBoolean(key, value)
+            }
+            is String -> {
+                edit.putString(key, value)
+            }
+            is Float -> {
+                edit.putFloat(key, value)
+            }
+            is Long -> {
+                edit.putLong(key, value)
+            }
+            is Int -> {
+                edit.putInt(key, value)
+            }
+        }
+
+        edit.apply()
+    }
+
+    override fun clear() {
+        val edit = sharedPreferences.edit()
+        edit.clear()
         edit.apply()
     }
 

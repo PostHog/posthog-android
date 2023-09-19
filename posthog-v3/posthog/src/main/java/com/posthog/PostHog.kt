@@ -2,13 +2,12 @@ package com.posthog
 
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlags
+import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogStorage
 import com.posthog.internal.SendCachedEventsIntegration
-
-// TODO: register/unregister? (Super Property) https://posthog.com/docs/libraries/react-native
 
 public class PostHog private constructor() {
     @Volatile
@@ -23,14 +22,13 @@ public class PostHog private constructor() {
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
     private var context: PostHogContext? = null
-    private var serializer: PostHogSerializer? = null
 
     // TODO: flushTimer, reachability, flagCallReported
 
     public fun setup(config: PostHogConfig) {
         synchronized(lock) {
             if (enabled) {
-                println("Setup called despite already being setup!")
+                config.logger.log("Setup called despite already being setup!")
                 return
             }
 
@@ -40,6 +38,12 @@ public class PostHog private constructor() {
             val api = PostHogApi(config, serializer)
             val queue = PostHogQueue(config, storage, api, serializer)
             val featureFlags = PostHogFeatureFlags(config, api)
+            config.preferences = config.preferences ?: PostHogMemoryPreferences()
+
+            val enable = config.preferences?.getValue("opt-out", defaultValue = config.enable) as? Boolean
+            enable?.let {
+                config.enable = enable
+            }
 
             val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer)
 
@@ -59,7 +63,7 @@ public class PostHog private constructor() {
             queue.start()
 
             // TODO: guarded by preloadFeatureFlags
-//            loadFeatureFlagsRequest()
+            loadFeatureFlagsRequest()
         }
     }
 
@@ -97,7 +101,6 @@ public class PostHog private constructor() {
         properties?.let {
             props.putAll(it)
         }
-        // TODO: message_id=messageId
 
         context?.getStaticContext()?.let {
             props.putAll(it)
@@ -115,16 +118,42 @@ public class PostHog private constructor() {
         return props
     }
 
-    // TODO: optIn/enable?
-
     // test: $merge_dangerously
-    public fun capture(event: String, properties: Map<String, Any>? = null) {
+    public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
+        if (!isEnabled()) {
+            return
+        }
+        if (config?.enable == false) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        val postHogEvent = PostHogEvent(event, buildProperties(properties), userProperties = userProperties)
+        queue?.add(postHogEvent)
+    }
+
+    public fun optIn() {
         if (!isEnabled()) {
             return
         }
 
-        val postHogEvent = PostHogEvent(event, buildProperties(properties))
-        queue?.add(postHogEvent)
+        config?.enable = true
+        config?.preferences?.setValue("opt-out", true)
+    }
+
+    public fun optOut() {
+        if (!isEnabled()) {
+            return
+        }
+
+        config?.enable = false
+        config?.preferences?.setValue("opt-out", false)
+    }
+
+    public fun register(key: String, value: Any) {
+    }
+
+    public fun unregister(key: String) {
     }
 
     public fun screen(screenTitle: String, properties: Map<String, Any>? = null) {
@@ -174,14 +203,8 @@ public class PostHog private constructor() {
         properties?.let {
             props.putAll(it)
         }
-        userProperties?.let {
-            // Should $set be its own data class?
-            props["\$set"] = it
-        }
 
-        // TODO: should $set_once also exist? it does not exist on Android
-
-        capture("\$identify", properties = props)
+        capture("\$identify", properties = props, userProperties = userProperties)
     }
 
     public fun group(type: String, key: String, properties: Map<String, Any>? = null) {
@@ -241,7 +264,8 @@ public class PostHog private constructor() {
         if (!isEnabled()) {
             return
         }
-        // TODO: reset stuff, delete cache
+        config?.preferences?.clear()
+        queue?.clear()
     }
 
     // TODO: groups, groupIdentify, group, feature flags, buildProperties (static context, dynamic context, distinct_id)
@@ -257,23 +281,38 @@ public class PostHog private constructor() {
         // TODO: make it private and rely only on static methods that forward to shared?
         private val shared: PostHog = PostHog()
 
+        private val apiKeys = mutableSetOf<String>()
+
         // TODO: understand why with was used to return the custom instance
         public fun with(config: PostHogConfig): PostHog {
+            logIfApiKeyExists(config)
+
             val instance = PostHog()
             instance.setup(config)
             return instance
         }
 
+        private fun logIfApiKeyExists(config: PostHogConfig) {
+            if (apiKeys.contains(config.apiKey)) {
+                config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
+            }
+        }
+
         public fun setup(config: PostHogConfig) {
+            logIfApiKeyExists(config)
+
             shared.setup(config)
         }
 
         public fun close() {
+            shared.config?.let {
+                apiKeys.remove(it.apiKey)
+            }
             shared.close()
         }
 
-        public fun capture(event: String, properties: Map<String, Any>? = null) {
-            shared.capture(event, properties = properties)
+        public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
+            shared.capture(event, properties = properties, userProperties = userProperties)
         }
 
         public fun identify(distinctId: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
@@ -304,8 +343,14 @@ public class PostHog private constructor() {
             shared.reset()
         }
 
-        // TODO: add other methods
+        public fun optIn() {
+            shared.optIn()
+        }
 
-        // DISCUSS: Middleware, what does it stand for?
+        public fun optOut() {
+            shared.optOut()
+        }
+
+        // TODO: add other methods
     }
 }

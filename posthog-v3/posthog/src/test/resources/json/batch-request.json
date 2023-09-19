@@ -2,6 +2,7 @@
   "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
   "batch": [
     {
+      "uuid": "8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5",
       "event": "testEvent",
       "properties": {
         "testProperty": "testValue",

@@ -38,8 +38,11 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
         text = AnnotatedString("Hello $name!"),
         modifier = modifier,
         onClick = {
-//            PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))
-            PostHog.capture("testEvent", mapOf("testProperty" to "testValue"))
+//            PostHog.optOut()
+            PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))
+//            PostHog.capture("testEvent", mapOf("testProperty" to "testValue"))
+//            PostHog.optIn()
+//            PostHog.capture("testEvent", mapOf("testProperty" to "testValue"))
 //            PostHog.reloadFeatureFlagsRequest()
 //            PostHog.isFeatureEnabled("sessionRecording")
 //            PostHog.flush()
