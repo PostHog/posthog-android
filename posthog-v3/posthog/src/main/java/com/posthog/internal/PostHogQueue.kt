@@ -31,30 +31,47 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
 
     private var isFlushing = AtomicBoolean(false)
 
+    private var dirCreated = false
+
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogQueueThread"))
 
     fun add(event: PostHogEvent) {
+        var removeFirst = false
         if (deque.size >= config.maxQueueSize) {
-            try {
-                val first: File
-                synchronized(dequeLock) {
-                    first = deque.removeFirst()
+            removeFirst = true
+        }
+
+        executor.execute {
+            if (removeFirst) {
+                try {
+                    val first: File
+                    synchronized(dequeLock) {
+                        first = deque.removeFirst()
+                    }
+                    first.delete()
+                    config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
+                } catch (ignore: NoSuchElementException) {}
+            }
+
+            config.storagePrefix?.let {
+                val dir = File(it, config.apiKey)
+
+                if (!dirCreated) {
+                    dir.mkdirs()
                 }
-                config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
-            } catch (ignore: NoSuchElementException) {}
-        }
 
-        val dir = File(config.storagePrefix!!, config.apiKey)
-        val file = File(dir, "${UUID.randomUUID()}.event")
-        synchronized(dequeLock) {
-            deque.add(file)
-        }
-        serializer.serializeEvent(event, file.writer().buffered())
-        config.logger.log("Queued event ${file.name}.")
+                val file = File(dir, "${UUID.randomUUID()}.event")
+                synchronized(dequeLock) {
+                    deque.add(file)
+                }
+                serializer.serializeEvent(event, file.writer().buffered())
+                config.logger.log("Queued event ${file.name}.")
 
-        flushIfOverThreshold()
+                flushIfOverThreshold()
+            }
+        }
     }
 
     private fun flushIfOverThreshold() {
@@ -72,7 +89,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
         return true
     }
 
-    private fun takeEvents(): List<File> {
+    private fun takeFiles(): List<File> {
         val events: List<File>
         synchronized(dequeLock) {
             events = deque.take(config.maxBatchSize)
@@ -99,20 +116,18 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
             } catch (e: Throwable) {
                 config.logger.log("Flushing failed: $e")
 
-                // TODO: when do we actually drop those events? maybe they are broken for good
-                // and the SDK will be stuck at them
                 retry = true
                 retryCount++
+            } finally {
+                calculateDelay(retry)
+
+                isFlushing.set(false)
             }
-
-            calculateDelay(retry)
-
-            isFlushing.set(false)
         }
     }
 
     private fun batchEvents() {
-        val files = takeEvents()
+        val files = takeFiles()
 
         val events = mutableListOf<PostHogEvent>()
         for (file in files) {
@@ -151,11 +166,11 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
                 config.logger.log("Flushing failed: $e")
                 retry = true
                 retryCount++
+            } finally {
+                calculateDelay(retry)
+
+                isFlushing.set(false)
             }
-
-            calculateDelay(retry)
-
-            isFlushing.set(false)
         }
     }
 
@@ -171,21 +186,6 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
     }
 
     fun start() {
-        executor.execute {
-            config.storagePrefix?.let {
-                val file = File(it, config.apiKey)
-
-                if (!file.exists()) {
-                    file.mkdirs()
-                }
-
-//                flushLegacyEvents(file)
-
-//                synchronized(dequeLock) {
-//                }
-            }
-        }
-
         synchronized(timerLock) {
             stopTimer()
             val timer = Timer(true)
@@ -201,29 +201,6 @@ internal class PostHogQueue(private val config: PostHogConfig, private val stora
             this.timer = timer
         }
     }
-
-//    private fun flushLegacyEvents(file: File) {
-//        config.legacyStoragePrefix?.let {
-//            val legacyDir = File(it)
-//            val legacyFile = File(legacyDir, "${config.apiKey}.tmp")
-//
-//            if (legacyFile.exists()) {
-//                val legacy = PostHogQueueFile.Builder(legacyFile)
-//                    .forceLegacy(true)
-//                    .build()
-//                val iterator = legacy.iterator()
-//                while (iterator.hasNext()) {
-//                    val next = iterator.next()
-//
-//                    val nextFile = File(file, "${UUID.randomUUID()}.event")
-//                    nextFile.writeBytes(next)
-//
-//                    iterator.remove()
-//                }
-//            }
-//            legacyFile.delete()
-//        }
-//    }
 
     private fun stopTimer() {
         timerTask?.cancel()

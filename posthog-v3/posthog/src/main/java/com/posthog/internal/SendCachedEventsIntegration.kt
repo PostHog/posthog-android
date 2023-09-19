@@ -16,35 +16,39 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
         executor.shutdown()
     }
 
+    // TODO: respect maxBatchSize
+
     private fun flushLegacyEvents() {
         config.legacyStoragePrefix?.let {
             val legacyDir = File(it)
             val legacyFile = File(legacyDir, "${config.apiKey}.tmp")
 
-            if (legacyFile.exists()) {
-                val legacy = PostHogQueueFile.Builder(legacyFile)
-                    .forceLegacy(true)
-                    .build()
-
-                val iterator = legacy.iterator()
-
-                val events = mutableListOf<PostHogEvent>()
-
-                while (iterator.hasNext()) {
-                    val eventBytes = iterator.next()
-
-                    val event = serializer.deserializeEvent(eventBytes.inputStream().reader().buffered())
-                    event?.let {
-                        events.add(event)
-                    }
-                }
-
-                if (events.isNotEmpty()) {
-                    api.batch(events)
-                }
-
-                legacyFile.delete()
+            if (!legacyFile.exists()) {
+                return
             }
+
+            val legacy = PostHogQueueFile.Builder(legacyFile)
+                .forceLegacy(true)
+                .build()
+
+            val iterator = legacy.iterator()
+
+            val events = mutableListOf<PostHogEvent>()
+
+            while (iterator.hasNext()) {
+                val eventBytes = iterator.next()
+
+                val event = serializer.deserializeEvent(eventBytes.inputStream().reader().buffered())
+                event?.let {
+                    events.add(event)
+                }
+            }
+
+            if (events.isNotEmpty()) {
+                api.batch(events)
+            }
+
+            legacyFile.delete()
         }
     }
 
@@ -52,28 +56,30 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
         config.storagePrefix?.let {
             val dir = File(it, config.apiKey)
 
-            if (dir.exists()) {
-                // TODO: in case this is executed after new events come in, we have to filter those
-                // they are in the queue already
-                val listFiles = dir.listFiles() ?: arrayOf()
-                val events = mutableListOf<PostHogEvent>()
-                val iterator = listFiles.iterator()
+            if (!dir.exists()) {
+                return
+            }
 
-                while (iterator.hasNext()) {
-                    val eventBytes = iterator.next()
+            // TODO: in case this is executed after new events come in, we have to filter those
+            // they are in the queue already
+            val listFiles = dir.listFiles() ?: arrayOf()
+            val events = mutableListOf<PostHogEvent>()
+            val iterator = listFiles.iterator()
 
-                    val event = serializer.deserializeEvent(eventBytes.inputStream().reader().buffered())
-                    event?.let {
-                        events.add(event)
-                    }
+            while (iterator.hasNext()) {
+                val eventBytes = iterator.next()
+
+                val event = serializer.deserializeEvent(eventBytes.inputStream().reader().buffered())
+                event?.let {
+                    events.add(event)
                 }
+            }
 
-                if (events.isNotEmpty()) {
-                    api.batch(events)
+            if (events.isNotEmpty()) {
+                api.batch(events)
 
-                    listFiles.forEach { file ->
-                        file.delete()
-                    }
+                listFiles.forEach { file ->
+                    file.delete()
                 }
             }
         }

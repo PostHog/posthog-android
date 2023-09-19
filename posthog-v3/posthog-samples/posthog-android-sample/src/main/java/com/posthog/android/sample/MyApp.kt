@@ -10,6 +10,7 @@ class MyApp : Application() {
 
         val config = PostHogConfig("_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI").apply {
             debug = true
+            flushAt = 5
 //            flushIntervalSeconds = 5
 //            flushAt = 1
         }
