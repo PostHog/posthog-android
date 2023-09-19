@@ -1,6 +1,5 @@
 public final class com/posthog/PostHog {
 	public static final field Companion Lcom/posthog/PostHog$Companion;
-	public fun <init> ()V
 	public final fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun alias$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun capture (Ljava/lang/String;Ljava/util/Map;)V
@@ -14,8 +13,8 @@ public final class com/posthog/PostHog {
 	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public final fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun group$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
-	public final fun identify (Ljava/lang/String;Ljava/util/Map;)V
-	public static synthetic fun identify$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+	public final fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
+	public static synthetic fun identify$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog;Ljava/lang/String;ZILjava/lang/Object;)Z
 	public final fun reloadFeatureFlagsRequest ()V
@@ -34,6 +33,8 @@ public final class com/posthog/PostHog$Companion {
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
+	public static synthetic fun identify$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;ZILjava/lang/Object;)Z
 	public final fun reloadFeatureFlagsRequest ()V
@@ -54,18 +55,22 @@ public final class com/posthog/PostHogConfig {
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
 	public final fun getIntegrations ()Ljava/util/List;
+	public final fun getLegacyStoragePrefix ()Ljava/lang/String;
 	public final fun getLogger ()Lcom/posthog/PostHogLogger;
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
+	public final fun getStoragePrefix ()Ljava/lang/String;
 	public final fun setContext (Lcom/posthog/PostHogContext;)V
 	public final fun setDataMode (Lcom/posthog/PostHogDataMode;)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
+	public final fun setLegacyStoragePrefix (Ljava/lang/String;)V
 	public final fun setLogger (Lcom/posthog/PostHogLogger;)V
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
+	public final fun setStoragePrefix (Ljava/lang/String;)V
 }
 
 public abstract interface class com/posthog/PostHogContext {
@@ -109,6 +114,9 @@ public abstract interface class com/posthog/PostHogIntegration {
 
 public final class com/posthog/PostHogIntegration$DefaultImpls {
 	public static fun uninstall (Lcom/posthog/PostHogIntegration;)V
+}
+
+public abstract interface annotation class com/posthog/PostHogInternal : java/lang/annotation/Annotation {
 }
 
 public abstract interface class com/posthog/PostHogLogger {

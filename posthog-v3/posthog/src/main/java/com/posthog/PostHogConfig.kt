@@ -15,6 +15,7 @@ public class PostHogConfig(
     public var encryption: PostHogEncryption = PostHogEncryption.PostHogEncryptionNone(),
     public val integrations: MutableList<PostHogIntegration> = mutableListOf(),
 ) {
+    @PostHogInternal
     public var logger: PostHogLogger = PostHogPrintLogger(this)
     public var context: PostHogContext? = null
 
@@ -22,5 +23,9 @@ public class PostHogConfig(
     internal var userAgent: String = "posthog-android/3.0.0"
 
     // should this be configurable by the user?
-    internal var storagePrefix: String? = null
+    @PostHogInternal
+    public var legacyStoragePrefix: String? = null
+
+    @PostHogInternal
+    public var storagePrefix: String? = null
 }

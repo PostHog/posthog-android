@@ -4,6 +4,7 @@ import com.google.gson.annotations.SerializedName
 import com.posthog.PostHogEvent
 import java.util.Date
 
+// TODO: message_id
 internal data class PostHogBatchEvent(
     @SerializedName("api_key")
     val apiKey: String,

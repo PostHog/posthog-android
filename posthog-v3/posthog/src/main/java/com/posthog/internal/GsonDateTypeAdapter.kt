@@ -14,11 +14,9 @@ import java.util.Date
 
 internal class GsonDateTypeAdapter(private val config: PostHogConfig) : JsonDeserializer<Date>, JsonSerializer<Date> {
 
-    private val parsePosition = ParsePosition(0)
-
     override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): Date? {
         return try {
-            ISO8601Utils.parse(json?.asString, parsePosition)
+            ISO8601Utils.parse(json?.asString, ParsePosition(0))
         } catch (e: Throwable) {
             config.logger.log("${json?.asString} isn't a deserializable ISO8601 Date.")
             null

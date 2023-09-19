@@ -53,7 +53,6 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
         val value: Any?
 
         synchronized(featureFlagsLock) {
-            // TODO: read featureFlags and featureFlagPayloads only?
             value = featureFlags?.get(key)
         }
 

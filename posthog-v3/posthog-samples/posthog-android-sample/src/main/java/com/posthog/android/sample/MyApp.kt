@@ -13,7 +13,7 @@ class MyApp : Application() {
 //            flushIntervalSeconds = 5
 //            flushAt = 1
         }
-        PostHogAndroid.setup(applicationContext, config)
+        PostHogAndroid.setup(this, config)
 
 //        val config2 = PostHogConfig("test")
 //        val postHog = PostHog.with(config2)

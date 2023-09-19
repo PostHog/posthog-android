@@ -3,10 +3,14 @@ package com.posthog
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogQueue
+import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogStorage
+import com.posthog.internal.SendCachedEventsIntegration
 
-public class PostHog {
+// TODO: register/unregister? (Super Property) https://posthog.com/docs/libraries/react-native
+
+public class PostHog private constructor() {
     @Volatile
     private var enabled = false
 
@@ -19,6 +23,7 @@ public class PostHog {
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
     private var context: PostHogContext? = null
+    private var serializer: PostHogSerializer? = null
 
     // TODO: flushTimer, reachability, flagCallReported
 
@@ -31,9 +36,12 @@ public class PostHog {
 
             val storage = PostHogStorage(config)
             sessionManager = PostHogSessionManager(storage)
-            val api = PostHogApi(config)
-            val queue = PostHogQueue(config, storage, api)
+            val serializer = PostHogSerializer(config)
+            val api = PostHogApi(config, serializer)
+            val queue = PostHogQueue(config, storage, api, serializer)
             val featureFlags = PostHogFeatureFlags(config, api)
+
+            val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer)
 
             this.api = api
             this.storage = storage
@@ -42,12 +50,16 @@ public class PostHog {
             this.featureFlags = featureFlags
             enabled = true
 
+            config.integrations.add(sendCachedEventsIntegration)
+
             config.integrations.forEach {
                 it.install()
             }
 
             queue.start()
-            loadFeatureFlagsRequest()
+
+            // TODO: guarded by preloadFeatureFlags
+//            loadFeatureFlagsRequest()
         }
     }
 
@@ -87,8 +99,6 @@ public class PostHog {
         }
         // TODO: message_id=messageId
 
-        // distinctId is always present but it has to be nullable because the SDK may be disabled
-        // TODO: missing static, dynamic context
         context?.getStaticContext()?.let {
             props.putAll(it)
         }
@@ -97,6 +107,7 @@ public class PostHog {
             props.putAll(it)
         }
 
+        // distinctId is always present but it has to be nullable because the SDK may be disabled
         distinctId?.let {
             props["distinct_id"] = it
         }
@@ -104,6 +115,9 @@ public class PostHog {
         return props
     }
 
+    // TODO: optIn/enable?
+
+    // test: $merge_dangerously
     public fun capture(event: String, properties: Map<String, Any>? = null) {
         if (!isEnabled()) {
             return
@@ -144,14 +158,13 @@ public class PostHog {
         capture("\$create_alias", properties = props)
     }
 
-    public fun identify(distinctId: String, properties: Map<String, Any>? = null) {
+    public fun identify(distinctId: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
         if (!isEnabled()) {
             return
         }
 
         // TODO: reset feature flags, set anonymousId and distinctId
 //        val oldDistinctId = this.distinctId
-        // TODO: userProperties
 
         val props = mutableMapOf<String, Any>()
         props["distinct_id"] = distinctId
@@ -159,11 +172,14 @@ public class PostHog {
             props["\$anon_distinct_id"] = it
         }
         properties?.let {
+            props.putAll(it)
+        }
+        userProperties?.let {
             // Should $set be its own data class?
             props["\$set"] = it
         }
 
-        // TODO: does $set_once still exist?
+        // TODO: should $set_once also exist? it does not exist on Android
 
         capture("\$identify", properties = props)
     }
@@ -200,7 +216,7 @@ public class PostHog {
         }
         val flag = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
-        // TODO: reportFeatureFlagCalled
+        // TODO: reportFeatureFlagCalled, guarded by sendFeatureFlagEvent
 
         return flag
     }
@@ -219,6 +235,8 @@ public class PostHog {
         queue?.flush()
     }
 
+    // TODO: If you also want to reset the device_id so that the device will be considered a new device in future events, you can pass true as an argument:
+    // this does not exist on Android yet
     public fun reset() {
         if (!isEnabled()) {
             return
@@ -239,6 +257,7 @@ public class PostHog {
         // TODO: make it private and rely only on static methods that forward to shared?
         private val shared: PostHog = PostHog()
 
+        // TODO: understand why with was used to return the custom instance
         public fun with(config: PostHogConfig): PostHog {
             val instance = PostHog()
             instance.setup(config)
@@ -255,6 +274,10 @@ public class PostHog {
 
         public fun capture(event: String, properties: Map<String, Any>? = null) {
             shared.capture(event, properties = properties)
+        }
+
+        public fun identify(distinctId: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
+            shared.identify(distinctId, properties = properties, userProperties = userProperties)
         }
 
         public fun reloadFeatureFlagsRequest() {
