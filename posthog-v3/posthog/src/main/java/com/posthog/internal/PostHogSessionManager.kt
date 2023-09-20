@@ -1,9 +1,10 @@
 package com.posthog.internal
 
+import com.posthog.PostHogPreferences
 import java.util.UUID
 
 // TODO: think about stateless about posthog-java (js-lite)
-internal class PostHogSessionManager(private val storage: PostHogStorage) {
+internal class PostHogSessionManager(private val preferences: PostHogPreferences) {
 
     // TODO: thread safety
 
@@ -12,7 +13,7 @@ internal class PostHogSessionManager(private val storage: PostHogStorage) {
 
     var anonymousId: String
         get() {
-            var anonymousId = storage.getString(anonymousKey)
+            var anonymousId = preferences.getValue(anonymousKey) as? String
 
             if (anonymousId == null) {
                 anonymousId = UUID.randomUUID().toString()
@@ -21,14 +22,14 @@ internal class PostHogSessionManager(private val storage: PostHogStorage) {
             return anonymousId
         }
         set(value) {
-            storage.setString(anonymousKey, value)
+            preferences.setValue(anonymousKey, value)
         }
 
     var distinctId: String
         get() {
-            return storage.getString(distinctIdKey, defaultValue = anonymousId) ?: anonymousId
+            return preferences.getValue(distinctIdKey, defaultValue = anonymousId) as? String ?: anonymousId
         }
         set(value) {
-            storage.setString(distinctIdKey, value)
+            preferences.setValue(distinctIdKey, value)
         }
 }

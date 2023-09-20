@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.math.min
 
-internal class PostHogQueue(private val config: PostHogConfig, private val storage: PostHogStorage, private val api: PostHogApi, private val serializer: PostHogSerializer) {
+internal class PostHogQueue(private val config: PostHogConfig, private val api: PostHogApi, private val serializer: PostHogSerializer) {
 
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()

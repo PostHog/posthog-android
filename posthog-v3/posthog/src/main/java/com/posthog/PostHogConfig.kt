@@ -23,10 +23,18 @@ public class PostHogConfig(
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogPrintLogger(this)
+
+    @PostHogInternal
     public var context: PostHogContext? = null
 
     // TODO: read the repo name and version
-    internal var userAgent: String = "posthog-android/3.0.0"
+    @PostHogInternal
+    public var sdkName: String = "posthog-android"
+
+    @PostHogInternal
+    public var sdkVersion: String = "3.0.0"
+
+    internal val userAgent: String = "$sdkName/$sdkVersion"
 
     // should this be configurable by the user?
     @PostHogInternal

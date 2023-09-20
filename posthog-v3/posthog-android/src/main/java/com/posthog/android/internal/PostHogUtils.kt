@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.DisplayMetrics
 import com.posthog.PostHogConfig
 
 internal fun getPackageInfo(
@@ -27,11 +28,11 @@ internal fun getPackageInfo(
     }
 }
 
-internal fun getVersionCode(packageInfo: PackageInfo): Long {
+internal fun PackageInfo.versionCodeCompat(): Long {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        packageInfo.longVersionCode
+        longVersionCode
     } else {
-        packageInfo.versionCode.toLong()
+        versionCode.toLong()
     }
 }
 
@@ -44,4 +45,12 @@ internal fun hasFeature(context: Context): Boolean {
 
 internal fun isConnected(context: Context): Boolean {
     return false
+}
+
+internal fun Context.displayMetrics(): DisplayMetrics {
+    return resources.displayMetrics
+}
+
+internal fun Context.appContext(): Context {
+    return applicationContext ?: this
 }

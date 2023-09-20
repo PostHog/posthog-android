@@ -39,6 +39,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
         modifier = modifier,
         onClick = {
 //            PostHog.optOut()
+//            PostHog.optIn()
             PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))
 //            PostHog.capture("testEvent", mapOf("testProperty" to "testValue"))
 //            PostHog.optIn()

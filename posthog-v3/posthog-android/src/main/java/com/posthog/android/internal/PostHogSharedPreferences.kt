@@ -9,7 +9,6 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogConfig)
     PostHogPreferences {
 
     private val sharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)
-    private val packageInfo = getPackageInfo(context, config)
 
     override fun getValue(key: String, defaultValue: Any?): Any? {
         return sharedPreferences.all[key] ?: defaultValue
@@ -43,16 +42,5 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogConfig)
         val edit = sharedPreferences.edit()
         edit.clear()
         edit.apply()
-    }
-
-    fun init() {
-        packageInfo?.let {
-            // key= build
-            val versionCode = getVersionCode(it)
-            // key=version
-            val versioName = it.versionName
-
-            // TODO: send application installed or updated event
-        }
     }
 }

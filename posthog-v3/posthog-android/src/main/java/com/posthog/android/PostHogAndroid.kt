@@ -9,6 +9,7 @@ import com.posthog.android.internal.PostHogActivityLifecycleCallback
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogSharedPreferences
+import com.posthog.android.internal.appContext
 import java.io.File
 
 public class PostHogAndroid private constructor() {
@@ -30,7 +31,7 @@ public class PostHogAndroid private constructor() {
 
         private fun setAndroidConfig(context: Context, config: PostHogConfig) {
             config.logger = if (config.logger is PostHogPrintLogger) PostHogAndroidLogger(config) else config.logger
-            config.context = config.context ?: PostHogAndroidContext(context)
+            config.context = config.context ?: PostHogAndroidContext(context, config)
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
             val path = File(context.cacheDir, "posthog-disk-queue")
@@ -41,10 +42,6 @@ public class PostHogAndroid private constructor() {
             if (context is Application) {
                 config.integrations.add(PostHogActivityLifecycleCallback(context))
             }
-        }
-
-        private fun Context.appContext(): Context {
-            return applicationContext ?: this
         }
     }
 }

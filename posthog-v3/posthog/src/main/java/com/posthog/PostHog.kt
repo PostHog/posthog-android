@@ -6,7 +6,6 @@ import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
-import com.posthog.internal.PostHogStorage
 import com.posthog.internal.SendCachedEventsIntegration
 
 public class PostHog private constructor() {
@@ -16,14 +15,12 @@ public class PostHog private constructor() {
     private val lock = Any()
 
     private var config: PostHogConfig? = null
-    private var storage: PostHogStorage? = null
     private var sessionManager: PostHogSessionManager? = null
     private var featureFlags: PostHogFeatureFlags? = null
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
-    private var context: PostHogContext? = null
 
-    // TODO: flushTimer, reachability, flagCallReported
+    // TODO: reachability
 
     public fun setup(config: PostHogConfig) {
         synchronized(lock) {
@@ -32,13 +29,13 @@ public class PostHog private constructor() {
                 return
             }
 
-            val storage = PostHogStorage(config)
-            sessionManager = PostHogSessionManager(storage)
+            val preferences = config.preferences ?: PostHogMemoryPreferences()
+            config.preferences = preferences
+            sessionManager = PostHogSessionManager(preferences)
             val serializer = PostHogSerializer(config)
             val api = PostHogApi(config, serializer)
-            val queue = PostHogQueue(config, storage, api, serializer)
+            val queue = PostHogQueue(config, api, serializer)
             val featureFlags = PostHogFeatureFlags(config, api)
-            config.preferences = config.preferences ?: PostHogMemoryPreferences()
 
             val enable = config.preferences?.getValue("opt-out", defaultValue = config.enable) as? Boolean
             enable?.let {
@@ -48,7 +45,6 @@ public class PostHog private constructor() {
             val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer)
 
             this.api = api
-            this.storage = storage
             this.config = config
             this.queue = queue
             this.featureFlags = featureFlags
@@ -62,8 +58,9 @@ public class PostHog private constructor() {
 
             queue.start()
 
-            // TODO: guarded by preloadFeatureFlags
-            loadFeatureFlagsRequest()
+            if (config.preloadFeatureFlags) {
+                loadFeatureFlagsRequest()
+            }
         }
     }
 
@@ -87,39 +84,50 @@ public class PostHog private constructor() {
             return sessionManager?.anonymousId
         }
 
-    public val distinctId: String?
+    public val distinctId: String
         get() {
             if (!isEnabled()) {
-                return null
+                return ""
             }
-            return sessionManager?.distinctId
+            return sessionManager?.distinctId ?: ""
         }
 
-    private fun buildProperties(properties: Map<String, Any>?): Map<String, Any> {
+    private fun buildProperties(distinctId: String, properties: Map<String, Any>?, userProperties: Map<String, Any>?, groupProperties: Map<String, Any>?): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
+
+        config?.context?.getStaticContext()?.let {
+            props.putAll(it)
+        }
+
+        config?.context?.getDynamicContext()?.let {
+            props.putAll(it)
+        }
+
+        // TODO: $feature/* properties, $active_feature_flags array
+
+        // TODO: $set_once
+        userProperties?.let {
+            props["\$set"] = it
+        }
+
+        groupProperties?.let {
+            props["\$groups"] = it
+        }
 
         properties?.let {
             props.putAll(it)
         }
 
-        context?.getStaticContext()?.let {
-            props.putAll(it)
-        }
-
-        context?.getDynamicContext()?.let {
-            props.putAll(it)
-        }
-
-        // distinctId is always present but it has to be nullable because the SDK may be disabled
-        distinctId?.let {
-            props["distinct_id"] = it
+        // only set if not there.
+        props["distinct_id"]?.let {
+            props["distinct_id"] = distinctId
         }
 
         return props
     }
 
     // test: $merge_dangerously
-    public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
+    public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null, groupProperties: Map<String, Any>? = null) {
         if (!isEnabled()) {
             return
         }
@@ -128,7 +136,7 @@ public class PostHog private constructor() {
             return
         }
 
-        val postHogEvent = PostHogEvent(event, buildProperties(properties), userProperties = userProperties)
+        val postHogEvent = PostHogEvent(event, distinctId, properties = buildProperties(distinctId, properties, userProperties, groupProperties))
         queue?.add(postHogEvent)
     }
 
@@ -150,11 +158,11 @@ public class PostHog private constructor() {
         config?.preferences?.setValue("opt-out", false)
     }
 
-    public fun register(key: String, value: Any) {
-    }
-
-    public fun unregister(key: String) {
-    }
+//    public fun register(key: String, value: Any) {
+//    }
+//
+//    public fun unregister(key: String) {
+//    }
 
     public fun screen(screenTitle: String, properties: Map<String, Any>? = null) {
         if (!isEnabled()) {
@@ -165,7 +173,6 @@ public class PostHog private constructor() {
         props["\$screen_name"] = screenTitle
 
         properties?.let {
-            // TODO: who has precedence here? the given props or the built ones
             props.putAll(it)
         }
 
@@ -192,26 +199,38 @@ public class PostHog private constructor() {
             return
         }
 
-        // TODO: reset feature flags, set anonymousId and distinctId
-//        val oldDistinctId = this.distinctId
+        val oldDistinctId = this.distinctId
 
         val props = mutableMapOf<String, Any>()
-        props["distinct_id"] = distinctId
         anonymousId?.let {
             props["\$anon_distinct_id"] = it
         }
+        props["distinct_id"] = distinctId
+
         properties?.let {
             props.putAll(it)
         }
 
         capture("\$identify", properties = props, userProperties = userProperties)
+
+        if (oldDistinctId != distinctId) {
+            reloadFeatureFlagsRequest()
+        }
     }
 
-    public fun group(type: String, key: String, properties: Map<String, Any>? = null) {
+    public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null) {
         if (!isEnabled()) {
             return
         }
-        // TODO: groupProperties, event $groupidentify
+
+        val props = mutableMapOf<String, Any>()
+        props["\$group_type"] = type
+        props["\$group_key"] = key
+        groupProperties?.let {
+            props["\$group_set"] = it
+        }
+
+        capture("\$groupidentify", properties = props)
     }
 
     public fun reloadFeatureFlagsRequest() {
@@ -223,7 +242,7 @@ public class PostHog private constructor() {
 
     private fun loadFeatureFlagsRequest() {
         val map = mapOf<String, Any>()
-        featureFlags?.loadFeatureFlags(buildProperties(map))
+        featureFlags?.loadFeatureFlags(buildProperties(distinctId, map, null, null))
     }
 
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
@@ -239,7 +258,15 @@ public class PostHog private constructor() {
         }
         val flag = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
-        // TODO: reportFeatureFlagCalled, guarded by sendFeatureFlagEvent
+        if (config?.sendFeatureFlagEvent == true) {
+            val props = mutableMapOf<String, Any>()
+            props["\$feature_flag"] = key
+            flag?.let {
+                props["\$feature_flag_response"] = it
+            }
+
+            capture("\$feature_flag_called", properties = props)
+        }
 
         return flag
     }
@@ -267,8 +294,6 @@ public class PostHog private constructor() {
         config?.preferences?.clear()
         queue?.clear()
     }
-
-    // TODO: groups, groupIdentify, group, feature flags, buildProperties (static context, dynamic context, distinct_id)
 
     private fun isEnabled(): Boolean {
         if (!enabled) {

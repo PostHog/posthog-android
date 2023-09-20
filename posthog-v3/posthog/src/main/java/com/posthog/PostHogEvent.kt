@@ -6,11 +6,9 @@ import java.util.UUID
 
 public data class PostHogEvent(
     val event: String,
-    val properties: Map<String, Any>,
+    @SerializedName("\$distinct_id")
+    val distinctId: String,
+    val properties: Map<String, Any>? = null,
     val timestamp: Date = Date(),
     val uuid: UUID = UUID.randomUUID(),
-    @SerializedName("\$set")
-    val userProperties: Map<String, Any>? = null,
-//    @SerializedName("\$set_once")
-//    val setOnce: Map<String, Any>? = null,
 )

@@ -1,4 +1,14 @@
 {
-  "distinct_id": "1fc77c1a-5f98-43b3-bb77-7a2dd15fd13a",
-  "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+  "token": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
+  "distinct_id": "my_identify",
+  "$anon_distinct_id": "da84731c-8e43-4724-a996-3f9fab19936d",
+  "groups": {
+
+  },
+  "person_properties": {
+
+  },
+  "group_properties": {
+
+  }
 }

@@ -8,7 +8,6 @@ internal data class PostHogBatchEvent(
     @SerializedName("api_key")
     val apiKey: String,
     val batch: List<PostHogEvent>,
-    val timestamp: Date = Date(),
     @SerializedName("sent_at")
     var sentAt: Date? = null,
 )
