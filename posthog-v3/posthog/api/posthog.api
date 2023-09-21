@@ -25,8 +25,10 @@ public final class com/posthog/PostHog {
 }
 
 public final class com/posthog/PostHog$Companion {
-	public final fun capture (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
-	public static synthetic fun capture$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
+	public final fun alias (Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun alias$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+	public final fun capture (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public static synthetic fun capture$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun close ()V
 	public final fun flush ()V
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -43,17 +45,18 @@ public final class com/posthog/PostHog$Companion {
 	public final fun optOut ()V
 	public final fun reloadFeatureFlagsRequest ()V
 	public final fun reset ()V
+	public final fun screen (Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun screen$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun setup (Lcom/posthog/PostHogConfig;)V
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHog;
 }
 
 public final class com/posthog/PostHogConfig {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogDataMode;Lcom/posthog/PostHogEncryption;Ljava/util/List;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogDataMode;Lcom/posthog/PostHogEncryption;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCachePreferences ()Lcom/posthog/PostHogPreferences;
 	public final fun getContext ()Lcom/posthog/PostHogContext;
-	public final fun getDataMode ()Lcom/posthog/PostHogDataMode;
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getFlushAt ()I
@@ -73,7 +76,6 @@ public final class com/posthog/PostHogConfig {
 	public final fun getStoragePrefix ()Ljava/lang/String;
 	public final fun setCachePreferences (Lcom/posthog/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/PostHogContext;)V
-	public final fun setDataMode (Lcom/posthog/PostHogDataMode;)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFlushAt (I)V
@@ -94,13 +96,6 @@ public final class com/posthog/PostHogConfig {
 public abstract interface class com/posthog/PostHogContext {
 	public abstract fun getDynamicContext ()Ljava/util/Map;
 	public abstract fun getStaticContext ()Ljava/util/Map;
-}
-
-public final class com/posthog/PostHogDataMode : java/lang/Enum {
-	public static final field ANY Lcom/posthog/PostHogDataMode;
-	public static final field WIFI Lcom/posthog/PostHogDataMode;
-	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PostHogDataMode;
-	public static fun values ()[Lcom/posthog/PostHogDataMode;
 }
 
 public abstract interface class com/posthog/PostHogEncryption {

@@ -6,5 +6,5 @@ import java.lang.RuntimeException
 internal class PostHogApiError(
     val statusCode: Int,
     override val message: String,
-    body: ResponseBody? = null,
+    val body: ResponseBody? = null,
 ) : RuntimeException(message)

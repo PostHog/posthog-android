@@ -17,52 +17,58 @@ public class PostHog private constructor() {
 
     private var config: PostHogConfig? = null
 
-//    private var sessionManager: PostHogSessionManager? = null
     private var featureFlags: PostHogFeatureFlags? = null
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
 
     public fun setup(config: PostHogConfig) {
         synchronized(lock) {
-            if (enabled) {
-                config.logger.log("Setup called despite already being setup!")
-                return
-            }
+            try {
+                if (enabled) {
+                    config.logger.log("Setup called despite already being setup!")
+                    return
+                }
 
-            val cachePreferences = config.cachePreferences ?: PostHogMemoryPreferences()
-            config.cachePreferences = cachePreferences
-//            sessionManager = PostHogSessionManager(cachePreferences)
-            val serializer = PostHogSerializer(config)
-            val api = PostHogApi(config, serializer)
-            val queue = PostHogQueue(config, api, serializer)
-            val featureFlags = PostHogFeatureFlags(config, api)
+                val cachePreferences = config.cachePreferences ?: PostHogMemoryPreferences()
+                config.cachePreferences = cachePreferences
+                val serializer = PostHogSerializer(config)
+                val api = PostHogApi(config, serializer)
+                val queue = PostHogQueue(config, api, serializer)
+                val featureFlags = PostHogFeatureFlags(config, api)
 
-            val optOut = config.cachePreferences?.getValue("opt-out", defaultValue = false) as? Boolean
-            optOut?.let {
-                config.optOut = optOut
-            }
+                val optOut = config.cachePreferences?.getValue("opt-out", defaultValue = false) as? Boolean
+                optOut?.let {
+                    config.optOut = optOut
+                }
 
-            val startDate = Date()
-            val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer, startDate)
+                val startDate = Date()
+                val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer, startDate)
 
-            this.api = api
-            this.config = config
-            this.queue = queue
-            this.featureFlags = featureFlags
-            enabled = true
+                this.api = api
+                this.config = config
+                this.queue = queue
+                this.featureFlags = featureFlags
+                enabled = true
 
-            config.integrations.add(sendCachedEventsIntegration)
+                config.integrations.add(sendCachedEventsIntegration)
 
-            legacyPreferences(config, serializer)
+                legacyPreferences(config, serializer)
 
-            queue.start()
+                queue.start()
 
-            config.integrations.forEach {
-                it.install()
-            }
+                config.integrations.forEach {
+                    try {
+                        it.install()
+                    } catch (e: Throwable) {
+                        config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
+                    }
+                }
 
-            if (config.preloadFeatureFlags) {
-                loadFeatureFlagsRequest()
+                if (config.preloadFeatureFlags) {
+                    loadFeatureFlagsRequest()
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Setup failed: $e.")
             }
         }
     }
@@ -70,31 +76,43 @@ public class PostHog private constructor() {
     private fun legacyPreferences(config: PostHogConfig, serializer: PostHogSerializer) {
         val cachedPrefs = config.cachePreferences?.getValue(config.apiKey) as? String
         cachedPrefs?.let {
-            serializer.deserializeCachedProperties(it)?.let { props ->
-                val anonymousId = props["anonymousId"] as? String
-                val distinctId = props["distinctId"] as? String
+            try {
+                serializer.deserializeCachedProperties(it)?.let { props ->
+                    val anonymousId = props["anonymousId"] as? String
+                    val distinctId = props["distinctId"] as? String
 
-                anonymousId?.let { anon ->
-                    this.anonymousId = anon
-                }
-                distinctId?.let { dist ->
-                    this.distinctId = dist
-                }
+                    anonymousId?.let { anon ->
+                        this.anonymousId = anon
+                    }
+                    distinctId?.let { dist ->
+                        this.distinctId = dist
+                    }
 
-                config.cachePreferences?.remove(config.apiKey)
+                    config.cachePreferences?.remove(config.apiKey)
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Legacy cached prefs: $cachedPrefs failed to parse: $e.")
             }
         }
     }
 
     public fun close() {
         synchronized(lock) {
-            enabled = false
+            try {
+                enabled = false
 
-            config?.integrations?.forEach {
-                it.uninstall()
+                config?.integrations?.forEach {
+                    try {
+                        it.uninstall()
+                    } catch (e: Throwable) {
+                        config?.logger?.log("Integration ${it.javaClass.name} failed to uninstall: $e.")
+                    }
+                }
+
+                queue?.stop()
+            } catch (e: Throwable) {
+                config?.logger?.log("Close failed: $e.")
             }
-
-            queue?.stop()
         }
     }
 
@@ -330,8 +348,6 @@ public class PostHog private constructor() {
         queue?.flush()
     }
 
-    // TODO: If you also want to reset the device_id so that the device will be considered a new device in future events, you can pass true as an argument:
-    // this does not exist on Android yet
     public fun reset() {
         if (!isEnabled()) {
             return
@@ -385,8 +401,8 @@ public class PostHog private constructor() {
             shared.close()
         }
 
-        public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
-            shared.capture(event, properties = properties, userProperties = userProperties)
+        public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null, groupProperties: Map<String, Any>? = null) {
+            shared.capture(event, properties = properties, userProperties = userProperties, groupProperties = groupProperties)
         }
 
         public fun identify(distinctId: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
@@ -428,6 +444,13 @@ public class PostHog private constructor() {
         public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null) {
             shared.group(type, key, groupProperties = groupProperties)
         }
-        // TODO: add other methods
+
+        public fun screen(screenTitle: String, properties: Map<String, Any>? = null) {
+            shared.screen(screenTitle, properties = properties)
+        }
+
+        public fun alias(alias: String, properties: Map<String, Any>? = null) {
+            shared.alias(alias, properties = properties)
+        }
     }
 }

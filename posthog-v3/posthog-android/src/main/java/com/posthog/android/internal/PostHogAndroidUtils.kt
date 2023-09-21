@@ -28,7 +28,7 @@ internal fun getPackageInfo(
             context.packageManager.getPackageInfo(context.packageName, 0)
         }
     } catch (e: Throwable) {
-        config.logger.log("Error getting package info.")
+        config.logger.log("Error getting package info: $e.")
         null
     }
 }

@@ -12,7 +12,7 @@ class MyApp : Application() {
             debug = true
 //            flushAt = 5
 //            flushIntervalSeconds = 5
-            flushAt = 5
+            flushAt = 1
         }
         PostHogAndroid.setup(this, config)
 

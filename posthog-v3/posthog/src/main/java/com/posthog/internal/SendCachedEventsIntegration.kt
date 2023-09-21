@@ -5,6 +5,7 @@ import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
 import java.io.File
 import java.io.FileFilter
+import java.io.IOException
 import java.util.Date
 import java.util.concurrent.Executors
 
@@ -34,29 +35,54 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
                 return
             }
 
-            val legacy = PostHogQueueFile.Builder(legacyFile)
-                .forceLegacy(true)
-                .build()
+            try {
+                val legacy = PostHogQueueFile.Builder(legacyFile)
+                    .forceLegacy(true)
+                    .build()
 
-            val iterator = legacy.iterator()
+                val iterator = legacy.iterator()
 
-            val events = mutableListOf<PostHogEvent>()
+                val events = mutableListOf<PostHogEvent>()
 
-            while (iterator.hasNext()) {
-                val eventBytes = iterator.next()
+                while (iterator.hasNext()) {
+                    val eventBytes = iterator.next()
 
-                val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
-                val event = serializer.deserializeEvent(inputStream.reader().buffered())
-                event?.let {
-                    events.add(event)
+                    try {
+                        val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
+                        val event = serializer.deserializeEvent(inputStream.reader().buffered())
+                        event?.let {
+                            events.add(event)
+                        }
+                    } catch (e: Throwable) {
+                        iterator.remove()
+                        config.logger.log("Event failed to parse: $e.")
+                    }
                 }
-            }
 
-            if (events.isNotEmpty()) {
-                api.batch(events)
+                if (events.isNotEmpty()) {
+                    var deleteFiles = true
+                    try {
+                        api.batch(events)
+                    } catch (e: PostHogApiError) {
+                        if (e.statusCode >= 400) {
+                            // TODO: the reason to delete or not the files?
+                        }
+                        throw e
+                    } catch (e: IOException) {
+                        // no connection should try again
+                        if (e.isNetworkingError()) {
+                            deleteFiles = false
+                        }
+                        throw e
+                    } finally {
+                        if (deleteFiles) {
+                            legacyFile.delete()
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Flushing legacy events failed: $e.")
             }
-
-            legacyFile.delete()
         }
     }
 
@@ -73,25 +99,45 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
             val time = startDate.time
             val fileFilter = FileFilter { file -> file.lastModified() <= time }
 
-            val listFiles = dir.listFiles(fileFilter) ?: emptyArray()
+            val listFiles = (dir.listFiles(fileFilter) ?: emptyArray()).toMutableList()
             val events = mutableListOf<PostHogEvent>()
             val iterator = listFiles.iterator()
 
             while (iterator.hasNext()) {
-                val eventBytes = iterator.next()
+                val file = iterator.next()
 
-                val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
-                val event = serializer.deserializeEvent(inputStream.reader().buffered())
-                event?.let {
-                    events.add(event)
+                try {
+                    val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
+                    val event = serializer.deserializeEvent(inputStream.reader().buffered())
+                    event?.let {
+                        events.add(event)
+                    }
+                } catch (e: Throwable) {
+                    iterator.remove()
+                    file.delete()
+                    config.logger.log("File: ${file.name} failed to parse: $e.")
                 }
             }
 
             if (events.isNotEmpty()) {
-                api.batch(events)
-
-                listFiles.forEach { file ->
-                    file.delete()
+                var deleteFiles = true
+                try {
+                    api.batch(events)
+                } catch (e: PostHogApiError) {
+                    if (e.statusCode >= 400) {
+                        // TODO: the reason to delete or not the files?
+                    }
+                } catch (e: IOException) {
+                    // no connection should try again
+                    if (e.isNetworkingError()) {
+                        deleteFiles = false
+                    }
+                } finally {
+                    if (deleteFiles) {
+                        listFiles.forEach { file ->
+                            file.delete()
+                        }
+                    }
                 }
             }
         }

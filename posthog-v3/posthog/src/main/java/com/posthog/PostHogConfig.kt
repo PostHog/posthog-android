@@ -18,7 +18,6 @@ public class PostHogConfig(
 //    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     public var flushIntervalSeconds: Int = 30,
 
-    public var dataMode: PostHogDataMode = PostHogDataMode.ANY,
     public var encryption: PostHogEncryption? = null,
     public val integrations: MutableList<PostHogIntegration> = mutableListOf(),
 ) {

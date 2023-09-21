@@ -50,7 +50,7 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
                     .method(originalRequest.method, gzip(body))
                     .build()
             } catch (e: Throwable) {
-                config.logger.log("Failed to gzip the request body.")
+                config.logger.log("Failed to gzip the request body: $e.")
 
                 originalRequest
             }

@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okio.BufferedSink
+import java.io.IOException
 import java.io.OutputStream
 import java.util.Date
 
@@ -24,7 +25,7 @@ internal class PostHogApi(private val config: PostHogConfig, private val seriali
         }
     }
 
-    @Throws(PostHogApiError::class)
+    @Throws(PostHogApiError::class, IOException::class)
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
 
@@ -54,7 +55,7 @@ internal class PostHogApi(private val config: PostHogConfig, private val seriali
             .build()
     }
 
-    @Throws(PostHogApiError::class)
+    @Throws(PostHogApiError::class, IOException::class)
     fun decide(properties: Map<String, Any>): Map<String, Any>? {
         val map = properties.toMutableMap()
         map["token"] = config.apiKey
@@ -64,7 +65,6 @@ internal class PostHogApi(private val config: PostHogConfig, private val seriali
         }
 
         client.newCall(request).execute().use {
-            // TODO: do we handle 429 differently?
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
 
             it.body?.let { body ->

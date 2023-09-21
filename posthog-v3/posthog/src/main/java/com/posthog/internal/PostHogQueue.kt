@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import java.io.File
+import java.io.IOException
 import java.util.Calendar
 import java.util.Date
 import java.util.Timer
@@ -67,11 +68,15 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                     deque.add(file)
                 }
 
-                val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
-                serializer.serializeEvent(event, os.writer().buffered())
-                config.logger.log("Queued event ${file.name}.")
+                try {
+                    val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
+                    serializer.serializeEvent(event, os.writer().buffered())
+                    config.logger.log("Queued event ${file.name}.")
 
-                flushIfOverThreshold()
+                    flushIfOverThreshold()
+                } catch (e: Throwable) {
+                    config.logger.log("Event ${event.event} failed to parse: $e.")
+                }
             }
         }
     }
@@ -120,7 +125,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                 batchEvents()
                 retryCount = 0
             } catch (e: Throwable) {
-                config.logger.log("Flushing failed: $e")
+                config.logger.log("Flushing failed: $e.")
 
                 retry = true
                 retryCount++
@@ -137,22 +142,46 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
 
         val events = mutableListOf<PostHogEvent>()
         for (file in files) {
-            val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
+            try {
+                val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
 
-            val event = serializer.deserializeEvent(inputStream.reader().buffered())
-            event?.let {
-                events.add(it)
+                val event = serializer.deserializeEvent(inputStream.reader().buffered())
+                event?.let {
+                    events.add(it)
+                }
+            } catch (e: Throwable) {
+                synchronized(dequeLock) {
+                    deque.remove(file)
+                }
+                file.delete()
+                config.logger.log("File: ${file.name} failed to parse: $e.")
             }
         }
 
-        api.batch(events)
+        var deleteFiles = true
+        try {
+            api.batch(events)
+        } catch (e: PostHogApiError) {
+            if (e.statusCode >= 400) {
+                // TODO: the reason to delete or not the files?
+            }
+            throw e
+        } catch (e: IOException) {
+            // no connection should try again
+            if (e.isNetworkingError()) {
+                deleteFiles = false
+            }
+            throw e
+        } finally {
+            if (deleteFiles) {
+                synchronized(dequeLock) {
+                    deque.removeAll(files)
+                }
 
-        synchronized(dequeLock) {
-            deque.removeAll(files)
-        }
-
-        files.forEach {
-            it.delete()
+                files.forEach {
+                    it.delete()
+                }
+            }
         }
     }
 
@@ -179,7 +208,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                 }
                 retryCount = 0
             } catch (e: Throwable) {
-                config.logger.log("Flushing failed: $e")
+                config.logger.log("Flushing failed: $e.")
                 retry = true
                 retryCount++
             } finally {
