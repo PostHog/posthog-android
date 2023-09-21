@@ -21,6 +21,11 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
 
     fun loadFeatureFlags(properties: Map<String, Any>) {
         executor.execute {
+            if (config.networkStatus?.isConnected() != true) {
+                config.logger.log("Network isn't connected.")
+                return@execute
+            }
+
             if (isLoadingFeatureFlags.getAndSet(true)) {
                 config.logger.log("Feature flags are being loaded already.")
                 return@execute

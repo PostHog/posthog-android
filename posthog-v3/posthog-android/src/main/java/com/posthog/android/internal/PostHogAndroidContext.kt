@@ -1,6 +1,9 @@
 package com.posthog.android.internal
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Build
 import com.posthog.PostHogConfig
 import com.posthog.PostHogContext
@@ -16,8 +19,7 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         staticContext["\$screen_height"] = displayMetrics.heightPixels
         staticContext["\$screen_width"] = displayMetrics.widthPixels
 
-        val packageInfo = getPackageInfo(context, config)
-        packageInfo?.let {
+        getPackageInfo(context, config)?.let {
             // TODO: check if we should use getApplicationInfo instead
             it.applicationInfo?.loadLabel(context.packageManager)?.let { name ->
                 staticContext["\$app_name"] = name
@@ -35,11 +37,9 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         staticContext["\$device_name"] = Build.DEVICE
         staticContext["\$os_name"] = "Android"
         staticContext["\$os_version"] = Build.VERSION.RELEASE
-        // TODO: $device_token?
 
-        // TODO: read from metadata
-        staticContext["\$lib"] = config.enable
-        staticContext["\$lib_version"] = "version"
+        staticContext["\$lib"] = config.sdkName
+        staticContext["\$lib_version"] = config.sdkVersion
 
         staticContext
     }
@@ -48,6 +48,7 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         return cacheStaticContext
     }
 
+    @SuppressLint("MissingPermission")
     override fun getDynamicContext(): Map<String, Any> {
         val dynamicContext = mutableMapOf<String, Any>()
         dynamicContext["\$locale"] = "${Locale.getDefault().language}-${Locale.getDefault().country}"
@@ -56,7 +57,24 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         }
         dynamicContext["\$timezone"] = TimeZone.getDefault().id
 
-        // TODO: "$network_bluetooth", "$network_carrier","$network_cellular","$network_wifi"
+        context.connectivityManager()?.let { connectivityManager ->
+            // TODO: stop using getNetworkInfo
+            if (context.hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
+                connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI)?.let {
+                    dynamicContext["\$network_wifi"] = it.isConnected
+                }
+            }
+            connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_BLUETOOTH)?.let {
+                dynamicContext["\$network_bluetooth"] = it.isConnected
+            }
+            connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_MOBILE)?.let {
+                dynamicContext["\$network_cellular"] = it.isConnected
+            }
+        }
+
+        context.telephonyManager()?.let {
+            dynamicContext["\$network_carrier"] = it.networkOperatorName
+        }
 
         return dynamicContext
     }

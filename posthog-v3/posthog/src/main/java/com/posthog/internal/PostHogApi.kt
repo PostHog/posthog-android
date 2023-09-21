@@ -57,7 +57,7 @@ internal class PostHogApi(private val config: PostHogConfig, private val seriali
     @Throws(PostHogApiError::class)
     fun decide(properties: Map<String, Any>): Map<String, Any>? {
         val map = properties.toMutableMap()
-        map["api_key"] = config.apiKey
+        map["token"] = config.apiKey
 
         val request = makeRequest("${config.host}/decide/?v=3") {
             serializer.serializeDecideApi(map, it.bufferedWriter())

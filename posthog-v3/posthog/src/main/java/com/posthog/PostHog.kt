@@ -37,9 +37,9 @@ public class PostHog private constructor() {
             val queue = PostHogQueue(config, api, serializer)
             val featureFlags = PostHogFeatureFlags(config, api)
 
-            val enable = config.preferences?.getValue("opt-out", defaultValue = config.enable) as? Boolean
-            enable?.let {
-                config.enable = enable
+            val optOut = config.preferences?.getValue("opt-out", defaultValue = false) as? Boolean
+            optOut?.let {
+                config.optOut = optOut
             }
 
             val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer)
@@ -76,12 +76,12 @@ public class PostHog private constructor() {
         }
     }
 
-    public val anonymousId: String?
+    public val anonymousId: String
         get() {
             if (!isEnabled()) {
-                return null
+                return ""
             }
-            return sessionManager?.anonymousId
+            return sessionManager?.anonymousId ?: ""
         }
 
     public val distinctId: String
@@ -131,7 +131,7 @@ public class PostHog private constructor() {
         if (!isEnabled()) {
             return
         }
-        if (config?.enable == false) {
+        if (config?.optOut == true) {
             config?.logger?.log("PostHog is in OptOut state.")
             return
         }
@@ -145,8 +145,8 @@ public class PostHog private constructor() {
             return
         }
 
-        config?.enable = true
-        config?.preferences?.setValue("opt-out", true)
+        config?.optOut = false
+        config?.preferences?.setValue("opt-out", false)
     }
 
     public fun optOut() {
@@ -154,8 +154,8 @@ public class PostHog private constructor() {
             return
         }
 
-        config?.enable = false
-        config?.preferences?.setValue("opt-out", false)
+        config?.optOut = true
+        config?.preferences?.setValue("opt-out", true)
     }
 
 //    public fun register(key: String, value: Any) {
@@ -202,9 +202,7 @@ public class PostHog private constructor() {
         val oldDistinctId = this.distinctId
 
         val props = mutableMapOf<String, Any>()
-        anonymousId?.let {
-            props["\$anon_distinct_id"] = it
-        }
+        props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
 
         properties?.let {
@@ -241,8 +239,11 @@ public class PostHog private constructor() {
     }
 
     private fun loadFeatureFlagsRequest() {
-        val map = mapOf<String, Any>()
-        featureFlags?.loadFeatureFlags(buildProperties(distinctId, map, null, null))
+        val props = mutableMapOf<String, Any>()
+        props["\$anon_distinct_id"] = anonymousId
+        props["distinct_id"] = distinctId
+
+        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null))
     }
 
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {

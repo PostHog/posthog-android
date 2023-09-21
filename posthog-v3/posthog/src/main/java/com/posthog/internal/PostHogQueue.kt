@@ -109,6 +109,10 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
         }
 
         executor.execute {
+            if (!isConnected()) {
+                return@execute
+            }
+
             var retry = false
             try {
                 batchEvents()
@@ -160,6 +164,10 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
         }
 
         executor.execute {
+            if (!isConnected()) {
+                return@execute
+            }
+
             var retry = false
             try {
                 while (deque.isNotEmpty()) {
@@ -176,6 +184,14 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                 isFlushing.set(false)
             }
         }
+    }
+
+    private fun isConnected(): Boolean {
+        if (config.networkStatus?.isConnected() != true) {
+            config.logger.log("Network isn't connected.")
+            return false
+        }
+        return true
     }
 
     private fun calculateDelay(retry: Boolean) {

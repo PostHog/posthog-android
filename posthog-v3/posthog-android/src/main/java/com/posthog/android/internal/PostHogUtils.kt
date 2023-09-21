@@ -1,9 +1,14 @@
 package com.posthog.android.internal
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
 import android.os.Build
+import android.os.Process
+import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
 import com.posthog.PostHogConfig
 
@@ -36,21 +41,34 @@ internal fun PackageInfo.versionCodeCompat(): Long {
     }
 }
 
-internal fun hasPermission(context: Context): Boolean {
-    return false
-}
-internal fun hasFeature(context: Context): Boolean {
-    return false
-}
-
-internal fun isConnected(context: Context): Boolean {
-    return false
-}
-
 internal fun Context.displayMetrics(): DisplayMetrics {
     return resources.displayMetrics
 }
 
 internal fun Context.appContext(): Context {
     return applicationContext ?: this
+}
+
+internal fun Context.hasPermission(permission: String): Boolean {
+    return checkPermission(permission, Process.myPid(), Process.myUid()) == PackageManager.PERMISSION_GRANTED
+}
+
+@SuppressLint("MissingPermission")
+internal fun Context.isConnected(): Boolean {
+    val connectivityManager = connectivityManager() ?: return true
+
+    if (!hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
+        return true
+    }
+    // TODO: stop using activeNetworkInfo
+    val networkInfo = connectivityManager.activeNetworkInfo ?: return false
+    return networkInfo.isConnected
+}
+
+internal fun Context.connectivityManager(): ConnectivityManager? {
+    return getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+}
+
+internal fun Context.telephonyManager(): TelephonyManager? {
+    return getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
 }

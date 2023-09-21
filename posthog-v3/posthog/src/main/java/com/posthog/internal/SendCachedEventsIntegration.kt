@@ -10,6 +10,11 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
     override fun install() {
         val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread"))
         executor.execute {
+            if (config.networkStatus?.isConnected() != true) {
+                config.logger.log("Network isn't connected.")
+                return@execute
+            }
+
             flushLegacyEvents()
             flushEvents()
         }

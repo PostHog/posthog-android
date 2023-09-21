@@ -8,6 +8,8 @@ import com.posthog.PostHogPrintLogger
 import com.posthog.android.internal.PostHogActivityLifecycleCallback
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
+import com.posthog.android.internal.PostHogAndroidNetworkStatus
+import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import java.io.File
@@ -37,11 +39,14 @@ public class PostHogAndroid private constructor() {
             val path = File(context.cacheDir, "posthog-disk-queue")
             config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
             config.storagePrefix = config.storagePrefix ?: path.absolutePath
-            config.preferences = config.preferences ?: PostHogSharedPreferences(context, config)
+            val preferences = config.preferences ?: PostHogSharedPreferences(context, config)
+            config.preferences = preferences
+            config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
 
             if (context is Application) {
                 config.integrations.add(PostHogActivityLifecycleCallback(context))
             }
+            config.integrations.add(PostHogAppInstallIntegration(context, config))
         }
     }
 }

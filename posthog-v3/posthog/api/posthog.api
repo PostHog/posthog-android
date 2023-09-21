@@ -54,7 +54,6 @@ public final class com/posthog/PostHogConfig {
 	public final fun getContext ()Lcom/posthog/PostHogContext;
 	public final fun getDataMode ()Lcom/posthog/PostHogDataMode;
 	public final fun getDebug ()Z
-	public final fun getEnable ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
@@ -64,6 +63,8 @@ public final class com/posthog/PostHogConfig {
 	public final fun getLogger ()Lcom/posthog/PostHogLogger;
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
+	public final fun getNetworkStatus ()Lcom/posthog/internal/PostHogNetworkStatus;
+	public final fun getOptOut ()Z
 	public final fun getPreferences ()Lcom/posthog/PostHogPreferences;
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getSdkName ()Ljava/lang/String;
@@ -73,7 +74,6 @@ public final class com/posthog/PostHogConfig {
 	public final fun setContext (Lcom/posthog/PostHogContext;)V
 	public final fun setDataMode (Lcom/posthog/PostHogDataMode;)V
 	public final fun setDebug (Z)V
-	public final fun setEnable (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
@@ -81,6 +81,8 @@ public final class com/posthog/PostHogConfig {
 	public final fun setLogger (Lcom/posthog/PostHogLogger;)V
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
+	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
+	public final fun setOptOut (Z)V
 	public final fun setPreferences (Lcom/posthog/PostHogPreferences;)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setSdkName (Ljava/lang/String;)V
@@ -101,8 +103,7 @@ public final class com/posthog/PostHogDataMode : java/lang/Enum {
 	public static fun values ()[Lcom/posthog/PostHogDataMode;
 }
 
-public abstract class com/posthog/PostHogEncryption {
-	public fun <init> ()V
+public abstract interface class com/posthog/PostHogEncryption {
 	public abstract fun decrypt (Ljava/io/InputStream;)Ljava/io/InputStream;
 	public abstract fun encrypt (Ljava/io/OutputStream;)Ljava/io/OutputStream;
 }
@@ -156,5 +157,9 @@ public final class com/posthog/PostHogPreferences$DefaultImpls {
 public final class com/posthog/PostHogPrintLogger : com/posthog/PostHogLogger {
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public fun log (Ljava/lang/String;)V
+}
+
+public abstract interface class com/posthog/internal/PostHogNetworkStatus {
+	public abstract fun isConnected ()Z
 }
 

@@ -1,13 +1,13 @@
 package com.posthog
 
-// TODO: bootstrap
+import com.posthog.internal.PostHogNetworkStatus
 
 public class PostHogConfig(
     // apiKey and host are immutable due to offline caching
     public val apiKey: String,
     public val host: String = "https://app.posthog.com",
     public var debug: Boolean = false,
-    public var enable: Boolean = true,
+    public var optOut: Boolean = false,
     public var sendFeatureFlagEvent: Boolean = true,
     public var preloadFeatureFlags: Boolean = true,
     // min. allowed is 1
@@ -18,7 +18,7 @@ public class PostHogConfig(
     public var flushIntervalSeconds: Int = 30,
 
     public var dataMode: PostHogDataMode = PostHogDataMode.ANY,
-    public var encryption: PostHogEncryption = PostHogEncryption.PostHogEncryptionNone(),
+    public var encryption: PostHogEncryption? = null,
     public val integrations: MutableList<PostHogIntegration> = mutableListOf(),
 ) {
     @PostHogInternal
@@ -45,4 +45,7 @@ public class PostHogConfig(
 
     @PostHogInternal
     public var preferences: PostHogPreferences? = null
+
+    @PostHogInternal
+    public var networkStatus: PostHogNetworkStatus? = null
 }
