@@ -29,4 +29,10 @@ internal class PostHogMemoryPreferences : PostHogPreferences {
             }
         }
     }
+
+    override fun remove(key: String) {
+        synchronized(lock) {
+            preferences.remove(key)
+        }
+    }
 }

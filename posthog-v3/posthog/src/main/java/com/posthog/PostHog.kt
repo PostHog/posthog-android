@@ -5,8 +5,9 @@ import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSerializer
-import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.SendCachedEventsIntegration
+import java.util.Date
+import java.util.UUID
 
 public class PostHog private constructor() {
     @Volatile
@@ -15,7 +16,8 @@ public class PostHog private constructor() {
     private val lock = Any()
 
     private var config: PostHogConfig? = null
-    private var sessionManager: PostHogSessionManager? = null
+
+//    private var sessionManager: PostHogSessionManager? = null
     private var featureFlags: PostHogFeatureFlags? = null
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
@@ -29,9 +31,9 @@ public class PostHog private constructor() {
                 return
             }
 
-            val preferences = config.cachePreferences ?: PostHogMemoryPreferences()
-            config.cachePreferences = preferences
-            sessionManager = PostHogSessionManager(preferences)
+            val cachePreferences = config.cachePreferences ?: PostHogMemoryPreferences()
+            config.cachePreferences = cachePreferences
+//            sessionManager = PostHogSessionManager(cachePreferences)
             val serializer = PostHogSerializer(config)
             val api = PostHogApi(config, serializer)
             val queue = PostHogQueue(config, api, serializer)
@@ -42,7 +44,8 @@ public class PostHog private constructor() {
                 config.optOut = optOut
             }
 
-            val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer)
+            val startDate = Date()
+            val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer, startDate)
 
             this.api = api
             this.config = config
@@ -52,14 +55,35 @@ public class PostHog private constructor() {
 
             config.integrations.add(sendCachedEventsIntegration)
 
+            legacyPreferences(config, serializer)
+
+            queue.start()
+
             config.integrations.forEach {
                 it.install()
             }
 
-            queue.start()
-
             if (config.preloadFeatureFlags) {
                 loadFeatureFlagsRequest()
+            }
+        }
+    }
+
+    private fun legacyPreferences(config: PostHogConfig, serializer: PostHogSerializer) {
+        val cachedPrefs = config.cachePreferences?.getValue(config.apiKey) as? String
+        cachedPrefs?.let {
+            serializer.deserializeCachedProperties(it)?.let { props ->
+                val anonymousId = props["anonymousId"] as? String
+                val distinctId = props["distinctId"] as? String
+
+                anonymousId?.let { anon ->
+                    this.anonymousId = anon
+                }
+                distinctId?.let { dist ->
+                    this.distinctId = dist
+                }
+
+                config.cachePreferences?.remove(config.apiKey)
             }
         }
     }
@@ -76,20 +100,25 @@ public class PostHog private constructor() {
         }
     }
 
-    public val anonymousId: String
+    private var anonymousId: String
         get() {
-            if (!isEnabled()) {
-                return ""
+            var anonymousId = config?.cachePreferences?.getValue("anonymousId") as? String
+            if (anonymousId == null) {
+                anonymousId = UUID.randomUUID().toString()
+                this.anonymousId = anonymousId
             }
-            return sessionManager?.anonymousId ?: ""
+            return anonymousId
+        }
+        set(value) {
+            config?.cachePreferences?.setValue("anonymousId", value)
         }
 
-    public val distinctId: String
+    private var distinctId: String
         get() {
-            if (!isEnabled()) {
-                return ""
-            }
-            return sessionManager?.distinctId ?: ""
+            return config?.cachePreferences?.getValue("distinctId", defaultValue = anonymousId) as? String ?: ""
+        }
+        set(value) {
+            config?.cachePreferences?.setValue("distinctId", value)
         }
 
     private fun buildProperties(distinctId: String, properties: Map<String, Any>?, userProperties: Map<String, Any>?, groupProperties: Map<String, Any>?): Map<String, Any> {
@@ -168,12 +197,6 @@ public class PostHog private constructor() {
         config?.optOut = true
         config?.cachePreferences?.setValue("opt-out", true)
     }
-
-//    public fun register(key: String, value: Any) {
-//    }
-//
-//    public fun unregister(key: String) {
-//    }
 
     public fun screen(screenTitle: String, properties: Map<String, Any>? = null) {
         if (!isEnabled()) {

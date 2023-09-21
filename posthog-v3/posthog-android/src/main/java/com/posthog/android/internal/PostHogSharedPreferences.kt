@@ -42,6 +42,11 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogConfig)
                 is Int -> {
                     edit.putInt(key, value)
                 }
+                is Set<*> -> {
+                    (value as? Set<String>)?.let {
+                        edit.putStringSet(key, it)
+                    }
+                }
             }
 
             edit.apply()
@@ -60,6 +65,14 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogConfig)
                 }
             }
 
+            edit.apply()
+        }
+    }
+
+    override fun remove(key: String) {
+        val edit = sharedPreferences.edit()
+        synchronized(lock) {
+            edit.remove(key)
             edit.apply()
         }
     }

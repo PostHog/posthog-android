@@ -6,8 +6,6 @@ public final class com/posthog/PostHog {
 	public static synthetic fun capture$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun close ()V
 	public final fun flush ()V
-	public final fun getAnonymousId ()Ljava/lang/String;
-	public final fun getDistinctId ()Ljava/lang/String;
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -149,6 +147,7 @@ public abstract interface class com/posthog/PostHogLogger {
 public abstract interface class com/posthog/PostHogPreferences {
 	public abstract fun clear (Ljava/util/List;)V
 	public abstract fun getValue (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun remove (Ljava/lang/String;)V
 	public abstract fun setValue (Ljava/lang/String;Ljava/lang/Object;)V
 }
 

@@ -4,9 +4,11 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
 import java.io.File
+import java.io.FileFilter
+import java.util.Date
 import java.util.concurrent.Executors
 
-internal class SendCachedEventsIntegration(private val config: PostHogConfig, private val api: PostHogApi, private val serializer: PostHogSerializer) : PostHogIntegration {
+internal class SendCachedEventsIntegration(private val config: PostHogConfig, private val api: PostHogApi, private val serializer: PostHogSerializer, private val startDate: Date) : PostHogIntegration {
     override fun install() {
         val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread"))
         executor.execute {
@@ -65,9 +67,12 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
                 return
             }
 
-            // TODO: in case this is executed after new events come in, we have to filter those
-            // they are in the queue already
-            val listFiles = dir.listFiles() ?: arrayOf()
+            // so that we don't try to send events in this batch that is already in the queue
+            // but just cached events
+            val time = startDate.time
+            val fileFilter = FileFilter { file -> file.lastModified() <= time }
+
+            val listFiles = dir.listFiles(fileFilter) ?: emptyArray()
             val events = mutableListOf<PostHogEvent>()
             val iterator = listFiles.iterator()
 
