@@ -268,12 +268,13 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
 
     fun clear() {
         executor.execute {
+            val tempFiles: List<File>
             synchronized(dequeLock) {
-                // TODO: probably have to sync due to timers
-                deque.forEach {
-                    it.delete()
-                }
+                tempFiles = deque.toList()
                 deque.clear()
+            }
+            tempFiles.forEach {
+                it.delete()
             }
         }
     }

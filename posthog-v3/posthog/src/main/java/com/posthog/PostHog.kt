@@ -137,41 +137,44 @@ public class PostHog private constructor() {
             config?.cachePreferences?.setValue("distinctId", value)
         }
 
-    private fun buildProperties(distinctId: String, properties: Map<String, Any>?, userProperties: Map<String, Any>?, groupProperties: Map<String, Any>?): Map<String, Any> {
+    private fun buildProperties(distinctId: String, properties: Map<String, Any>?, userProperties: Map<String, Any>?, groupProperties: Map<String, Any>?, appendSharedProps: Boolean = true): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
-        config?.context?.getStaticContext()?.let {
+        properties?.let {
             props.putAll(it)
         }
 
-        config?.context?.getDynamicContext()?.let {
-            props.putAll(it)
-        }
+        if (appendSharedProps) {
+            config?.context?.getStaticContext()?.let {
+                props.putAll(it)
+            }
 
-        if (config?.sendFeatureFlagEvent == true) {
-            featureFlags?.getFeatureFlags()?.let {
-                if (it.isNotEmpty()) {
-                    val keys = mutableListOf<String>()
-                    for (entry in it.entries) {
-                        props["\$feature/${entry.key}"] = entry.value
-                        keys.add(entry.key)
+            config?.context?.getDynamicContext()?.let {
+                props.putAll(it)
+            }
+
+            if (config?.sendFeatureFlagEvent == true) {
+                featureFlags?.getFeatureFlags()?.let {
+                    if (it.isNotEmpty()) {
+                        val keys = mutableListOf<String>()
+                        for (entry in it.entries) {
+                            props["\$feature/${entry.key}"] = entry.value
+                            keys.add(entry.key)
+                        }
+                        props["\$active_feature_flags"] = keys
                     }
-                    props["\$active_feature_flags"] = keys
                 }
             }
         }
 
         // TODO: $set_once
         userProperties?.let {
+            // TODO: should this be person_properties to decide API?
             props["\$set"] = it
         }
 
         groupProperties?.let {
             props["\$groups"] = it
-        }
-
-        properties?.let {
-            props.putAll(it)
         }
 
         // only set if not there.
@@ -249,11 +252,13 @@ public class PostHog private constructor() {
             return
         }
 
-        val oldDistinctId = this.distinctId
+        val previousDistinctId = this.distinctId
 
         val props = mutableMapOf<String, Any>()
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
+
+        // TODO: do we append groups?
 
         properties?.let {
             props.putAll(it)
@@ -261,7 +266,11 @@ public class PostHog private constructor() {
 
         capture("\$identify", properties = props, userProperties = userProperties)
 
-        if (oldDistinctId != distinctId) {
+        if (previousDistinctId != distinctId) {
+            // We keep the AnonymousId to be used by decide calls and identify to link the previousId
+            this.anonymousId = previousDistinctId
+            this.distinctId = distinctId
+
             reloadFeatureFlagsRequest()
         }
     }
@@ -286,6 +295,8 @@ public class PostHog private constructor() {
             }
             newGroups[type] = key
             preferences.setValue("\$groups", newGroups)
+
+            // TODO: if the group does not exist yet, should we reload the Feature flags?
         }
 
         capture("\$groupidentify", properties = props)
@@ -302,10 +313,11 @@ public class PostHog private constructor() {
         val props = mutableMapOf<String, Any>()
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
+        // TODO: person_properties, group_properties
 
         val groups = config?.memoryPreferences?.getValue("\$groups") as? Map<String, Any>
 
-        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, groups))
+        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, groups, appendSharedProps = false))
     }
 
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {

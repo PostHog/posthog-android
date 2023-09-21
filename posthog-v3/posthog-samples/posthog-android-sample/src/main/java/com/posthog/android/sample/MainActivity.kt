@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.tooling.preview.Preview
-import com.posthog.PostHog
 import com.posthog.android.sample.ui.theme.PostHogAndroidSampleTheme
 
 class MainActivity : ComponentActivity() {
@@ -41,7 +40,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 //            PostHog.optOut()
 //            PostHog.optIn()
 //            PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))
-            PostHog.capture("testEvent", mapOf("testProperty" to "testValue"))
+//            PostHog.capture("testEvent", mapOf("testProperty" to "testValue"))
 //            PostHog.reloadFeatureFlagsRequest()
 //            PostHog.isFeatureEnabled("sessionRecording")
 //            val props = mutableMapOf<String, Any>()
