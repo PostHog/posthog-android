@@ -66,7 +66,9 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                 synchronized(dequeLock) {
                     deque.add(file)
                 }
-                serializer.serializeEvent(event, file.writer().buffered())
+
+                val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
+                serializer.serializeEvent(event, os.writer().buffered())
                 config.logger.log("Queued event ${file.name}.")
 
                 flushIfOverThreshold()
@@ -135,7 +137,9 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
 
         val events = mutableListOf<PostHogEvent>()
         for (file in files) {
-            val event = serializer.deserializeEvent(file.reader().buffered())
+            val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
+
+            val event = serializer.deserializeEvent(inputStream.reader().buffered())
             event?.let {
                 events.add(it)
             }

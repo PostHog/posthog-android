@@ -22,8 +22,6 @@ public class PostHog private constructor() {
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
 
-    // TODO: reachability
-
     public fun setup(config: PostHogConfig) {
         synchronized(lock) {
             if (enabled) {
@@ -433,4 +431,3 @@ public class PostHog private constructor() {
         // TODO: add other methods
     }
 }
-// TODO: $enabled_feature_flags?

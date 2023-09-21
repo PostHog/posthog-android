@@ -4,8 +4,6 @@ import com.posthog.PostHogConfig
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-// TODO: ENABLED_FEATURE_FLAGS_KEY
-
 internal class PostHogFeatureFlags(private val config: PostHogConfig, private val api: PostHogApi) {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogDecideThread"))
 

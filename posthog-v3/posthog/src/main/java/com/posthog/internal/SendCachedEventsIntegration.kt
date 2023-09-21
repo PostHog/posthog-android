@@ -45,7 +45,8 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
             while (iterator.hasNext()) {
                 val eventBytes = iterator.next()
 
-                val event = serializer.deserializeEvent(eventBytes.inputStream().reader().buffered())
+                val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
+                val event = serializer.deserializeEvent(inputStream.reader().buffered())
                 event?.let {
                     events.add(event)
                 }
@@ -79,7 +80,8 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
             while (iterator.hasNext()) {
                 val eventBytes = iterator.next()
 
-                val event = serializer.deserializeEvent(eventBytes.inputStream().reader().buffered())
+                val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
+                val event = serializer.deserializeEvent(inputStream.reader().buffered())
                 event?.let {
                     events.add(event)
                 }
