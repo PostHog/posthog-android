@@ -88,4 +88,10 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
     fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
         return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
+
+    fun getFeatureFlags(): Map<String, Any>? {
+        synchronized(featureFlagsLock) {
+            return featureFlags
+        }
+    }
 }

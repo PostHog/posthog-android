@@ -10,37 +10,57 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogConfig)
 
     private val sharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)
 
+    private val lock = Any()
+
     override fun getValue(key: String, defaultValue: Any?): Any? {
-        return sharedPreferences.all[key] ?: defaultValue
+        synchronized(lock) {
+            return sharedPreferences.all[key] ?: defaultValue
+        }
     }
 
     override fun setValue(key: String, value: Any) {
         val edit = sharedPreferences.edit()
 
-        when (value) {
-            is Boolean -> {
-                edit.putBoolean(key, value)
-            }
-            is String -> {
-                edit.putString(key, value)
-            }
-            is Float -> {
-                edit.putFloat(key, value)
-            }
-            is Long -> {
-                edit.putLong(key, value)
-            }
-            is Int -> {
-                edit.putInt(key, value)
-            }
-        }
+        synchronized(lock) {
+            when (value) {
+                is Boolean -> {
+                    edit.putBoolean(key, value)
+                }
 
-        edit.apply()
+                is String -> {
+                    edit.putString(key, value)
+                }
+
+                is Float -> {
+                    edit.putFloat(key, value)
+                }
+
+                is Long -> {
+                    edit.putLong(key, value)
+                }
+
+                is Int -> {
+                    edit.putInt(key, value)
+                }
+            }
+
+            edit.apply()
+        }
     }
 
-    override fun clear() {
+    override fun clear(except: List<String>) {
         val edit = sharedPreferences.edit()
-        edit.clear()
-        edit.apply()
+
+        synchronized(lock) {
+            val it = sharedPreferences.all.iterator()
+            while (it.hasNext()) {
+                val entry = it.next()
+                if (!except.contains(entry.key)) {
+                    edit.remove(entry.key)
+                }
+            }
+
+            edit.apply()
+        }
     }
 }

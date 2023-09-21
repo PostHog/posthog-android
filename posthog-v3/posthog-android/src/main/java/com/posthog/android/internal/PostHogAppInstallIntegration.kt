@@ -8,7 +8,7 @@ import com.posthog.PostHogIntegration
 internal class PostHogAppInstallIntegration(private val context: Context, private val config: PostHogConfig) : PostHogIntegration {
     override fun install() {
         getPackageInfo(context, config)?.let { packageInfo ->
-            config.preferences?.let { preferences ->
+            config.cachePreferences?.let { preferences ->
                 val versionName = packageInfo.versionName
                 val versionCode = packageInfo.versionCodeCompat()
 
@@ -36,6 +36,8 @@ internal class PostHogAppInstallIntegration(private val context: Context, privat
                 preferences.setValue("version", versionName)
                 preferences.setValue("build", versionCode)
 
+                // TODO: do we need ot send an event every time as an update? we need to compare the Ids maybe?
+                // maybe it didnt change
                 PostHog.capture(event, properties = props)
             }
         }

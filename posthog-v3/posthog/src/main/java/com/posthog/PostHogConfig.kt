@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
 
 public class PostHogConfig(
@@ -44,7 +45,9 @@ public class PostHogConfig(
     public var storagePrefix: String? = null
 
     @PostHogInternal
-    public var preferences: PostHogPreferences? = null
+    public var cachePreferences: PostHogPreferences? = null
+
+    internal var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
 
     @PostHogInternal
     public var networkStatus: PostHogNetworkStatus? = null

@@ -6,7 +6,7 @@ import java.util.UUID
 
 public data class PostHogEvent(
     val event: String,
-    @SerializedName("distinct_id") // its now called $distinct_id but we need to keep compatibility
+    @SerializedName("distinct_id")
     val distinctId: String,
     val properties: Map<String, Any>? = null,
     val timestamp: Date = Date(),

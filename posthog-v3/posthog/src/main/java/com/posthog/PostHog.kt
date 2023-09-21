@@ -29,15 +29,15 @@ public class PostHog private constructor() {
                 return
             }
 
-            val preferences = config.preferences ?: PostHogMemoryPreferences()
-            config.preferences = preferences
+            val preferences = config.cachePreferences ?: PostHogMemoryPreferences()
+            config.cachePreferences = preferences
             sessionManager = PostHogSessionManager(preferences)
             val serializer = PostHogSerializer(config)
             val api = PostHogApi(config, serializer)
             val queue = PostHogQueue(config, api, serializer)
             val featureFlags = PostHogFeatureFlags(config, api)
 
-            val optOut = config.preferences?.getValue("opt-out", defaultValue = false) as? Boolean
+            val optOut = config.cachePreferences?.getValue("opt-out", defaultValue = false) as? Boolean
             optOut?.let {
                 config.optOut = optOut
             }
@@ -103,7 +103,18 @@ public class PostHog private constructor() {
             props.putAll(it)
         }
 
-        // TODO: $feature/* properties, $active_feature_flags array
+        if (config?.sendFeatureFlagEvent == true) {
+            featureFlags?.getFeatureFlags()?.let {
+                if (it.isNotEmpty()) {
+                    val keys = mutableListOf<String>()
+                    for (entry in it.entries) {
+                        props["\$feature/${entry.key}"] = entry.value
+                        keys.add(entry.key)
+                    }
+                    props["\$active_feature_flags"] = keys
+                }
+            }
+        }
 
         // TODO: $set_once
         userProperties?.let {
@@ -146,7 +157,7 @@ public class PostHog private constructor() {
         }
 
         config?.optOut = false
-        config?.preferences?.setValue("opt-out", false)
+        config?.cachePreferences?.setValue("opt-out", false)
     }
 
     public fun optOut() {
@@ -155,7 +166,7 @@ public class PostHog private constructor() {
         }
 
         config?.optOut = true
-        config?.preferences?.setValue("opt-out", true)
+        config?.cachePreferences?.setValue("opt-out", true)
     }
 
 //    public fun register(key: String, value: Any) {
@@ -228,6 +239,16 @@ public class PostHog private constructor() {
             props["\$group_set"] = it
         }
 
+        config?.memoryPreferences?.let { preferences ->
+            val groups = preferences.getValue("\$groups") as? Map<String, Any>
+            val newGroups = mutableMapOf<String, Any>()
+            groups?.let {
+                newGroups.putAll(it)
+            }
+            newGroups[type] = key
+            preferences.setValue("\$groups", newGroups)
+        }
+
         capture("\$groupidentify", properties = props)
     }
 
@@ -243,7 +264,9 @@ public class PostHog private constructor() {
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
 
-        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null))
+        val groups = config?.memoryPreferences?.getValue("\$groups") as? Map<String, Any>
+
+        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, groups))
     }
 
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
@@ -292,7 +315,11 @@ public class PostHog private constructor() {
         if (!isEnabled()) {
             return
         }
-        config?.preferences?.clear()
+
+        // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
+        // of 'Application Installed' events and under-sending of 'Application Updated' events
+        config?.cachePreferences?.clear(listOf("build", "build"))
+        config?.memoryPreferences?.clear(listOf())
         queue?.clear()
     }
 
@@ -377,6 +404,10 @@ public class PostHog private constructor() {
             shared.optOut()
         }
 
+        public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null) {
+            shared.group(type, key, groupProperties = groupProperties)
+        }
         // TODO: add other methods
     }
 }
+// TODO: $enabled_feature_flags?

@@ -35,6 +35,8 @@ public final class com/posthog/PostHog$Companion {
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun group$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public static synthetic fun identify$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
@@ -51,6 +53,7 @@ public final class com/posthog/PostHogConfig {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogDataMode;Lcom/posthog/PostHogEncryption;Ljava/util/List;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogDataMode;Lcom/posthog/PostHogEncryption;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getApiKey ()Ljava/lang/String;
+	public final fun getCachePreferences ()Lcom/posthog/PostHogPreferences;
 	public final fun getContext ()Lcom/posthog/PostHogContext;
 	public final fun getDataMode ()Lcom/posthog/PostHogDataMode;
 	public final fun getDebug ()Z
@@ -65,12 +68,12 @@ public final class com/posthog/PostHogConfig {
 	public final fun getMaxQueueSize ()I
 	public final fun getNetworkStatus ()Lcom/posthog/internal/PostHogNetworkStatus;
 	public final fun getOptOut ()Z
-	public final fun getPreferences ()Lcom/posthog/PostHogPreferences;
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
 	public final fun getStoragePrefix ()Ljava/lang/String;
+	public final fun setCachePreferences (Lcom/posthog/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/PostHogContext;)V
 	public final fun setDataMode (Lcom/posthog/PostHogDataMode;)V
 	public final fun setDebug (Z)V
@@ -83,7 +86,6 @@ public final class com/posthog/PostHogConfig {
 	public final fun setMaxQueueSize (I)V
 	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
 	public final fun setOptOut (Z)V
-	public final fun setPreferences (Lcom/posthog/PostHogPreferences;)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
@@ -145,7 +147,7 @@ public abstract interface class com/posthog/PostHogLogger {
 }
 
 public abstract interface class com/posthog/PostHogPreferences {
-	public abstract fun clear ()V
+	public abstract fun clear (Ljava/util/List;)V
 	public abstract fun getValue (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun setValue (Ljava/lang/String;Ljava/lang/Object;)V
 }

@@ -5,5 +5,5 @@ public interface PostHogPreferences {
 
     public fun setValue(key: String, value: Any)
 
-    public fun clear()
+    public fun clear(except: List<String>)
 }
