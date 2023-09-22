@@ -1,6 +1,5 @@
 package com.posthog
 
-import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
 
 public class PostHogConfig(
@@ -8,6 +7,7 @@ public class PostHogConfig(
     public val apiKey: String,
     public val host: String = "https://app.posthog.com",
     public var debug: Boolean = false,
+    @Volatile
     public var optOut: Boolean = false,
     public var sendFeatureFlagEvent: Boolean = true,
     public var preloadFeatureFlags: Boolean = true,
@@ -45,8 +45,6 @@ public class PostHogConfig(
 
     @PostHogInternal
     public var cachePreferences: PostHogPreferences? = null
-
-    internal var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
 
     @PostHogInternal
     public var networkStatus: PostHogNetworkStatus? = null

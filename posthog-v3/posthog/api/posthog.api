@@ -2,8 +2,8 @@ public final class com/posthog/PostHog {
 	public static final field Companion Lcom/posthog/PostHog$Companion;
 	public final fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun alias$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
-	public final fun capture (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
-	public static synthetic fun capture$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
+	public final fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public static synthetic fun capture$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun close ()V
 	public final fun flush ()V
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -11,10 +11,11 @@ public final class com/posthog/PostHog {
 	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public final fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun group$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
-	public final fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
-	public static synthetic fun identify$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
+	public final fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public static synthetic fun identify$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog;Ljava/lang/String;ZILjava/lang/Object;)Z
+	public final fun isOptOut ()Z
 	public final fun optIn ()V
 	public final fun optOut ()V
 	public final fun reloadFeatureFlagsRequest ()V
@@ -27,8 +28,8 @@ public final class com/posthog/PostHog {
 public final class com/posthog/PostHog$Companion {
 	public final fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun alias$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
-	public final fun capture (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
-	public static synthetic fun capture$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
+	public final fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public static synthetic fun capture$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun close ()V
 	public final fun flush ()V
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -37,10 +38,11 @@ public final class com/posthog/PostHog$Companion {
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun group$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
-	public final fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
-	public static synthetic fun identify$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
+	public final fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public static synthetic fun identify$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHog$Companion;Ljava/lang/String;ZILjava/lang/Object;)Z
+	public final fun isOptOut ()Z
 	public final fun optIn ()V
 	public final fun optOut ()V
 	public final fun reloadFeatureFlagsRequest ()V

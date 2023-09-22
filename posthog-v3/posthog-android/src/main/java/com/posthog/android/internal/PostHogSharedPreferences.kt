@@ -13,9 +13,11 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogConfig)
     private val lock = Any()
 
     override fun getValue(key: String, defaultValue: Any?): Any? {
+        val defValue: Any?
         synchronized(lock) {
-            return sharedPreferences.all[key] ?: defaultValue
+            defValue = sharedPreferences.all[key] ?: defaultValue
         }
+        return defValue
     }
 
     override fun setValue(key: String, value: Any) {

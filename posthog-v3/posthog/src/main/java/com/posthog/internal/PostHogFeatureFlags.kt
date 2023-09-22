@@ -5,6 +5,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class PostHogFeatureFlags(private val config: PostHogConfig, private val api: PostHogApi) {
+    // TODO: do we need the onFeatureFlags callback?
+
+    // TODO: do we need Overriding server properties?
+    // https://posthog.com/docs/libraries/js#overriding-server-properties
+
+    // TODO: Early access feature?
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogDecideThread"))
 
     private var isLoadingFeatureFlags = AtomicBoolean(false)
@@ -31,12 +37,20 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
 
             try {
                 val result = api.decide(properties)
-                val featureFlags = result?.get("featureFlags") as? Map<String, Any>
-                val featureFlagPayloads = result?.get("featureFlagPayloads") as? Map<String, Any>
+
+                val errorsWhileComputingFlags = result?.get("errorsWhileComputingFlags") as? Boolean ?: false
+
+                val featureFlags = result?.get("featureFlags") as? Map<String, Any> ?: mapOf()
+                val featureFlagPayloads = result?.get("featureFlagPayloads") as? Map<String, Any> ?: mapOf()
 
                 synchronized(featureFlagsLock) {
-                    this.featureFlags = featureFlags
-                    this.featureFlagPayloads = featureFlagPayloads
+                    if (!errorsWhileComputingFlags) {
+                        this.featureFlags = (this.featureFlags ?: mapOf()) + featureFlags
+                        this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + featureFlagPayloads
+                    } else {
+                        this.featureFlags = featureFlags
+                        this.featureFlagPayloads = featureFlagPayloads
+                    }
                 }
 
                 isFeatureFlagsLoaded = true
@@ -88,8 +102,17 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
     }
 
     fun getFeatureFlags(): Map<String, Any>? {
+        val flags: Map<String, Any>?
         synchronized(featureFlagsLock) {
-            return featureFlags
+            flags = featureFlags?.toMap()
+        }
+        return flags
+    }
+
+    fun clear() {
+        synchronized(featureFlagsLock) {
+            featureFlags = null
+            featureFlagPayloads = null
         }
     }
 }

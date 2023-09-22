@@ -7,9 +7,11 @@ internal class PostHogMemoryPreferences : PostHogPreferences {
     private val preferences = mutableMapOf<String, Any>()
 
     override fun getValue(key: String, defaultValue: Any?): Any? {
+        val value: Any?
         synchronized(lock) {
-            return preferences[key] ?: defaultValue
+            value = preferences[key] ?: defaultValue
         }
+        return value
     }
 
     override fun setValue(key: String, value: Any) {

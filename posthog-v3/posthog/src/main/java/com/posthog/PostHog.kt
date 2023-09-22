@@ -13,16 +13,19 @@ public class PostHog private constructor() {
     @Volatile
     private var enabled = false
 
-    private val lock = Any()
+    private val lockSetup = Any()
+    private val lockOptOut = Any()
+    private val anonymousLock = Any()
 
     private var config: PostHogConfig? = null
 
     private var featureFlags: PostHogFeatureFlags? = null
     private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
+    private var memoryPreferences = PostHogMemoryPreferences()
 
     public fun setup(config: PostHogConfig) {
-        synchronized(lock) {
+        synchronized(lockSetup) {
             try {
                 if (enabled) {
                     config.logger.log("Setup called despite already being setup!")
@@ -36,6 +39,7 @@ public class PostHog private constructor() {
                 val queue = PostHogQueue(config, api, serializer)
                 val featureFlags = PostHogFeatureFlags(config, api)
 
+                // no need to lock optOut here since the setup is locked already
                 val optOut = config.cachePreferences?.getValue("opt-out", defaultValue = false) as? Boolean
                 optOut?.let {
                     config.optOut = optOut
@@ -84,8 +88,8 @@ public class PostHog private constructor() {
                     anonymousId?.let { anon ->
                         this.anonymousId = anon
                     }
-                    distinctId?.let { dist ->
-                        this.distinctId = dist
+                    distinctId?.let { distId ->
+                        this.distinctId = distId
                     }
 
                     config.cachePreferences?.remove(config.apiKey)
@@ -97,7 +101,7 @@ public class PostHog private constructor() {
     }
 
     public fun close() {
-        synchronized(lock) {
+        synchronized(lockSetup) {
             try {
                 enabled = false
 
@@ -118,12 +122,15 @@ public class PostHog private constructor() {
 
     private var anonymousId: String
         get() {
-            var anonymousId = config?.cachePreferences?.getValue("anonymousId") as? String
-            if (anonymousId == null) {
-                anonymousId = UUID.randomUUID().toString()
-                this.anonymousId = anonymousId
+            var anonymousId: String?
+            synchronized(anonymousLock) {
+                anonymousId = config?.cachePreferences?.getValue("anonymousId") as? String
+                if (anonymousId == null) {
+                    anonymousId = UUID.randomUUID().toString()
+                    this.anonymousId = anonymousId ?: ""
+                }
             }
-            return anonymousId
+            return anonymousId ?: ""
         }
         set(value) {
             config?.cachePreferences?.setValue("anonymousId", value)
@@ -137,7 +144,14 @@ public class PostHog private constructor() {
             config?.cachePreferences?.setValue("distinctId", value)
         }
 
-    private fun buildProperties(distinctId: String, properties: Map<String, Any>?, userProperties: Map<String, Any>?, groupProperties: Map<String, Any>?, appendSharedProps: Boolean = true): Map<String, Any> {
+    private fun buildProperties(
+        distinctId: String,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groupProperties: Map<String, Any>?,
+        appendSharedProps: Boolean = true,
+    ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
         properties?.let {
@@ -167,10 +181,13 @@ public class PostHog private constructor() {
             }
         }
 
-        // TODO: $set_once
         userProperties?.let {
             // TODO: should this be person_properties to decide API?
             props["\$set"] = it
+        }
+
+        userPropertiesSetOnce?.let {
+            props["\$set_once"] = it
         }
 
         groupProperties?.let {
@@ -186,7 +203,14 @@ public class PostHog private constructor() {
     }
 
     // test: $merge_dangerously
-    public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null, groupProperties: Map<String, Any>? = null) {
+    public fun capture(
+        event: String,
+        distinctId: String? = null,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        groupProperties: Map<String, Any>? = null,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -195,7 +219,9 @@ public class PostHog private constructor() {
             return
         }
 
-        val postHogEvent = PostHogEvent(event, distinctId, properties = buildProperties(distinctId, properties, userProperties, groupProperties))
+        val newDistinctId = distinctId ?: this.distinctId
+
+        val postHogEvent = PostHogEvent(event, newDistinctId, properties = buildProperties(newDistinctId, properties, userProperties, userPropertiesSetOnce, groupProperties))
         queue?.add(postHogEvent)
     }
 
@@ -204,8 +230,10 @@ public class PostHog private constructor() {
             return
         }
 
-        config?.optOut = false
-        config?.cachePreferences?.setValue("opt-out", false)
+        synchronized(lockOptOut) {
+            config?.optOut = false
+            config?.cachePreferences?.setValue("opt-out", false)
+        }
     }
 
     public fun optOut() {
@@ -213,8 +241,17 @@ public class PostHog private constructor() {
             return
         }
 
-        config?.optOut = true
-        config?.cachePreferences?.setValue("opt-out", true)
+        synchronized(lockOptOut) {
+            config?.optOut = true
+            config?.cachePreferences?.setValue("opt-out", true)
+        }
+    }
+
+    public fun isOptOut(): Boolean {
+        if (!isEnabled()) {
+            return true
+        }
+        return config?.optOut ?: true
     }
 
     public fun screen(screenTitle: String, properties: Map<String, Any>? = null) {
@@ -247,7 +284,12 @@ public class PostHog private constructor() {
         capture("\$create_alias", properties = props)
     }
 
-    public fun identify(distinctId: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
+    public fun identify(
+        distinctId: String,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -264,7 +306,7 @@ public class PostHog private constructor() {
             props.putAll(it)
         }
 
-        capture("\$identify", properties = props, userProperties = userProperties)
+        capture("\$identify", properties = props, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
 
         if (previousDistinctId != distinctId) {
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
@@ -287,17 +329,15 @@ public class PostHog private constructor() {
             props["\$group_set"] = it
         }
 
-        config?.memoryPreferences?.let { preferences ->
-            val groups = preferences.getValue("\$groups") as? Map<String, Any>
-            val newGroups = mutableMapOf<String, Any>()
-            groups?.let {
-                newGroups.putAll(it)
-            }
-            newGroups[type] = key
-            preferences.setValue("\$groups", newGroups)
-
-            // TODO: if the group does not exist yet, should we reload the Feature flags?
+        val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
+        val newGroups = mutableMapOf<String, Any>()
+        groups?.let {
+            newGroups.putAll(it)
         }
+        newGroups[type] = key
+        memoryPreferences.setValue("\$groups", newGroups)
+
+        // TODO: if the group does not exist yet, should we reload the Feature flags?
 
         capture("\$groupidentify", properties = props)
     }
@@ -315,9 +355,9 @@ public class PostHog private constructor() {
         props["distinct_id"] = distinctId
         // TODO: person_properties, group_properties
 
-        val groups = config?.memoryPreferences?.getValue("\$groups") as? Map<String, Any>
+        val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
 
-        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, groups, appendSharedProps = false))
+        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null, groups, appendSharedProps = false))
     }
 
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
@@ -361,14 +401,17 @@ public class PostHog private constructor() {
     }
 
     public fun reset() {
+        // TODO: do we need a $device_id? because reset cleans the anon and distinct_id, so technically
+        // a new user every time, do we wanna know if there are multiple users from the same device?
         if (!isEnabled()) {
             return
         }
 
+        memoryPreferences.clear(listOf())
         // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
         config?.cachePreferences?.clear(listOf("build", "build"))
-        config?.memoryPreferences?.clear(listOf())
+        featureFlags?.clear()
         queue?.clear()
     }
 
@@ -413,12 +456,24 @@ public class PostHog private constructor() {
             shared.close()
         }
 
-        public fun capture(event: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null, groupProperties: Map<String, Any>? = null) {
-            shared.capture(event, properties = properties, userProperties = userProperties, groupProperties = groupProperties)
+        public fun capture(
+            event: String,
+            distinctId: String? = null,
+            properties: Map<String, Any>? = null,
+            userProperties: Map<String, Any>? = null,
+            userPropertiesSetOnce: Map<String, Any>? = null,
+            groupProperties: Map<String, Any>? = null,
+        ) {
+            shared.capture(event, distinctId = distinctId, properties = properties, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce, groupProperties = groupProperties)
         }
 
-        public fun identify(distinctId: String, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null) {
-            shared.identify(distinctId, properties = properties, userProperties = userProperties)
+        public fun identify(
+            distinctId: String,
+            properties: Map<String, Any>? = null,
+            userProperties: Map<String, Any>? = null,
+            userPropertiesSetOnce: Map<String, Any>? = null,
+        ) {
+            shared.identify(distinctId, properties = properties, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
         }
 
         public fun reloadFeatureFlagsRequest() {
@@ -464,5 +519,11 @@ public class PostHog private constructor() {
         public fun alias(alias: String, properties: Map<String, Any>? = null) {
             shared.alias(alias, properties = properties)
         }
+
+        public fun isOptOut(): Boolean {
+            return shared.isOptOut()
+        }
     }
 }
+
+// TODO: question about persisted properties, do we cache within the same session?

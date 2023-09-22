@@ -16,7 +16,6 @@
     "$lib": "posthog-android",
     "$device_name": "emu64a",
     "$network_carrier": "T-Mobile",
-    "$device_id": "51432a27add1fd4b",
     "$app_name": "My Application",
     "$device_model": "sdk_gphone64_arm64",
     "$lib_version": "version",
