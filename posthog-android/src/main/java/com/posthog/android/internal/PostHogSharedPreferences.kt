@@ -2,10 +2,10 @@ package com.posthog.android.internal
 
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
-import com.posthog.PostHogConfig
 import com.posthog.PostHogPreferences
+import com.posthog.android.PostHogAndroidConfig
 
-internal class PostHogSharedPreferences(context: Context, config: PostHogConfig) :
+internal class PostHogSharedPreferences(context: Context, config: PostHogAndroidConfig) :
     PostHogPreferences {
 
     private val sharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)

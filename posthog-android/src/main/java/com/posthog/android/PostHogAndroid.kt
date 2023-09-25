@@ -3,7 +3,6 @@ package com.posthog.android
 import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
-import com.posthog.PostHogConfig
 import com.posthog.PostHogPrintLogger
 import com.posthog.android.internal.PostHogActivityLifecycleCallback
 import com.posthog.android.internal.PostHogAndroidContext
@@ -23,7 +22,7 @@ public class PostHogAndroid private constructor() {
          * @property context the Context
          * @property config the Config
          */
-        public fun setup(context: Context, config: PostHogConfig) {
+        public fun setup(context: Context, config: PostHogAndroidConfig) {
             synchronized(lock) {
                 setAndroidConfig(context.appContext(), config)
 
@@ -31,12 +30,12 @@ public class PostHogAndroid private constructor() {
             }
         }
 
-        public fun with(context: Context, config: PostHogConfig): PostHog {
+        public fun with(context: Context, config: PostHogAndroidConfig): PostHog {
             setAndroidConfig(context.appContext(), config)
             return PostHog.with(config)
         }
 
-        private fun setAndroidConfig(context: Context, config: PostHogConfig) {
+        private fun setAndroidConfig(context: Context, config: PostHogAndroidConfig) {
             config.logger = if (config.logger is PostHogPrintLogger) PostHogAndroidLogger(config) else config.logger
             config.context = config.context ?: PostHogAndroidContext(context, config)
 
@@ -50,9 +49,9 @@ public class PostHogAndroid private constructor() {
             config.sdkVersion = BuildConfig.VERSION_NAME
 
             if (context is Application) {
-                config.integrations.add(PostHogActivityLifecycleCallback(context))
+                config.addIntegration(PostHogActivityLifecycleCallback(context, config))
             }
-            config.integrations.add(PostHogAppInstallIntegration(context, config))
+            config.addIntegration(PostHogAppInstallIntegration(context, config))
         }
     }
 }

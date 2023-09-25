@@ -5,12 +5,12 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Build
-import com.posthog.PostHogConfig
 import com.posthog.PostHogContext
+import com.posthog.android.PostHogAndroidConfig
 import java.util.Locale
 import java.util.TimeZone
 
-internal class PostHogAndroidContext(private val context: Context, private val config: PostHogConfig) : PostHogContext {
+internal class PostHogAndroidContext(private val context: Context, private val config: PostHogAndroidConfig) : PostHogContext {
 
     private val cacheStaticContext by lazy {
         val staticContext = mutableMapOf<String, Any>()

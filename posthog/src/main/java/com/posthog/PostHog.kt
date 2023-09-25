@@ -54,7 +54,7 @@ public class PostHog private constructor() {
                 this.featureFlags = featureFlags
                 enabled = true
 
-                config.integrations.add(sendCachedEventsIntegration)
+                config.addIntegration(sendCachedEventsIntegration)
 
                 legacyPreferences(config, serializer)
 

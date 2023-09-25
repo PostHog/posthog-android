@@ -2,7 +2,7 @@ package com.posthog
 
 import PostHog.posthog.BuildConfig
 
-public class PostHogConfig(
+public open class PostHogConfig(
     // apiKey and host are immutable due to offline caching
     public val apiKey: String,
     public val host: String = "https://app.posthog.com",
@@ -19,7 +19,6 @@ public class PostHogConfig(
     public var flushIntervalSeconds: Int = 30,
 
     public var encryption: PostHogEncryption? = null,
-    public val integrations: MutableList<PostHogIntegration> = mutableListOf(),
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogPrintLogger(this)
@@ -46,4 +45,28 @@ public class PostHogConfig(
 
     @PostHogInternal
     public var networkStatus: PostHogNetworkStatus? = null
+
+    private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
+    private val integrationLock = Any()
+
+    public val integrations: List<PostHogIntegration>
+        get() {
+            val list: List<PostHogIntegration>
+            synchronized(integrationLock) {
+                list = integrationsList.toList()
+            }
+            return list
+        }
+
+    public fun addIntegration(integration: PostHogIntegration) {
+        synchronized(integrationLock) {
+            integrationsList.add(integration)
+        }
+    }
+
+    public fun removeIntegration(integration: PostHogIntegration) {
+        synchronized(integrationLock) {
+            integrationsList.remove(integration)
+        }
+    }
 }

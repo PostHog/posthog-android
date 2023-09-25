@@ -2,19 +2,21 @@ package com.posthog.android.internal
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.PackageManager.GET_META_DATA
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Process
 import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
-import com.posthog.PostHogConfig
+import com.posthog.android.PostHogAndroidConfig
 
 internal fun getPackageInfo(
     context: Context,
-    config: PostHogConfig,
+    config: PostHogAndroidConfig,
 ): PackageInfo? {
     return try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -71,4 +73,14 @@ internal fun Context.connectivityManager(): ConnectivityManager? {
 
 internal fun Context.telephonyManager(): TelephonyManager? {
     return getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+}
+
+internal fun Activity.activityLabel(config: PostHogAndroidConfig): String? {
+    return try {
+        val info = packageManager.getActivityInfo(componentName, GET_META_DATA)
+        info.loadLabel(packageManager).toString()
+    } catch (e: Throwable) {
+        config.logger.log("Error getting the Activity's label: $e.")
+        null
+    }
 }
