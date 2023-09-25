@@ -16,9 +16,6 @@ jobs:
   release:
     name: Release Job ${{ matrix.os }} - Java ${{ matrix.java }}
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:  
-        working-directory: ./posthog-v3
     strategy:
       fail-fast: false
       matrix:
