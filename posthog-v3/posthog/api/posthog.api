@@ -89,7 +89,6 @@ public final class com/posthog/PostHogConfig {
 	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
 	public final fun setOptOut (Z)V
 	public final fun setPreloadFeatureFlags (Z)V
-	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
 	public final fun setStoragePrefix (Ljava/lang/String;)V

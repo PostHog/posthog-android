@@ -1,5 +1,6 @@
 package com.posthog
 
+import PostHog.posthog.BuildConfig
 import com.posthog.internal.PostHogNetworkStatus
 
 public class PostHogConfig(
@@ -27,16 +28,16 @@ public class PostHogConfig(
     @PostHogInternal
     public var context: PostHogContext? = null
 
-    // TODO: read the repo name and version
     @PostHogInternal
-    public var sdkName: String = "posthog-android"
+    public val sdkName: String = "posthog-android"
 
     @PostHogInternal
-    public var sdkVersion: String = "3.0.0"
+    public var sdkVersion: String = BuildConfig.VERSION_NAME
 
     internal val userAgent: String = "$sdkName/$sdkVersion"
 
-    // should this be configurable by the user?
+    // TODO: should this be configurable by the user?
+    // should we allow in memory cache only?
     @PostHogInternal
     public var legacyStoragePrefix: String? = null
 

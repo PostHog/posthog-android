@@ -47,6 +47,7 @@ public class PostHogAndroid private constructor() {
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
+            config.sdkVersion = BuildConfig.VERSION_NAME
 
             if (context is Application) {
                 config.integrations.add(PostHogActivityLifecycleCallback(context))

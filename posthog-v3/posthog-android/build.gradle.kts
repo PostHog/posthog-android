@@ -23,6 +23,8 @@ android {
         buildFeatures {
             buildConfig = true
         }
+
+        buildConfigField("String", "VERSION_NAME", "\"${project.version}\"")
     }
 
     buildTypes {

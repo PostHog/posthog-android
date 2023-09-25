@@ -28,7 +28,6 @@ internal class PostHogAndroidContext(private val context: Context, private val c
                 staticContext["\$app_version"] = name
             }
             staticContext["\$app_namespace"] = it.packageName
-            // TODO: is it string instead?
             staticContext["\$app_build"] = it.versionCodeCompat()
         }
 

@@ -7,6 +7,10 @@ import org.gradle.kotlin.dsl.findByType
 import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.dokka.gradle.DokkaTask
 
+object PostHogPublishConfig {
+    val versionNameProperty = "versionName"
+}
+
 fun Project.publishingAndroidConfig() {
     val projectName = name
 
@@ -66,7 +70,7 @@ fun MavenPom.postHogConfig(projectName: String, repo: String = "posthog-android"
     licenses {
         license {
             name.set("MIT")
-            url.set("https://github.com/PostHog/$repo/blob/master/LICENSE.md")
+            url.set("http://opensource.org/licenses/MIT")
         }
     }
     organization {
@@ -92,7 +96,7 @@ fun MavenPom.postHogConfig(projectName: String, repo: String = "posthog-android"
 fun MavenPublication.postHogConfig(projectName: String, properties: Map<String, Any?>) {
     groupId = "com.posthog"
     artifactId = projectName
-    version = properties["versionName"].toString()
+    version = properties[PostHogPublishConfig.versionNameProperty].toString()
 }
 
 fun SigningExtension.postHogConfig(variantName: String, publishingExtension: PublishingExtension?) {

@@ -36,7 +36,7 @@ internal class PostHogAppInstallIntegration(private val context: Context, privat
                 preferences.setValue("version", versionName)
                 preferences.setValue("build", versionCode)
 
-                // TODO: do we need ot send an event every time as an update? we need to compare the Ids maybe?
+                // TODO: do we need to send an event every time as an update? we need to compare the Ids maybe?
                 // maybe it didnt change
                 PostHog.capture(event, properties = props)
             }

@@ -10,11 +10,18 @@ plugins {
     `maven-publish`
     signing
     id("org.jetbrains.dokka")
+
+    // plugins
+    id("com.github.gmazzo.buildconfig")
 }
 
 configure<JavaPluginExtension> {
     sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
     targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+}
+
+buildConfig {
+    buildConfigField("String", "VERSION_NAME", "\"${project.version}\"")
 }
 
 val dokkaJavadocJar by tasks.register<Jar>("dokkaJavadocJar") {

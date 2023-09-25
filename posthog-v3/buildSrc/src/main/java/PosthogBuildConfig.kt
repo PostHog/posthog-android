@@ -27,5 +27,6 @@ object PosthogBuildConfig {
         val SPOTLESS = "6.21.0"
         val DETEKT = "1.23.1"
         val API_VALIDATOR = "0.13.2"
+        val BUILD_CONFIG = "4.1.2"
     }
 }
