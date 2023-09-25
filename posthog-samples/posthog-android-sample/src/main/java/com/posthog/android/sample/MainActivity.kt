@@ -41,9 +41,9 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 //            PostHog.optOut()
 //            PostHog.optIn()
 //            PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))
-//            PostHog.capture("testEvent", mapOf("testProperty" to "testValue"))
+            PostHog.capture("testEvent", properties = mapOf("testProperty" to "testValue"))
 //            PostHog.reloadFeatureFlagsRequest()
-            PostHog.isFeatureEnabled("sessionRecording")
+//            PostHog.isFeatureEnabled("sessionRecording")
 //            val props = mutableMapOf<String, Any>()
 //            props["test_key"] = "test_value"
 //            PostHog.group("theType", "theKey", groupProperties = props)

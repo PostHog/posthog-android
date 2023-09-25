@@ -1,5 +1,6 @@
 package com.posthog
 
+@PostHogInternal
 public interface PostHogPreferences {
     public fun getValue(key: String, defaultValue: Any? = null): Any?
 

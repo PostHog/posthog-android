@@ -15,8 +15,3 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 	public final fun with (Landroid/content/Context;Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHog;
 }
 
-public final class com/posthog/android/internal/PostHogAndroidNetworkStatus : com/posthog/internal/PostHogNetworkStatus {
-	public fun <init> (Landroid/content/Context;)V
-	public fun isConnected ()Z
-}
-

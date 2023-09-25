@@ -1,5 +1,6 @@
 package com.posthog
 
+@PostHogInternal
 public interface PostHogContext {
     public fun getStaticContext(): Map<String, Any>
 

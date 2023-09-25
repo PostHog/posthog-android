@@ -1,7 +1,6 @@
 package com.posthog
 
 import PostHog.posthog.BuildConfig
-import com.posthog.internal.PostHogNetworkStatus
 
 public class PostHogConfig(
     // apiKey and host are immutable due to offline caching

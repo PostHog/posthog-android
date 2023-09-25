@@ -69,7 +69,7 @@ public final class com/posthog/PostHogConfig {
 	public final fun getLogger ()Lcom/posthog/PostHogLogger;
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
-	public final fun getNetworkStatus ()Lcom/posthog/internal/PostHogNetworkStatus;
+	public final fun getNetworkStatus ()Lcom/posthog/PostHogNetworkStatus;
 	public final fun getOptOut ()Z
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getSdkName ()Ljava/lang/String;
@@ -86,7 +86,7 @@ public final class com/posthog/PostHogConfig {
 	public final fun setLogger (Lcom/posthog/PostHogLogger;)V
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
-	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
+	public final fun setNetworkStatus (Lcom/posthog/PostHogNetworkStatus;)V
 	public final fun setOptOut (Z)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
@@ -140,6 +140,10 @@ public abstract interface class com/posthog/PostHogLogger {
 	public abstract fun log (Ljava/lang/String;)V
 }
 
+public abstract interface class com/posthog/PostHogNetworkStatus {
+	public abstract fun isConnected ()Z
+}
+
 public abstract interface class com/posthog/PostHogPreferences {
 	public abstract fun clear (Ljava/util/List;)V
 	public abstract fun getValue (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -154,9 +158,5 @@ public final class com/posthog/PostHogPreferences$DefaultImpls {
 public final class com/posthog/PostHogPrintLogger : com/posthog/PostHogLogger {
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public fun log (Ljava/lang/String;)V
-}
-
-public abstract interface class com/posthog/internal/PostHogNetworkStatus {
-	public abstract fun isConnected ()Z
 }
 

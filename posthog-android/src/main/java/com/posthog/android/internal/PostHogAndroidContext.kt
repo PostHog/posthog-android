@@ -20,7 +20,6 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         staticContext["\$screen_width"] = displayMetrics.widthPixels
 
         getPackageInfo(context, config)?.let {
-            // TODO: check if we should use getApplicationInfo instead
             it.applicationInfo?.loadLabel(context.packageManager)?.let { name ->
                 staticContext["\$app_name"] = name
             }

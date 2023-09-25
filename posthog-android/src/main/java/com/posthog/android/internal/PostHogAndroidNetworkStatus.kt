@@ -1,9 +1,9 @@
 package com.posthog.android.internal
 
 import android.content.Context
-import com.posthog.internal.PostHogNetworkStatus
+import com.posthog.PostHogNetworkStatus
 
-public class PostHogAndroidNetworkStatus(private val context: Context) : PostHogNetworkStatus {
+internal class PostHogAndroidNetworkStatus(private val context: Context) : PostHogNetworkStatus {
     override fun isConnected(): Boolean {
         return context.isConnected()
     }

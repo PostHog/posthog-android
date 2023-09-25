@@ -1,6 +1,3 @@
-// type safe project access
-// enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
-
 pluginManagement {
     repositories {
         google()
@@ -17,7 +14,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PostHog"
-// rootProject.buildFileName = "build.gradle.kts"
 
 include(":posthog")
 include(":posthog-android")
