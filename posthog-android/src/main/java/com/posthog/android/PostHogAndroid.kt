@@ -50,7 +50,9 @@ public class PostHogAndroid private constructor() {
             config.sdkVersion = BuildConfig.VERSION_NAME
 
             if (context is Application) {
-                config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
+                if (config.captureDeepLinks || config.captureScreenViews) {
+                    config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
+                }
             }
             if (config.captureApplicationLifecycleEvents) {
                 config.addIntegration(PostHogAppInstallIntegration(context, config))

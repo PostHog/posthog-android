@@ -13,8 +13,13 @@ import com.posthog.android.PostHogAndroidConfig
 internal class PostHogLifecycleObserverIntegration(private val context: Context, private val config: PostHogAndroidConfig) : DefaultLifecycleObserver, PostHogIntegration {
     private val handler = Handler(Looper.getMainLooper())
 
-    @Volatile
-    private var fromBackground = false
+    companion object {
+        // in case there are multiple instances or the SDK is closed/setup again
+        // the value is still cached
+        @JvmStatic
+        @Volatile
+        private var fromBackground = false
+    }
 
     override fun onStart(owner: LifecycleOwner) {
         val props = mutableMapOf<String, Any>()
