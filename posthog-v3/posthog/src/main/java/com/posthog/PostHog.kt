@@ -530,3 +530,4 @@ public class PostHog private constructor() {
 }
 
 // TODO: question about persisted properties, do we cache within the same session?
+// fixme: it should only do that when registering and unregistering is called

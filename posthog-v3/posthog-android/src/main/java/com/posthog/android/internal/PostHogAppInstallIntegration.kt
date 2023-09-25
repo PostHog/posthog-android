@@ -38,6 +38,7 @@ internal class PostHogAppInstallIntegration(private val context: Context, privat
 
                 // TODO: do we need to send an event every time as an update? we need to compare the Ids maybe?
                 // maybe it didnt change
+                // fix me
                 PostHog.capture(event, properties = props)
             }
         }

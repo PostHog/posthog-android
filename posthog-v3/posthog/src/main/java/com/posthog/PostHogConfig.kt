@@ -13,9 +13,9 @@ public class PostHogConfig(
     public var sendFeatureFlagEvent: Boolean = true,
     public var preloadFeatureFlags: Boolean = true,
     // min. allowed is 1
-    public var flushAt: Int = 20,
+    public var flushAt: Int = 20, // TODO: remove this one
     public var maxQueueSize: Int = 1000,
-    public var maxBatchSize: Int = 10,
+    public var maxBatchSize: Int = 50,
 //    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     public var flushIntervalSeconds: Int = 30,
 
@@ -36,8 +36,6 @@ public class PostHogConfig(
 
     internal val userAgent: String = "$sdkName/$sdkVersion"
 
-    // TODO: should this be configurable by the user?
-    // should we allow in memory cache only?
     @PostHogInternal
     public var legacyStoragePrefix: String? = null
 

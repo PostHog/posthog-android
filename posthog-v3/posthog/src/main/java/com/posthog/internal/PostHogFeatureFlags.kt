@@ -6,11 +6,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal class PostHogFeatureFlags(private val config: PostHogConfig, private val api: PostHogApi) {
     // TODO: do we need the onFeatureFlags callback?
+    // fix me, yes, maybe a sync method is better UX
 
-    // TODO: do we need Overriding server properties?
-    // https://posthog.com/docs/libraries/js#overriding-server-properties
-
-    // TODO: Early access feature?
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogDecideThread"))
 
     private var isLoadingFeatureFlags = AtomicBoolean(false)

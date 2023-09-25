@@ -1,9 +1,12 @@
 import com.android.build.gradle.LibraryExtension
+import io.github.gradlenexus.publishplugin.NexusPublishExtension
 import org.gradle.api.Project
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPom
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.kotlin.dsl.findByType
+import org.gradle.kotlin.dsl.get
+import org.gradle.kotlin.dsl.repositories
 import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.dokka.gradle.DokkaTask
 
@@ -99,9 +102,21 @@ fun MavenPublication.postHogConfig(projectName: String, properties: Map<String, 
     version = properties[PostHogPublishConfig.versionNameProperty].toString()
 }
 
-fun SigningExtension.postHogConfig(variantName: String, publishingExtension: PublishingExtension?) {
-    // TODO: create and test pgp key
-    isRequired = false
-//    useInMemoryPgpKeys(privateKey, password)
-    sign(publishingExtension?.publications?.getByName(variantName))
+fun SigningExtension.postHogConfig(variantName: String, publishingExtension: PublishingExtension) {
+    val privateKey = System.getenv("GPG_PRIVATE_KEY")
+    val password = System.getenv("GPG_PASSPHRASE")
+    isRequired = true
+    useInMemoryPgpKeys(privateKey, password)
+    sign(publishingExtension.publications.getByName(variantName))
+}
+
+fun NexusPublishExtension.postHogConfig() {
+    repositories {
+        sonatype {
+            val sonatypeUsername = System.getenv("OSSRH_USERNAME")
+            val sonatypePassword = System.getenv("OSSRH_PASSWORD")
+            if (sonatypeUsername != null) username.set(sonatypeUsername)
+            if (sonatypePassword != null) password.set(sonatypePassword)
+        }
+    }
 }

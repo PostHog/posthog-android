@@ -48,9 +48,8 @@ publishing {
             pom.postHogConfig(project.name)
         }
     }
+    signing.postHogConfig("maven", this)
 }
-
-signing.postHogConfig("maven", publishing)
 
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions.jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()

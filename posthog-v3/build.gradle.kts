@@ -52,15 +52,4 @@ apiValidation {
     ignoredProjects.add("posthog-android-sample")
 }
 
-nexusPublishing {
-    this.repositories {
-        sonatype {
-            // TODO: export env vars on GH Action
-            val sonatypeUsername = System.getenv("OSSRH_USERNAME")
-            val sonatypePassword = System.getenv("OSSRH_PASSWORD")
-//            stagingProfileId.set("378eecbbe2cf9")
-            if (sonatypeUsername != null) username.set(sonatypeUsername)
-            if (sonatypePassword != null) password.set(sonatypePassword)
-        }
-    }
-}
+nexusPublishing.postHogConfig()

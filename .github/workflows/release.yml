@@ -24,6 +24,11 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         java: ['17']
+    env:
+      OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+      OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
     steps:
       - name: Git checkout
@@ -38,6 +43,6 @@ jobs:
       # Let's be sure that everything works before we release    
       - name: Dry release
         run: make dryRelease
-
-      - name: Release
-        run: make release
+  
+      # - name: Release
+      #   run: make release

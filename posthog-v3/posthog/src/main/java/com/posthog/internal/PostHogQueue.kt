@@ -164,6 +164,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
         } catch (e: PostHogApiError) {
             if (e.statusCode >= 400) {
                 // TODO: the reason to delete or not the files?
+                // make it as ph-js, drop if its 4xx
             }
             throw e
         } catch (e: IOException) {
