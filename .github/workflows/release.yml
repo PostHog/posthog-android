@@ -54,8 +54,8 @@ jobs:
         # GITHUB_HEAD_REF is the name of the head branch. GitHub Actions only sets this for PRs.
       - name: Commit & push
         run: |
-          echo "Tag name from github.ref_name: ${{  github.ref_name }}"
-          ./scripts/commit-code.sh ${{  github.ref_name }}
+          echo "Tag name from github.ref_name: ${{ github.event.release.target_commitish }}"
+          ./scripts/commit-code.sh ${{ github.event.release.target_commitish }}
 
       # Let's be sure that everything works before we release    
       - name: Dry release
