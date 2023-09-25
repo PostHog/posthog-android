@@ -1,4 +1,4 @@
-name: 'Build'
+name: 'Release'
 on:
   release:
     # runs for stable and pre-releases
@@ -13,8 +13,8 @@ jobs:
         with:
           access_token: ${{ github.token }}
 
-  build:
-    name: Build Job ${{ matrix.os }} - Java ${{ matrix.java }}
+  release:
+    name: Release Job ${{ matrix.os }} - Java ${{ matrix.java }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:  

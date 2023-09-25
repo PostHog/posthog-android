@@ -1,3 +1,7 @@
+## 3.0.0 - WIP
+
+- Next major of the Android SDK rewritten in Kotlin
+
 ## 2.0.3 - 2023-01-30
 
 - Feature flags will be sent with payloads by default for capture and screen events. 

@@ -8,16 +8,15 @@ Specifically, the [Android integration](https://posthog.com/docs/integrations/an
 
 1. Install Android Studio
 2. Follow instructions here for setup https://developer.android.com/studio/run/emulator
-3. Make sure you have Java 8 installed locally - `brew tap adoptopenjdk/openjdk && brew install --cask adoptopenjdk8`
-4. Change the JDK in IntelliJ to build using the correct version.
-5. Select `posthog-sample` and the device on the top bar and click run
+3. Make sure you have Java 17 installed locally - `brew install openjdk@17`
+4. Change the JDK in Android Studio to build using the correct version.
+5. Select `posthog-android-sample` and the device on the top bar and click run
 
 ## How to run tests
 
-1. Make sure you have Android Studio, it's set up correctly, and you have Java 8 installed locally.
-2. Make sure your JDK matches the project's version and what you just installed (Java 8 adoptopenjdk). Go to "view -> tool windows -> gradle -> build tool settings -> gradle settings -> change gradle JDK version".
-3. In the file navigation section, go to "Project Files -> Tests".
-4. Right click on a test file to run it or use the toolbar on top.
+```bash
+make compile
+```
 
 ## Questions?
 

@@ -1,4 +1,0 @@
-include 'posthog'
-include 'posthog-wear'
-include 'posthog-samples:posthog-sample'
-include 'posthog-samples:posthog-wear-sample'
