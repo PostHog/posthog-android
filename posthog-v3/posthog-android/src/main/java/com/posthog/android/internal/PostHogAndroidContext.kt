@@ -35,6 +35,7 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         staticContext["\$device_manufacturer"] = Build.MANUFACTURER
         staticContext["\$device_model"] = Build.MODEL
         staticContext["\$device_name"] = Build.DEVICE
+        staticContext["\$device_type"] = "android"
         staticContext["\$os_name"] = "Android"
         staticContext["\$os_version"] = Build.VERSION.RELEASE
 

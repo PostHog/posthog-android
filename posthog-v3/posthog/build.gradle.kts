@@ -5,12 +5,45 @@ plugins {
     `java-library`
     kotlin("jvm")
     id("com.android.lint")
+
+    // publish
+    `maven-publish`
+    signing
+    id("org.jetbrains.dokka")
 }
 
-java {
+configure<JavaPluginExtension> {
     sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
     targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
 }
+
+val dokkaJavadocJar by tasks.register<Jar>("dokkaJavadocJar") {
+    dependsOn(tasks.dokkaJavadoc)
+    from(tasks.dokkaJavadoc.flatMap { it.outputDirectory })
+    archiveClassifier.set("javadoc")
+}
+
+val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
+    dependsOn(tasks.dokkaHtml)
+    from(tasks.dokkaHtml.flatMap { it.outputDirectory })
+    archiveClassifier.set("html-doc")
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+            artifact(dokkaJavadocJar)
+            artifact(dokkaHtmlJar)
+
+            postHogConfig(project.name, properties)
+
+            pom.postHogConfig(project.name)
+        }
+    }
+}
+
+signing.postHogConfig("maven", publishing)
 
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions.jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()

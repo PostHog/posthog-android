@@ -4,20 +4,19 @@ import io.gitlab.arturbosch.detekt.DetektCreateBaselineTask
 
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
-    // android
-    id("com.android.application") version PosthogBuildConfig.Android.AGP apply false
-    id("com.android.library") version PosthogBuildConfig.Android.AGP apply false
-    kotlin("android") version PosthogBuildConfig.Kotlin.KOTLIN apply false
-
-    // jvm
-    kotlin("jvm") version PosthogBuildConfig.Kotlin.KOTLIN apply false
+    // release
+    id("io.github.gradle-nexus.publish-plugin")
 
     // plugins
     id("com.diffplug.spotless") version PosthogBuildConfig.Plugins.SPOTLESS apply true
     id("io.gitlab.arturbosch.detekt") version PosthogBuildConfig.Plugins.DETEKT apply true
     id("org.jetbrains.kotlinx.binary-compatibility-validator") version PosthogBuildConfig.Plugins.API_VALIDATOR apply true
 
-    // TODO: add jacoco/codecov, dokka, gradle-versions-plugin, maven-publish
+    // TODO: add jacoco/codecov, gradle-versions-plugin
+}
+
+subprojects {
+    apply(plugin = "org.jetbrains.dokka")
 }
 
 spotless {
@@ -46,4 +45,17 @@ tasks.withType<DetektCreateBaselineTask>().configureEach {
 
 apiValidation {
     ignoredProjects.add("posthog-android-sample")
+}
+
+nexusPublishing {
+    this.repositories {
+        sonatype {
+            // TODO: export env vars on GH Action
+            val sonatypeUsername = System.getenv("OSSRH_USERNAME")
+            val sonatypePassword = System.getenv("OSSRH_PASSWORD")
+//            stagingProfileId.set("378eecbbe2cf9")
+            if (sonatypeUsername != null) username.set(sonatypeUsername)
+            if (sonatypePassword != null) password.set(sonatypePassword)
+        }
+    }
 }

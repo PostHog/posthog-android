@@ -18,6 +18,11 @@ public class PostHogAndroid private constructor() {
     public companion object {
         private val lock = Any()
 
+        /**
+         * Setup the SDK
+         * @property context the Context
+         * @property config the Config
+         */
         public fun setup(context: Context, config: PostHogConfig) {
             synchronized(lock) {
                 setAndroidConfig(context.appContext(), config)

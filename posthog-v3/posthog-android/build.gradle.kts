@@ -3,6 +3,11 @@ import org.jetbrains.kotlin.config.KotlinCompilerVersion
 plugins {
     id("com.android.library")
     kotlin("android")
+
+    // publish
+    `maven-publish`
+    signing
+    id("org.jetbrains.dokka")
 }
 
 android {
@@ -14,6 +19,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+
+        buildFeatures {
+            buildConfig = true
+        }
     }
 
     buildTypes {
@@ -34,11 +43,17 @@ android {
 
     testOptions {
         animationsDisabled = true
+        unitTests.apply {
+            isReturnDefaultValues = true
+            isIncludeAndroidResources = true
+        }
     }
 
     lint {
         warningsAsErrors = true
         checkDependencies = true
+        abortOnError = true
+        ignoreTestSources = true
 
         // lint runs only for debug build
         checkReleaseBuilds = false
@@ -65,4 +80,5 @@ dependencies {
 //    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
 
-// Do we need to support Android wear? we dont mention in the docs, no commits last 3 years. (check if theres ant metadata and check the database)
+project.publishingAndroidConfig()
+project.javadocConfig()

@@ -247,6 +247,9 @@ public class PostHog private constructor() {
         }
     }
 
+    /**
+     * Is Opt Out
+     */
     public fun isOptOut(): Boolean {
         if (!isEnabled()) {
             return true

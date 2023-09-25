@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api
+.PHONY: clean compile stop checkFormat format api dryRelease release
 
 clean:
 	./gradlew clean
@@ -19,3 +19,9 @@ format:
 
 api:
 	./gradlew apiDump
+
+dryRelease:
+	./gradlew publishToMavenLocal
+
+release:
+	./gradlew publishToSonatype

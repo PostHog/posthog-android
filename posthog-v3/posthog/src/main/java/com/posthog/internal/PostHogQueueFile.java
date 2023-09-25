@@ -124,7 +124,7 @@ final class PostHogQueueFile implements Closeable, Iterable<byte[]> {
     private final byte[] buffer = new byte[32];
 
     /**
-     * The number of times this file has been structurally modified — it is incremented during
+     * The number of times this file has been structurally modified, it is incremented during
      * {@link #remove(int)} and {@link #add(byte[], int, int)}. Used by {@link ElementIterator}
      * to guard against concurrent modification.
      */

@@ -13,7 +13,6 @@ object PosthogBuildConfig {
         val COMPILE_SDK = 34
         val MIN_SDK = 21
         val TARGET_SDK = COMPILE_SDK
-        val AGP = "8.1.1"
     }
 
     object Kotlin {
@@ -21,8 +20,6 @@ object PosthogBuildConfig {
         // https://developer.android.com/jetpack/androidx/releases/compose-kotlin
         val COMPILER_EXTENSION_VERSION = "1.4.3" // kotlin 1.8.10
 
-        // kotlin version has to match kotlinCompilerExtensionVersion
-        val KOTLIN = "1.8.10"
         val KOTLIN_COMPATIBILITY = "1.5"
     }
 
