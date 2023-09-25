@@ -8,8 +8,8 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 
-internal class PostHogActivityLifecycleCallback(private val application: Application, private val config: PostHogAndroidConfig) : ActivityLifecycleCallbacks, PostHogIntegration {
-    // TODO: lifecycle events
+internal class PostHogActivityLifecycleCallbackIntegration(private val application: Application, private val config: PostHogAndroidConfig) : ActivityLifecycleCallbacks, PostHogIntegration {
+
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (config.captureDeepLinks) {
             activity.intent.data?.let {
@@ -27,7 +27,7 @@ internal class PostHogActivityLifecycleCallback(private val application: Applica
     }
 
     override fun onActivityStarted(activity: Activity) {
-        if (config.captureRecordScreenViews) {
+        if (config.captureScreenViews) {
             val activityLabel = activity.activityLabel(config)
             activityLabel?.let {
                 PostHog.screen(it)

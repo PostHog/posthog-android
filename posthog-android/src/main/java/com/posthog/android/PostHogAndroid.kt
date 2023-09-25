@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
 import com.posthog.PostHogPrintLogger
-import com.posthog.android.internal.PostHogActivityLifecycleCallback
+import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
@@ -50,7 +50,7 @@ public class PostHogAndroid private constructor() {
             config.sdkVersion = BuildConfig.VERSION_NAME
 
             if (context is Application) {
-                config.addIntegration(PostHogActivityLifecycleCallback(context, config))
+                config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
             }
             if (config.captureApplicationLifecycleEvents) {
                 config.addIntegration(PostHogAppInstallIntegration(context, config))

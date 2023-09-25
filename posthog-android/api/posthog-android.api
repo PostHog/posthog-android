@@ -20,9 +20,9 @@ public final class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHo
 	public synthetic fun <init> (Ljava/lang/String;ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z
 	public final fun getCaptureDeepLinks ()Z
-	public final fun getCaptureRecordScreenViews ()Z
+	public final fun getCaptureScreenViews ()Z
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
 	public final fun setCaptureDeepLinks (Z)V
-	public final fun setCaptureRecordScreenViews (Z)V
+	public final fun setCaptureScreenViews (Z)V
 }
 
