@@ -182,7 +182,6 @@ public class PostHog private constructor() {
         }
 
         userProperties?.let {
-            // TODO: should this be person_properties to decide API?
             props["\$set"] = it
         }
 
@@ -309,7 +308,7 @@ public class PostHog private constructor() {
             props.putAll(it)
         }
 
-        capture("\$identify", properties = props, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
+        capture("\$identify", distinctId = distinctId, properties = props, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
 
         if (previousDistinctId != distinctId) {
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
@@ -356,7 +355,6 @@ public class PostHog private constructor() {
         val props = mutableMapOf<String, Any>()
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
-        // TODO: person_properties, group_properties
 
         val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
 
@@ -404,8 +402,6 @@ public class PostHog private constructor() {
     }
 
     public fun reset() {
-        // TODO: do we need a $device_id? because reset cleans the anon and distinct_id, so technically
-        // a new user every time, do we wanna know if there are multiple users from the same device?
         if (!isEnabled()) {
             return
         }
@@ -528,6 +524,3 @@ public class PostHog private constructor() {
         }
     }
 }
-
-// TODO: question about persisted properties, do we cache within the same session?
-// fixme: it should only do that when registering and unregistering is called
