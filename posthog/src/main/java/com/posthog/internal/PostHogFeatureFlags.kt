@@ -1,13 +1,11 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogOnFeatureFlags
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class PostHogFeatureFlags(private val config: PostHogConfig, private val api: PostHogApi) {
-    // TODO: do we need the onFeatureFlags callback?
-    // fix me, yes, maybe a sync method is better UX
-
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogDecideThread"))
 
     private var isLoadingFeatureFlags = AtomicBoolean(false)
@@ -20,7 +18,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
     @Volatile
     private var isFeatureFlagsLoaded = false
 
-    fun loadFeatureFlags(properties: Map<String, Any>) {
+    fun loadFeatureFlags(properties: Map<String, Any>, onFeatureFlags: PostHogOnFeatureFlags?) {
         executor.execute {
             if (config.networkStatus?.isConnected() != true) {
                 config.logger.log("Network isn't connected.")
@@ -54,6 +52,8 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
             } catch (e: Throwable) {
                 isFeatureFlagsLoaded = false
                 config.logger.log("Loading feature flags failed: $e")
+            } finally {
+                onFeatureFlags?.invoke(getFeatureFlags())
             }
 
             isLoadingFeatureFlags.set(false)

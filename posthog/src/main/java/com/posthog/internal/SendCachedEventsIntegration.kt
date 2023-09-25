@@ -64,8 +64,8 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
                     try {
                         api.batch(events)
                     } catch (e: PostHogApiError) {
-                        if (e.statusCode >= 400) {
-                            // TODO: the reason to delete or not the files?
+                        if (e.statusCode < 400) {
+                            deleteFiles = false
                         }
                         throw e
                     } catch (e: IOException) {
@@ -124,8 +124,8 @@ internal class SendCachedEventsIntegration(private val config: PostHogConfig, pr
                 try {
                     api.batch(events)
                 } catch (e: PostHogApiError) {
-                    if (e.statusCode >= 400) {
-                        // TODO: the reason to delete or not the files?
+                    if (e.statusCode < 400) {
+                        deleteFiles = false
                     }
                 } catch (e: IOException) {
                     // no connection should try again

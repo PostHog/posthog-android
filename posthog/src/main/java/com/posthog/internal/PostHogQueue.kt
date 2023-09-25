@@ -158,29 +158,30 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
             }
         }
 
-        var deleteFiles = true
-        try {
-            api.batch(events)
-        } catch (e: PostHogApiError) {
-            if (e.statusCode >= 400) {
-                // TODO: the reason to delete or not the files?
-                // make it as ph-js, drop if its 4xx
-            }
-            throw e
-        } catch (e: IOException) {
-            // no connection should try again
-            if (e.isNetworkingError()) {
-                deleteFiles = false
-            }
-            throw e
-        } finally {
-            if (deleteFiles) {
-                synchronized(dequeLock) {
-                    deque.removeAll(files)
+        if (events.isNotEmpty()) {
+            var deleteFiles = true
+            try {
+                api.batch(events)
+            } catch (e: PostHogApiError) {
+                if (e.statusCode < 400) {
+                    deleteFiles = false
                 }
+                throw e
+            } catch (e: IOException) {
+                // no connection should try again
+                if (e.isNetworkingError()) {
+                    deleteFiles = false
+                }
+                throw e
+            } finally {
+                if (deleteFiles) {
+                    synchronized(dequeLock) {
+                        deque.removeAll(files)
+                    }
 
-                files.forEach {
-                    it.delete()
+                    files.forEach {
+                        it.delete()
+                    }
                 }
             }
         }

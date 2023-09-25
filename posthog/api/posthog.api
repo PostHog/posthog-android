@@ -18,7 +18,8 @@ public final class com/posthog/PostHog {
 	public final fun isOptOut ()Z
 	public final fun optIn ()V
 	public final fun optOut ()V
-	public final fun reloadFeatureFlagsRequest ()V
+	public final fun reloadFeatureFlagsRequest (Lcom/posthog/PostHogOnFeatureFlags;)V
+	public static synthetic fun reloadFeatureFlagsRequest$default (Lcom/posthog/PostHog;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun reset ()V
 	public final fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public static synthetic fun screen$default (Lcom/posthog/PostHog;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
@@ -54,8 +55,8 @@ public final class com/posthog/PostHog$Companion {
 }
 
 public class com/posthog/PostHogConfig {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCachePreferences ()Lcom/posthog/PostHogPreferences;
@@ -71,6 +72,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
 	public final fun getNetworkStatus ()Lcom/posthog/PostHogNetworkStatus;
+	public final fun getOnFeatureFlags ()Lcom/posthog/PostHogOnFeatureFlags;
 	public final fun getOptOut ()Z
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getSdkName ()Ljava/lang/String;
@@ -89,6 +91,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
 	public final fun setNetworkStatus (Lcom/posthog/PostHogNetworkStatus;)V
+	public final fun setOnFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public final fun setOptOut (Z)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
@@ -144,6 +147,10 @@ public abstract interface class com/posthog/PostHogLogger {
 
 public abstract interface class com/posthog/PostHogNetworkStatus {
 	public abstract fun isConnected ()Z
+}
+
+public abstract interface class com/posthog/PostHogOnFeatureFlags {
+	public abstract fun invoke (Ljava/util/Map;)V
 }
 
 public abstract interface class com/posthog/PostHogPreferences {

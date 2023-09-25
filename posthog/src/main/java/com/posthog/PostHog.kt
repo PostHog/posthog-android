@@ -69,7 +69,7 @@ public class PostHog private constructor() {
                 }
 
                 if (config.preloadFeatureFlags) {
-                    loadFeatureFlagsRequest()
+                    loadFeatureFlagsRequest(config.onFeatureFlags)
                 }
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
@@ -345,14 +345,14 @@ public class PostHog private constructor() {
         capture("\$groupidentify", properties = props)
     }
 
-    public fun reloadFeatureFlagsRequest() {
+    public fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags? = null) {
         if (!isEnabled()) {
             return
         }
-        loadFeatureFlagsRequest()
+        loadFeatureFlagsRequest(onFeatureFlags)
     }
 
-    private fun loadFeatureFlagsRequest() {
+    private fun loadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
         val props = mutableMapOf<String, Any>()
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
@@ -360,7 +360,7 @@ public class PostHog private constructor() {
 
         val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
 
-        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null, groups, appendSharedProps = false))
+        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null, groups, appendSharedProps = false), onFeatureFlags)
     }
 
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {

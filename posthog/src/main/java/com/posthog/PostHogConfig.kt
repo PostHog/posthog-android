@@ -14,11 +14,12 @@ public open class PostHogConfig(
     // min. allowed is 1
     public var flushAt: Int = 20, // TODO: remove this one
     public var maxQueueSize: Int = 1000,
-    public var maxBatchSize: Int = 50,
+    public var maxBatchSize: Int = 10,
 //    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     public var flushIntervalSeconds: Int = 30,
 
     public var encryption: PostHogEncryption? = null,
+    public var onFeatureFlags: PostHogOnFeatureFlags? = null,
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogPrintLogger(this)
