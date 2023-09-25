@@ -9,6 +9,7 @@ import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
 import com.posthog.android.internal.PostHogAppInstallIntegration
+import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import java.io.File
@@ -51,7 +52,10 @@ public class PostHogAndroid private constructor() {
             if (context is Application) {
                 config.addIntegration(PostHogActivityLifecycleCallback(context, config))
             }
-            config.addIntegration(PostHogAppInstallIntegration(context, config))
+            if (config.captureApplicationLifecycleEvents) {
+                config.addIntegration(PostHogAppInstallIntegration(context, config))
+                config.addIntegration(PostHogLifecycleObserverIntegration(context, config))
+            }
         }
     }
 }

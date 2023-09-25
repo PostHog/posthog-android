@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.content.pm.PackageManager.GET_META_DATA
 import android.net.ConnectivityManager
 import android.os.Build
+import android.os.Looper
 import android.os.Process
 import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
@@ -83,4 +84,8 @@ internal fun Activity.activityLabel(config: PostHogAndroidConfig): String? {
         config.logger.log("Error getting the Activity's label: $e.")
         null
     }
+}
+
+internal fun isMainThread(): Boolean {
+    return Thread.currentThread().id == Looper.getMainLooper().thread.id
 }

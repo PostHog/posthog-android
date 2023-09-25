@@ -11,7 +11,18 @@ public final class com/posthog/android/PostHogAndroid {
 }
 
 public final class com/posthog/android/PostHogAndroid$Companion {
-	public final fun setup (Landroid/content/Context;Lcom/posthog/PostHogConfig;)V
-	public final fun with (Landroid/content/Context;Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHog;
+	public final fun setup (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)V
+	public final fun with (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)Lcom/posthog/PostHog;
+}
+
+public final class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
+	public fun <init> (Ljava/lang/String;ZZZ)V
+	public synthetic fun <init> (Ljava/lang/String;ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCaptureApplicationLifecycleEvents ()Z
+	public final fun getCaptureDeepLinks ()Z
+	public final fun getCaptureRecordScreenViews ()Z
+	public final fun setCaptureApplicationLifecycleEvents (Z)V
+	public final fun setCaptureDeepLinks (Z)V
+	public final fun setCaptureRecordScreenViews (Z)V
 }
 

@@ -53,9 +53,10 @@ public final class com/posthog/PostHog$Companion {
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHog;
 }
 
-public final class com/posthog/PostHogConfig {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Ljava/util/List;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public class com/posthog/PostHogConfig {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCachePreferences ()Lcom/posthog/PostHogPreferences;
 	public final fun getContext ()Lcom/posthog/PostHogContext;
@@ -76,6 +77,7 @@ public final class com/posthog/PostHogConfig {
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
 	public final fun getStoragePrefix ()Ljava/lang/String;
+	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/PostHogContext;)V
 	public final fun setDebug (Z)V
