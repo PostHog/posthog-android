@@ -37,4 +37,12 @@ internal class PostHogMemoryPreferences : PostHogPreferences {
             preferences.remove(key)
         }
     }
+
+    override fun getAll(): Map<String, Any> {
+        val props: Map<String, Any>
+        synchronized(lock) {
+            props = preferences.toMap()
+        }
+        return props
+    }
 }

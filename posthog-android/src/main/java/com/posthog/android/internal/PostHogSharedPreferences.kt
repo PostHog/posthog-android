@@ -78,4 +78,12 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogAndroid
             edit.apply()
         }
     }
+
+    override fun getAll(): Map<String, Any> {
+        val props: Map<String, Any>
+        synchronized(lock) {
+            props = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
+        }
+        return props
+    }
 }

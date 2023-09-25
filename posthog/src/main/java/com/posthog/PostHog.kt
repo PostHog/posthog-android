@@ -179,6 +179,11 @@ public class PostHog private constructor() {
                     }
                 }
             }
+
+            val registeredPrefs = memoryPreferences.getAll()
+            if (registeredPrefs.isNotEmpty()) {
+                props.putAll(registeredPrefs)
+            }
         }
 
         userProperties?.let {
@@ -421,6 +426,20 @@ public class PostHog private constructor() {
         return enabled
     }
 
+    public fun register(key: String, value: Any) {
+        if (!isEnabled()) {
+            return
+        }
+        memoryPreferences.setValue(key, value)
+    }
+
+    public fun unregister(key: String) {
+        if (!isEnabled()) {
+            return
+        }
+        memoryPreferences.remove(key)
+    }
+
     public companion object {
         // TODO: make it private and rely only on static methods that forward to shared?
         private val shared: PostHog = PostHog()
@@ -521,6 +540,14 @@ public class PostHog private constructor() {
 
         public fun isOptOut(): Boolean {
             return shared.isOptOut()
+        }
+
+        public fun register(key: String, value: Any) {
+            shared.register(key, value)
+        }
+
+        public fun unregister(key: String) {
+            shared.unregister(key)
         }
     }
 }
