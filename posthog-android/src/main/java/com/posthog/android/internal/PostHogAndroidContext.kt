@@ -62,12 +62,12 @@ internal class PostHogAndroidContext(private val context: Context, private val c
                 connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI)?.let {
                     dynamicContext["\$network_wifi"] = it.isConnected
                 }
-            }
-            connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_BLUETOOTH)?.let {
-                dynamicContext["\$network_bluetooth"] = it.isConnected
-            }
-            connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_MOBILE)?.let {
-                dynamicContext["\$network_cellular"] = it.isConnected
+                connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_BLUETOOTH)?.let {
+                    dynamicContext["\$network_bluetooth"] = it.isConnected
+                }
+                connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_MOBILE)?.let {
+                    dynamicContext["\$network_cellular"] = it.isConnected
+                }
             }
         }
 
