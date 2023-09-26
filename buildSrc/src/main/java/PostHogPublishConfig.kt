@@ -113,6 +113,7 @@ fun SigningExtension.postHogConfig(variantName: String, publishingExtension: Pub
 fun NexusPublishExtension.postHogConfig() {
     repositories {
         sonatype {
+            stagingProfileId.set("1dbefd58b2cdd")
             val sonatypeUsername = System.getenv("OSSRH_USERNAME")
             val sonatypePassword = System.getenv("OSSRH_PASSWORD")
             if (sonatypeUsername != null) username.set(sonatypeUsername)
