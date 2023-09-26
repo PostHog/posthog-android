@@ -16,6 +16,6 @@ else
     git fetch
     git checkout ${GITHUB_BRANCH}
     git commit -am "Push changes"
-    git pull origin
+    git merge --no-ff ${GITHUB_BRANCH}
     git push --set-upstream origin ${GITHUB_BRANCH}
 fi
