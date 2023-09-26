@@ -34,39 +34,6 @@ internal class PostHogSendCachedEventsIntegration(private val config: PostHogCon
                 return
             }
 
-//            val test = "{\n" +
-//                    "  \"event\": \"\$screen\",\n" +
-//                    "  \"uuid\": \"9cf74087-356a-41c3-9ff5-754ed31dc320\",\n" +
-//                    "  \"timestamp\": \"2023-09-20T11:59:31Z\",\n" +
-//                    "  \"properties\": {\n" +
-//                    "    \"\$device_manufacturer\": \"Google\",\n" +
-//                    "    \"\$os_version\": \"13\",\n" +
-//                    "    \"\$screen_density\": 2.625,\n" +
-//                    "    \"\$timezone\": \"Europe/Vienna\",\n" +
-//                    "    \"\$locale\": \"en-US\",\n" +
-//                    "    \"\$screen_width\": 1080,\n" +
-//                    "    \"\$os_name\": \"Android\",\n" +
-//                    "    \"\$screen_height\": 2274,\n" +
-//                    "    \"\$user_agent\": \"Dalvik/2.1.0 (Linux; U; Android 13; sdk_gphone64_arm64 Build/TE1A.220922.012)\",\n" +
-//                    "    \"\$app_version\": \"1.0\",\n" +
-//                    "    \"\$lib\": \"posthog-android\",\n" +
-//                    "    \"\$device_name\": \"emu64a\",\n" +
-//                    "    \"\$network_carrier\": \"T-Mobile\",\n" +
-//                    "    \"\$app_name\": \"My Application\",\n" +
-//                    "    \"\$device_model\": \"sdk_gphone64_arm64\",\n" +
-//                    "    \"\$lib_version\": \"version\",\n" +
-//                    "    \"\$app_namespace\": \"com.posthog.myapplication\",\n" +
-//                    "    \"\$app_build\": \"1\",\n" +
-//                    "    \"myProperty\": \"myValue\",\n" +
-//                    "    \"\$feature/4535-funnel-bar-viz\": true,\n" +
-//                    "    \"\$active_feature_flags\": [\n" +
-//                    "      \"4535-funnel-bar-viz\"\n" +
-//                    "    ],\n" +
-//                    "    \"\$screen_name\": \"sreeenn\"\n" +
-//                    "  },\n" +
-//                    "  \"distinct_id\": \"my_identify\"\n" +
-//                    "}\n"
-
             try {
                 val legacy = QueueFile.Builder(legacyFile)
                     .forceLegacy(true)
