@@ -23,7 +23,10 @@ public class PostHogAndroid private constructor() {
          * @property context the Context
          * @property config the Config
          */
-        public fun setup(context: Context, config: PostHogAndroidConfig) {
+        public fun setup(
+            context: Context,
+            config: PostHogAndroidConfig,
+        ) {
             synchronized(lock) {
                 setAndroidConfig(context.appContext(), config)
 
@@ -33,7 +36,7 @@ public class PostHogAndroid private constructor() {
 
         public fun with(context: Context, config: PostHogAndroidConfig): PostHog {
             setAndroidConfig(context.appContext(), config)
-            return PostHog.with(config)
+            return PostHog.with(  config)
         }
 
         private fun setAndroidConfig(context: Context, config: PostHogAndroidConfig) {
