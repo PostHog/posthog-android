@@ -1,6 +1,7 @@
-## 3.0.0 - WIP
+## 3.0.0-alpha.1 - 2023-09-26
 
 - Next major of the Android SDK rewritten in Kotlin
+- Just testing the release automation
 
 ## 2.0.3 - 2023-01-30
 
