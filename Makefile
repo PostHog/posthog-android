@@ -24,4 +24,4 @@ dryRelease:
 	./gradlew publishToMavenLocal
 
 release:
-	./gradlew publishToSonatype
+	./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
