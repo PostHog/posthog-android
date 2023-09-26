@@ -12,10 +12,8 @@ else
     echo "Going to push the changes."
     git config --global user.name 'PostHog Github Bot'
     git config --global user.email 'github-bot@posthog.com'
-    git config pull.ff only
     git fetch
     git checkout ${GITHUB_BRANCH}
-    git commit -am "Push changes"
-    git merge --no-ff ${GITHUB_BRANCH}
+    git commit -am "Update version"
     git push --set-upstream origin ${GITHUB_BRANCH}
 fi
