@@ -36,7 +36,7 @@ public class PostHogAndroid private constructor() {
 
         public fun with(context: Context, config: PostHogAndroidConfig): PostHog {
             setAndroidConfig(context.appContext(), config)
-            return PostHog.with(  config)
+            return PostHog.with(config)
         }
 
         private fun setAndroidConfig(context: Context, config: PostHogAndroidConfig) {
