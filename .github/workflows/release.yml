@@ -49,5 +49,5 @@ jobs:
       - name: Dry release
         run: make dryRelease
   
-      # - name: Release
-      #   run: make release
+      - name: Release
+        run: make release
