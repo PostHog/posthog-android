@@ -51,7 +51,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                     synchronized(dequeLock) {
                         first = deque.removeFirst()
                     }
-                    first.delete()
+                    first.deleteSafely(config)
                     config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
                 } catch (ignore: NoSuchElementException) {}
             }
@@ -153,7 +153,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                 synchronized(dequeLock) {
                     deque.remove(file)
                 }
-                file.delete()
+                file.deleteSafely(config)
                 config.logger.log("File: ${file.name} failed to parse: $e.")
             }
         }
@@ -180,7 +180,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                     }
 
                     files.forEach {
-                        it.delete()
+                        it.deleteSafely(config)
                     }
                 }
             }
@@ -276,7 +276,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
                 deque.clear()
             }
             tempFiles.forEach {
-                it.delete()
+                it.deleteSafely(config)
             }
         }
     }
