@@ -14,7 +14,7 @@ else
     git config --global user.email 'github-bot@posthog.com'
     git fetch
     git checkout ${GITHUB_BRANCH}
-    git pull origin
     git commit -am "Push changes"
+    git pull origin
     git push --set-upstream origin ${GITHUB_BRANCH}
 fi
