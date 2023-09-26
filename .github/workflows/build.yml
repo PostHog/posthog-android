@@ -1,8 +1,6 @@
 name: 'Build & Test'
 on:
   push:
-    branches:
-      - v3
   pull_request:
 
 jobs:

@@ -1,4 +1,4 @@
-name: 'Format code & API'
+name: 'Format code & Generate API'
 on:
   push:
   pull_request:
