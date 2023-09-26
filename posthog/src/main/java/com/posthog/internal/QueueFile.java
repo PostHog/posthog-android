@@ -54,7 +54,7 @@ import static java.lang.Math.min;
  *
  * @author Bob Lee (bob@squareup.com)
  */
-final class PostHogQueueFile implements Closeable, Iterable<byte[]> {
+final class QueueFile implements Closeable, Iterable<byte[]> {
     /** Leading bit set to 1 indicating a versioned header and the version of 1. */
     private static final int VERSIONED_HEADER = 0x80000001;
 
@@ -168,7 +168,7 @@ final class PostHogQueueFile implements Closeable, Iterable<byte[]> {
         return new RandomAccessFile(file, "rwd");
     }
 
-    PostHogQueueFile(File file, RandomAccessFile raf, boolean zero, boolean forceLegacy) throws IOException {
+    QueueFile(File file, RandomAccessFile raf, boolean zero, boolean forceLegacy) throws IOException {
         this.file = file;
         this.raf = raf;
         this.zero = zero;
@@ -560,7 +560,7 @@ final class PostHogQueueFile implements Closeable, Iterable<byte[]> {
                 // Return the read element.
                 return buffer;
             } catch (IOException e) {
-                throw PostHogQueueFile.<Error>getSneakyThrowable(e);
+                throw QueueFile.<Error>getSneakyThrowable(e);
             }
         }
 
@@ -573,9 +573,9 @@ final class PostHogQueueFile implements Closeable, Iterable<byte[]> {
             }
 
             try {
-                PostHogQueueFile.this.remove();
+                QueueFile.this.remove();
             } catch (IOException e) {
-                throw PostHogQueueFile.<Error>getSneakyThrowable(e);
+                throw QueueFile.<Error>getSneakyThrowable(e);
             }
 
             expectedModCount = modCount;
@@ -720,7 +720,7 @@ final class PostHogQueueFile implements Closeable, Iterable<byte[]> {
         }
     }
 
-    /** Fluent API for creating {@link PostHogQueueFile} instances. */
+    /** Fluent API for creating {@link QueueFile} instances. */
     public static final class Builder {
         final File file;
         boolean zero = true;
@@ -750,11 +750,11 @@ final class PostHogQueueFile implements Closeable, Iterable<byte[]> {
          * Constructs a new queue backed by the given builder. Only one instance should access a given
          * file at a time.
          */
-        public PostHogQueueFile build() throws IOException {
+        public QueueFile build() throws IOException {
             RandomAccessFile raf = initializeFromFile(file, forceLegacy);
-            PostHogQueueFile qf = null;
+            QueueFile qf = null;
             try {
-                qf = new PostHogQueueFile(file, raf, zero, forceLegacy);
+                qf = new QueueFile(file, raf, zero, forceLegacy);
                 return qf;
             } finally {
                 if (qf == null) {

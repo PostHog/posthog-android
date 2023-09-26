@@ -4,8 +4,8 @@ import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogQueue
+import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
-import com.posthog.internal.SendCachedEventsIntegration
 import java.util.Date
 import java.util.UUID
 
@@ -46,7 +46,7 @@ public class PostHog private constructor() {
                 }
 
                 val startDate = Date()
-                val sendCachedEventsIntegration = SendCachedEventsIntegration(config, api, serializer, startDate)
+                val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(config, api, serializer, startDate)
 
                 this.api = api
                 this.config = config
@@ -307,8 +307,6 @@ public class PostHog private constructor() {
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
 
-        // TODO: do we append groups?
-
         properties?.let {
             props.putAll(it)
         }
@@ -338,15 +336,25 @@ public class PostHog private constructor() {
 
         val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
         val newGroups = mutableMapOf<String, Any>()
+        var reloadFeatureFlags = false
+
         groups?.let {
+            val currentKey = it[type]
+
+            if (key != currentKey) {
+                reloadFeatureFlags = true
+            }
+
             newGroups.putAll(it)
         }
         newGroups[type] = key
         memoryPreferences.setValue("\$groups", newGroups)
 
-        // TODO: if the group does not exist yet, should we reload the Feature flags?
-
         capture("\$groupidentify", properties = props)
+
+        if (reloadFeatureFlags) {
+            loadFeatureFlagsRequest(null)
+        }
     }
 
     public fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags? = null) {
@@ -441,12 +449,10 @@ public class PostHog private constructor() {
     }
 
     public companion object {
-        // TODO: make it private and rely only on static methods that forward to shared?
         private val shared: PostHog = PostHog()
 
         private val apiKeys = mutableSetOf<String>()
 
-        // TODO: understand why with was used to return the custom instance
         public fun with(config: PostHogConfig): PostHog {
             logIfApiKeyExists(config)
 

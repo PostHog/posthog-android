@@ -11,7 +11,8 @@ class MyApp : Application() {
 
         val config = PostHogAndroidConfig("_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI").apply {
             debug = true
-            flushAt = 1
+            flushAt = 5
+            maxBatchSize = 2
 //            flushIntervalSeconds = 5
             onFeatureFlags = PostHogOnFeatureFlags { featureFlags -> print("has flags: ${featureFlags != null}") }
         }
