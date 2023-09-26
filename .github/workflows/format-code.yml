@@ -1,8 +1,6 @@
-name: 'Build & Test'
+name: 'Format code & API'
 on:
   push:
-    branches:
-      - v3
   pull_request:
 
 jobs:
@@ -14,7 +12,7 @@ jobs:
         with:
           access_token: ${{ github.token }}
 
-  build:
+  format:
     name: Build Job ${{ matrix.os }} - Java ${{ matrix.java }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -43,8 +41,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Make compile
-        run: make compile
+      - name: Generate API diff
+        run: make api
+
+      - name: Format
+        run: make format
+
+      # actions/checkout fetches only a single commit in a detached HEAD state. Therefore
+      # we need to pass the current branch, otherwise we can't commit the changes.
+      # GITHUB_HEAD_REF is the name of the head branch. GitHub Actions only sets this for PRs.
+      - name: Commit Formatted Code
+        run: ./scripts/commit-code.sh $GITHUB_HEAD_REF
 
       - name: Make stop
         run: make stop
