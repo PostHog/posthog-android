@@ -43,9 +43,11 @@ detekt {
 
 tasks.withType<Detekt>().configureEach {
     jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
+    languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
 }
 tasks.withType<DetektCreateBaselineTask>().configureEach {
     jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
+    languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
 }
 
 apiValidation {

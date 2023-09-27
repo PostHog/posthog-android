@@ -9,7 +9,7 @@ import com.posthog.internal.PostHogSerializer
 import java.util.Date
 import java.util.UUID
 
-public class PostHog private constructor() {
+public class PostHog private constructor() : PostHogInterface {
     @Volatile
     private var enabled = false
 
@@ -24,12 +24,16 @@ public class PostHog private constructor() {
     private var queue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
 
-    public fun setup(config: PostHogConfig) {
+    public override fun setup(config: PostHogConfig) {
         synchronized(lockSetup) {
             try {
                 if (enabled) {
                     config.logger.log("Setup called despite already being setup!")
                     return
+                }
+
+                if (!apiKeys.add(config.apiKey)) {
+                    config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
                 }
 
                 val cachePreferences = config.cachePreferences ?: PostHogMemoryPreferences()
@@ -100,16 +104,20 @@ public class PostHog private constructor() {
         }
     }
 
-    public fun close() {
+    public override fun close() {
         synchronized(lockSetup) {
             try {
                 enabled = false
 
-                config?.integrations?.forEach {
-                    try {
-                        it.uninstall()
-                    } catch (e: Throwable) {
-                        config?.logger?.log("Integration ${it.javaClass.name} failed to uninstall: $e.")
+                config?.let { config ->
+                    apiKeys.remove(config.apiKey)
+
+                    config.integrations.forEach {
+                        try {
+                            it.uninstall()
+                        } catch (e: Throwable) {
+                            config.logger.log("Integration ${it.javaClass.name} failed to uninstall: $e.")
+                        }
                     }
                 }
 
@@ -207,13 +215,13 @@ public class PostHog private constructor() {
     }
 
     // test: $merge_dangerously
-    public fun capture(
+    public override fun capture(
         event: String,
-        distinctId: String? = null,
-        properties: Map<String, Any>? = null,
-        userProperties: Map<String, Any>? = null,
-        userPropertiesSetOnce: Map<String, Any>? = null,
-        groupProperties: Map<String, Any>? = null,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groupProperties: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
             return
@@ -229,7 +237,7 @@ public class PostHog private constructor() {
         queue?.add(postHogEvent)
     }
 
-    public fun optIn() {
+    public override fun optIn() {
         if (!isEnabled()) {
             return
         }
@@ -240,7 +248,7 @@ public class PostHog private constructor() {
         }
     }
 
-    public fun optOut() {
+    public override fun optOut() {
         if (!isEnabled()) {
             return
         }
@@ -254,14 +262,14 @@ public class PostHog private constructor() {
     /**
      * Is Opt Out
      */
-    public fun isOptOut(): Boolean {
+    public override fun isOptOut(): Boolean {
         if (!isEnabled()) {
             return true
         }
         return config?.optOut ?: true
     }
 
-    public fun screen(screenTitle: String, properties: Map<String, Any>? = null) {
+    public override fun screen(screenTitle: String, properties: Map<String, Any>?) {
         if (!isEnabled()) {
             return
         }
@@ -276,7 +284,7 @@ public class PostHog private constructor() {
         capture("\$screen", properties = props)
     }
 
-    public fun alias(alias: String, properties: Map<String, Any>? = null) {
+    public override fun alias(alias: String, properties: Map<String, Any>?) {
         if (!isEnabled()) {
             return
         }
@@ -291,11 +299,11 @@ public class PostHog private constructor() {
         capture("\$create_alias", properties = props)
     }
 
-    public fun identify(
+    public override fun identify(
         distinctId: String,
-        properties: Map<String, Any>? = null,
-        userProperties: Map<String, Any>? = null,
-        userPropertiesSetOnce: Map<String, Any>? = null,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
             return
@@ -322,7 +330,7 @@ public class PostHog private constructor() {
         }
     }
 
-    public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null) {
+    public override fun group(type: String, key: String, groupProperties: Map<String, Any>?) {
         if (!isEnabled()) {
             return
         }
@@ -358,7 +366,7 @@ public class PostHog private constructor() {
         }
     }
 
-    public fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags? = null) {
+    public override fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
         if (!isEnabled()) {
             return
         }
@@ -376,14 +384,14 @@ public class PostHog private constructor() {
         featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null, groups, appendSharedProps = false), onFeatureFlags)
     }
 
-    public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
+    public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
         if (!isEnabled()) {
             return defaultValue
         }
         return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
     }
 
-    public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any? {
+    public override fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
@@ -402,21 +410,21 @@ public class PostHog private constructor() {
         return flag
     }
 
-    public fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
+    public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
         return featureFlags?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
     }
 
-    public fun flush() {
+    public override fun flush() {
         if (!isEnabled()) {
             return
         }
         queue?.flush()
     }
 
-    public fun reset() {
+    public override fun reset() {
         if (!isEnabled()) {
             return
         }
@@ -436,125 +444,123 @@ public class PostHog private constructor() {
         return enabled
     }
 
-    public fun register(key: String, value: Any) {
+    public override fun register(key: String, value: Any) {
         if (!isEnabled()) {
             return
         }
         memoryPreferences.setValue(key, value)
     }
 
-    public fun unregister(key: String) {
+    public override fun unregister(key: String) {
         if (!isEnabled()) {
             return
         }
         memoryPreferences.remove(key)
     }
 
-    public companion object {
-        private val shared: PostHog = PostHog()
+    public companion object : PostHogInterface {
+        private var shared: PostHogInterface = PostHog()
+        private var defaultSharedInstance = shared
 
         private val apiKeys = mutableSetOf<String>()
 
-        public fun with(config: PostHogConfig): PostHog {
-            logIfApiKeyExists(config)
+        @PostHogVisibleForTesting
+        public fun overrideSharedInstance(postHog: PostHogInterface) {
+            shared = postHog
+        }
 
+        @PostHogVisibleForTesting
+        public fun resetSharedInstance() {
+            shared = defaultSharedInstance
+        }
+
+        public fun with(config: PostHogConfig): PostHogInterface {
             val instance = PostHog()
             instance.setup(config)
             return instance
         }
 
-        private fun logIfApiKeyExists(config: PostHogConfig) {
-            if (apiKeys.contains(config.apiKey)) {
-                config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
-            }
-        }
-
-        public fun setup(config: PostHogConfig) {
-            logIfApiKeyExists(config)
-
+        public override fun setup(config: PostHogConfig) {
             shared.setup(config)
         }
 
-        public fun close() {
-            shared.config?.let {
-                apiKeys.remove(it.apiKey)
-            }
+        public override fun close() {
             shared.close()
         }
 
-        public fun capture(
+        public override fun capture(
             event: String,
-            distinctId: String? = null,
-            properties: Map<String, Any>? = null,
-            userProperties: Map<String, Any>? = null,
-            userPropertiesSetOnce: Map<String, Any>? = null,
-            groupProperties: Map<String, Any>? = null,
+            distinctId: String?,
+            properties: Map<String, Any>?,
+            userProperties: Map<String, Any>?,
+            userPropertiesSetOnce: Map<String, Any>?,
+            groupProperties: Map<String, Any>?,
         ) {
             shared.capture(event, distinctId = distinctId, properties = properties, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce, groupProperties = groupProperties)
         }
 
-        public fun identify(
+        public override fun identify(
             distinctId: String,
-            properties: Map<String, Any>? = null,
-            userProperties: Map<String, Any>? = null,
-            userPropertiesSetOnce: Map<String, Any>? = null,
+            properties: Map<String, Any>?,
+            userProperties: Map<String, Any>?,
+            userPropertiesSetOnce: Map<String, Any>?,
         ) {
             shared.identify(distinctId, properties = properties, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
         }
 
-        public fun reloadFeatureFlagsRequest() {
-            shared.reloadFeatureFlagsRequest()
+        public override fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
+            shared.reloadFeatureFlagsRequest(onFeatureFlags)
         }
 
-        public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean {
+        public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
             return shared.isFeatureEnabled(key, defaultValue = defaultValue)
         }
 
-        public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any? {
+        public override fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
             return shared.getFeatureFlag(key, defaultValue = defaultValue)
         }
 
-        public fun getFeatureFlagPayload(key: String, defaultValue: Any? = null): Any? {
+        public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
             return shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
         }
 
-        public fun flush() {
+        public override fun flush() {
             shared.flush()
         }
 
-        public fun reset() {
+        public override fun reset() {
             shared.reset()
         }
 
-        public fun optIn() {
+        public override fun optIn() {
             shared.optIn()
         }
 
-        public fun optOut() {
+        public override fun optOut() {
             shared.optOut()
         }
 
-        public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null) {
+        public override fun group(type: String, key: String, groupProperties: Map<String, Any>?) {
             shared.group(type, key, groupProperties = groupProperties)
         }
 
-        public fun screen(screenTitle: String, properties: Map<String, Any>? = null) {
+        public override fun screen(screenTitle: String, properties: Map<String, Any>?) {
             shared.screen(screenTitle, properties = properties)
         }
 
-        public fun alias(alias: String, properties: Map<String, Any>? = null) {
+        public override fun alias(alias: String, properties: Map<String, Any>?) {
             shared.alias(alias, properties = properties)
         }
 
-        public fun isOptOut(): Boolean {
+        public override fun isOptOut(): Boolean {
             return shared.isOptOut()
         }
 
-        public fun register(key: String, value: Any) {
+        public override fun register(key: String, value: Any) {
             shared.register(key, value)
         }
 
-        public fun unregister(key: String) {
+        public override fun unregister(key: String) {
             shared.unregister(key)
         }
     }

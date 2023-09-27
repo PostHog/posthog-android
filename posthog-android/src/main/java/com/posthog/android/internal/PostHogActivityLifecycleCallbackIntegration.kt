@@ -8,20 +8,28 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 
-internal class PostHogActivityLifecycleCallbackIntegration(private val application: Application, private val config: PostHogAndroidConfig) : ActivityLifecycleCallbacks, PostHogIntegration {
+internal class PostHogActivityLifecycleCallbackIntegration(
+    private val application: Application,
+    private val config: PostHogAndroidConfig,
+) : ActivityLifecycleCallbacks, PostHogIntegration {
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (config.captureDeepLinks) {
             activity.intent.data?.let {
                 val props = mutableMapOf<String, Any>()
-                for (item in it.queryParameterNames) {
-                    val param = it.getQueryParameter(item)
-                    if (!param.isNullOrEmpty()) {
-                        props[item] = param
+                try {
+                    for (item in it.queryParameterNames) {
+                        val param = it.getQueryParameter(item)
+                        if (!param.isNullOrEmpty()) {
+                            props[item] = param
+                        }
                     }
+                } catch (e: UnsupportedOperationException) {
+                    config.logger.log("Deep link $it has invalid query param names.")
+                } finally {
+                    props["url"] = it.toString()
+                    PostHog.capture("Deep Link Opened", properties = props)
                 }
-                props["url"] = it.toString()
-                PostHog.capture("Deep Link Opened", properties = props)
             }
         }
     }

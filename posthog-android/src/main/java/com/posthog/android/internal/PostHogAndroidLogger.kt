@@ -7,7 +7,7 @@ import com.posthog.android.PostHogAndroidConfig
 internal class PostHogAndroidLogger(private val config: PostHogAndroidConfig) : PostHogLogger {
     override fun log(message: String) {
         if (config.debug) {
-            Log.println(Log.DEBUG, null, message)
+            Log.println(Log.DEBUG, "PostHog", message)
         }
     }
 }

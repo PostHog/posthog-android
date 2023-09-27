@@ -39,12 +39,6 @@ android {
         sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
         targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
     }
-    kotlinOptions {
-        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
-        kotlinOptions.languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
-        // remove when https://youtrack.jetbrains.com/issue/KT-37652 is fixed
-        freeCompilerArgs += "-Xexplicit-api=strict"
-    }
 
     testOptions {
         animationsDisabled = true
@@ -52,6 +46,8 @@ android {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
         }
+
+        kotlinOptions.postHogConfig(false)
     }
 
     lint {
@@ -71,22 +67,24 @@ android {
     kotlinOptions.postHogConfig()
 }
 
-// See https://youtrack.jetbrains.com/issue/KT-37652
-// Also see kotlinOptions.freeCompilerArgs
-kotlin {
-    explicitApi()
-}
-
 dependencies {
-    implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
-
+    // runtime
     api(project(mapOf("path" to ":posthog")))
-    implementation("androidx.lifecycle:lifecycle-process:2.6.2")
-    implementation("androidx.lifecycle:lifecycle-common-java8:2.6.2")
+    implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
+    implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
+    implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
 
-//    testImplementation("junit:junit:4.13.2")
-//    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-//    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    // tests
+    testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")
+    testImplementation("org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
+    testImplementation("com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}")
+    testImplementation("androidx.test:runner:${PosthogBuildConfig.Dependencies.ANDROIDX_RUNNER}")
+    testImplementation("androidx.test.ext:junit:${PosthogBuildConfig.Dependencies.ANDROIDX_JUNIT}")
+    testImplementation("androidx.test:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
+    testImplementation("androidx.test:core-ktx:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
+    testImplementation("androidx.test:rules:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
+    testImplementation("org.robolectric:robolectric:${PosthogBuildConfig.Dependencies.ROBOLECTRIC}")
 }
 
 project.publishingAndroidConfig()

@@ -32,9 +32,9 @@ android {
         sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
         targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
     }
-    kotlinOptions {
-        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
-    }
+
+    kotlinOptions.postHogConfig(false)
+
     buildFeatures {
         compose = true
     }

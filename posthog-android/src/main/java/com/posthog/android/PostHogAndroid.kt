@@ -3,6 +3,7 @@ package com.posthog.android
 import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
+import com.posthog.PostHogInterface
 import com.posthog.PostHogPrintLogger
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
@@ -34,7 +35,7 @@ public class PostHogAndroid private constructor() {
             }
         }
 
-        public fun with(context: Context, config: PostHogAndroidConfig): PostHog {
+        public fun with(context: Context, config: PostHogAndroidConfig): PostHogInterface {
             setAndroidConfig(context.appContext(), config)
             return PostHog.with(config)
         }

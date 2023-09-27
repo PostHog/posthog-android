@@ -12,7 +12,7 @@ public final class com/posthog/android/PostHogAndroid {
 
 public final class com/posthog/android/PostHogAndroid$Companion {
 	public final fun setup (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)V
-	public final fun with (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)Lcom/posthog/PostHog;
+	public final fun with (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)Lcom/posthog/PostHogInterface;
 }
 
 public final class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
