@@ -1,3 +1,7 @@
+## 3.0.0-alpha.2 - 2023-09-27
+
+- Fix permission check for Network status ([commit](https://github.com/PostHog/posthog-android/commit/57b9626a745a37a9c92437529ba9eaf308b03771))
+
 ## 3.0.0-alpha.1 - 2023-09-26
 
 - Next major of the Android SDK rewritten in Kotlin
