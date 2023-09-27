@@ -56,17 +56,21 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         verify(application).unregisterActivityLifecycleCallbacks(any())
     }
 
-    @Test
-    fun `onActivityCreated captures deep link with url`() {
-        val sut = getSut()
-        val url = "http://google.com"
+    private fun executeDeepLinkTest(url: String, captureDeepLinks: Boolean = true): PostHogFake {
+        val sut = getSut(captureDeepLinks = captureDeepLinks)
         val activity = mockActivityUri(url)
 
-        val fake = PostHogFake()
-        PostHog.overrideSharedInstance(fake)
+        val fake = createPostHogFake()
 
         sut.install()
         sut.onActivityCreated(activity, null)
+        return fake
+    }
+
+    @Test
+    fun `onActivityCreated captures deep link with url`() {
+        val url = "http://google.com"
+        val fake = executeDeepLinkTest(url)
 
         assertEquals("Deep Link Opened", fake.event)
         assertEquals(url, fake.properties?.get("url"))
@@ -74,13 +78,7 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
     @Test
     fun `onActivityCreated captures deep link with properties`() {
-        val sut = getSut()
-        val activity = mockActivityUri("test://print?barcode=ABCDEFG&Reference=fasf")
-
-        val fake = createPostHogFake()
-
-        sut.install()
-        sut.onActivityCreated(activity, null)
+        val fake = executeDeepLinkTest("test://print?barcode=ABCDEFG&Reference=fasf")
 
         assertEquals("ABCDEFG", fake.properties?.get("barcode"))
         assertEquals("fasf", fake.properties?.get("Reference"))
@@ -88,28 +86,15 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
     @Test
     fun `onActivityCreated captures deep link even if hierarchical url`() {
-        val sut = getSut()
         val url = "mailto:nobody@google.com"
-        val activity = mockActivityUri(url)
-
-        val fake = PostHogFake()
-        PostHog.overrideSharedInstance(fake)
-
-        sut.install()
-        sut.onActivityCreated(activity, null)
+        val fake = executeDeepLinkTest(url)
 
         assertEquals(url, fake.properties?.get("url"))
     }
 
     @Test
     fun `onActivityCreated does not capture deep link if disabled`() {
-        val sut = getSut(captureDeepLinks = false)
-        val activity = mockActivityUri("http://google.com")
-
-        val fake = createPostHogFake()
-
-        sut.install()
-        sut.onActivityCreated(activity, null)
+        val fake = executeDeepLinkTest("http://google.com", captureDeepLinks = false)
 
         assertNull(fake.event)
     }
