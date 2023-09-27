@@ -45,6 +45,7 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogAndroid
                     edit.putInt(key, value)
                 }
                 is Set<*> -> {
+                    @Suppress("UNCHECKED_CAST")
                     (value as? Set<String>)?.let {
                         edit.putStringSet(key, it)
                     }
@@ -82,6 +83,7 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogAndroid
     override fun getAll(): Map<String, Any> {
         val props: Map<String, Any>
         synchronized(lock) {
+            @Suppress("UNCHECKED_CAST")
             props = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
         }
         return props

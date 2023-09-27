@@ -13,6 +13,9 @@ plugins {
 
     // plugins
     id("com.github.gmazzo.buildconfig")
+
+    // tests
+    id("org.jetbrains.kotlinx.kover")
 }
 
 configure<JavaPluginExtension> {
@@ -56,8 +59,7 @@ publishing {
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions.jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
-    kotlinOptions.languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
+    kotlinOptions.postHogConfig()
 }
 
 kotlin {

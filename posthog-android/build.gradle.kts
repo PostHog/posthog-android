@@ -8,6 +8,9 @@ plugins {
     `maven-publish`
     signing
     id("org.jetbrains.dokka")
+
+    // tests
+    id("org.jetbrains.kotlinx.kover")
 }
 
 android {
@@ -64,6 +67,8 @@ android {
     androidComponents.beforeVariants {
         it.enable = !PosthogBuildConfig.shouldSkipDebugVariant(it.name)
     }
+
+    kotlinOptions.postHogConfig()
 }
 
 // See https://youtrack.jetbrains.com/issue/KT-37652

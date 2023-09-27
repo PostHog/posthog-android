@@ -334,6 +334,7 @@ public class PostHog private constructor() {
             props["\$group_set"] = it
         }
 
+        @Suppress("UNCHECKED_CAST")
         val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
         val newGroups = mutableMapOf<String, Any>()
         var reloadFeatureFlags = false
@@ -369,6 +370,7 @@ public class PostHog private constructor() {
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
 
+        @Suppress("UNCHECKED_CAST")
         val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
 
         featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null, groups, appendSharedProps = false), onFeatureFlags)

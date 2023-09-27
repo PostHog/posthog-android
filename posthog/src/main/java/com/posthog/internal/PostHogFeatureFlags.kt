@@ -35,7 +35,10 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
 
                 val errorsWhileComputingFlags = result?.get("errorsWhileComputingFlags") as? Boolean ?: false
 
+                @Suppress("UNCHECKED_CAST")
                 val featureFlags = result?.get("featureFlags") as? Map<String, Any> ?: mapOf()
+
+                @Suppress("UNCHECKED_CAST")
                 val featureFlagPayloads = result?.get("featureFlagPayloads") as? Map<String, Any> ?: mapOf()
 
                 synchronized(featureFlagsLock) {

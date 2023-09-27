@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport
 
 clean:
 	./gradlew clean
@@ -25,3 +25,6 @@ dryRelease:
 
 release:
 	./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+testReport:
+	./gradlew koverHtmlReport

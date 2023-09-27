@@ -36,6 +36,7 @@ internal fun getPackageInfo(
     }
 }
 
+@Suppress("DEPRECATION")
 internal fun PackageInfo.versionCodeCompat(): Long {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         longVersionCode
@@ -56,6 +57,7 @@ internal fun Context.hasPermission(permission: String): Boolean {
     return checkPermission(permission, Process.myPid(), Process.myUid()) == PackageManager.PERMISSION_GRANTED
 }
 
+@Suppress("DEPRECATION")
 @SuppressLint("MissingPermission")
 internal fun Context.isConnected(): Boolean {
     val connectivityManager = connectivityManager() ?: return true
@@ -63,7 +65,6 @@ internal fun Context.isConnected(): Boolean {
     if (!hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
         return true
     }
-    // TODO: stop using activeNetworkInfo
     val networkInfo = connectivityManager.activeNetworkInfo ?: return false
     return networkInfo.isConnected
 }

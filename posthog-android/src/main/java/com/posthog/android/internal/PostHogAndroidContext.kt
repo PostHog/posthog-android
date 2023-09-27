@@ -47,6 +47,7 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         return cacheStaticContext
     }
 
+    @Suppress("DEPRECATION")
     @SuppressLint("MissingPermission")
     override fun getDynamicContext(): Map<String, Any> {
         val dynamicContext = mutableMapOf<String, Any>()
@@ -57,7 +58,6 @@ internal class PostHogAndroidContext(private val context: Context, private val c
         dynamicContext["\$timezone"] = TimeZone.getDefault().id
 
         context.connectivityManager()?.let { connectivityManager ->
-            // TODO: stop using getNetworkInfo
             if (context.hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
                 connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI)?.let {
                     dynamicContext["\$network_wifi"] = it.isConnected
