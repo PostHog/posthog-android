@@ -2,8 +2,10 @@ package com.posthog.android
 
 import android.app.Activity
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import com.posthog.PostHog
@@ -36,6 +38,18 @@ public fun mockScreenTitle(throws: Boolean): Activity {
     whenever(activity.componentName).thenReturn(component)
     whenever(activity.packageManager).thenReturn(pm)
     return activity
+}
+
+@Suppress("DEPRECATION")
+public fun mockPackageInfo(context: Context, name: String = "1.0.0", code: Int = 1) {
+    val pm = mock<PackageManager>()
+    whenever(context.packageManager).thenReturn(pm)
+    whenever(context.packageName).thenReturn("test")
+    val pi = PackageInfo()
+    pi.versionName = name
+    pi.versionCode = code
+
+    whenever(pm.getPackageInfo(any<String>(), any<Int>())).thenReturn(pi)
 }
 
 public fun createPostHogFake(): PostHogFake {

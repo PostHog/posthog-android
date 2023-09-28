@@ -8,6 +8,7 @@ public class PostHogFake : PostHogInterface {
     public var event: String? = null
     public var screenTitle: String? = null
     public var properties: Map<String, Any>? = null
+    public var captures: Int = 0
 
     override fun <T : PostHogConfig> setup(config: T) {
         TODO("Not yet implemented")
@@ -27,6 +28,7 @@ public class PostHogFake : PostHogInterface {
     ) {
         this.event = event
         this.properties = properties
+        captures++
     }
 
     override fun identify(

@@ -5,7 +5,10 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 
-internal class PostHogAppInstallIntegration(private val context: Context, private val config: PostHogAndroidConfig) : PostHogIntegration {
+internal class PostHogAppInstallIntegration(
+    private val context: Context,
+    private val config: PostHogAndroidConfig,
+) : PostHogIntegration {
     override fun install() {
         getPackageInfo(context, config)?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->

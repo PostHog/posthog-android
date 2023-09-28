@@ -24,12 +24,10 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     private val application = mock<Application>()
 
     private fun getSut(
-        captureApplicationLifecycleEvents: Boolean = true,
         captureDeepLinks: Boolean = true,
         captureScreenViews: Boolean = true,
     ): PostHogActivityLifecycleCallbackIntegration {
         val config = PostHogAndroidConfig(apiKey).apply {
-            this.captureApplicationLifecycleEvents = captureApplicationLifecycleEvents
             this.captureDeepLinks = captureDeepLinks
             this.captureScreenViews = captureScreenViews
         }

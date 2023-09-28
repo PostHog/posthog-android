@@ -10,7 +10,10 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 
-internal class PostHogLifecycleObserverIntegration(private val context: Context, private val config: PostHogAndroidConfig) : DefaultLifecycleObserver, PostHogIntegration {
+internal class PostHogLifecycleObserverIntegration(
+    private val context: Context,
+    private val config: PostHogAndroidConfig,
+) : DefaultLifecycleObserver, PostHogIntegration {
     private val handler = Handler(Looper.getMainLooper())
 
     companion object {

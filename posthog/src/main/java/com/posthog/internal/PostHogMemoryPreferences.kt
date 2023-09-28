@@ -1,8 +1,10 @@
 package com.posthog.internal
 
 import com.posthog.PostHogPreferences
+import com.posthog.PostHogVisibleForTesting
 
-internal class PostHogMemoryPreferences : PostHogPreferences {
+@PostHogVisibleForTesting
+public class PostHogMemoryPreferences : PostHogPreferences {
     private val lock = Any()
     private val preferences = mutableMapOf<String, Any>()
 

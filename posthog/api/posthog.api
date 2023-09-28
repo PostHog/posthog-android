@@ -196,3 +196,12 @@ public final class com/posthog/PostHogPrintLogger : com/posthog/PostHogLogger {
 public abstract interface annotation class com/posthog/PostHogVisibleForTesting : java/lang/annotation/Annotation {
 }
 
+public final class com/posthog/internal/PostHogMemoryPreferences : com/posthog/PostHogPreferences {
+	public fun <init> ()V
+	public fun clear (Ljava/util/List;)V
+	public fun getAll ()Ljava/util/Map;
+	public fun getValue (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun remove (Ljava/lang/String;)V
+	public fun setValue (Ljava/lang/String;Ljava/lang/Object;)V
+}
+

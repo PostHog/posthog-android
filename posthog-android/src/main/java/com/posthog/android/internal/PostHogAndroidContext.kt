@@ -10,7 +10,10 @@ import com.posthog.android.PostHogAndroidConfig
 import java.util.Locale
 import java.util.TimeZone
 
-internal class PostHogAndroidContext(private val context: Context, private val config: PostHogAndroidConfig) : PostHogContext {
+internal class PostHogAndroidContext(
+    private val context: Context,
+    private val config: PostHogAndroidConfig,
+) : PostHogContext {
 
     private val cacheStaticContext by lazy {
         val staticContext = mutableMapOf<String, Any>()
