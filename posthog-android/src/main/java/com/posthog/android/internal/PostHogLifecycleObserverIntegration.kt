@@ -4,10 +4,12 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
 
 /**
@@ -18,6 +20,8 @@ import com.posthog.android.PostHogAndroidConfig
 internal class PostHogLifecycleObserverIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
+    @PostHogVisibleForTesting
+    private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
 ) : DefaultLifecycleObserver, PostHogIntegration {
     private val handler = Handler(Looper.getMainLooper())
 
@@ -50,7 +54,7 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     private fun add() {
-        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        lifecycle.addObserver(this)
     }
 
     override fun install() {
@@ -68,7 +72,7 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     private fun remove() {
-        ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
+        lifecycle.removeObserver(this)
     }
 
     override fun uninstall() {
