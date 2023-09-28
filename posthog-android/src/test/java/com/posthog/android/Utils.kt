@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.posthog.android
 
 import android.app.Activity
@@ -9,6 +11,8 @@ import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkInfo
 import android.net.Uri
 import com.posthog.PostHog
 import org.junit.rules.TemporaryFolder
@@ -43,7 +47,6 @@ public fun mockScreenTitle(throws: Boolean): Activity {
     return activity
 }
 
-@Suppress("DEPRECATION")
 public fun Context.mockPackageInfo(name: String = "1.0.0", code: Int = 1) {
     val pm = mock<PackageManager>()
     whenever(packageManager).thenReturn(pm)
@@ -62,6 +65,21 @@ public fun mockContextAppStart(context: Context, tmpDir: TemporaryFolder) {
     whenever(app.cacheDir).thenReturn(tmpDir.newFolder())
     val sharedPreferences = mock<SharedPreferences>()
     whenever(app.getSharedPreferences(any(), any())).thenReturn(sharedPreferences)
+}
+
+public fun mockPermission(context: Context, permission: Int = PackageManager.PERMISSION_GRANTED): ConnectivityManager {
+    val cm = mock<ConnectivityManager>()
+    whenever(context.getSystemService(any())).thenReturn(cm)
+    whenever(context.checkPermission(any(), any(), any())).thenReturn(permission)
+    return cm
+}
+
+public fun mockNetworkInfo(connectivityManager: ConnectivityManager, hasNetwork: Boolean = true, isConnected: Boolean = true) {
+    if (hasNetwork) {
+        val ni = mock<NetworkInfo>()
+        whenever(connectivityManager.activeNetworkInfo).thenReturn(ni)
+        whenever(ni.isConnected).thenReturn(isConnected)
+    }
 }
 
 public fun createPostHogFake(): PostHogFake {
