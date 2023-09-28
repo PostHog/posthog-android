@@ -11,11 +11,9 @@ public class PostHogFake : PostHogInterface {
     public var captures: Int = 0
 
     override fun <T : PostHogConfig> setup(config: T) {
-        TODO("Not yet implemented")
     }
 
     override fun close() {
-        TODO("Not yet implemented")
     }
 
     override fun capture(
@@ -37,43 +35,36 @@ public class PostHogFake : PostHogInterface {
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        TODO("Not yet implemented")
     }
 
     override fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
-        TODO("Not yet implemented")
     }
 
     override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
-        TODO("Not yet implemented")
+        return false
     }
 
     override fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
-        TODO("Not yet implemented")
+        return null
     }
 
     override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
-        TODO("Not yet implemented")
+        return null
     }
 
     override fun flush() {
-        TODO("Not yet implemented")
     }
 
     override fun reset() {
-        TODO("Not yet implemented")
     }
 
     override fun optIn() {
-        TODO("Not yet implemented")
     }
 
     override fun optOut() {
-        TODO("Not yet implemented")
     }
 
     override fun group(type: String, key: String, groupProperties: Map<String, Any>?) {
-        TODO("Not yet implemented")
     }
 
     override fun screen(screenTitle: String, properties: Map<String, Any>?) {
@@ -81,18 +72,15 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun alias(alias: String, properties: Map<String, Any>?) {
-        TODO("Not yet implemented")
     }
 
     override fun isOptOut(): Boolean {
-        TODO("Not yet implemented")
+        return false
     }
 
     override fun register(key: String, value: Any) {
-        TODO("Not yet implemented")
     }
 
     override fun unregister(key: String) {
-        TODO("Not yet implemented")
     }
 }
