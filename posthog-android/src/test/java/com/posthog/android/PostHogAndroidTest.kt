@@ -14,6 +14,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,8 +32,12 @@ internal class PostHogAndroidTest {
 
     @BeforeTest
     fun `set up`() {
-        tmpDir.root.deleteRecursively()
         PostHog.close()
+    }
+
+    @AfterTest
+    fun `set down`() {
+        tmpDir.root.deleteRecursively()
     }
 
     @Test
