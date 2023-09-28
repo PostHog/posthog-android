@@ -10,6 +10,12 @@ import com.posthog.android.PostHogAndroidConfig
 import java.util.Locale
 import java.util.TimeZone
 
+/**
+ * Reads the static and dynamic context
+ * For example, screen's metrics, app's name and version, device details, connectivity status
+ * @property context the App Context
+ * @property config the Config
+ */
 internal class PostHogAndroidContext(
     private val context: Context,
     private val config: PostHogAndroidConfig,

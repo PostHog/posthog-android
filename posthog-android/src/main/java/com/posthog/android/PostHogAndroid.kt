@@ -15,12 +15,17 @@ import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import java.io.File
 
+/**
+ * Main entrypoint for the Android SDK
+ * Use the setup method to set a global and singleton instance
+ * Or use the with method that returns an instance that you can hold and pass it around
+ */
 public class PostHogAndroid private constructor() {
     public companion object {
         private val lock = Any()
 
         /**
-         * Setup the SDK
+         * Setup the SDK and set a global and singleton instance
          * @property context the Context
          * @property config the Config
          */
@@ -35,6 +40,11 @@ public class PostHogAndroid private constructor() {
             }
         }
 
+        /**
+         * Setup the SDK and returns an instance that you can hold and pass it around
+         * @property context the Context
+         * @property config the Config
+         */
         public fun <T : PostHogAndroidConfig> with(context: Context, config: T): PostHogInterface {
             setAndroidConfig(context.appContext(), config)
             return PostHog.with(config)
