@@ -8,6 +8,7 @@ import com.posthog.android.PostHogFake
 import com.posthog.android.apiKey
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockActivityUri
+import com.posthog.android.mockScreenTitle
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
@@ -25,10 +26,12 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     private fun getSut(
         captureApplicationLifecycleEvents: Boolean = true,
         captureDeepLinks: Boolean = true,
+        captureScreenViews: Boolean = true,
     ): PostHogActivityLifecycleCallbackIntegration {
         val config = PostHogAndroidConfig(apiKey).apply {
             this.captureApplicationLifecycleEvents = captureApplicationLifecycleEvents
             this.captureDeepLinks = captureDeepLinks
+            this.captureScreenViews = captureScreenViews
         }
         return PostHogActivityLifecycleCallbackIntegration(application, config)
     }
@@ -97,5 +100,37 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         val fake = executeDeepLinkTest("http://google.com", captureDeepLinks = false)
 
         assertNull(fake.event)
+    }
+
+    private fun executeCaptureScreenViewsTest(captureScreenViews: Boolean = true, throws: Boolean = false): PostHogFake {
+        val sut = getSut(captureScreenViews = captureScreenViews)
+        val activity = mockScreenTitle(throws)
+
+        val fake = createPostHogFake()
+
+        sut.install()
+        sut.onActivityStarted(activity)
+        return fake
+    }
+
+    @Test
+    fun `onActivityStarted captures captureScreenViews`() {
+        val fake = executeCaptureScreenViewsTest()
+
+        assertEquals("Title", fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityStarted does not capture captureScreenViews if disabled`() {
+        val fake = executeCaptureScreenViewsTest(false)
+
+        assertNull(fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityStarted does not capture if no title found`() {
+        val fake = executeCaptureScreenViewsTest(throws = true)
+
+        assertNull(fake.screenTitle)
     }
 }

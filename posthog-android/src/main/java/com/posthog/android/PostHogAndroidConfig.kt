@@ -2,7 +2,7 @@ package com.posthog.android
 
 import com.posthog.PostHogConfig
 
-public class PostHogAndroidConfig(
+public open class PostHogAndroidConfig(
     apiKey: String,
     public var captureApplicationLifecycleEvents: Boolean = true,
     public var captureDeepLinks: Boolean = true,

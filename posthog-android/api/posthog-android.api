@@ -15,7 +15,7 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 	public final fun with (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)Lcom/posthog/PostHogInterface;
 }
 
-public final class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
+public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
 	public fun <init> (Ljava/lang/String;ZZZ)V
 	public synthetic fun <init> (Ljava/lang/String;ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z

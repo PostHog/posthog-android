@@ -24,7 +24,7 @@ public class PostHog private constructor() : PostHogInterface {
     private var queue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
 
-    public override fun setup(config: PostHogConfig) {
+    public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(lockSetup) {
             try {
                 if (enabled) {
@@ -480,7 +480,7 @@ public class PostHog private constructor() : PostHogInterface {
             return instance
         }
 
-        public override fun setup(config: PostHogConfig) {
+        public override fun <T : PostHogConfig> setup(config: T) {
             shared.setup(config)
         }
 

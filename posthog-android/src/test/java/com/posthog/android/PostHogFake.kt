@@ -6,9 +6,10 @@ import com.posthog.PostHogOnFeatureFlags
 
 public class PostHogFake : PostHogInterface {
     public var event: String? = null
+    public var screenTitle: String? = null
     public var properties: Map<String, Any>? = null
 
-    override fun setup(config: PostHogConfig) {
+    override fun <T : PostHogConfig> setup(config: T) {
         TODO("Not yet implemented")
     }
 
@@ -74,7 +75,7 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun screen(screenTitle: String, properties: Map<String, Any>?) {
-        TODO("Not yet implemented")
+        this.screenTitle = screenTitle
     }
 
     override fun alias(alias: String, properties: Map<String, Any>?) {

@@ -1,9 +1,13 @@
 package com.posthog.android
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import com.posthog.PostHog
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
@@ -15,6 +19,22 @@ public fun mockActivityUri(uri: String): Activity {
         data = Uri.parse(uri)
     }
     whenever(activity.intent).thenReturn(intent)
+    return activity
+}
+
+public fun mockScreenTitle(throws: Boolean): Activity {
+    val activity = mock<Activity>()
+    val pm = mock<PackageManager>()
+    val ac = mock<ActivityInfo>()
+    whenever(ac.loadLabel(any())).thenReturn("Title")
+    if (throws) {
+        whenever(pm.getActivityInfo(any(), any<Int>())).thenThrow(PackageManager.NameNotFoundException())
+    } else {
+        whenever(pm.getActivityInfo(any(), any<Int>())).thenReturn(ac)
+    }
+    val component = mock<ComponentName>()
+    whenever(activity.componentName).thenReturn(component)
+    whenever(activity.packageManager).thenReturn(pm)
     return activity
 }
 

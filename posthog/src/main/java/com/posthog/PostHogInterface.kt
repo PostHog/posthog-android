@@ -1,13 +1,13 @@
 package com.posthog
 
 public interface PostHogInterface {
-    public fun setup(config: PostHogConfig)
+    public fun <T : PostHogConfig> setup(config: T)
 
     public fun close()
 
     public fun capture(
         event: String,
-        distinctId: String? = null,
+        distinctId: String? = null, // TODO: should distinctId be here or just in identify?
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
@@ -19,6 +19,7 @@ public interface PostHogInterface {
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
+        // TODO: should we have groupProperties here?
     )
 
     public fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags? = null)
