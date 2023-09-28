@@ -2,13 +2,24 @@ package com.posthog.android.internal
 
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
+import android.content.SharedPreferences
 import com.posthog.PostHogPreferences
+import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
 
-internal class PostHogSharedPreferences(context: Context, config: PostHogAndroidConfig) :
+/**
+ * Reads and writes to the SDKs shared preferences
+ * The shared pref is called "posthog-android-$apiKey"
+ * @property context the App Context
+ * @property config the Config
+ */
+internal class PostHogSharedPreferences(
+    private val context: Context,
+    private val config: PostHogAndroidConfig,
+    @PostHogVisibleForTesting
+    private val sharedPreferences: SharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE),
+) :
     PostHogPreferences {
-
-    private val sharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)
 
     private val lock = Any()
 
@@ -44,11 +55,23 @@ internal class PostHogSharedPreferences(context: Context, config: PostHogAndroid
                 is Int -> {
                     edit.putInt(key, value)
                 }
-                is Set<*> -> {
+                is Collection<*> -> {
                     @Suppress("UNCHECKED_CAST")
-                    (value as? Set<String>)?.let {
+                    (value.toSet() as? Set<String>)?.let {
                         edit.putStringSet(key, it)
+                    } ?: run {
+                        config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
                     }
+                }
+                is Array<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    (value.toSet() as? Set<String>)?.let {
+                        edit.putStringSet(key, it)
+                    } ?: run {
+                        config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
+                    }
+                } else -> {
+                    config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
                 }
             }
 

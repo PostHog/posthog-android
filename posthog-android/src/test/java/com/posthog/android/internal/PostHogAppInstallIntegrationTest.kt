@@ -35,7 +35,7 @@ internal class PostHogAppInstallIntegrationTest {
     fun `install captures app installed`() {
         val sut = getSut()
 
-        mockPackageInfo(context, "1.0.0", 1)
+        context.mockPackageInfo("1.0.0", 1)
 
         val fake = createPostHogFake()
 
@@ -50,13 +50,13 @@ internal class PostHogAppInstallIntegrationTest {
     fun `install captures app updated`() {
         val sut = getSut()
 
-        mockPackageInfo(context, "1.0.0", 1)
+        context.mockPackageInfo("1.0.0", 1)
 
         val fake = createPostHogFake()
 
         sut.install()
 
-        mockPackageInfo(context, "2.0.0", 2)
+        context.mockPackageInfo("2.0.0", 2)
 
         sut.install()
 
@@ -71,7 +71,7 @@ internal class PostHogAppInstallIntegrationTest {
     fun `install does not capture if not installed or updated`() {
         val sut = getSut()
 
-        mockPackageInfo(context, "1.0.0", 1)
+        context.mockPackageInfo("1.0.0", 1)
 
         val fake = createPostHogFake()
 

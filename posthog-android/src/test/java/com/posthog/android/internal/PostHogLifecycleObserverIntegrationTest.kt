@@ -55,7 +55,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val sut = getSut()
 
         val fake = createPostHogFake()
-        mockPackageInfo(context, "1.0.0", 1)
+        context.mockPackageInfo("1.0.0", 1)
 
         sut.onStart(ProcessLifecycleOwner.get())
 
@@ -70,7 +70,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val sut = getSut()
 
         val fake = createPostHogFake()
-        mockPackageInfo(context, "1.0.0", 1)
+        context.mockPackageInfo("1.0.0", 1)
 
         sut.onStart(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())

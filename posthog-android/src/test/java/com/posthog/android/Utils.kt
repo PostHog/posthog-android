@@ -41,10 +41,10 @@ public fun mockScreenTitle(throws: Boolean): Activity {
 }
 
 @Suppress("DEPRECATION")
-public fun mockPackageInfo(context: Context, name: String = "1.0.0", code: Int = 1) {
+public fun Context.mockPackageInfo(name: String = "1.0.0", code: Int = 1) {
     val pm = mock<PackageManager>()
-    whenever(context.packageManager).thenReturn(pm)
-    whenever(context.packageName).thenReturn("test")
+    whenever(packageManager).thenReturn(pm)
+    whenever(packageName).thenReturn("test")
     val pi = PackageInfo()
     pi.versionName = name
     pi.versionCode = code
