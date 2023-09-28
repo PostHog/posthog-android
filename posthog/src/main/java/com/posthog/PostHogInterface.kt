@@ -7,7 +7,7 @@ public interface PostHogInterface {
 
     public fun capture(
         event: String,
-        distinctId: String? = null, // TODO: should distinctId be here or just in identify?
+        distinctId: String? = null,
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,

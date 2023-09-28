@@ -83,7 +83,7 @@ fun MavenPom.postHogConfig(projectName: String, repo: String = "posthog-android"
     developers {
         developer {
             name.set("PostHog")
-            email.set("manoel@posthog.com")
+            email.set("engineering@posthog.com")
             organization.set("PostHog")
             organizationUrl.set("https://posthog.com")
         }
