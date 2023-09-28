@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava
 
 clean:
 	./gradlew clean
@@ -29,6 +29,10 @@ release:
 testReport:
 	./gradlew koverHtmlReport
 
-# compile already runs the tests
+# compile already runs the tests (tests java and android)
 test:
 	./gradlew testDebugUnitTest
+
+# compile already runs the tests (tests only java)
+testJava:
+	./gradlew :posthog:test

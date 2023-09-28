@@ -1,5 +1,9 @@
 package com.posthog
 
+/**
+ * Any target annotated with this annotation is just visible because of the multi-module architecture
+ * and it should not be used
+ */
 @Retention(AnnotationRetention.BINARY)
 @Target(
     AnnotationTarget.ANNOTATION_CLASS,

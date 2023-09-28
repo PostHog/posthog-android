@@ -1,26 +1,83 @@
 package com.posthog
 
-import PostHog.posthog.BuildConfig
+import com.posthog.internal.BuildConfig
 
 public open class PostHogConfig(
-    // apiKey and host are immutable due to offline caching
+    /**
+     * The PostHog API Key
+     */
     public val apiKey: String,
+
+    /**
+     * The PostHog Host
+     * Defaults to https://app.posthog.com
+     */
     public val host: String = "https://app.posthog.com",
+
+    /**
+     * Logs the debug logs to the [logger] if enabled
+     * Defaults to false
+     */
     public var debug: Boolean = false,
+
+    /**
+     * This flag prevents capturing any data if enabled
+     * Defaults to false
+     */
     @Volatile
     public var optOut: Boolean = false,
+
+    /**
+     * Send a $feature_flag_called event when a feature flag is used automatically
+     * Defaults to true
+     */
     public var sendFeatureFlagEvent: Boolean = true,
+
+    /**
+     * Preload feature flags automatically
+     * Defaults to true
+     */
     public var preloadFeatureFlags: Boolean = true,
-    // min. allowed is 1
+
+    /**
+     * Number of minimum events before they are sent over the network
+     * Defaults to 20
+     */
     public var flushAt: Int = 20,
+
+    /**
+     * Number of maximum events in memory and disk, when the maximum is exceed, the oldest
+     * event is deleted and the new one takes place
+     * Defaults to 1000
+     */
     public var maxQueueSize: Int = 1000,
+    /**
+     * Number of maximum events in a batch call
+     * Defaults to 50
+     */
     public var maxBatchSize: Int = 50,
 //    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
+    /**
+     * Interval in seconds for sending events over the network
+     * The lower the number, most likely more battery is used
+     * Defaults to 30s
+     */
     public var flushIntervalSeconds: Int = 30,
 
+    /**
+     * Hook for encrypt and decrypt events
+     * Devices are sandbox so likely not needed
+     * Defaults to no encryption
+     */
     public var encryption: PostHogEncryption? = null,
+
+    /**
+     * Hook that is called when feature flags are loaded
+     * Defaults to no callback
+     */
     public var onFeatureFlags: PostHogOnFeatureFlags? = null,
 ) {
+    // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal
     public var logger: PostHogLogger = PostHogPrintLogger(this)
 
@@ -28,7 +85,7 @@ public open class PostHogConfig(
     public var context: PostHogContext? = null
 
     @PostHogInternal
-    public val sdkName: String = "posthog-android"
+    public var sdkName: String = "posthog-java"
 
     @PostHogInternal
     public var sdkVersion: String = BuildConfig.VERSION_NAME
@@ -50,6 +107,9 @@ public open class PostHogConfig(
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()
 
+    /**
+     * The integrations list
+     */
     public val integrations: List<PostHogIntegration>
         get() {
             val list: List<PostHogIntegration>
@@ -59,12 +119,20 @@ public open class PostHogConfig(
             return list
         }
 
+    /**
+     * Adds a new integration
+     * @param integration the Integration
+     */
     public fun addIntegration(integration: PostHogIntegration) {
         synchronized(integrationLock) {
             integrationsList.add(integration)
         }
     }
 
+    /**
+     * Removes the integration
+     * @param integration the Integration
+     */
     public fun removeIntegration(integration: PostHogIntegration) {
         synchronized(integrationLock) {
             integrationsList.remove(integration)

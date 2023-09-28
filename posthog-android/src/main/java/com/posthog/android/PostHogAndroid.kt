@@ -26,6 +26,7 @@ public class PostHogAndroid private constructor() {
 
         /**
          * Setup the SDK and set a global and singleton instance
+         * @param T the type of the Config
          * @property context the Context
          * @property config the Config
          */
@@ -42,6 +43,7 @@ public class PostHogAndroid private constructor() {
 
         /**
          * Setup the SDK and returns an instance that you can hold and pass it around
+         * @param T the type of the Config
          * @property context the Context
          * @property config the Config
          */
@@ -62,6 +64,7 @@ public class PostHogAndroid private constructor() {
             config.cachePreferences = preferences
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
             config.sdkVersion = BuildConfig.VERSION_NAME
+            config.sdkName = "posthog-android"
 
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews) {

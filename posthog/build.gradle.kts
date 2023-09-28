@@ -24,6 +24,8 @@ configure<JavaPluginExtension> {
 }
 
 buildConfig {
+    useKotlinOutput()
+    packageName("com.posthog.internal")
     buildConfigField("String", "VERSION_NAME", "\"${project.version}\"")
 }
 
@@ -66,6 +68,12 @@ kotlin {
     explicitApi()
 }
 
+configure<SourceSetContainer> {
+    test {
+        java.srcDir("src/test/java")
+    }
+}
+
 dependencies {
     implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
 
@@ -73,6 +81,12 @@ dependencies {
 
     implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
     implementation("com.squareup.okhttp3:okhttp")
+
+    // tests
+    testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")
+    testImplementation("org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
+    testImplementation("com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}")
 }
 
 tasks.javadoc {
