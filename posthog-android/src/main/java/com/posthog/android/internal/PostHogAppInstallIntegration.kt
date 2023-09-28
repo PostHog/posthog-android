@@ -5,6 +5,11 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 
+/**
+ * Captures app installed and updated events
+ * @property context the App Context
+ * @property config the Config
+ */
 internal class PostHogAppInstallIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,

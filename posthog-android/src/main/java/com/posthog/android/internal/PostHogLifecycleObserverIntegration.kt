@@ -10,6 +10,11 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 
+/**
+ * Captures app opened and backgrounded events
+ * @property context the App Context
+ * @property config the Config
+ */
 internal class PostHogLifecycleObserverIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
@@ -58,7 +63,7 @@ internal class PostHogLifecycleObserverIntegration(
                 }
             }
         } catch (e: Throwable) {
-            config.logger.log("Failed to install PostHogLifecycleObserver: $e")
+            config.logger.log("Failed to install PostHogLifecycleObserverIntegration: $e")
         }
     }
 
@@ -76,7 +81,7 @@ internal class PostHogLifecycleObserverIntegration(
                 }
             }
         } catch (e: Throwable) {
-            config.logger.log("Failed to uninstall PostHogLifecycleObserver: $e")
+            config.logger.log("Failed to uninstall PostHogLifecycleObserverIntegration: $e")
         }
     }
 }

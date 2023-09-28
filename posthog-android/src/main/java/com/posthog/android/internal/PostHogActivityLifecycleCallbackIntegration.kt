@@ -8,6 +8,11 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 
+/**
+ * Captures deep link and screen view events
+ * @property application the App Context
+ * @property config the Config
+ */
 internal class PostHogActivityLifecycleCallbackIntegration(
     private val application: Application,
     private val config: PostHogAndroidConfig,
