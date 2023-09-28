@@ -23,20 +23,18 @@ internal class PostHogAndroidContext(
         staticContext["\$screen_width"] = displayMetrics.widthPixels
 
         getPackageInfo(context, config)?.let {
-            it.applicationInfo?.loadLabel(context.packageManager)?.let { name ->
-                staticContext["\$app_name"] = name
-            }
             it.versionName?.let { name ->
                 staticContext["\$app_version"] = name
             }
             staticContext["\$app_namespace"] = it.packageName
             staticContext["\$app_build"] = it.versionCodeCompat()
         }
+        staticContext["\$app_name"] = context.applicationInfo.loadLabel(context.packageManager)
 
         staticContext["\$device_manufacturer"] = Build.MANUFACTURER
         staticContext["\$device_model"] = Build.MODEL
         staticContext["\$device_name"] = Build.DEVICE
-        staticContext["\$device_type"] = "android"
+        staticContext["\$device_type"] = "mobile"
         staticContext["\$os_name"] = "Android"
         staticContext["\$os_version"] = Build.VERSION.RELEASE
 

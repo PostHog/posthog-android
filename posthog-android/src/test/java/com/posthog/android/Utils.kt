@@ -9,11 +9,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.NetworkInfo
 import android.net.Uri
+import android.telephony.TelephonyManager
+import android.util.DisplayMetrics
 import com.posthog.PostHog
 import org.junit.rules.TemporaryFolder
 import org.mockito.kotlin.any
@@ -50,12 +54,30 @@ public fun mockScreenTitle(throws: Boolean): Activity {
 public fun Context.mockPackageInfo(name: String = "1.0.0", code: Int = 1) {
     val pm = mock<PackageManager>()
     whenever(packageManager).thenReturn(pm)
-    whenever(packageName).thenReturn("test")
+    whenever(packageName).thenReturn("com.package")
     val pi = PackageInfo()
     pi.versionName = name
     pi.versionCode = code
+    pi.packageName = "com.package"
 
     whenever(pm.getPackageInfo(any<String>(), any<Int>())).thenReturn(pi)
+}
+
+public fun Context.mockAppInfo() {
+    val ap = mock<ApplicationInfo>()
+    whenever(applicationInfo).thenReturn(ap)
+    whenever(ap.loadLabel(any())).thenReturn("Title")
+}
+
+public fun Context.mockDisplayMetrics() {
+    val res = mock<Resources>()
+    whenever(resources).thenReturn(res)
+    val dm = DisplayMetrics().apply {
+        density = 1f
+        heightPixels = 100
+        widthPixels = 150
+    }
+    whenever(res.displayMetrics).thenReturn(dm)
 }
 
 public fun mockContextAppStart(context: Context, tmpDir: TemporaryFolder) {
@@ -80,6 +102,18 @@ public fun mockNetworkInfo(connectivityManager: ConnectivityManager, hasNetwork:
         whenever(connectivityManager.activeNetworkInfo).thenReturn(ni)
         whenever(ni.isConnected).thenReturn(isConnected)
     }
+}
+
+public fun Context.mockTelephone() {
+    val tm = mock<TelephonyManager>()
+    whenever(getSystemService(any())).thenReturn(tm)
+    whenever(tm.networkOperatorName).thenReturn("name")
+}
+
+public fun mockGetNetworkInfo(connectivityManager: ConnectivityManager, networkType: Int, isConnected: Boolean = true) {
+    val ni = mock<NetworkInfo>()
+    whenever(connectivityManager.getNetworkInfo(networkType)).thenReturn(ni)
+    whenever(ni.isConnected).thenReturn(isConnected)
 }
 
 public fun createPostHogFake(): PostHogFake {
