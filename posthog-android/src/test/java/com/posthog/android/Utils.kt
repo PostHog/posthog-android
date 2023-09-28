@@ -1,14 +1,17 @@
 package com.posthog.android
 
 import android.app.Activity
+import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import com.posthog.PostHog
+import org.junit.rules.TemporaryFolder
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
@@ -50,6 +53,15 @@ public fun Context.mockPackageInfo(name: String = "1.0.0", code: Int = 1) {
     pi.versionCode = code
 
     whenever(pm.getPackageInfo(any<String>(), any<Int>())).thenReturn(pi)
+}
+
+public fun mockContextAppStart(context: Context, tmpDir: TemporaryFolder) {
+    val app = mock<Application>()
+    whenever(context.applicationContext).thenReturn(app)
+    whenever(app.getDir(any(), any())).thenReturn(tmpDir.newFolder())
+    whenever(app.cacheDir).thenReturn(tmpDir.newFolder())
+    val sharedPreferences = mock<SharedPreferences>()
+    whenever(app.getSharedPreferences(any(), any())).thenReturn(sharedPreferences)
 }
 
 public fun createPostHogFake(): PostHogFake {
