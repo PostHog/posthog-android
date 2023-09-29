@@ -1,6 +1,7 @@
-package com.posthog
+package com.posthog.internal
 
-import com.posthog.internal.PostHogPrintLogger
+import com.posthog.PostHogConfig
+import com.posthog.apiKey
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import kotlin.test.BeforeTest
