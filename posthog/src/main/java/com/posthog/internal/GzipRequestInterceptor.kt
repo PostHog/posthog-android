@@ -31,7 +31,10 @@ import java.io.IOException
 
 // https://square.github.io/okhttp/features/interceptors/
 
-/** This interceptor compresses the HTTP request body. Many webservers can't handle this!  */
+/**
+ * This interceptor compresses the HTTP request body. Many webservers can't handle this!
+ * @property config The Config
+ */
 internal class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {

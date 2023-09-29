@@ -5,6 +5,7 @@ import java.util.Date
 import java.util.UUID
 
 // should this be internal as well?
+// if we'd ever allow users to inspect and mutate the event, it should be a public API
 
 /**
  * The PostHog event data structure accepted by the batch API

@@ -87,6 +87,7 @@ dependencies {
     testImplementation("org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
     testImplementation("com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}")
+    testImplementation(project(mapOf("path" to ":posthog-android")))
 }
 
 tasks.javadoc {

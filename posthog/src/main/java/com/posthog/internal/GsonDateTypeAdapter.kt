@@ -12,6 +12,10 @@ import java.lang.reflect.Type
 import java.text.ParsePosition
 import java.util.Date
 
+/**
+ * a Gson Type adapter to serialize and deserialize the Java Date type
+ * @property config the Config
+ */
 internal class GsonDateTypeAdapter(private val config: PostHogConfig) : JsonDeserializer<Date>, JsonSerializer<Date> {
 
     override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): Date? {
