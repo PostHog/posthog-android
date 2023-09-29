@@ -10,7 +10,6 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.Date
-import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -18,7 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-internal class PostHogSendCachedEventsIntegrationTest {
+internal class PostHogSendCachedLegacyEventsIntegrationTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
@@ -38,13 +37,13 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
     private fun getSut(
         date: Date = Date(),
-        storagePrefix: String = tmpDir.newFolder().absolutePath,
+        legacyStoragePrefix: String = tmpDir.newFolder().absolutePath,
         host: String = "https://app.posthog.com",
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
         val config = PostHogConfig(apiKey, host = host).apply {
-            this.storagePrefix = storagePrefix
+            this.legacyStoragePrefix = legacyStoragePrefix
             this.networkStatus = networkStatus
             this.maxBatchSize = maxBatchSize
         }
@@ -56,6 +55,24 @@ internal class PostHogSendCachedEventsIntegrationTest {
     @AfterTest
     fun `set down`() {
         tmpDir.root.deleteRecursively()
+    }
+
+    private fun getLegacyFile(legacyStoragePrefix: String): QueueFile {
+        val legacyDir = File(legacyStoragePrefix)
+        val legacyFile = File(legacyDir, "$apiKey.tmp")
+        return QueueFile.Builder(legacyFile)
+            .forceLegacy(true)
+            .build()
+    }
+
+    private fun writeLegacyFile(content: List<String> = listOf()): String {
+        val legacyStoragePrefix = tmpDir.newFolder().absolutePath
+        val legacy = getLegacyFile(legacyStoragePrefix)
+        content.forEach {
+            legacy.add(it.toByteArray())
+        }
+        legacy.close()
+        return legacyStoragePrefix
     }
 
     private fun mockHttp(
@@ -72,24 +89,11 @@ internal class PostHogSendCachedEventsIntegrationTest {
         return mock
     }
 
-    private fun writeFile(content: List<String> = emptyList()): String {
-        val storagePrefix = tmpDir.newFolder().absolutePath
-        val fullFile = File(storagePrefix, apiKey)
-        fullFile.mkdirs()
-
-        content.forEach {
-            val file = File(fullFile.absoluteFile, "${UUID.randomUUID()}.event")
-            file.writeText(it)
-        }
-
-        return storagePrefix
-    }
-
     @Test
     fun `install bails out if not connected`() {
-        val storagePrefix = writeFile(listOf(event))
+        val legacyStoragePrefix = writeLegacyFile(listOf(event))
 
-        val sut = getSut(storagePrefix = storagePrefix, networkStatus = {
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, networkStatus = {
             false
         })
 
@@ -97,29 +101,29 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertFalse(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertFalse(getLegacyFile(legacyStoragePrefix).isEmpty)
     }
 
     @Test
-    fun `removes file from the queue if not a valid event`() {
-        val storagePrefix = writeFile(listOf("invalid event"))
+    fun `removes file from the legacy queue if not a valid event`() {
+        val legacyStoragePrefix = writeLegacyFile(listOf("invalid event"))
 
-        val sut = getSut(storagePrefix = storagePrefix)
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix)
 
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
     }
 
     @Test
-    fun `sends event from the queue`() {
-        val storagePrefix = writeFile(listOf(event))
+    fun `sends event from the legacy queue`() {
+        val legacyStoragePrefix = writeLegacyFile(listOf(event))
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install()
 
@@ -127,113 +131,89 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val request = http.takeRequest()
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
     }
 
     @Test
-    fun `sends events from the queue in batches`() {
-        val storagePrefix = writeFile(listOf(event, event))
+    fun `sends events from the legacy queue in batches`() {
+        val legacyStoragePrefix = writeLegacyFile(listOf(event, event))
         val http = mockHttp(2)
         val url = http.url("/")
 
-        val sut = getSut(storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(2, http.requestCount)
     }
 
     @Test
     fun `send a valid event and discard a broken event`() {
-        val storagePrefix = writeFile(listOf("invalid event", event))
+        val legacyStoragePrefix = writeLegacyFile(listOf("invalid event", event))
         val http = mockHttp(2)
         val url = http.url("/")
 
-        val sut = getSut(storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(1, http.requestCount)
     }
 
     @Test
     fun `discards the events if returns 4xx`() {
-        val storagePrefix = writeFile(listOf(event, event))
+        val legacyStoragePrefix = writeLegacyFile(listOf(event, event))
         val response = MockResponse().setResponseCode(400)
         val http = mockHttp(response = response)
         val url = http.url("/")
 
-        val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(1, http.requestCount)
     }
 
     @Test
     fun `keeps the events if returns 3xx`() {
-        val storagePrefix = writeFile(listOf(event, event))
+        val legacyStoragePrefix = writeLegacyFile(listOf(event, event))
         val response = MockResponse().setResponseCode(300)
         val http = mockHttp(response = response)
         val url = http.url("/")
 
-        val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(2, File(storagePrefix, apiKey).listFiles()!!.size)
+        assertEquals(2, getLegacyFile(legacyStoragePrefix).size())
         assertEquals(1, http.requestCount)
     }
 
     @Test
     fun `keeps the events if no connection`() {
-        val storagePrefix = writeFile(listOf(event, event))
+        val legacyStoragePrefix = writeLegacyFile(listOf(event, event))
         val response = MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
         val http = mockHttp(response = response)
         val url = http.url("/")
 
-        val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(2, File(storagePrefix, apiKey).listFiles()!!.size)
+        assertEquals(2, getLegacyFile(legacyStoragePrefix).size())
         assertEquals(1, http.requestCount)
-    }
-
-    @Test
-    fun `only send files past the integration run`() {
-        val storagePrefix = writeFile(listOf(event))
-        val http = mockHttp()
-        val url = http.url("/")
-
-        val sut = getSut(Date(), storagePrefix = storagePrefix, host = url.toString())
-
-        // write a new file
-        val folder = File(storagePrefix, apiKey)
-        val file = File(folder, "${UUID.randomUUID()}.event")
-
-        val tempEvent = event.replace("testEvent", "testNewEvent")
-        file.writeText(tempEvent)
-
-        sut.install()
-
-        executor.shutdownAndAwaitTermination()
-
-        assertEquals(1, http.requestCount)
-        assertEquals(1, File(storagePrefix, apiKey).listFiles()!!.size)
-        assertEquals(tempEvent, File(storagePrefix, apiKey).listFiles()!![0].readText())
     }
 }
