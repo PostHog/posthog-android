@@ -3,15 +3,16 @@ package com.posthog.android.internal
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import android.content.SharedPreferences
-import com.posthog.PostHogPreferences
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogPreferences
 
 /**
  * Reads and writes to the SDKs shared preferences
  * The shared pref is called "posthog-android-$apiKey"
  * @property context the App Context
  * @property config the Config
+ * @property sharedPreferences only visible for testing, internal usage
  */
 internal class PostHogSharedPreferences(
     private val context: Context,

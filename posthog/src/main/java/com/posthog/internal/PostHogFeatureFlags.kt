@@ -56,7 +56,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
                 isFeatureFlagsLoaded = false
                 config.logger.log("Loading feature flags failed: $e")
             } finally {
-                onFeatureFlags?.invoke(getFeatureFlags())
+                onFeatureFlags?.notify(getFeatureFlags())
             }
 
             isLoadingFeatureFlags.set(false)

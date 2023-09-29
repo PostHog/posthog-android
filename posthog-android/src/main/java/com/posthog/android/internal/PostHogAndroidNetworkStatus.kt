@@ -1,7 +1,7 @@
 package com.posthog.android.internal
 
 import android.content.Context
-import com.posthog.PostHogNetworkStatus
+import com.posthog.internal.PostHogNetworkStatus
 
 /**
  * Checks if there's an active network enabled

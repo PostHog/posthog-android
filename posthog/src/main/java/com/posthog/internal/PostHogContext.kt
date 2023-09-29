@@ -1,4 +1,6 @@
-package com.posthog
+package com.posthog.internal
+
+import com.posthog.PostHogInternal
 
 @PostHogInternal
 public interface PostHogContext {

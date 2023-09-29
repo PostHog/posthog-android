@@ -107,7 +107,7 @@ internal class PostHogSharedPreferencesTests {
         val sut = getSut()
 
         sut.setValue("key", "1")
-        sut.clear(listOf())
+        sut.clear()
 
         assertTrue(sut.getAll().isEmpty())
     }

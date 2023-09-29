@@ -1,6 +1,5 @@
 package com.posthog.internal
 
-import com.posthog.PostHogPreferences
 import com.posthog.PostHogVisibleForTesting
 
 @PostHogVisibleForTesting

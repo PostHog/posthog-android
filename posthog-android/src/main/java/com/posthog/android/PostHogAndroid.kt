@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
-import com.posthog.PostHogPrintLogger
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
@@ -13,6 +12,7 @@ import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
+import com.posthog.internal.PostHogPrintLogger
 import java.io.File
 
 /**

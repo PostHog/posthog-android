@@ -1,9 +1,11 @@
 package com.posthog
 
 import com.posthog.internal.BuildConfig
+import com.posthog.internal.PostHogPrintLogger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogConfigTest {
@@ -21,7 +23,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `optOut is disabled by default`() {
-        assertFalse(config.debug)
+        assertFalse(config.optOut)
     }
 
     @Test
@@ -52,6 +54,16 @@ internal class PostHogConfigTest {
     @Test
     fun `flushIntervalSeconds is 30s by default`() {
         assertEquals(30, config.flushIntervalSeconds)
+    }
+
+    @Test
+    fun `encryption is not set by default`() {
+        assertNull(config.encryption)
+    }
+
+    @Test
+    fun `onFeatureFlags is not set by default`() {
+        assertNull(config.onFeatureFlags)
     }
 
     @Test

@@ -1,8 +1,8 @@
 package com.posthog.android.internal
 
 import android.util.Log
-import com.posthog.PostHogLogger
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogLogger
 
 /**
  * Logs the messages using Logcat only if config.debug is enabled
@@ -10,8 +10,12 @@ import com.posthog.android.PostHogAndroidConfig
  */
 internal class PostHogAndroidLogger(private val config: PostHogAndroidConfig) : PostHogLogger {
     override fun log(message: String) {
-        if (config.debug) {
+        if (isEnabled()) {
             Log.println(Log.DEBUG, "PostHog", message)
         }
+    }
+
+    override fun isEnabled(): Boolean {
+        return config.debug
     }
 }

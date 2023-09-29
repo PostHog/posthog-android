@@ -16,6 +16,7 @@ import com.posthog.android.PostHogAndroidConfig
  * Captures app opened and backgrounded events
  * @property context the App Context
  * @property config the Config
+ * @property lifecycle only visible for testing, internal usage
  */
 internal class PostHogLifecycleObserverIntegration(
     private val context: Context,

@@ -1,7 +1,15 @@
 package com.posthog
 
 import com.posthog.internal.BuildConfig
+import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogNetworkStatus
+import com.posthog.internal.PostHogPreferences
+import com.posthog.internal.PostHogPrintLogger
 
+/**
+ * The SDK Config
+ */
 public open class PostHogConfig(
     /**
      * The PostHog API Key
@@ -40,7 +48,7 @@ public open class PostHogConfig(
     public var preloadFeatureFlags: Boolean = true,
 
     /**
-     * Number of minimum events before they are sent over the network
+     * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */
     public var flushAt: Int = 20,
@@ -58,7 +66,7 @@ public open class PostHogConfig(
     public var maxBatchSize: Int = 50,
 //    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     /**
-     * Interval in seconds for sending events over the network
+     * Interval in seconds for sending events over the wire
      * The lower the number, most likely more battery is used
      * Defaults to 30s
      */

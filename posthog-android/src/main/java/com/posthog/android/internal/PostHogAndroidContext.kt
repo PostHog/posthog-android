@@ -5,8 +5,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Build
-import com.posthog.PostHogContext
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogContext
 import java.util.Locale
 import java.util.TimeZone
 

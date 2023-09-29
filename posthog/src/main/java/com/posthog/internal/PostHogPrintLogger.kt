@@ -1,4 +1,7 @@
-package com.posthog
+package com.posthog.internal
+
+import com.posthog.PostHogConfig
+import com.posthog.PostHogInternal
 
 /**
  * Logs the messages using System.out only if config.debug is enabled
@@ -7,9 +10,12 @@ package com.posthog
 @PostHogInternal
 public class PostHogPrintLogger(private val config: PostHogConfig) : PostHogLogger {
     override fun log(message: String) {
-        if (!config.debug) {
-            return
+        if (isEnabled()) {
+            println(message)
         }
-        println(message)
+    }
+
+    override fun isEnabled(): Boolean {
+        return config.debug
     }
 }
