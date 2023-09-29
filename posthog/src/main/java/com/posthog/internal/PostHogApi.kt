@@ -11,11 +11,13 @@ import java.io.IOException
 import java.io.OutputStream
 import java.util.Date
 
-internal class PostHogApi(private val config: PostHogConfig, private val serializer: PostHogSerializer) {
-    private val client = OkHttpClient.Builder()
+internal class PostHogApi(
+    private val config: PostHogConfig,
+    private val serializer: PostHogSerializer,
+    private val client: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(GzipRequestInterceptor(config))
-        .build()
-
+        .build(),
+) {
     private val mediaType by lazy {
         try {
             // can throw IllegalArgumentException

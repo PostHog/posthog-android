@@ -9,19 +9,17 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
-import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
 
 /**
  * Captures app opened and backgrounded events
  * @property context the App Context
  * @property config the Config
- * @property lifecycle only visible for testing, internal usage
+ * @property lifecycle The Lifecycle, defaults to ProcessLifecycleOwner.get().lifecycle
  */
 internal class PostHogLifecycleObserverIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
-    @PostHogVisibleForTesting
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
 ) : DefaultLifecycleObserver, PostHogIntegration {
     private val handler = Handler(Looper.getMainLooper())

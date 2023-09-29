@@ -3,7 +3,6 @@ package com.posthog.android.internal
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import android.content.SharedPreferences
-import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences
 
@@ -12,12 +11,11 @@ import com.posthog.internal.PostHogPreferences
  * The shared pref is called "posthog-android-$apiKey"
  * @property context the App Context
  * @property config the Config
- * @property sharedPreferences only visible for testing, internal usage
+ * @property sharedPreferences The SharedPreferences, defaults to context.getSharedPreferences(...)
  */
 internal class PostHogSharedPreferences(
     private val context: Context,
     private val config: PostHogAndroidConfig,
-    @PostHogVisibleForTesting
     private val sharedPreferences: SharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE),
 ) :
     PostHogPreferences {

@@ -7,14 +7,19 @@ import java.io.File
 import java.io.FileFilter
 import java.io.IOException
 import java.util.Date
-import java.util.NoSuchElementException
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-internal class PostHogSendCachedEventsIntegration(private val config: PostHogConfig, private val api: PostHogApi, private val serializer: PostHogSerializer, private val startDate: Date) : PostHogIntegration {
+internal class PostHogSendCachedEventsIntegration(
+    private val config: PostHogConfig,
+    private val api: PostHogApi,
+    private val serializer: PostHogSerializer,
+    private val startDate: Date,
+    private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread")),
+) : PostHogIntegration {
     override fun install() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread"))
         executor.execute {
-            if (config.networkStatus?.isConnected() != true) {
+            if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
                 return@execute
             }
@@ -34,8 +39,9 @@ internal class PostHogSendCachedEventsIntegration(private val config: PostHogCon
                 return
             }
 
+            var legacy: QueueFile? = null
             try {
-                val legacy = QueueFile.Builder(legacyFile)
+                legacy = QueueFile.Builder(legacyFile)
                     .forceLegacy(true)
                     .build()
 
@@ -86,8 +92,9 @@ internal class PostHogSendCachedEventsIntegration(private val config: PostHogCon
                                         legacy.remove()
                                     } catch (e: NoSuchElementException) {
                                         // this should not happen but even if it does,
-                                        // we delete the queue file then
+                                        // we delete the queue file because its empty
                                         legacyFile.deleteSafely(config)
+                                        break
                                     } catch (e: Throwable) {
                                         config.logger.log("Error deleting file: $e.")
                                     }
@@ -98,6 +105,12 @@ internal class PostHogSendCachedEventsIntegration(private val config: PostHogCon
                 }
             } catch (e: Throwable) {
                 config.logger.log("Flushing legacy events failed: $e.")
+            } finally {
+                try {
+                    legacy?.close()
+                } catch (ignored: Throwable) {
+                    // ignore
+                }
             }
         }
     }

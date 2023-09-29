@@ -20,7 +20,7 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
 
     fun loadFeatureFlags(properties: Map<String, Any>, onFeatureFlags: PostHogOnFeatureFlags?) {
         executor.execute {
-            if (config.networkStatus?.isConnected() != true) {
+            if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
                 return@execute
             }

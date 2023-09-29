@@ -222,7 +222,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
     }
 
     private fun isConnected(): Boolean {
-        if (config.networkStatus?.isConnected() != true) {
+        if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Network isn't connected.")
             return false
         }
