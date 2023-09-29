@@ -2,11 +2,15 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal class PostHogFeatureFlags(private val config: PostHogConfig, private val api: PostHogApi) {
-    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogDecideThread"))
+internal class PostHogFeatureFlags(
+    private val config: PostHogConfig,
+    private val api: PostHogApi,
+    private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread")),
+) {
 
     private var isLoadingFeatureFlags = AtomicBoolean(false)
 
@@ -56,10 +60,14 @@ internal class PostHogFeatureFlags(private val config: PostHogConfig, private va
                 isFeatureFlagsLoaded = false
                 config.logger.log("Loading feature flags failed: $e")
             } finally {
-                onFeatureFlags?.notify(getFeatureFlags())
+                try {
+                    onFeatureFlags?.notify(getFeatureFlags())
+                } catch (e: Throwable) {
+                    config.logger.log("Executing the feature flags callback failed: $e")
+                } finally {
+                    isLoadingFeatureFlags.set(false)
+                }
             }
-
-            isLoadingFeatureFlags.set(false)
         }
     }
 

@@ -12,7 +12,9 @@
   "config": {
     "enable_collect_everything": true
   },
-  "featureFlagPayloads": {},
+  "featureFlagPayloads": {
+    "thePayload": true
+  },
   "featureFlags": {
     "4535-funnel-bar-viz": true
   },
