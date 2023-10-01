@@ -20,6 +20,7 @@ internal class PostHogSerializer(private val config: PostHogConfig) {
     private val gsonEventType = object : TypeToken<PostHogEvent>() {}.type
     private val gsonMapType = object : TypeToken<Map<String, Any>>() {}.type
     private val gsonDecideRequestType = object : TypeToken<PostHogDecideRequest>() {}.type
+    private val gsonDecideResponseType = object : TypeToken<PostHogDecideResponse>() {}.type
 
     @Throws(JsonIOException::class, IOException::class)
     fun serializeEvent(event: PostHogEvent, writer: Writer) {
@@ -39,8 +40,8 @@ internal class PostHogSerializer(private val config: PostHogConfig) {
     }
 
     @Throws(JsonIOException::class, JsonSyntaxException::class)
-    fun deserializeDecideApi(reader: Reader): Map<String, Any>? {
-        return gson.fromJson(reader, gsonMapType)
+    fun deserializeDecideApi(reader: Reader): PostHogDecideResponse? {
+        return gson.fromJson(reader, gsonDecideResponseType)
     }
 
     @Throws(JsonIOException::class, IOException::class)

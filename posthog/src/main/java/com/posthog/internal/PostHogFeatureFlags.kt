@@ -40,27 +40,22 @@ internal class PostHogFeatureFlags(
             }
 
             try {
-                val result = api.decide(distinctId, anonymousId, groups = groups)
+                val response = api.decide(distinctId, anonymousId, groups = groups)
 
-                val errorsWhileComputingFlags = result?.get("errorsWhileComputingFlags") as? Boolean ?: false
-
-                @Suppress("UNCHECKED_CAST")
-                val featureFlags = result?.get("featureFlags") as? Map<String, Any> ?: mapOf()
-
-                @Suppress("UNCHECKED_CAST")
-                val featureFlagPayloads = result?.get("featureFlagPayloads") as? Map<String, Any> ?: mapOf()
-
-                synchronized(featureFlagsLock) {
-                    if (!errorsWhileComputingFlags) {
-                        this.featureFlags = (this.featureFlags ?: mapOf()) + featureFlags
-                        this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + featureFlagPayloads
-                    } else {
-                        this.featureFlags = featureFlags
-                        this.featureFlagPayloads = featureFlagPayloads
+                response?.let {
+                    synchronized(featureFlagsLock) {
+                        if (!response.errorsWhileComputingFlags) {
+                            this.featureFlags = (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
+                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + (response.featureFlagPayloads ?: mapOf())
+                        } else {
+                            this.featureFlags = response.featureFlags
+                            this.featureFlagPayloads = response.featureFlagPayloads
+                        }
                     }
+                    isFeatureFlagsLoaded = true
+                } ?: run {
+                    isFeatureFlagsLoaded = false
                 }
-
-                isFeatureFlagsLoaded = true
             } catch (e: Throwable) {
                 isFeatureFlagsLoaded = false
                 config.logger.log("Loading feature flags failed: $e")
