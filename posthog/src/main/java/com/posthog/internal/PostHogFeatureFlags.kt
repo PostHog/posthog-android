@@ -22,7 +22,12 @@ internal class PostHogFeatureFlags(
     @Volatile
     private var isFeatureFlagsLoaded = false
 
-    fun loadFeatureFlags(properties: Map<String, Any>, onFeatureFlags: PostHogOnFeatureFlags?) {
+    fun loadFeatureFlags(
+        distinctId: String,
+        anonymousId: String,
+        groups: Map<String, Any>? = null,
+        onFeatureFlags: PostHogOnFeatureFlags?,
+    ) {
         executor.execute {
             if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
@@ -35,7 +40,7 @@ internal class PostHogFeatureFlags(
             }
 
             try {
-                val result = api.decide(properties)
+                val result = api.decide(distinctId, anonymousId, groups = groups)
 
                 val errorsWhileComputingFlags = result?.get("errorsWhileComputingFlags") as? Boolean ?: false
 

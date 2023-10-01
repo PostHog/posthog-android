@@ -381,7 +381,7 @@ public class PostHog private constructor() : PostHogInterface {
         @Suppress("UNCHECKED_CAST")
         val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
 
-        featureFlags?.loadFeatureFlags(buildProperties(distinctId, props, null, null, groups, appendSharedProps = false), onFeatureFlags)
+        featureFlags?.loadFeatureFlags(distinctId, anonymousId, groups = groups, onFeatureFlags)
     }
 
     public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {

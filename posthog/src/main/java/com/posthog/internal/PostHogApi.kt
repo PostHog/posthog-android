@@ -58,12 +58,15 @@ internal class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    fun decide(properties: Map<String, Any>): Map<String, Any>? {
-        val map = properties.toMutableMap()
-        map["token"] = config.apiKey
+    fun decide(
+        distinctId: String,
+        anonymousId: String,
+        groups: Map<String, Any>? = null,
+    ): Map<String, Any>? {
+        val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups = groups)
 
         val request = makeRequest("${config.host}/decide/?v=3") {
-            serializer.serializeDecideApi(map, it.bufferedWriter())
+            serializer.serializeDecideApi(decideRequest, it.bufferedWriter())
         }
 
         client.newCall(request).execute().use {

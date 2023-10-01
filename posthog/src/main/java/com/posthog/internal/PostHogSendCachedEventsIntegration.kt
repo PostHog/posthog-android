@@ -130,6 +130,11 @@ internal class PostHogSendCachedEventsIntegration(
 
                 val listFiles = (dir.listFiles(fileFilter) ?: emptyArray()).toMutableList()
 
+                // sort by date asc so its sent in order
+                listFiles.sortBy { file ->
+                    file.lastModified()
+                }
+
                 while (listFiles.isNotEmpty()) {
                     val events = mutableListOf<PostHogEvent>()
                     val iterator = listFiles.iterator()

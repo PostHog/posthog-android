@@ -79,7 +79,7 @@ internal class PostHogFeatureFlagsTest {
             false
         })
 
-        sut.loadFeatureFlags(mapOf(), null)
+        sut.loadFeatureFlags("distinctId", "anonId", groups = emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -94,7 +94,7 @@ internal class PostHogFeatureFlagsTest {
         val sut = getSut(host = url.toString())
 
         var callback = false
-        sut.loadFeatureFlags(mapOf("distinct_id" to "my_identify"), onFeatureFlags = {
+        sut.loadFeatureFlags("my_identify", "anonId", groups = emptyMap(), onFeatureFlags = {
             callback = true
         })
 
