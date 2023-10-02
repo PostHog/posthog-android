@@ -18,7 +18,8 @@ internal class PostHogApiTest {
     ): PostHogApi {
         val config = PostHogConfig(apiKey, host)
         val serializer = PostHogSerializer(config)
-        return PostHogApi(config, serializer)
+        val dateProvider = PostHogCalendarDateProvider()
+        return PostHogApi(config, serializer, dateProvider)
     }
 
     @Test

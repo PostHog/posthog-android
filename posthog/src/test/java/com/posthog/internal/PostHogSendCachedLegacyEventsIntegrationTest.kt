@@ -48,7 +48,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
             this.maxBatchSize = maxBatchSize
         }
         val serializer = PostHogSerializer(config)
-        val api = PostHogApi(config, serializer)
+        val dateProvider = PostHogCalendarDateProvider()
+        val api = PostHogApi(config, serializer, dateProvider)
         return PostHogSendCachedEventsIntegration(config, api, serializer, date, executor = executor)
     }
 

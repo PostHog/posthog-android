@@ -20,6 +20,7 @@ public data class PostHogEvent(
     @SerializedName("distinct_id")
     val distinctId: String,
     val properties: Map<String, Any>? = null,
+    // refactor to use PostHogDateProvider
     val timestamp: Date = Date(),
     val uuid: UUID = UUID.randomUUID(),
 )

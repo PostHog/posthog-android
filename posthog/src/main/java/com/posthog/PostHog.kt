@@ -1,12 +1,12 @@
 package com.posthog
 
 import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogCalendarDateProvider
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
-import java.util.Date
 import java.util.UUID
 
 public class PostHog private constructor() : PostHogInterface {
@@ -39,8 +39,9 @@ public class PostHog private constructor() : PostHogInterface {
                 val cachePreferences = config.cachePreferences ?: PostHogMemoryPreferences()
                 config.cachePreferences = cachePreferences
                 val serializer = PostHogSerializer(config)
-                val api = PostHogApi(config, serializer)
-                val queue = PostHogQueue(config, api, serializer)
+                val dateProvider = PostHogCalendarDateProvider()
+                val api = PostHogApi(config, serializer, dateProvider)
+                val queue = PostHogQueue(config, api, serializer, dateProvider)
                 val featureFlags = PostHogFeatureFlags(config, api)
 
                 // no need to lock optOut here since the setup is locked already
@@ -49,7 +50,7 @@ public class PostHog private constructor() : PostHogInterface {
                     config.optOut = optOut
                 }
 
-                val startDate = Date()
+                val startDate = dateProvider.currentDate()
                 val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(config, api, serializer, startDate)
 
                 this.api = api

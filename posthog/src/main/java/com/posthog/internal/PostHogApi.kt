@@ -9,16 +9,17 @@ import okhttp3.RequestBody
 import okio.BufferedSink
 import java.io.IOException
 import java.io.OutputStream
-import java.util.Date
 
 /**
  * The class that calls the PostHog API
  * @property config the Config
  * @property serializer the JSON Serializer
+ * @property dateProvider the Date provider
  */
 internal class PostHogApi(
     private val config: PostHogConfig,
     private val serializer: PostHogSerializer,
+    private val dateProvider: PostHogDateProvider,
 ) {
     private val mediaType by lazy {
         try {
@@ -43,7 +44,7 @@ internal class PostHogApi(
         val batch = PostHogBatchEvent(config.apiKey, events)
 
         val request = makeRequest("$theHost/batch") {
-            batch.sentAt = Date()
+            batch.sentAt = dateProvider.currentDate()
             serializer.serialize(batch, it.bufferedWriter())
         }
 

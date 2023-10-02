@@ -29,7 +29,7 @@ internal class PostHogQueueTest {
         maxQueueSize: Int = 1000,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         flushAt: Int = 20,
-        dateProvider: PostHogDateProvider = PostHogCurrentDateProvider(),
+        dateProvider: PostHogDateProvider = PostHogCalendarDateProvider(),
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
 
@@ -42,7 +42,7 @@ internal class PostHogQueueTest {
             this.maxBatchSize = maxBatchSize
         }
         val serializer = PostHogSerializer(config)
-        val api = PostHogApi(config, serializer)
+        val api = PostHogApi(config, serializer, dateProvider)
         return PostHogQueue(config, api, serializer, executor = executor, dateProvider = dateProvider)
     }
 

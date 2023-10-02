@@ -27,7 +27,7 @@ internal class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val serializer: PostHogSerializer,
-    private val dateProvider: PostHogDateProvider = PostHogCurrentDateProvider(),
+    private val dateProvider: PostHogDateProvider,
     private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogQueueThread")),
 ) {
 
