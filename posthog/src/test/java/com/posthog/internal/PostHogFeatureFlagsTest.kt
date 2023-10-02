@@ -6,14 +6,14 @@ import com.posthog.mockHttp
 import com.posthog.responseApi
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
-import org.junit.Test
 import java.util.concurrent.Executors
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogFeatureFlagsTest {
-    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread"))
+    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private fun getSut(
         host: String,

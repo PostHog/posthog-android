@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
     private val api: PostHogApi,
-    private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread")),
+    private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogFeatureFlagsThread")),
 ) {
 
     private var isLoadingFeatureFlags = AtomicBoolean(false)

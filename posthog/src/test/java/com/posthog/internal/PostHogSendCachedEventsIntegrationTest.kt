@@ -22,7 +22,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
-    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread"))
+    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private val event = """
                 {

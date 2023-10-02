@@ -116,9 +116,7 @@ internal class PostHogSendCachedEventsIntegration(
             } finally {
                 try {
                     legacy?.close()
-                } catch (ignored: Throwable) {
-                    // ignore
-                }
+                } catch (ignored: Throwable) {}
             }
         }
     }

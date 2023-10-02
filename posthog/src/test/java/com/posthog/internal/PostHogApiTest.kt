@@ -7,7 +7,7 @@ import com.posthog.mockHttp
 import com.posthog.responseApi
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Assert.assertThrows
-import org.junit.Test
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 

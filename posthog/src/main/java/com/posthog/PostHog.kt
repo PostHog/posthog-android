@@ -474,7 +474,12 @@ public class PostHog private constructor() : PostHogInterface {
             shared = defaultSharedInstance
         }
 
-        public fun with(config: PostHogConfig): PostHogInterface {
+        /**
+         * Setup the SDK and returns an instance that you can hold and pass it around
+         * @param T the type of the Config
+         * @property config the Config
+         */
+        public fun <T : PostHogConfig> with(config: T): PostHogInterface {
             val instance = PostHog()
             instance.setup(config)
             return instance

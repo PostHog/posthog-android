@@ -13,7 +13,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public fun optIn ()V
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
-	public fun reloadFeatureFlagsRequest (Lcom/posthog/PostHogOnFeatureFlags;)V
+	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
@@ -35,7 +35,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun optOut ()V
 	public final fun overrideSharedInstance (Lcom/posthog/PostHogInterface;)V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
-	public fun reloadFeatureFlagsRequest (Lcom/posthog/PostHogOnFeatureFlags;)V
+	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public final fun resetSharedInstance ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
@@ -138,7 +138,7 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun optIn ()V
 	public abstract fun optOut ()V
 	public abstract fun register (Ljava/lang/String;Ljava/lang/Object;)V
-	public abstract fun reloadFeatureFlagsRequest (Lcom/posthog/PostHogOnFeatureFlags;)V
+	public abstract fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public abstract fun reset ()V
 	public abstract fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun setup (Lcom/posthog/PostHogConfig;)V
@@ -153,7 +153,7 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun group$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun identify$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZILjava/lang/Object;)Z
-	public static synthetic fun reloadFeatureFlagsRequest$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
+	public static synthetic fun reloadFeatureFlags$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public static synthetic fun screen$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 }
 

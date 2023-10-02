@@ -2,13 +2,14 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.PostHogVisibleForTesting
 import java.io.File
 import java.io.IOException
-import java.util.Calendar
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
 import java.util.UUID
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
@@ -19,11 +20,15 @@ import kotlin.math.min
  * @property config the Config
  * @property api the API
  * @property serializer the Serializer
+ * @property dateProvider the Date provider
+ * @property executor the Executor
  */
 internal class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val serializer: PostHogSerializer,
+    private val dateProvider: PostHogDateProvider = PostHogCurrentDateProvider(),
+    private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogQueueThread")),
 ) {
 
     private val deque: ArrayDeque<File> = ArrayDeque()
@@ -46,15 +51,13 @@ internal class PostHogQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
-    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogQueueThread"))
-
     fun add(event: PostHogEvent) {
-        var removeFirst = false
-        if (deque.size >= config.maxQueueSize) {
-            removeFirst = true
-        }
-
         executor.executeSafely {
+            var removeFirst = false
+            if (deque.size >= config.maxQueueSize) {
+                removeFirst = true
+            }
+
             if (removeFirst) {
                 try {
                     val first: File
@@ -63,7 +66,7 @@ internal class PostHogQueue(
                     }
                     first.deleteSafely(config)
                     config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
-                } catch (ignore: NoSuchElementException) {}
+                } catch (ignored: NoSuchElementException) {}
             }
 
             config.storagePrefix?.let {
@@ -71,6 +74,7 @@ internal class PostHogQueue(
 
                 if (!dirCreated) {
                     dir.mkdirs()
+                    dirCreated = true
                 }
 
                 val file = File(dir, "${UUID.randomUUID()}.event")
@@ -83,7 +87,7 @@ internal class PostHogQueue(
                     serializer.serialize(event, os.writer().buffered())
                     config.logger.log("Queued event ${file.name}.")
 
-                    flushIfOverThreshold()
+                    flushIfOverThreshold(true)
                 } catch (e: Throwable) {
                     config.logger.log("Event ${event.event} failed to parse: $e.")
                 }
@@ -91,14 +95,14 @@ internal class PostHogQueue(
         }
     }
 
-    private fun flushIfOverThreshold() {
+    private fun flushIfOverThreshold(onExecutor: Boolean) {
         if (deque.size >= config.flushAt) {
-            flushBatch()
+            flushBatch(onExecutor)
         }
     }
 
     private fun canFlushBatch(): Boolean {
-        if (pausedUntil?.after(Date()) == true) {
+        if (pausedUntil?.after(dateProvider.currentDate()) == true) {
             config.logger.log("Queue is paused until $pausedUntil")
             return false
         }
@@ -114,7 +118,7 @@ internal class PostHogQueue(
         return events
     }
 
-    private fun flushBatch() {
+    private fun flushBatch(onExecutor: Boolean) {
         if (!canFlushBatch()) {
             config.logger.log("Cannot flush the Queue.")
             return
@@ -125,25 +129,34 @@ internal class PostHogQueue(
             return
         }
 
-        executor.executeSafely {
-            if (!isConnected()) {
-                return@executeSafely
+        // if its called from the executor already, no need to schedule another one
+        if (onExecutor) {
+            executeBatch()
+        } else {
+            executor.executeSafely {
+                executeBatch()
             }
+        }
+    }
 
-            var retry = false
-            try {
-                batchEvents()
-                retryCount = 0
-            } catch (e: Throwable) {
-                config.logger.log("Flushing failed: $e.")
+    private fun executeBatch() {
+        if (!isConnected()) {
+            return
+        }
 
-                retry = true
-                retryCount++
-            } finally {
-                calculateDelay(retry)
+        var retry = false
+        try {
+            batchEvents()
+            retryCount = 0
+        } catch (e: Throwable) {
+            config.logger.log("Flushing failed: $e.")
 
-                isFlushing.set(false)
-            }
+            retry = true
+            retryCount++
+        } finally {
+            calculateDelay(retry)
+
+            isFlushing.set(false)
         }
     }
 
@@ -241,13 +254,7 @@ internal class PostHogQueue(
 
     private fun calculateDelay(retry: Boolean) {
         val delay = if (retry) min(retryCount * retryDelaySeconds, maxRetryDelaySeconds) else config.flushIntervalSeconds
-        pausedUntil = calculatePausedUntil(delay)
-    }
-
-    private fun calculatePausedUntil(seconds: Int): Date {
-        val cal = Calendar.getInstance()
-        cal.add(Calendar.SECOND, seconds)
-        return cal.time
+        pausedUntil = dateProvider.addSecondsToCurrentDate(delay)
     }
 
     fun start() {
@@ -260,7 +267,7 @@ internal class PostHogQueue(
                     config.logger.log("Queue is flushing.")
                     return@schedule
                 }
-                flushIfOverThreshold()
+                flushIfOverThreshold(false)
             }
             this.timerTask = timerTask
             this.timer = timer
@@ -290,4 +297,14 @@ internal class PostHogQueue(
             }
         }
     }
+
+    val dequeList: List<File>
+        @PostHogVisibleForTesting
+        get() {
+            val tempFiles: List<File>
+            synchronized(dequeLock) {
+                tempFiles = deque.toList()
+            }
+            return tempFiles
+        }
 }

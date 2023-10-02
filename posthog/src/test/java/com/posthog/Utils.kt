@@ -38,12 +38,14 @@ public fun ExecutorService.shutdownAndAwaitTermination() {
 public val date: Date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
 public const val event: String = "event"
 public const val distinctId: String = "distinctId"
+public const val anonId: String = "anonId"
+public val groups: Map<String, Any> = mapOf("group1" to "theValue")
 public val props: Map<String, Any> = mapOf<String, Any>("prop" to "value")
 public val uuid: UUID = UUID.fromString("8c04e5c1-8f6e-4002-96fd-1804799b6ffe")
 
-public fun generateEvent(): PostHogEvent {
+public fun generateEvent(eventName: String? = null): PostHogEvent {
     return PostHogEvent(
-        event,
+        eventName ?: event,
         distinctId = distinctId,
         properties = props,
         timestamp = date,

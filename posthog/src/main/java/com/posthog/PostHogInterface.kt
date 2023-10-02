@@ -6,6 +6,7 @@ package com.posthog
 public interface PostHogInterface {
 
     /**
+     * Setup the SDK
      * @param config the Config class
      */
     public fun <T : PostHogConfig> setup(config: T)
