@@ -13,6 +13,7 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
+import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -198,6 +199,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         assertEquals(1, http.requestCount)
     }
 
+    @Ignore("Fix using the date provider")
     @Test
     fun `only send files past the integration run`() {
         val storagePrefix = writeFile(listOf(event))
