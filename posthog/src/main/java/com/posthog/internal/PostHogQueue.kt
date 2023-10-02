@@ -10,7 +10,6 @@ import java.util.Timer
 import java.util.TimerTask
 import java.util.UUID
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.math.min
@@ -28,7 +27,7 @@ internal class PostHogQueue(
     private val api: PostHogApi,
     private val serializer: PostHogSerializer,
     private val dateProvider: PostHogDateProvider,
-    private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogQueueThread")),
+    private val executor: ExecutorService,
 ) {
 
     private val deque: ArrayDeque<File> = ArrayDeque()

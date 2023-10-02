@@ -7,9 +7,16 @@ import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
+import com.posthog.internal.PostHogThreadFactory
 import java.util.UUID
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
-public class PostHog private constructor() : PostHogInterface {
+public class PostHog private constructor(
+    private val queueExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
+        PostHogThreadFactory("PostHogQueueThread"),
+    ),
+) : PostHogInterface {
     @Volatile
     private var enabled = false
 
@@ -20,7 +27,6 @@ public class PostHog private constructor() : PostHogInterface {
     private var config: PostHogConfig? = null
 
     private var featureFlags: PostHogFeatureFlags? = null
-    private var api: PostHogApi? = null
     private var queue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
 
@@ -41,19 +47,26 @@ public class PostHog private constructor() : PostHogInterface {
                 val serializer = PostHogSerializer(config)
                 val dateProvider = PostHogCalendarDateProvider()
                 val api = PostHogApi(config, serializer, dateProvider)
-                val queue = PostHogQueue(config, api, serializer, dateProvider)
+                val queue = PostHogQueue(config, api, serializer, dateProvider, queueExecutor)
                 val featureFlags = PostHogFeatureFlags(config, api)
 
                 // no need to lock optOut here since the setup is locked already
-                val optOut = config.cachePreferences?.getValue("opt-out", defaultValue = false) as? Boolean
+                val optOut = config.cachePreferences?.getValue(
+                    "opt-out",
+                    defaultValue = config.optOut,
+                ) as? Boolean
                 optOut?.let {
                     config.optOut = optOut
                 }
 
                 val startDate = dateProvider.currentDate()
-                val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(config, api, serializer, startDate)
+                val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(
+                    config,
+                    api,
+                    serializer,
+                    startDate,
+                )
 
-                this.api = api
                 this.config = config
                 this.queue = queue
                 this.featureFlags = featureFlags
@@ -117,7 +130,8 @@ public class PostHog private constructor() : PostHogInterface {
                         try {
                             it.uninstall()
                         } catch (e: Throwable) {
-                            config.logger.log("Integration ${it.javaClass.name} failed to uninstall: $e.")
+                            config.logger
+                                .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
                         }
                     }
                 }
@@ -147,7 +161,10 @@ public class PostHog private constructor() : PostHogInterface {
 
     private var distinctId: String
         get() {
-            return config?.cachePreferences?.getValue("distinctId", defaultValue = anonymousId) as? String ?: ""
+            return config?.cachePreferences?.getValue(
+                "distinctId",
+                defaultValue = anonymousId,
+            ) as? String ?: ""
         }
         set(value) {
             config?.cachePreferences?.setValue("distinctId", value)
@@ -215,7 +232,6 @@ public class PostHog private constructor() : PostHogInterface {
         return props
     }
 
-    // test: $merge_dangerously
     public override fun capture(
         event: String,
         distinctId: String?,
@@ -234,7 +250,17 @@ public class PostHog private constructor() : PostHogInterface {
 
         val newDistinctId = distinctId ?: this.distinctId
 
-        val postHogEvent = PostHogEvent(event, newDistinctId, properties = buildProperties(newDistinctId, properties, userProperties, userPropertiesSetOnce, groupProperties))
+        val postHogEvent = PostHogEvent(
+            event,
+            newDistinctId,
+            properties = buildProperties(
+                newDistinctId,
+                properties,
+                userProperties,
+                userPropertiesSetOnce,
+                groupProperties,
+            ),
+        )
         queue?.add(postHogEvent)
     }
 
@@ -320,7 +346,13 @@ public class PostHog private constructor() : PostHogInterface {
             props.putAll(it)
         }
 
-        capture("\$identify", distinctId = distinctId, properties = props, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
+        capture(
+            "\$identify",
+            distinctId = distinctId,
+            properties = props,
+            userProperties = userProperties,
+            userPropertiesSetOnce = userPropertiesSetOnce,
+        )
 
         if (previousDistinctId != distinctId) {
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
@@ -486,6 +518,16 @@ public class PostHog private constructor() : PostHogInterface {
             return instance
         }
 
+        @PostHogVisibleForTesting
+        internal fun <T : PostHogConfig> withInternal(
+            config: T,
+            queueExecutor: ExecutorService,
+        ): PostHogInterface {
+            val instance = PostHog(queueExecutor)
+            instance.setup(config)
+            return instance
+        }
+
         public override fun <T : PostHogConfig> setup(config: T) {
             shared.setup(config)
         }
@@ -502,7 +544,14 @@ public class PostHog private constructor() : PostHogInterface {
             userPropertiesSetOnce: Map<String, Any>?,
             groupProperties: Map<String, Any>?,
         ) {
-            shared.capture(event, distinctId = distinctId, properties = properties, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce, groupProperties = groupProperties)
+            shared.capture(
+                event,
+                distinctId = distinctId,
+                properties = properties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groupProperties = groupProperties,
+            )
         }
 
         public override fun identify(
@@ -511,7 +560,12 @@ public class PostHog private constructor() : PostHogInterface {
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
         ) {
-            shared.identify(distinctId, properties = properties, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
+            shared.identify(
+                distinctId,
+                properties = properties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+            )
         }
 
         public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {

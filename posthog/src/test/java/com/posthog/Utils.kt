@@ -3,6 +3,9 @@ package com.posthog
 import com.google.gson.internal.bind.util.ISO8601Utils
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okio.Buffer
+import okio.GzipSource
+import okio.buffer
 import java.lang.RuntimeException
 import java.text.ParsePosition
 import java.util.Date
@@ -40,6 +43,9 @@ public const val event: String = "event"
 public const val distinctId: String = "distinctId"
 public const val anonId: String = "anonId"
 public val groups: Map<String, Any> = mapOf("group1" to "theValue")
+public val userProps: Map<String, Any> = mapOf("user1" to "theValue")
+public val userPropsOnce: Map<String, Any> = mapOf("logged" to true)
+public val groupProps: Map<String, Any> = mapOf("premium" to true)
 public val props: Map<String, Any> = mapOf<String, Any>("prop" to "value")
 public val uuid: UUID = UUID.fromString("8c04e5c1-8f6e-4002-96fd-1804799b6ffe")
 
@@ -98,4 +104,10 @@ public fun mockHttp(
         mock.enqueue(response)
     }
     return mock
+}
+
+public fun Buffer.unGzip(): String {
+    return GzipSource(this).use { source ->
+        source.buffer().use { bufferedSource -> bufferedSource.readUtf8() }
+    }
 }
