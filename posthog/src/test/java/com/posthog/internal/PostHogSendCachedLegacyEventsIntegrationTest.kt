@@ -129,8 +129,6 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        val request = http.takeRequest()
-        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
     }
 

@@ -4,10 +4,11 @@ import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.apiKey
+import com.posthog.date
+import com.posthog.generateEvent
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.text.ParsePosition
-import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,25 +19,9 @@ internal class PostHogSerializerTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
-    private val date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
-    private val event = "event"
-    private val distinctId = "distinctId"
-    private val props = mapOf<String, Any>("prop" to "value")
-    private val uuid = UUID.fromString("8c04e5c1-8f6e-4002-96fd-1804799b6ffe")
-
     private fun getSut(): PostHogSerializer {
         val config = PostHogConfig(apiKey)
         return PostHogSerializer(config)
-    }
-
-    private fun generateEvent(): PostHogEvent {
-        return PostHogEvent(
-            event,
-            distinctId = distinctId,
-            properties = props,
-            timestamp = date,
-            uuid = uuid,
-        )
     }
 
     private fun assertEvent(event: PostHogEvent) {

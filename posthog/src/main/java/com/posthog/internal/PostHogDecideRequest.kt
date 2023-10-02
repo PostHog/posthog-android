@@ -4,7 +4,7 @@ internal class PostHogDecideRequest(
     apiKey: String,
     distinctId: String,
     anonymousId: String,
-    groups: Map<String, Any>? = null,
+    groups: Map<String, Any>?,
     // add person_properties, group_properties
 ) : HashMap<String, Any>() {
     init {

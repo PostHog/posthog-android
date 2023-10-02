@@ -11,12 +11,14 @@ import java.io.IOException
 import java.io.OutputStream
 import java.util.Date
 
+/**
+ * The class that calls the PostHog API
+ * @property config the Config
+ * @property serializer the JSON Serializer
+ */
 internal class PostHogApi(
     private val config: PostHogConfig,
     private val serializer: PostHogSerializer,
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(GzipRequestInterceptor(config))
-        .build(),
 ) {
     private val mediaType by lazy {
         try {
@@ -27,17 +29,26 @@ internal class PostHogApi(
         }
     }
 
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(GzipRequestInterceptor(config))
+        .build()
+
+    private val theHost: String
+        get() {
+            return if (config.host.endsWith("/")) config.host.substring(0, config.host.length - 1) else config.host
+        }
+
     @Throws(PostHogApiError::class, IOException::class)
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
 
-        val request = makeRequest("${config.host}/batch") {
+        val request = makeRequest("$theHost/batch") {
             batch.sentAt = Date()
             serializer.serialize(batch, it.bufferedWriter())
         }
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
         }
     }
 
@@ -61,16 +72,16 @@ internal class PostHogApi(
     fun decide(
         distinctId: String,
         anonymousId: String,
-        groups: Map<String, Any>? = null,
+        groups: Map<String, Any>?,
     ): PostHogDecideResponse? {
-        val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups = groups)
+        val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups)
 
-        val request = makeRequest("${config.host}/decide/?v=3") {
+        val request = makeRequest("$theHost/decide/?v=3") {
             serializer.serialize(decideRequest, it.bufferedWriter())
         }
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
 
             it.body?.let { body ->
                 return serializer.deserialize(body.charStream().buffered())

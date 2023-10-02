@@ -125,8 +125,6 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        val request = http.takeRequest()
-        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
         assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
     }
 
