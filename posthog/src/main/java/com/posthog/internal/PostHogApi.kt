@@ -33,7 +33,7 @@ internal class PostHogApi(
 
         val request = makeRequest("${config.host}/batch") {
             batch.sentAt = Date()
-            serializer.serializeBatchApi(batch, it.bufferedWriter())
+            serializer.serialize(batch, it.bufferedWriter())
         }
 
         client.newCall(request).execute().use {
@@ -66,14 +66,14 @@ internal class PostHogApi(
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups = groups)
 
         val request = makeRequest("${config.host}/decide/?v=3") {
-            serializer.serializeDecideApi(decideRequest, it.bufferedWriter())
+            serializer.serialize(decideRequest, it.bufferedWriter())
         }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, body = it.body)
 
             it.body?.let { body ->
-                return serializer.deserializeDecideApi(body.charStream().buffered())
+                return serializer.deserialize(body.charStream().buffered())
             }
             return null
         }

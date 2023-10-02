@@ -85,7 +85,7 @@ public class PostHog private constructor() : PostHogInterface {
         val cachedPrefs = config.cachePreferences?.getValue(config.apiKey) as? String
         cachedPrefs?.let {
             try {
-                serializer.deserializeCachedProperties(it)?.let { props ->
+                serializer.deserialize<Map<String, Any>?>(it.reader())?.let { props ->
                     val anonymousId = props["anonymousId"] as? String
                     val distinctId = props["distinctId"] as? String
 

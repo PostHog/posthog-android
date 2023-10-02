@@ -61,7 +61,7 @@ internal class PostHogSerializerTest {
         val event = generateEvent()
 
         val file = tmpDir.newFile()
-        sut.serializeEvent(event, file.outputStream().writer().buffered())
+        sut.serialize(event, file.outputStream().writer().buffered())
 
         val expectedJson = """{"event":"event","distinct_id":"distinctId","properties":{"prop":"value"},"timestamp":"2023-09-20T11:58:49.000Z","uuid":"8c04e5c1-8f6e-4002-96fd-1804799b6ffe"}"""
 
@@ -75,9 +75,9 @@ internal class PostHogSerializerTest {
         val event = generateEvent()
 
         val file = tmpDir.newFile()
-        sut.serializeEvent(event, file.outputStream().writer().buffered())
+        sut.serialize(event, file.outputStream().writer().buffered())
 
-        val theEvent = sut.deserializeEvent(file.inputStream().reader().buffered())
+        val theEvent = sut.deserialize<PostHogEvent?>(file.inputStream().reader().buffered())
 
         assertEvent(theEvent!!)
     }
@@ -90,7 +90,7 @@ internal class PostHogSerializerTest {
         val batch = PostHogBatchEvent(apiKey, listOf(event), sentAt = date)
 
         val file = tmpDir.newFile()
-        sut.serializeBatchApi(batch, file.outputStream().writer().buffered())
+        sut.serialize(batch, file.outputStream().writer().buffered())
 
         val expectedJson = """{"api_key":"_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI","batch":[{"event":"event","distinct_id":"distinctId","properties":{"prop":"value"},"timestamp":"2023-09-20T11:58:49.000Z","uuid":"8c04e5c1-8f6e-4002-96fd-1804799b6ffe"}],"sent_at":"2023-09-20T11:58:49.000Z"}"""
 

@@ -5,7 +5,6 @@ import com.google.gson.JsonIOException
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
-import com.posthog.PostHogEvent
 import java.io.IOException
 import java.io.Reader
 import java.io.Writer
@@ -16,42 +15,15 @@ internal class PostHogSerializer(private val config: PostHogConfig) {
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
             .setLenient()
     }.create()
-    private val gsonBatchType = object : TypeToken<PostHogBatchEvent>() {}.type
-    private val gsonEventType = object : TypeToken<PostHogEvent>() {}.type
-    private val gsonMapType = object : TypeToken<Map<String, Any>>() {}.type
-    private val gsonDecideRequestType = object : TypeToken<PostHogDecideRequest>() {}.type
-    private val gsonDecideResponseType = object : TypeToken<PostHogDecideResponse>() {}.type
 
     @Throws(JsonIOException::class, IOException::class)
-    fun serializeEvent(event: PostHogEvent, writer: Writer) {
-        gson.toJson(event, gsonEventType, writer)
+    inline fun <reified T> serialize(value: T, writer: Writer) {
+        gson.toJson(value, object : TypeToken<T>() {}.type, writer)
         writer.flush()
     }
 
     @Throws(JsonIOException::class, JsonSyntaxException::class)
-    fun deserializeEvent(reader: Reader): PostHogEvent? {
-        return gson.fromJson(reader, gsonEventType)
-    }
-
-    @Throws(JsonIOException::class, IOException::class)
-    fun serializeDecideApi(decideRequest: PostHogDecideRequest, writer: Writer) {
-        gson.toJson(decideRequest, gsonDecideRequestType, writer)
-        writer.flush()
-    }
-
-    @Throws(JsonIOException::class, JsonSyntaxException::class)
-    fun deserializeDecideApi(reader: Reader): PostHogDecideResponse? {
-        return gson.fromJson(reader, gsonDecideResponseType)
-    }
-
-    @Throws(JsonIOException::class, IOException::class)
-    fun serializeBatchApi(batch: PostHogBatchEvent, writer: Writer) {
-        gson.toJson(batch, gsonBatchType, writer)
-        writer.flush()
-    }
-
-    @Throws(JsonIOException::class, JsonSyntaxException::class)
-    fun deserializeCachedProperties(json: String): Map<String, Any>? {
-        return gson.fromJson(json, gsonMapType)
+    inline fun <reified T> deserialize(reader: Reader): T {
+        return gson.fromJson(reader, object : TypeToken<T>() {}.type)
     }
 }
