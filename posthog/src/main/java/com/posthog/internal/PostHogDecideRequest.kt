@@ -1,5 +1,8 @@
 package com.posthog.internal
 
+/**
+ * The decide data structure for calling the decide API
+ */
 internal class PostHogDecideRequest(
     apiKey: String,
     distinctId: String,

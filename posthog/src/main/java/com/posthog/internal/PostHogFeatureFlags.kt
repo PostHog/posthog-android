@@ -6,6 +6,12 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * The class responsible for calling and caching the feature flags
+ * @property config the Config
+ * @property api the API
+ * @property executor the Executor
+ */
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
     private val api: PostHogApi,

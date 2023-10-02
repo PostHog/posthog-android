@@ -326,7 +326,7 @@ public class PostHog private constructor() : PostHogInterface {
             this.anonymousId = previousDistinctId
             this.distinctId = distinctId
 
-            reloadFeatureFlagsRequest()
+            reloadFeatureFlags()
         }
     }
 
@@ -366,7 +366,7 @@ public class PostHog private constructor() : PostHogInterface {
         }
     }
 
-    public override fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
+    public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
         if (!isEnabled()) {
             return
         }
@@ -508,8 +508,8 @@ public class PostHog private constructor() : PostHogInterface {
             shared.identify(distinctId, properties = properties, userProperties = userProperties, userPropertiesSetOnce = userPropertiesSetOnce)
         }
 
-        public override fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
-            shared.reloadFeatureFlagsRequest(onFeatureFlags)
+        public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
+            shared.reloadFeatureFlags(onFeatureFlags)
         }
 
         public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {

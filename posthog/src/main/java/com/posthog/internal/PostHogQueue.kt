@@ -14,6 +14,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.math.min
 
+/**
+ * The class that manages the events Queue
+ * @property config the Config
+ * @property api the API
+ * @property serializer the Serializer
+ */
 internal class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,

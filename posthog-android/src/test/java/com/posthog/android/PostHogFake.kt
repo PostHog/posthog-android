@@ -37,7 +37,7 @@ public class PostHogFake : PostHogInterface {
     ) {
     }
 
-    override fun reloadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
+    override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
     }
 
     override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {

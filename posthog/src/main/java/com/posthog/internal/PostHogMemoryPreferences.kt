@@ -2,6 +2,9 @@ package com.posthog.internal
 
 import com.posthog.PostHogVisibleForTesting
 
+/**
+ * The in memory preferences implementation
+ */
 @PostHogVisibleForTesting
 public class PostHogMemoryPreferences : PostHogPreferences {
     private val lock = Any()

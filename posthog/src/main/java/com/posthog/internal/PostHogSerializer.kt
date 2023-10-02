@@ -10,6 +10,10 @@ import java.io.Reader
 import java.io.Writer
 import java.util.Date
 
+/**
+ * The JSON serializer using Gson
+ * @property config the Config
+ */
 internal class PostHogSerializer(private val config: PostHogConfig) {
     private val gson = GsonBuilder().apply {
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
