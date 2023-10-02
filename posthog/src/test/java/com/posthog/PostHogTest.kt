@@ -1,6 +1,8 @@
 package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
+import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
 import okhttp3.mockwebserver.MockResponse
@@ -22,22 +24,29 @@ internal class PostHogTest {
 
     private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
     private val featureFlagsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlags"))
+    private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
     private val serializer = PostHogSerializer(PostHogConfig(apiKey))
+    private lateinit var config: PostHogConfig
 
     fun getSut(
-        host: String = "",
+        host: String,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         optOut: Boolean = false,
         preloadFeatureFlags: Boolean = true,
+        reloadFeatureFlags: Boolean = true,
+        integration: PostHogIntegration? = null,
     ): PostHogInterface {
-        val config = PostHogConfig(apiKey, host).apply {
+        config = PostHogConfig(apiKey, host).apply {
             // for testing
             flushAt = 1
             this.storagePrefix = storagePrefix
             this.optOut = optOut
             this.preloadFeatureFlags = preloadFeatureFlags
+            if (integration != null) {
+                addIntegration(integration)
+            }
         }
-        return PostHog.withInternal(config, queueExecutor, featureFlagsExecutor)
+        return PostHog.withInternal(config, queueExecutor, featureFlagsExecutor, cachedEventsExecutor, reloadFeatureFlags)
     }
 
     @AfterTest
@@ -47,7 +56,10 @@ internal class PostHogTest {
 
     @Test
     fun `optOut is disabled by default`() {
-        val sut = getSut()
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString())
 
         assertFalse(sut.isOptOut())
 
@@ -56,9 +68,154 @@ internal class PostHogTest {
 
     @Test
     fun `optOut is enabled if given`() {
-        val sut = getSut(optOut = true)
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true)
 
         assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `setup adds integration by default`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString())
+
+        assertTrue(config.integrations.first() is PostHogSendCachedEventsIntegration)
+
+        sut.close()
+    }
+
+    @Test
+    fun `install integrations`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `uninstall integrations`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        sut.close()
+
+        assertFalse(integration.installed)
+    }
+
+    @Test
+    fun `setup sets in memory cached preferences if not given`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString())
+
+        assertTrue(config.cachePreferences is PostHogMemoryPreferences)
+
+        sut.close()
+    }
+
+    @Test
+    fun `preload feature flags if enabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString())
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        assertEquals(1, http.requestCount)
+        assertEquals("/decide/?v=3", request.path)
+
+        sut.close()
+    }
+
+    @Test
+    fun `reload feature flags and call the callback`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        var reloaded = false
+
+        sut.reloadFeatureFlags {
+            reloaded = true
+        }
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        assertTrue(reloaded)
+
+        sut.close()
+    }
+
+    @Test
+    fun `isFeatureEnabled returns value after reloaded`() {
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlagPayload returns the value after reloaded`() {
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.getFeatureFlagPayload("thePayload") as Boolean)
+
+        sut.close()
+    }
+
+    @Test
+    fun `do not preload feature flags if disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
 
         sut.close()
     }
@@ -201,10 +358,8 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        // identify triggers reloading feature flags because distinctId does not match
-        http.enqueue(MockResponse().setBody(responseDecideApi))
         sut.identify(
             distinctId,
             props,
@@ -213,12 +368,10 @@ internal class PostHogTest {
         )
 
         queueExecutor.shutdownAndAwaitTermination()
-        featureFlagsExecutor.shutdownAndAwaitTermination()
 
         val request = http.takeRequest()
 
-        // counting also decide api call
-        assertEquals(2, http.requestCount)
+        assertEquals(1, http.requestCount)
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
@@ -351,6 +504,46 @@ internal class PostHogTest {
         val theEvent = batch.batch.first()
 
         assertNull(theEvent.properties!!["newRegister"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `merges properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.capture(
+            event,
+            distinctId,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groupProperties = groupProps,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertEquals(apiKey, batch.apiKey)
+        assertNotNull(batch.sentAt)
+
+        val theEvent = batch.batch.first()
+        assertEquals(event, theEvent.event)
+        assertEquals(distinctId, theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+        assertEquals("value", theEvent.properties!!["prop"] as String)
+        assertEquals(userProps, theEvent.properties!!["\$set"])
+        assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+        assertEquals(groupProps, theEvent.properties!!["\$groups"])
 
         sut.close()
     }

@@ -8,7 +8,6 @@ import java.io.FileFilter
 import java.io.IOException
 import java.util.Date
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 /**
  * The integration that send all the cached events, triggered once the SDK is setup
@@ -23,7 +22,7 @@ internal class PostHogSendCachedEventsIntegration(
     private val api: PostHogApi,
     private val serializer: PostHogSerializer,
     private val startDate: Date,
-    private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread")),
+    private val executor: ExecutorService,
 ) : PostHogIntegration {
     override fun install() {
         executor.executeSafely {

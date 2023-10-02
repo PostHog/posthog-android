@@ -19,6 +19,10 @@ public class PostHog private constructor(
     private val featureFlagsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogFeatureFlagsThread"),
     ),
+    private val cachedEventsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
+        PostHogThreadFactory("PostHogSendCachedEventsThread"),
+    ),
+    private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface {
     @Volatile
     private var enabled = false
@@ -68,16 +72,18 @@ public class PostHog private constructor(
                     api,
                     serializer,
                     startDate,
+                    cachedEventsExecutor,
                 )
 
                 this.config = config
                 this.queue = queue
                 this.featureFlags = featureFlags
-                enabled = true
 
                 config.addIntegration(sendCachedEventsIntegration)
 
                 legacyPreferences(config, serializer)
+
+                enabled = true
 
                 queue.start()
 
@@ -183,11 +189,12 @@ public class PostHog private constructor(
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
-        properties?.let {
-            props.putAll(it)
-        }
-
         if (appendSharedProps) {
+            val registeredPrefs = memoryPreferences.getAll()
+            if (registeredPrefs.isNotEmpty()) {
+                props.putAll(registeredPrefs)
+            }
+
             config?.context?.getStaticContext()?.let {
                 props.putAll(it)
             }
@@ -208,11 +215,10 @@ public class PostHog private constructor(
                     }
                 }
             }
+        }
 
-            val registeredPrefs = memoryPreferences.getAll()
-            if (registeredPrefs.isNotEmpty()) {
-                props.putAll(registeredPrefs)
-            }
+        properties?.let {
+            props.putAll(it)
         }
 
         userProperties?.let {
@@ -362,7 +368,10 @@ public class PostHog private constructor(
             this.anonymousId = previousDistinctId
             this.distinctId = distinctId
 
-            reloadFeatureFlags()
+            // only because of testing, this flag is always enabled
+            if (reloadFeatureFlags) {
+                reloadFeatureFlags()
+            }
         }
     }
 
@@ -469,7 +478,7 @@ public class PostHog private constructor(
         memoryPreferences.clear()
         // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
-        config?.cachePreferences?.clear(listOf("build", "build"))
+        config?.cachePreferences?.clear(listOf("build", "version"))
         featureFlags?.clear()
         queue?.clear()
     }
@@ -527,8 +536,15 @@ public class PostHog private constructor(
             config: T,
             queueExecutor: ExecutorService,
             featureFlagsExecutor: ExecutorService,
+            cachedEventsExecutor: ExecutorService,
+            reloadFeatureFlags: Boolean,
         ): PostHogInterface {
-            val instance = PostHog(queueExecutor, featureFlagsExecutor)
+            val instance = PostHog(
+                queueExecutor,
+                featureFlagsExecutor,
+                cachedEventsExecutor,
+                reloadFeatureFlags = reloadFeatureFlags,
+            )
             instance.setup(config)
             return instance
         }
