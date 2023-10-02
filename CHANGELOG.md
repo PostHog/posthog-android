@@ -1,3 +1,7 @@
+## 3.0.0-alpha.3 - 2023-10-02
+
+- Added many tests and fixed small issues
+
 ## 3.0.0-alpha.2 - 2023-09-27
 
 - Fix permission check for Network status ([commit](https://github.com/PostHog/posthog-android/commit/57b9626a745a37a9c92437529ba9eaf308b03771))
