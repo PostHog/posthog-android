@@ -34,6 +34,7 @@ internal class PostHogTest {
         optOut: Boolean = false,
         preloadFeatureFlags: Boolean = true,
         reloadFeatureFlags: Boolean = true,
+        sendFeatureFlagEvent: Boolean = true,
         integration: PostHogIntegration? = null,
     ): PostHogInterface {
         config = PostHogConfig(apiKey, host).apply {
@@ -45,6 +46,7 @@ internal class PostHogTest {
             if (integration != null) {
                 addIntegration(integration)
             }
+            this.sendFeatureFlagEvent = sendFeatureFlagEvent
         }
         return PostHog.withInternal(config, queueExecutor, featureFlagsExecutor, cachedEventsExecutor, reloadFeatureFlags)
     }
@@ -182,6 +184,75 @@ internal class PostHogTest {
         featureFlagsExecutor.shutdownAndAwaitTermination()
 
         assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlag returns the value after reloaded`() {
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
+
+        sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlag captures feature flag event if enabled`() {
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+
+        // {$feature/4535-funnel-bar-viz=true, $active_feature_flags=[4535-funnel-bar-viz], $feature_flag=4535-funnel-bar-viz, $feature_flag_response=true}
+        assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
+
+        @Suppress("UNCHECKED_CAST")
+        val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
+        assertEquals("4535-funnel-bar-viz", theFlags[0])
+
+        assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
+        assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
 
         sut.close()
     }
@@ -546,5 +617,28 @@ internal class PostHogTest {
         assertEquals(groupProps, theEvent.properties!!["\$groups"])
 
         sut.close()
+    }
+
+    @Test
+    fun `close not capture events after closing`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.close()
+
+        sut.capture(
+            event,
+            distinctId,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groupProperties = groupProps,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
     }
 }

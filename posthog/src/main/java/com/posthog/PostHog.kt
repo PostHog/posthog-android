@@ -368,7 +368,7 @@ public class PostHog private constructor(
             this.anonymousId = previousDistinctId
             this.distinctId = distinctId
 
-            // only because of testing, this flag is always enabled
+            // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
                 reloadFeatureFlags()
             }
