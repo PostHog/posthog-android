@@ -28,15 +28,15 @@ internal class PostHogFeatureFlags(
         groups: Map<String, Any>? = null,
         onFeatureFlags: PostHogOnFeatureFlags?,
     ) {
-        executor.execute {
+        executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
-                return@execute
+                return@executeSafely
             }
 
             if (isLoadingFeatureFlags.getAndSet(true)) {
                 config.logger.log("Feature flags are being loaded already.")
-                return@execute
+                return@executeSafely
             }
 
             try {

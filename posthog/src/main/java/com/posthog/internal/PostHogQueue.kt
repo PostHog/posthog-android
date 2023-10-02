@@ -44,7 +44,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
             removeFirst = true
         }
 
-        executor.execute {
+        executor.executeSafely {
             if (removeFirst) {
                 try {
                     val first: File
@@ -115,9 +115,9 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
             return
         }
 
-        executor.execute {
+        executor.executeSafely {
             if (!isConnected()) {
-                return@execute
+                return@executeSafely
             }
 
             var retry = false
@@ -198,9 +198,9 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
             return
         }
 
-        executor.execute {
+        executor.executeSafely {
             if (!isConnected()) {
-                return@execute
+                return@executeSafely
             }
 
             var retry = false
@@ -269,7 +269,7 @@ internal class PostHogQueue(private val config: PostHogConfig, private val api: 
     }
 
     fun clear() {
-        executor.execute {
+        executor.executeSafely {
             val tempFiles: List<File>
             synchronized(dequeLock) {
                 tempFiles = deque.toList()

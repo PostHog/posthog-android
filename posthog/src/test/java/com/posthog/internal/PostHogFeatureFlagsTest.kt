@@ -87,7 +87,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `load flags from decide api`() {
+    fun `load flags from decide api and call the onFeatureFlags callback`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -106,5 +106,84 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
         assertTrue(callback)
+    }
+
+    @Test
+    fun `clear the loaded feature flags`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", "anonId", groups = emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+
+        sut.clear()
+
+        assertNull(sut.getFeatureFlags())
+    }
+
+    @Test
+    fun `returns all feature flags`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", "anonId", groups = emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        val flags = sut.getFeatureFlags()
+        assertEquals(1, flags!!.size)
+    }
+
+    @Test
+    fun `returns default value if given`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", "anonId", groups = emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.getFeatureFlag("notFound", defaultValue = true) as Boolean)
+    }
+
+    @Test
+    fun `merge feature flags if no errors`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", "anonId", groups = emptyMap(), null)
+
+        // do not use extension to not shutdown the executor
+        executor.submit {}.get()
+
+        val currentFlag = """"4535-funnel-bar-viz": true"""
+        val newFlag = """$currentFlag,
+            |"foo": true
+        """.trimMargin()
+        val newResponse = responseApi.replace(currentFlag, newFlag)
+        val response = MockResponse()
+            .setBody(newResponse)
+        http.enqueue(response)
+
+        sut.loadFeatureFlags("my_identify", "anonId", groups = emptyMap(), null)
+
+        // do not use extension to not shutdown the executor
+        executor.submit {}.get()
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlag("foo", defaultValue = false) as Boolean)
     }
 }

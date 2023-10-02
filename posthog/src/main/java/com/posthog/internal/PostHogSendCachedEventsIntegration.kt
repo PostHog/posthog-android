@@ -18,10 +18,10 @@ internal class PostHogSendCachedEventsIntegration(
     private val executor: ExecutorService = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogSendCachedEventsThread")),
 ) : PostHogIntegration {
     override fun install() {
-        executor.execute {
+        executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
-                return@execute
+                return@executeSafely
             }
 
             flushLegacyEvents()
