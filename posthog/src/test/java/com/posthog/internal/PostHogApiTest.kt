@@ -3,9 +3,9 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.generateEvent
+import com.posthog.mockHttp
 import com.posthog.responseApi
 import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -14,21 +14,11 @@ import kotlin.test.assertNotNull
 internal class PostHogApiTest {
 
     private fun getSut(
-        host: String = "https://app.posthog.com",
+        host: String,
     ): PostHogApi {
         val config = PostHogConfig(apiKey, host)
         val serializer = PostHogSerializer(config)
         return PostHogApi(config, serializer)
-    }
-
-    private fun mockHttp(
-        response: MockResponse = MockResponse()
-            .setBody(""),
-    ): MockWebServer {
-        val mock = MockWebServer()
-        mock.start()
-        mock.enqueue(response)
-        return mock
     }
 
     @Test
@@ -55,7 +45,7 @@ internal class PostHogApiTest {
 
     @Test
     fun `batch throws if not successful`() {
-        val http = mockHttp(MockResponse().setResponseCode(400).setBody("error"))
+        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -74,6 +64,7 @@ internal class PostHogApiTest {
     @Test
     fun `decide returns successful response`() {
         val http = mockHttp(
+            response =
             MockResponse()
                 .setBody(responseApi),
         )
@@ -96,7 +87,7 @@ internal class PostHogApiTest {
 
     @Test
     fun `decide throws if not successful`() {
-        val http = mockHttp(MockResponse().setResponseCode(400).setBody("error"))
+        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())

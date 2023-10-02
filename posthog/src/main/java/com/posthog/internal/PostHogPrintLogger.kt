@@ -10,6 +10,7 @@ import com.posthog.PostHogInternal
 @PostHogInternal
 public class PostHogPrintLogger(private val config: PostHogConfig) : PostHogLogger {
     override fun log(message: String) {
+        // isEnabled can be abstracted in another class (refactor needed).
         if (isEnabled()) {
             println(message)
         }

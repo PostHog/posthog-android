@@ -2,9 +2,9 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
+import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -38,7 +38,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     private fun getSut(
         date: Date = Date(),
         legacyStoragePrefix: String = tmpDir.newFolder().absolutePath,
-        host: String = "https://app.posthog.com",
+        host: String,
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
@@ -75,25 +75,11 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         return legacyStoragePrefix
     }
 
-    private fun mockHttp(
-        total: Int = 1,
-        response: MockResponse = MockResponse()
-            .setBody("""{"status":1}"""),
-    ): MockWebServer {
-        val mock = MockWebServer()
-        mock.start()
-
-        for (i in 1..total) {
-            mock.enqueue(response)
-        }
-        return mock
-    }
-
     @Test
     fun `install bails out if not connected`() {
         val legacyStoragePrefix = writeLegacyFile(listOf(event))
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, networkStatus = {
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host", networkStatus = {
             false
         })
 
@@ -108,7 +94,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     fun `removes file from the legacy queue if not a valid event`() {
         val legacyStoragePrefix = writeLegacyFile(listOf("invalid event"))
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix)
+        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host")
 
         sut.install()
 

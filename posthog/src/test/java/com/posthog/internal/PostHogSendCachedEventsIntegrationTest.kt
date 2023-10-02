@@ -2,9 +2,9 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
+import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -39,7 +39,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
     private fun getSut(
         date: Date = Date(),
         storagePrefix: String = tmpDir.newFolder().absolutePath,
-        host: String = "https://app.posthog.com",
+        host: String,
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
@@ -56,20 +56,6 @@ internal class PostHogSendCachedEventsIntegrationTest {
     @AfterTest
     fun `set down`() {
         tmpDir.root.deleteRecursively()
-    }
-
-    private fun mockHttp(
-        total: Int = 1,
-        response: MockResponse = MockResponse()
-            .setBody("""{"status":1}"""),
-    ): MockWebServer {
-        val mock = MockWebServer()
-        mock.start()
-
-        for (i in 1..total) {
-            mock.enqueue(response)
-        }
-        return mock
     }
 
     private fun writeFile(content: List<String> = emptyList()): String {
@@ -89,7 +75,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
     fun `install bails out if not connected`() {
         val storagePrefix = writeFile(listOf(event))
 
-        val sut = getSut(storagePrefix = storagePrefix, networkStatus = {
+        val sut = getSut(storagePrefix = storagePrefix, host = "host", networkStatus = {
             false
         })
 
@@ -104,7 +90,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
     fun `removes file from the queue if not a valid event`() {
         val storagePrefix = writeFile(listOf("invalid event"))
 
-        val sut = getSut(storagePrefix = storagePrefix)
+        val sut = getSut(storagePrefix = storagePrefix, host = "host")
 
         sut.install()
 

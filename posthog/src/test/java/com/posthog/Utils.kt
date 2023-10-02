@@ -1,6 +1,8 @@
 package com.posthog
 
 import com.google.gson.internal.bind.util.ISO8601Utils
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import java.lang.RuntimeException
 import java.text.ParsePosition
 import java.util.Date
@@ -82,3 +84,16 @@ public const val responseApi: String = """
   }
 }
     """
+
+public fun mockHttp(
+    total: Int = 1,
+    response: MockResponse = MockResponse()
+        .setBody(""),
+): MockWebServer {
+    val mock = MockWebServer()
+    mock.start()
+    for (i in 1..total) {
+        mock.enqueue(response)
+    }
+    return mock
+}
