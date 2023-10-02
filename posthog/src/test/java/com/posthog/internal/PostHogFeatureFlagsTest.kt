@@ -3,7 +3,7 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.mockHttp
-import com.posthog.responseApi
+import com.posthog.responseDecideApi
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
 import java.util.concurrent.Executors
@@ -33,7 +33,7 @@ internal class PostHogFeatureFlagsTest {
         val http = mockHttp(
             response =
             MockResponse()
-                .setBody(responseApi),
+                .setBody(responseDecideApi),
         )
         val url = http.url("/")
 
@@ -53,7 +53,7 @@ internal class PostHogFeatureFlagsTest {
         val http = mockHttp(
             response =
             MockResponse()
-                .setBody(responseApi),
+                .setBody(responseDecideApi),
         )
         val url = http.url("/")
 
@@ -76,7 +76,7 @@ internal class PostHogFeatureFlagsTest {
         val http = mockHttp(
             response =
             MockResponse()
-                .setBody(responseApi),
+                .setBody(responseDecideApi),
         )
         val url = http.url("/")
 
@@ -98,7 +98,7 @@ internal class PostHogFeatureFlagsTest {
         val http = mockHttp(
             response =
             MockResponse()
-                .setBody(responseApi),
+                .setBody(responseDecideApi),
         )
         val url = http.url("/")
 
@@ -117,7 +117,7 @@ internal class PostHogFeatureFlagsTest {
         val http = mockHttp(
             response =
             MockResponse()
-                .setBody(responseApi),
+                .setBody(responseDecideApi),
         )
         val url = http.url("/")
 
@@ -135,7 +135,7 @@ internal class PostHogFeatureFlagsTest {
         val http = mockHttp(
             response =
             MockResponse()
-                .setBody(responseApi),
+                .setBody(responseDecideApi),
         )
         val url = http.url("/")
 
@@ -151,7 +151,7 @@ internal class PostHogFeatureFlagsTest {
             """$currentFlag,
             |"foo": true
             """.trimMargin()
-        val newResponse = responseApi.replace(currentFlag, newFlag)
+        val newResponse = responseDecideApi.replace(currentFlag, newFlag)
         val response = MockResponse()
             .setBody(newResponse)
         http.enqueue(response)

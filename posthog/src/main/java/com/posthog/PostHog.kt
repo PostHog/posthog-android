@@ -16,6 +16,9 @@ public class PostHog private constructor(
     private val queueExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogQueueThread"),
     ),
+    private val featureFlagsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
+        PostHogThreadFactory("PostHogFeatureFlagsThread"),
+    ),
 ) : PostHogInterface {
     @Volatile
     private var enabled = false
@@ -48,7 +51,7 @@ public class PostHog private constructor(
                 val dateProvider = PostHogCalendarDateProvider()
                 val api = PostHogApi(config, serializer, dateProvider)
                 val queue = PostHogQueue(config, api, serializer, dateProvider, queueExecutor)
-                val featureFlags = PostHogFeatureFlags(config, api)
+                val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut = config.cachePreferences?.getValue(
@@ -390,9 +393,10 @@ public class PostHog private constructor(
             newGroups.putAll(it)
         }
         newGroups[type] = key
-        memoryPreferences.setValue("\$groups", newGroups)
 
         capture("\$groupidentify", properties = props)
+
+        memoryPreferences.setValue("\$groups", newGroups)
 
         if (reloadFeatureFlags) {
             loadFeatureFlagsRequest(null)
@@ -522,8 +526,9 @@ public class PostHog private constructor(
         internal fun <T : PostHogConfig> withInternal(
             config: T,
             queueExecutor: ExecutorService,
+            featureFlagsExecutor: ExecutorService,
         ): PostHogInterface {
-            val instance = PostHog(queueExecutor)
+            val instance = PostHog(queueExecutor, featureFlagsExecutor)
             instance.setup(config)
             return instance
         }

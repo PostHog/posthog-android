@@ -1,6 +1,6 @@
 public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public static final field Companion Lcom/posthog/PostHog$Companion;
-	public synthetic fun <init> (Ljava/util/concurrent/ExecutorService;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
 	public fun close ()V

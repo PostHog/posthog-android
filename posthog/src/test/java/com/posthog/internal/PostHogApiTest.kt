@@ -4,7 +4,7 @@ import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.generateEvent
 import com.posthog.mockHttp
-import com.posthog.responseApi
+import com.posthog.responseDecideApi
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Assert.assertThrows
 import kotlin.test.Test
@@ -67,7 +67,7 @@ internal class PostHogApiTest {
         val http = mockHttp(
             response =
             MockResponse()
-                .setBody(responseApi),
+                .setBody(responseDecideApi),
         )
         val url = http.url("/")
 

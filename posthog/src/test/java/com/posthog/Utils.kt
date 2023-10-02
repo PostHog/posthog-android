@@ -59,7 +59,7 @@ public fun generateEvent(eventName: String? = null): PostHogEvent {
     )
 }
 
-public const val responseApi: String = """
+public const val responseDecideApi: String = """
 {
   "autocaptureExceptions": false,
   "toolbarParams": {},
