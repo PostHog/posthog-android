@@ -57,7 +57,11 @@ PostHogAndroid.setup(applicationContext, config)
 
 // At runtime
 PostHog.optOut()
-PostHog.optIn()
+
+// Check it and opt-in
+if (PostHog.isOptOut()) {
+    PostHog.optIn()
+}
 ```
 
 Capture a screen view event
@@ -118,15 +122,15 @@ Load feature flags automatically
 val config = PostHogAndroidConfig(apiKey).apply {
     preloadFeatureFlags = true
     // get notified when feature flags are loaded
-    onFeatureFlags = PostHogOnFeatureFlags { 
-        featureFlags -> print("has feature flags: ${featureFlags != null}")
+    onFeatureFlags = PostHogOnFeatureFlags {
+        print("feature flags loaded")
     }
 }
 PostHogAndroid.setup(applicationContext, config)
 
 // And/Or manually
 PostHog.reloadFeatureFlags {
-    featureFlags -> print("has feature flags: ${featureFlags != null}")
+    print("feature flags loaded")
 }
 ```
 

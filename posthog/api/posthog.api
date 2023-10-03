@@ -173,7 +173,7 @@ public abstract interface annotation class com/posthog/PostHogInternal : java/la
 }
 
 public abstract interface class com/posthog/PostHogOnFeatureFlags {
-	public abstract fun notify (Ljava/util/Map;)V
+	public abstract fun loaded ()V
 }
 
 public abstract interface annotation class com/posthog/PostHogVisibleForTesting : java/lang/annotation/Annotation {

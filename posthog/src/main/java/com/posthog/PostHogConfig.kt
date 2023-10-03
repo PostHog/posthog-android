@@ -47,6 +47,7 @@ public open class PostHogConfig(
 
     /**
      * Preload feature flags automatically
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * Defaults to true
      */
     public var preloadFeatureFlags: Boolean = true,

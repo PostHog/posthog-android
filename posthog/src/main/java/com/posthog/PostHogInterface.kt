@@ -20,9 +20,9 @@ public interface PostHogInterface {
      * Captures events
      * @param distinctId the distinctId, the generated distinctId is used if not given
      * @param properties the custom properties
-     * @param userProperties the user properties, set as a "$set" property
-     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property
-     * @param groupProperties the group properties, set as a "$groups" property
+     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param groupProperties the group properties, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
     public fun capture(
         event: String,
@@ -35,10 +35,11 @@ public interface PostHogInterface {
 
     /**
      * Identifies the user
+     * Docs https://posthog.com/docs/product-analytics/identify
      * @param distinctId the distinctId
      * @param properties the custom properties
-     * @param userProperties the user properties, set as a "$set" property
-     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property
+     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      */
     public fun identify(
         distinctId: String,
@@ -55,6 +56,7 @@ public interface PostHogInterface {
 
     /**
      * Returns if a feature flag is enabled, the feature flag must be a Boolean
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found
      */
@@ -62,6 +64,7 @@ public interface PostHogInterface {
 
     /**
      * Returns the feature flag
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found
      */
@@ -69,6 +72,7 @@ public interface PostHogInterface {
 
     /**
      * Returns the feature flag payload
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found
      */
@@ -97,9 +101,10 @@ public interface PostHogInterface {
 
     /**
      * Creates a group
+     * Docs https://posthog.com/docs/product-analytics/group-analytics
      * @param type the Group type
      * @param key the Group key
-     * @param groupProperties the Group properties, set as a "$group_set" property
+     * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
     public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null)
 
@@ -112,6 +117,7 @@ public interface PostHogInterface {
 
     /**
      * Creates an alias for the user
+     * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
      * @param alias the alias
      * @param properties the custom properties
      */

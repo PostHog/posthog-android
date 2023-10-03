@@ -66,7 +66,7 @@ internal class PostHogFeatureFlags(
                 config.logger.log("Loading feature flags failed: $e")
             } finally {
                 try {
-                    onFeatureFlags?.notify(getFeatureFlags())
+                    onFeatureFlags?.loaded()
                 } catch (e: Throwable) {
                     config.logger.log("Executing the feature flags callback failed: $e")
                 } finally {
