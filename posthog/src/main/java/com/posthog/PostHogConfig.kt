@@ -30,6 +30,7 @@ public open class PostHogConfig(
 
     /**
      * This flag prevents capturing any data if enabled
+     * You can overwrite this value at runtime by calling [PostHog.optIn()]] or PostHog.optOut()
      * Defaults to false
      */
     @Volatile
