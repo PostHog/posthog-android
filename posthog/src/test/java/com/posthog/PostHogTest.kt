@@ -36,6 +36,7 @@ internal class PostHogTest {
         reloadFeatureFlags: Boolean = true,
         sendFeatureFlagEvent: Boolean = true,
         integration: PostHogIntegration? = null,
+        cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
     ): PostHogInterface {
         config = PostHogConfig(apiKey, host).apply {
             // for testing
@@ -47,6 +48,7 @@ internal class PostHogTest {
                 addIntegration(integration)
             }
             this.sendFeatureFlagEvent = sendFeatureFlagEvent
+            this.cachePreferences = cachePreferences
         }
         return PostHog.withInternal(config, queueExecutor, featureFlagsExecutor, cachedEventsExecutor, reloadFeatureFlags)
     }
@@ -640,5 +642,38 @@ internal class PostHogTest {
         queueExecutor.shutdownAndAwaitTermination()
 
         assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `reads legacy shared prefs and set distinctId and AnonId`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(apiKey, """{"anonymousId":"anonId","distinctId":"disId"}""")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = myPrefs)
+
+        sut.capture(
+            event,
+            properties = props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groupProperties = groupProps,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertNull(myPrefs.getValue(apiKey))
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("disId", theEvent.distinctId)
+
+        sut.close()
     }
 }

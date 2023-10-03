@@ -22,5 +22,16 @@ public data class PostHogEvent(
     val properties: Map<String, Any>? = null,
     // refactor to use PostHogDateProvider
     val timestamp: Date = Date(),
-    val uuid: UUID = UUID.randomUUID(),
+    val uuid: UUID? = UUID.randomUUID(),
+
+    @Deprecated("Do not use")
+    val type: String? = null,
+
+    @Deprecated("Do not use it, prefer [uuid]")
+    @SerializedName("message_id")
+    val messageId: UUID? = null,
+
+    @Deprecated("Do not use it, prefer [properties]")
+    @SerializedName("\$set")
+    val set: Map<String, Any>? = null,
 )
