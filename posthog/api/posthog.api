@@ -46,6 +46,8 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 }
 
 public class com/posthog/PostHogConfig {
+	public static final field Companion Lcom/posthog/PostHogConfig$Companion;
+	public static final field defaultHost Ljava/lang/String;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
@@ -89,6 +91,9 @@ public class com/posthog/PostHogConfig {
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
 	public final fun setStoragePrefix (Ljava/lang/String;)V
+}
+
+public final class com/posthog/PostHogConfig$Companion {
 }
 
 public abstract interface class com/posthog/PostHogEncryption {

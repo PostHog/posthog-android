@@ -16,8 +16,8 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 }
 
 public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
-	public fun <init> (Ljava/lang/String;ZZZ)V
-	public synthetic fun <init> (Ljava/lang/String;ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z
 	public final fun getCaptureDeepLinks ()Z
 	public final fun getCaptureScreenViews ()Z

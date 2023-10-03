@@ -6,7 +6,7 @@ package com.posthog
 public fun interface PostHogOnFeatureFlags {
     /**
      * The method that is called when feature flags are loaded
-     * @param featureFlags the Feature flags property
+     * @param featureFlags the Feature flags property, can be null if there was an error
      */
     public fun notify(featureFlags: Map<String, Any>?)
 }

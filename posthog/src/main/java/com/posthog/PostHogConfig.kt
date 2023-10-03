@@ -11,6 +11,7 @@ import com.posthog.internal.PostHogPrintLogger
  * The SDK Config
  */
 public open class PostHogConfig(
+
     /**
      * The PostHog API Key
      */
@@ -20,7 +21,7 @@ public open class PostHogConfig(
      * The PostHog Host
      * Defaults to https://app.posthog.com
      */
-    public val host: String = "https://app.posthog.com",
+    public val host: String = defaultHost,
 
     /**
      * Logs the debug logs to the [logger] if enabled
@@ -148,5 +149,9 @@ public open class PostHogConfig(
         synchronized(integrationLock) {
             integrationsList.remove(integration)
         }
+    }
+
+    public companion object {
+        public const val defaultHost: String = "https://app.posthog.com"
     }
 }
