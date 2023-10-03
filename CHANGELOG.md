@@ -1,3 +1,7 @@
+## 3.0.0-alpha.4 - 2023-10-03
+
+- Fixed small issues after code review
+
 ## 3.0.0-alpha.3 - 2023-10-02
 
 - Added many tests and fixed small issues
