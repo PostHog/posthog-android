@@ -478,7 +478,7 @@ public class PostHog private constructor(
         memoryPreferences.clear()
         // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
-        config?.cachePreferences?.clear(listOf("build", "version"))
+        config?.cachePreferences?.clear(except = listOf("build", "version"))
         featureFlags?.clear()
         queue?.clear()
     }

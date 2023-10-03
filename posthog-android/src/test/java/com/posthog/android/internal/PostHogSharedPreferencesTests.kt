@@ -118,7 +118,7 @@ internal class PostHogSharedPreferencesTests {
 
         sut.setValue("key", "1")
         sut.setValue("somethingElse", "1")
-        sut.clear(listOf("key"))
+        sut.clear(except = listOf("key"))
 
         assertEquals("1", sut.getValue("key"))
         assertEquals(1, sut.getAll().size)

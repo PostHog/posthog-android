@@ -45,7 +45,6 @@ public interface PostHogInterface {
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
-        // TODO: should we have groupProperties here?
     )
 
     /**

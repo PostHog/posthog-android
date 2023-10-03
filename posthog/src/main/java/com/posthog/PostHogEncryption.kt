@@ -4,7 +4,8 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * Interface for encrypt and decrypt events, by default there's no encrypt since device is sandboxed
+ * Interface for encrypt and decrypt events, by default there's no encrypt since Android is sandboxed
+ * https://source.android.com/docs/security/app-sandbox
  */
 public interface PostHogEncryption {
     /**

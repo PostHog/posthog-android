@@ -37,6 +37,8 @@ public open class PostHogConfig(
 
     /**
      * Send a $feature_flag_called event when a feature flag is used automatically
+     * Used by experiments
+     *
      * Defaults to true
      */
     public var sendFeatureFlagEvent: Boolean = true,
