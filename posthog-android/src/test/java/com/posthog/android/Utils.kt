@@ -35,11 +35,11 @@ public fun mockActivityUri(uri: String): Activity {
     return activity
 }
 
-public fun mockScreenTitle(throws: Boolean): Activity {
+public fun mockScreenTitle(throws: Boolean, title: String): Activity {
     val activity = mock<Activity>()
     val pm = mock<PackageManager>()
     val ac = mock<ActivityInfo>()
-    whenever(ac.loadLabel(any())).thenReturn("Title")
+    whenever(ac.loadLabel(any())).thenReturn(title)
     if (throws) {
         whenever(pm.getActivityInfo(any(), any<Int>())).thenThrow(PackageManager.NameNotFoundException())
     } else {
