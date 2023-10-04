@@ -6,8 +6,7 @@ object PosthogBuildConfig {
     }
 
     object Build {
-        // should it be 1.8 still?
-        val JAVA_VERSION = JavaVersion.VERSION_11
+        val JAVA_VERSION = JavaVersion.VERSION_1_8
     }
 
     object Android {
@@ -44,8 +43,8 @@ object PosthogBuildConfig {
         val ANDROIDX_JUNIT = "1.1.5"
         val ANDROIDX_RUNNER = "1.5.2"
         val ANDROIDX_CORE = "1.5.0"
-        val MOCKITO = "5.1.0"
-        val MOCKITO_INLINE = "5.2.0"
+        val MOCKITO = "4.1.0" // mockito 5x requires Java 11 bytecode
+        val MOCKITO_INLINE = "4.11.0" // mockito-inline 5x requires Java 11 bytecode
         val ROBOLECTRIC = "4.10.3"
     }
 }
