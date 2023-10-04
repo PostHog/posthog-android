@@ -5,7 +5,7 @@ How to use the Android SDK v3
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.posthog:posthog-android:3.0.0-alpha.4")
+implementation("com.posthog:posthog-android:$latestVersion")
 ```
 
 ```kotlin
