@@ -7,7 +7,7 @@ public interface PostHogInterface {
 
     /**
      * Setup the SDK
-     * @param config the Config class
+     * @param config the SDK configuration
      */
     public fun <T : PostHogConfig> setup(config: T)
 
@@ -18,7 +18,7 @@ public interface PostHogInterface {
 
     /**
      * Captures events
-     * @param distinctId the distinctId, the generated distinctId is used if not given
+     * @param distinctId the distinctId, the generated [distinctId] is used if not given
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
@@ -58,7 +58,7 @@ public interface PostHogInterface {
      * Returns if a feature flag is enabled, the feature flag must be a Boolean
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
-     * @param defaultValue the default value if not found
+     * @param defaultValue the default value if not found, false if not given
      */
     public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean
 
@@ -84,7 +84,7 @@ public interface PostHogInterface {
     public fun flush()
 
     /**
-     * Resets all the cached properties including the distinctId
+     * Resets all the cached properties including the [distinctId]
      * The SDK will behave as its been setup for the first time
      */
     public fun reset()
@@ -95,7 +95,7 @@ public interface PostHogInterface {
     public fun optIn()
 
     /**
-     * Disables the SDK to capture events until you OptIn again
+     * Disables the SDK to capture events until you [optIn] again
      */
     public fun optOut()
 
@@ -124,7 +124,7 @@ public interface PostHogInterface {
     public fun alias(alias: String, properties: Map<String, Any>? = null)
 
     /**
-     * Checks if the OptOut mode is enabled or disabled
+     * Checks if the [optOut] mode is enabled or disabled
      */
     public fun isOptOut(): Boolean
 
@@ -140,4 +140,9 @@ public interface PostHogInterface {
      * @param key the Key
      */
     public fun unregister(key: String)
+
+    /**
+     * Returns the registered [distinctId] property
+     */
+    public fun distinctId(): String
 }

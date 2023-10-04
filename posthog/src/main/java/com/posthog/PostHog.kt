@@ -504,6 +504,13 @@ public class PostHog private constructor(
         memoryPreferences.remove(key)
     }
 
+    override fun distinctId(): String {
+        if (!isEnabled()) {
+            return ""
+        }
+        return distinctId
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
@@ -593,17 +600,14 @@ public class PostHog private constructor(
             shared.reloadFeatureFlags(onFeatureFlags)
         }
 
-        public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
-            return shared.isFeatureEnabled(key, defaultValue = defaultValue)
-        }
+        public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean =
+            shared.isFeatureEnabled(key, defaultValue = defaultValue)
 
-        public override fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
-            return shared.getFeatureFlag(key, defaultValue = defaultValue)
-        }
+        public override fun getFeatureFlag(key: String, defaultValue: Any?): Any? =
+            shared.getFeatureFlag(key, defaultValue = defaultValue)
 
-        public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
-            return shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
-        }
+        public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? =
+            shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
 
         public override fun flush() {
             shared.flush()
@@ -633,9 +637,7 @@ public class PostHog private constructor(
             shared.alias(alias, properties = properties)
         }
 
-        public override fun isOptOut(): Boolean {
-            return shared.isOptOut()
-        }
+        public override fun isOptOut(): Boolean = shared.isOptOut()
 
         public override fun register(key: String, value: Any) {
             shared.register(key, value)
@@ -644,5 +646,7 @@ public class PostHog private constructor(
         public override fun unregister(key: String) {
             shared.unregister(key)
         }
+
+        override fun distinctId(): String = shared.distinctId()
     }
 }

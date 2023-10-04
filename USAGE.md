@@ -154,6 +154,12 @@ Read feature flags variant/payload
 val premium = PostHog.getFeatureFlagPayload("premium", defaultValue = false) as Boolean
 ```
 
+Read the current `distinctId`
+
+```kotlin
+val distinctId = PostHog.distinctId()
+```
+
 Flush the SDK by sending all the pending events right away
 
 ```kotlin

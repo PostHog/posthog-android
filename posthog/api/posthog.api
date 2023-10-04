@@ -4,6 +4,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
 	public fun close ()V
+	public fun distinctId ()Ljava/lang/String;
 	public fun flush ()V
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -25,6 +26,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
 	public fun close ()V
+	public fun distinctId ()Ljava/lang/String;
 	public fun flush ()V
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -140,6 +142,7 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
 	public abstract fun close ()V
+	public abstract fun distinctId ()Ljava/lang/String;
 	public abstract fun flush ()V
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
