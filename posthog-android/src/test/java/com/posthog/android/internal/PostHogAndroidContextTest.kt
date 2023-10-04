@@ -60,7 +60,7 @@ internal class PostHogAndroidContextTest {
         assertNotNull(staticContext["\$device_manufacturer"])
         assertNotNull(staticContext["\$device_model"])
         assertNotNull(staticContext["\$device_name"])
-        assertEquals("mobile", staticContext["\$device_type"])
+        assertEquals("Mobile", staticContext["\$device_type"])
 
         assertEquals("Android", staticContext["\$os_name"])
         // its dynamic
