@@ -1,6 +1,7 @@
 ## Next
 
 - Does not report screen events if there's no title ([#32](https://github.com/PostHog/posthog-android/pull/32))
+- Add `distinctId()` getter to the Public API ([#33](https://github.com/PostHog/posthog-android/pull/33))
 
 ## 3.0.0-alpha.4 - 2023-10-03
 

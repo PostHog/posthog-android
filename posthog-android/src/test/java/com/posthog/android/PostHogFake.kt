@@ -83,4 +83,8 @@ public class PostHogFake : PostHogInterface {
 
     override fun unregister(key: String) {
     }
+
+    override fun distinctId(): String {
+        return ""
+    }
 }

@@ -676,4 +676,18 @@ internal class PostHogTest {
 
         sut.close()
     }
+
+    @Test
+    fun `distinctId returns same value after identify`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify("myNewDistinctId")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals("myNewDistinctId", sut.distinctId())
+    }
 }
