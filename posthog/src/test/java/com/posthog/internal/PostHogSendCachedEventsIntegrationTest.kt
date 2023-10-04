@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.mockHttp
@@ -9,11 +10,12 @@ import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.text.ParsePosition
+import java.util.Calendar
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -60,7 +62,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         tmpDir.root.deleteRecursively()
     }
 
-    private fun writeFile(content: List<String> = emptyList()): String {
+    private fun writeFile(content: List<String> = emptyList(), date: Date? = null): String {
         val storagePrefix = tmpDir.newFolder().absolutePath
         val fullFile = File(storagePrefix, apiKey)
         fullFile.mkdirs()
@@ -68,6 +70,13 @@ internal class PostHogSendCachedEventsIntegrationTest {
         content.forEach {
             val file = File(fullFile.absoluteFile, "${UUID.randomUUID()}.event")
             file.writeText(it)
+            date?.let { theDate ->
+                val cal = Calendar.getInstance()
+                cal.time = theDate
+                // -1 sec from date
+                cal.add(Calendar.SECOND, -1)
+                file.setLastModified(cal.time.time)
+            }
         }
 
         return storagePrefix
@@ -199,14 +208,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
         assertEquals(1, http.requestCount)
     }
 
-    @Ignore("Fix using the date provider")
     @Test
     fun `only send files past the integration run`() {
-        val storagePrefix = writeFile(listOf(event))
+        val date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
+        val storagePrefix = writeFile(listOf(event), date = date)
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(Date(), storagePrefix = storagePrefix, host = url.toString())
+        val sut = getSut(date, storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
 
         // write a new file
         val folder = File(storagePrefix, apiKey)
@@ -215,12 +224,19 @@ internal class PostHogSendCachedEventsIntegrationTest {
         val tempEvent = event.replace("testEvent", "testNewEvent")
         file.writeText(tempEvent)
 
+        val cal = Calendar.getInstance()
+        cal.time = date
+        cal.add(Calendar.SECOND, 1)
+        // +1 sec
+        file.setLastModified(cal.time.time)
+
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, http.requestCount)
-        assertEquals(1, File(storagePrefix, apiKey).listFiles()!!.size)
-        assertEquals(tempEvent, File(storagePrefix, apiKey).listFiles()!![0].readText())
+        val files = File(storagePrefix, apiKey).listFiles()!!
+        assertEquals(1, files.size)
+        assertEquals(tempEvent, files[0].readText())
     }
 }
