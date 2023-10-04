@@ -41,7 +41,7 @@ internal class PostHogAndroidContext(
         staticContext["\$device_model"] = Build.MODEL
         staticContext["\$device_name"] = Build.DEVICE
         // Check https://github.com/PostHog/posthog-flutter/issues/49 and change if needed
-        staticContext["\$device_type"] = "mobile"
+        staticContext["\$device_type"] = "Mobile"
         staticContext["\$os_name"] = "Android"
         staticContext["\$os_version"] = Build.VERSION.RELEASE
 
