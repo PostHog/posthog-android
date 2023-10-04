@@ -100,9 +100,13 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         assertNull(fake.event)
     }
 
-    private fun executeCaptureScreenViewsTest(captureScreenViews: Boolean = true, throws: Boolean = false): PostHogFake {
+    private fun executeCaptureScreenViewsTest(
+        captureScreenViews: Boolean = true,
+        throws: Boolean = false,
+        title: String = "Title",
+    ): PostHogFake {
         val sut = getSut(captureScreenViews = captureScreenViews)
-        val activity = mockScreenTitle(throws)
+        val activity = mockScreenTitle(throws, title)
 
         val fake = createPostHogFake()
 
@@ -128,6 +132,13 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     @Test
     fun `onActivityStarted does not capture if no title found`() {
         val fake = executeCaptureScreenViewsTest(throws = true)
+
+        assertNull(fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityStarted does not capture if title is empty`() {
+        val fake = executeCaptureScreenViewsTest(title = "")
 
         assertNull(fake.screenTitle)
     }
