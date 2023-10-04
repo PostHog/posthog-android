@@ -58,6 +58,8 @@ android {
 
         // lint runs only for debug build
         checkReleaseBuilds = false
+
+        baseline = File("lint-baseline.xml")
     }
 
     androidComponents.beforeVariants {
