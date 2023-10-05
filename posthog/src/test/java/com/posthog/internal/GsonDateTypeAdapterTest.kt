@@ -6,6 +6,7 @@ import com.google.gson.internal.bind.util.ISO8601Utils
 import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
+import java.io.File
 import java.text.ParsePosition
 import java.util.Date
 import kotlin.test.Test
@@ -27,13 +28,10 @@ internal class GsonDateTypeAdapterTest {
     @Test
     fun `deserializes json to date`() {
         val sut = getSut()
-        val json = """
-            {
-              "date": "2023-09-20T11:58:49.000Z"
-            }
-        """.trimIndent()
 
-        val fakeDate = sut.fromJson<FakeDate>(json, gsonFakeDateType)
+        val file = File("src/test/resources/json/valid-date.json")
+
+        val fakeDate = sut.fromJson<FakeDate>(file.readText(), gsonFakeDateType)
         val date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
 
         assertTrue(date.compareTo(fakeDate.date) == 0)
@@ -42,13 +40,10 @@ internal class GsonDateTypeAdapterTest {
     @Test
     fun `deserialize swallow exception if broken date`() {
         val sut = getSut()
-        val json = """
-            {
-              "date": "2023-123abc"
-            }
-        """.trimIndent()
 
-        val fakeDate = sut.fromJson<FakeDate>(json, gsonFakeDateType)
+        val file = File("src/test/resources/json/broken-date.json")
+
+        val fakeDate = sut.fromJson<FakeDate>(file.readText(), gsonFakeDateType)
 
         assertNull(fakeDate.date)
     }

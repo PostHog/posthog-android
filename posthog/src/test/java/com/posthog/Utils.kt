@@ -59,40 +59,6 @@ public fun generateEvent(eventName: String? = null): PostHogEvent {
     )
 }
 
-public const val responseDecideApi: String = """
-{
-  "autocaptureExceptions": false,
-  "toolbarParams": {},
-  "errorsWhileComputingFlags": false,
-  "capturePerformance": true,
-  "autocapture_opt_out": false,
-  "isAuthenticated": false,
-  "supportedCompression": [
-    "gzip",
-    "gzip-js"
-  ],
-  "config": {
-    "enable_collect_everything": true
-  },
-  "featureFlagPayloads": {
-    "thePayload": true
-  },
-  "featureFlags": {
-    "4535-funnel-bar-viz": true
-  },
-  "sessionRecording": false,
-  "siteApps": [
-    {
-      "id": 21039.0,
-      "url": "/site_app/21039/EOsOSePYNyTzHkZ3f4mjrjUap8Hy8o2vUTAc6v1ZMFP/576ac89bc8aed72a21d9b19221c2c626/"
-    }
-  ],
-  "editorParams": {
-
-  }
-}
-    """
-
 public fun mockHttp(
     total: Int = 1,
     response: MockResponse = MockResponse()

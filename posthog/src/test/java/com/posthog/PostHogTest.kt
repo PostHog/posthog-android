@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogThreadFactory
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -27,6 +28,9 @@ internal class PostHogTest {
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
     private val serializer = PostHogSerializer(PostHogConfig(apiKey))
     private lateinit var config: PostHogConfig
+
+    private val file = File("src/test/resources/json/basic-decide-no-errors.json")
+    private val responseDecideApi = file.readText()
 
     fun getSut(
         host: String,
