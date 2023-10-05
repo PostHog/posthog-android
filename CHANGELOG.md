@@ -1,6 +1,6 @@
 ## Next
 
-- Upsert flags when loading feature flags with computed errors ([#32](https://github.com/PostHog/posthog-android/pull/32)) 
+- Upsert flags when loading feature flags with computed errors ([#38](https://github.com/PostHog/posthog-android/pull/38)) 
 
 ## 3.0.0-alpha.5 - 2023-10-04
 
