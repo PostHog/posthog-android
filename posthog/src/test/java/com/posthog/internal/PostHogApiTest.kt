@@ -4,9 +4,9 @@ import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.generateEvent
 import com.posthog.mockHttp
-import com.posthog.responseDecideApi
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Assert.assertThrows
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -64,6 +64,9 @@ internal class PostHogApiTest {
 
     @Test
     fun `decide returns successful response`() {
+        val file = File("src/test/resources/json/basic-decide-no-errors.json")
+        val responseDecideApi = file.readText()
+
         val http = mockHttp(
             response =
             MockResponse()

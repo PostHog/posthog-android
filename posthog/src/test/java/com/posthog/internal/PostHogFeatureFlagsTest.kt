@@ -3,9 +3,9 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.mockHttp
-import com.posthog.responseDecideApi
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
+import java.io.File
 import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,6 +14,9 @@ import kotlin.test.assertTrue
 
 internal class PostHogFeatureFlagsTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+
+    private val file = File("src/test/resources/json/basic-decide-no-errors.json")
+    private val responseDecideApi = file.readText()
 
     private fun getSut(
         host: String,
@@ -131,7 +134,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `merge feature flags if no errors`() {
+    fun `merge feature flags if there are errors`() {
         val http = mockHttp(
             response =
             MockResponse()
@@ -146,14 +149,10 @@ internal class PostHogFeatureFlagsTest {
         // do not use extension to not shutdown the executor
         executor.submit {}.get()
 
-        val currentFlag = """"4535-funnel-bar-viz": true"""
-        val newFlag =
-            """$currentFlag,
-            |"foo": true
-            """.trimMargin()
-        val newResponse = responseDecideApi.replace(currentFlag, newFlag)
+        val file = File("src/test/resources/json/basic-decide-with-errors.json")
+
         val response = MockResponse()
-            .setBody(newResponse)
+            .setBody(file.readText())
         http.enqueue(response)
 
         sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
@@ -165,5 +164,8 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlag("foo", defaultValue = false) as Boolean)
+
+        assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false) as Boolean)
     }
 }

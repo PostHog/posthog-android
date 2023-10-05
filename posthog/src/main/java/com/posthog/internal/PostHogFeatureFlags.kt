@@ -49,7 +49,8 @@ internal class PostHogFeatureFlags(
 
                 response?.let {
                     synchronized(featureFlagsLock) {
-                        if (!response.errorsWhileComputingFlags) {
+                        if (response.errorsWhileComputingFlags) {
+                            // if not all flags were computed, we upsert flags instead of replacing them
                             this.featureFlags = (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
                             this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + (response.featureFlagPayloads ?: mapOf())
                         } else {
