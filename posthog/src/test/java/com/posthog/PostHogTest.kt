@@ -216,6 +216,9 @@ internal class PostHogTest {
 
     @Test
     fun `getFeatureFlag captures feature flag event if enabled`() {
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val responseDecideApi = file.readText()
+
         val http = mockHttp(
             response =
             MockResponse()
@@ -237,6 +240,8 @@ internal class PostHogTest {
         http.takeRequest()
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
+        assertFalse(sut.getFeatureFlag("IAmInactive") as Boolean)
+        assertEquals("SplashV2", sut.getFeatureFlag("splashScreenName") as String)
 
         queueExecutor.shutdownAndAwaitTermination()
 
@@ -250,12 +255,15 @@ internal class PostHogTest {
         assertNotNull(theEvent.timestamp)
         assertNotNull(theEvent.uuid)
 
-        // {$feature/4535-funnel-bar-viz=true, $active_feature_flags=[4535-funnel-bar-viz], $feature_flag=4535-funnel-bar-viz, $feature_flag_response=true}
         assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
+        assertEquals(false, theEvent.properties!!["\$feature/IAmInactive"])
+        assertEquals("SplashV2", theEvent.properties!!["\$feature/splashScreenName"])
 
         @Suppress("UNCHECKED_CAST")
         val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
-        assertEquals("4535-funnel-bar-viz", theFlags[0])
+        assertTrue(theFlags.contains("4535-funnel-bar-viz"))
+        assertTrue(theFlags.contains("splashScreenName"))
+        assertFalse(theFlags.contains("IAmInactive"))
 
         assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
         assertEquals(true, theEvent.properties!!["\$feature_flag_response"])

@@ -209,7 +209,13 @@ public class PostHog private constructor(
                         val keys = mutableListOf<String>()
                         for (entry in it.entries) {
                             props["\$feature/${entry.key}"] = entry.value
-                            keys.add(entry.key)
+
+                            // only add active feature flags
+                            val active = entry.value as? Boolean ?: true
+
+                            if (active) {
+                                keys.add(entry.key)
+                            }
                         }
                         props["\$active_feature_flags"] = keys
                     }
