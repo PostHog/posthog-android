@@ -1,5 +1,7 @@
 ## Next
 
+## 3.0.0-alpha.6 - 2023-10-06
+
 - Upsert flags when loading feature flags with computed errors ([#38](https://github.com/PostHog/posthog-android/pull/38))
 - `$active_feature_flags` event should filter non active flags ([#41](https://github.com/PostHog/posthog-android/pull/41))
 
