@@ -25,7 +25,7 @@ configure<JavaPluginExtension> {
 
 buildConfig {
     useKotlinOutput()
-    packageName("com.posthog.internal")
+    packageName("com.posthog")
     buildConfigField("String", "VERSION_NAME", "\"${project.version}\"")
 }
 
