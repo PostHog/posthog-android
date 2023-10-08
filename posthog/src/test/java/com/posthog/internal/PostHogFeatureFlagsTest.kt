@@ -9,6 +9,7 @@ import java.io.File
 import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -167,5 +168,28 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false) as Boolean)
+    }
+
+    @Test
+    fun `returns flag enabled if multivariant`() {
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(file.readText()),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz", defaultValue = false))
+        assertFalse(sut.isFeatureEnabled("IAmInactive", defaultValue = true))
+        assertTrue(sut.isFeatureEnabled("splashScreenName", defaultValue = false))
+        assertTrue(sut.isFeatureEnabled("IDontExist", defaultValue = true))
     }
 }
