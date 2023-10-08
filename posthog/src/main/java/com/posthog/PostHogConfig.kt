@@ -1,6 +1,5 @@
 package com.posthog
 
-import com.posthog.internal.BuildConfig
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
