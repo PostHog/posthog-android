@@ -1,6 +1,6 @@
 ## Next
 
-- isFeatureEnabled now returns true if multivariant flag ([#38](https://github.com/PostHog/posthog-android/pull/38))
+- isFeatureEnabled now returns true if multivariant flag ([#42](https://github.com/PostHog/posthog-android/pull/42))
 
 ## 3.0.0-alpha.6 - 2023-10-06
 
