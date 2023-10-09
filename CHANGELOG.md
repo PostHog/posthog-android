@@ -1,7 +1,7 @@
 ## Next
 
 - isFeatureEnabled now returns true if multivariant flag ([#42](https://github.com/PostHog/posthog-android/pull/42))
-- getFeatureFlagPayload returns non strigified JSON ([#43](https://github.com/PostHog/posthog-android/pull/43))
+- getFeatureFlagPayload returns non strigified JSON ([#44](https://github.com/PostHog/posthog-android/pull/44))
 
 ## 3.0.0-alpha.6 - 2023-10-06
 
