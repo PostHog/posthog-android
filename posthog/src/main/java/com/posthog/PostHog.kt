@@ -55,7 +55,7 @@ public class PostHog private constructor(
                 val dateProvider = PostHogCalendarDateProvider()
                 val api = PostHogApi(config, serializer, dateProvider)
                 val queue = PostHogQueue(config, api, serializer, dateProvider, queueExecutor)
-                val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
+                val featureFlags = PostHogFeatureFlags(config, serializer, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut = config.cachePreferences?.getValue(

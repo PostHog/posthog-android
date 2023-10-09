@@ -16,6 +16,9 @@ import java.util.Date
  */
 internal class PostHogSerializer(private val config: PostHogConfig) {
     private val gson = GsonBuilder().apply {
+        // Gson converts every number to Double by default, so we need to set a policy to convert
+        // it to Long if possible
+        setObjectToNumberStrategy(GsonNumberPolicy())
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
             .setLenient()
     }.create()
@@ -29,5 +32,9 @@ internal class PostHogSerializer(private val config: PostHogConfig) {
     @Throws(JsonIOException::class, JsonSyntaxException::class)
     inline fun <reified T> deserialize(reader: Reader): T {
         return gson.fromJson(reader, object : TypeToken<T>() {}.type)
+    }
+
+    fun deserializeString(json: String): Any? {
+        return gson.fromJson(json, Any::class.java)
     }
 }

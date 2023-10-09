@@ -29,7 +29,7 @@ internal class PostHogFeatureFlagsTest {
         val serializer = PostHogSerializer(config)
         val dateProvider = PostHogCalendarDateProvider()
         val api = PostHogApi(config, serializer, dateProvider)
-        return PostHogFeatureFlags(config, api, executor = executor)
+        return PostHogFeatureFlags(config, serializer, api, executor = executor)
     }
 
     @Test
@@ -191,5 +191,39 @@ internal class PostHogFeatureFlagsTest {
         assertFalse(sut.isFeatureEnabled("IAmInactive", defaultValue = true))
         assertTrue(sut.isFeatureEnabled("splashScreenName", defaultValue = false))
         assertTrue(sut.isFeatureEnabled("IDontExist", defaultValue = true))
+    }
+
+    @Test
+    fun `getFeatureFlagPayload returns non strigified JSON`() {
+        val file = File("src/test/resources/json/decide-with-stringfied-flags.json")
+
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(file.readText()),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals("theString", sut.getFeatureFlagPayload("theString", defaultValue = null) as String)
+        assertEquals(123, sut.getFeatureFlagPayload("theInteger", defaultValue = null) as Int)
+        assertEquals(123.5, sut.getFeatureFlagPayload("theDouble", defaultValue = null) as Double)
+
+        val theObject = mapOf<String, Any>("key" to "value")
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(theObject, sut.getFeatureFlagPayload("theObject", defaultValue = null) as Map<String, Any>)
+
+        val theArray = listOf(1, "2", 3.5)
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(theArray, sut.getFeatureFlagPayload("theArray", defaultValue = null) as List<Any>)
+
+        assertTrue(sut.getFeatureFlagPayload("theBoolean", defaultValue = null) as Boolean)
+        assertNull(sut.getFeatureFlagPayload("theNull", defaultValue = null))
+        assertEquals("[1, 2", sut.getFeatureFlagPayload("theBroken", defaultValue = null) as String)
     }
 }

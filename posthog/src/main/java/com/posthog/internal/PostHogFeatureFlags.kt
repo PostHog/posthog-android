@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
+    private val serializer: PostHogSerializer,
     private val api: PostHogApi,
     private val executor: ExecutorService,
 ) {
@@ -22,7 +23,7 @@ internal class PostHogFeatureFlags(
     private val featureFlagsLock = Any()
 
     private var featureFlags: Map<String, Any>? = null
-    private var featureFlagPayloads: Map<String, Any>? = null
+    private var featureFlagPayloads: Map<String, Any?>? = null
 
     @Volatile
     private var isFeatureFlagsLoaded = false
@@ -53,13 +54,15 @@ internal class PostHogFeatureFlags(
                             // if not all flags were computed, we upsert flags instead of replacing them
                             this.featureFlags =
                                 (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
-                            this.featureFlagPayloads = (
-                                this.featureFlagPayloads
-                                    ?: mapOf()
-                                ) + (response.featureFlagPayloads ?: mapOf())
+
+                            val parsedPayloads = normalizePayloads(response.featureFlagPayloads)
+
+                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + parsedPayloads
                         } else {
                             this.featureFlags = response.featureFlags
-                            this.featureFlagPayloads = response.featureFlagPayloads
+
+                            val parsedPayloads = normalizePayloads(response.featureFlagPayloads)
+                            this.featureFlagPayloads = parsedPayloads
                         }
                     }
                     isFeatureFlagsLoaded = true
@@ -79,6 +82,27 @@ internal class PostHogFeatureFlags(
                 }
             }
         }
+    }
+
+    private fun normalizePayloads(featureFlagPayloads: Map<String, Any?>?): Map<String, Any?> {
+        val parsedPayloads = (featureFlagPayloads ?: mapOf()).toMutableMap()
+
+        for (item in parsedPayloads) {
+            val value = item.value
+
+            try {
+                // only try to parse if its a String, since the JSON values are stringified
+                if (value is String) {
+                    // try to deserialize as Any?
+                    serializer.deserializeString(value)?.let {
+                        parsedPayloads[item.key] = it
+                    }
+                }
+            } catch (ignored: Throwable) {
+                // if it fails, we keep the original value
+            }
+        }
+        return parsedPayloads
     }
 
     fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
@@ -103,7 +127,7 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun readFeatureFlag(key: String, defaultValue: Any?, flags: Map<String, Any>?): Any? {
+    private fun readFeatureFlag(key: String, defaultValue: Any?, flags: Map<String, Any?>?): Any? {
         if (!isFeatureFlagsLoaded) {
             return defaultValue
         }
