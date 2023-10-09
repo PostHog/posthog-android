@@ -55,14 +55,14 @@ internal class PostHogFeatureFlags(
                             this.featureFlags =
                                 (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
 
-                            val parsedPayloads = normalizePayloads(response.featureFlagPayloads)
+                            val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
 
-                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + parsedPayloads
+                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
                         } else {
                             this.featureFlags = response.featureFlags
 
-                            val parsedPayloads = normalizePayloads(response.featureFlagPayloads)
-                            this.featureFlagPayloads = parsedPayloads
+                            val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
+                            this.featureFlagPayloads = normalizedPayloads
                         }
                     }
                     isFeatureFlagsLoaded = true
