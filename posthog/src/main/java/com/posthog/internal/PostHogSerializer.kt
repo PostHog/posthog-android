@@ -16,8 +16,6 @@ import java.util.Date
  */
 internal class PostHogSerializer(private val config: PostHogConfig) {
     private val gson = GsonBuilder().apply {
-        // Gson converts every number to Double by default, so we need to set a policy to convert
-        // it to Long if possible
         setObjectToNumberStrategy(GsonNumberPolicy())
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
             .setLenient()
