@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.BuildConfig
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.generateEvent

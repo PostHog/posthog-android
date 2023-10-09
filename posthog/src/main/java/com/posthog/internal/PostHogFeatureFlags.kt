@@ -51,8 +51,12 @@ internal class PostHogFeatureFlags(
                     synchronized(featureFlagsLock) {
                         if (response.errorsWhileComputingFlags) {
                             // if not all flags were computed, we upsert flags instead of replacing them
-                            this.featureFlags = (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
-                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + (response.featureFlagPayloads ?: mapOf())
+                            this.featureFlags =
+                                (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
+                            this.featureFlagPayloads = (
+                                this.featureFlagPayloads
+                                    ?: mapOf()
+                                ) + (response.featureFlagPayloads ?: mapOf())
                         } else {
                             this.featureFlags = response.featureFlags
                             this.featureFlagPayloads = response.featureFlagPayloads
@@ -87,8 +91,13 @@ internal class PostHogFeatureFlags(
             value = featureFlags?.get(key)
         }
 
-        return if (value is Boolean) {
-            value
+        return if (value != null) {
+            if (value is Boolean) {
+                value
+            } else {
+                // if its multivariant flag, its enabled by default
+                true
+            }
         } else {
             defaultValue
         }

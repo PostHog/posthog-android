@@ -1,6 +1,5 @@
 package com.posthog
 
-import com.posthog.internal.BuildConfig
 import com.posthog.internal.PostHogPrintLogger
 import kotlin.test.Test
 import kotlin.test.assertEquals
