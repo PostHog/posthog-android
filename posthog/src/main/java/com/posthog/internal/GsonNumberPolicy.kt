@@ -13,7 +13,13 @@ import java.io.IOException
  * but we try to convert it to Integer first, then Long and then Double.
  */
 internal class GsonNumberPolicy : ToNumberStrategy {
-    @Throws(JsonParseException::class, IOException::class, JsonParseException::class, MalformedJsonException::class)
+    @Throws(
+        JsonParseException::class,
+        IOException::class,
+        JsonParseException::class,
+        MalformedJsonException::class,
+        IllegalStateException::class,
+    )
     override fun readNumber(reader: JsonReader): Number {
         val value = reader.nextString()
         return try {
