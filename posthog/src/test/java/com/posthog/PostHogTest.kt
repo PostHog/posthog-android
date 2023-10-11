@@ -348,8 +348,7 @@ internal class PostHogTest {
             groupProperties = groupProps,
         )
 
-        // do not use extension to not shutdown the executor
-        queueExecutor.submit {}.get()
+        queueExecutor.awaitExecution()
 
         sut.optIn()
 
@@ -701,5 +700,60 @@ internal class PostHogTest {
         queueExecutor.shutdownAndAwaitTermination()
 
         assertEquals("myNewDistinctId", sut.distinctId())
+    }
+
+    @Test
+    fun `do not send feature flags called event twice`() {
+        val file = File("src/test/resources/json/basic-decide-no-errors.json")
+        val responseDecideApi = file.readText()
+
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
+
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+
+        assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
+
+        @Suppress("UNCHECKED_CAST")
+        val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
+        assertTrue(theFlags.contains("4535-funnel-bar-viz"))
+
+        assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
+        assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
+
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
+
+        queueExecutor.awaitExecution()
+
+        // just the 2 events
+        assertEquals(2, http.requestCount)
+
+        sut.close()
     }
 }

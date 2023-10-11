@@ -30,12 +30,14 @@ public class PostHog private constructor(
     private val lockSetup = Any()
     private val lockOptOut = Any()
     private val anonymousLock = Any()
+    private val featureFlagsSentLock = Any()
 
     private var config: PostHogConfig? = null
 
     private var featureFlags: PostHogFeatureFlags? = null
     private var queue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
+    private val featureFlagsSent = mutableSetOf<String>()
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(lockSetup) {
@@ -146,6 +148,8 @@ public class PostHog private constructor(
                 }
 
                 queue?.stop()
+
+                featureFlagsSent.clear()
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
@@ -449,7 +453,16 @@ public class PostHog private constructor(
         }
         val flag = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
-        if (config?.sendFeatureFlagEvent == true) {
+        var shouldSendFeatureFlagEvent = true
+        synchronized(featureFlagsSentLock) {
+            if (featureFlagsSent.contains(key)) {
+                shouldSendFeatureFlagEvent = false
+            } else {
+                featureFlagsSent.add(key)
+            }
+        }
+
+        if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
             val props = mutableMapOf<String, Any>()
             props["\$feature_flag"] = key
             flag?.let {
@@ -487,6 +500,7 @@ public class PostHog private constructor(
         config?.cachePreferences?.clear(except = listOf("build", "version"))
         featureFlags?.clear()
         queue?.clear()
+        featureFlagsSent.clear()
     }
 
     private fun isEnabled(): Boolean {
