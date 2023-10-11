@@ -37,7 +37,7 @@ public class PostHog private constructor(
     private var featureFlags: PostHogFeatureFlags? = null
     private var queue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
-    private val featureFlagsCalled = mutableSetOf<String>()
+    private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(lockSetup) {
@@ -455,10 +455,12 @@ public class PostHog private constructor(
 
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
-            if (featureFlagsCalled.contains(key)) {
+            val values = featureFlagsCalled[key] ?: mutableListOf()
+            if (values.contains(flag)) {
                 shouldSendFeatureFlagEvent = false
             } else {
-                featureFlagsCalled.add(key)
+                values.add(key)
+                featureFlagsCalled[key] = values
             }
         }
 
