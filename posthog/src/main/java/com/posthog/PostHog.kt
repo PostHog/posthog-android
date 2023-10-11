@@ -451,12 +451,12 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        val flag = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+        val value = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
             val values = featureFlagsCalled[key] ?: mutableListOf()
-            if (values.contains(flag)) {
+            if (values.contains(value)) {
                 shouldSendFeatureFlagEvent = false
             } else {
                 values.add(key)
@@ -467,14 +467,13 @@ public class PostHog private constructor(
         if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
             val props = mutableMapOf<String, Any>()
             props["\$feature_flag"] = key
-            flag?.let {
-                props["\$feature_flag_response"] = it
-            }
+            // value should never be nullabe anyway
+            props["\$feature_flag_response"] = value ?: ""
 
             capture("\$feature_flag_called", properties = props)
         }
 
-        return flag
+        return value
     }
 
     public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
