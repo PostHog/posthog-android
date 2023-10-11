@@ -38,6 +38,12 @@ public fun ExecutorService.shutdownAndAwaitTermination() {
     }
 }
 
+public fun ExecutorService.awaitExecution() {
+    // instead of using shutdownAndAwaitTermination which shutdown the executor
+    // we schedule a task to be run and await for it to be completed
+    submit {}.get()
+}
+
 public val date: Date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
 public const val event: String = "event"
 public const val distinctId: String = "distinctId"

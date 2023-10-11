@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
+import com.posthog.awaitExecution
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
@@ -147,8 +148,7 @@ internal class PostHogFeatureFlagsTest {
 
         sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
 
-        // do not use extension to not shutdown the executor
-        executor.submit {}.get()
+        executor.awaitExecution()
 
         val file = File("src/test/resources/json/basic-decide-with-errors.json")
 
@@ -157,9 +157,6 @@ internal class PostHogFeatureFlagsTest {
         http.enqueue(response)
 
         sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
-
-        // do not use extension to not shutdown the executor
-        executor.submit {}.get()
 
         executor.shutdownAndAwaitTermination()
 

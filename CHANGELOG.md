@@ -1,5 +1,7 @@
 ## Next
 
+- SDK only sends the `$feature_flag_called` event once per flag ([#47](https://github.com/PostHog/posthog-android/pull/47))
+
 ## 3.0.0-alpha.7 - 2023-10-10
 
 - isFeatureEnabled now returns true if multivariant flag ([#42](https://github.com/PostHog/posthog-android/pull/42))

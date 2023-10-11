@@ -30,12 +30,14 @@ public class PostHog private constructor(
     private val lockSetup = Any()
     private val lockOptOut = Any()
     private val anonymousLock = Any()
+    private val featureFlagsCalledLock = Any()
 
     private var config: PostHogConfig? = null
 
     private var featureFlags: PostHogFeatureFlags? = null
     private var queue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
+    private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(lockSetup) {
@@ -146,6 +148,8 @@ public class PostHog private constructor(
                 }
 
                 queue?.stop()
+
+                featureFlagsCalled.clear()
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
@@ -447,19 +451,29 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        val flag = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+        val value = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
-        if (config?.sendFeatureFlagEvent == true) {
+        var shouldSendFeatureFlagEvent = true
+        synchronized(featureFlagsCalledLock) {
+            val values = featureFlagsCalled[key] ?: mutableListOf()
+            if (values.contains(value)) {
+                shouldSendFeatureFlagEvent = false
+            } else {
+                values.add(key)
+                featureFlagsCalled[key] = values
+            }
+        }
+
+        if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
             val props = mutableMapOf<String, Any>()
             props["\$feature_flag"] = key
-            flag?.let {
-                props["\$feature_flag_response"] = it
-            }
+            // value should never be nullabe anyway
+            props["\$feature_flag_response"] = value ?: ""
 
             capture("\$feature_flag_called", properties = props)
         }
 
-        return flag
+        return value
     }
 
     public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
@@ -487,6 +501,7 @@ public class PostHog private constructor(
         config?.cachePreferences?.clear(except = listOf("build", "version"))
         featureFlags?.clear()
         queue?.clear()
+        featureFlagsCalled.clear()
     }
 
     private fun isEnabled(): Boolean {

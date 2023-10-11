@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
+import com.posthog.awaitExecution
 import com.posthog.generateEvent
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
@@ -137,8 +138,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        // do not use extension to not shutdown the executor
-        executor.submit {}.get()
+        executor.awaitExecution()
 
         http.enqueue(
             MockResponse()
@@ -227,8 +227,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        // do not use extension to not shutdown the executor
-        executor.submit {}.get()
+        executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
         assertEquals(1, File(path, apiKey).listFiles()!!.size)
@@ -256,8 +255,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        // do not use extension to not shutdown the executor
-        executor.submit {}.get()
+        executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
         assertEquals(1, File(path, apiKey).listFiles()!!.size)
@@ -287,8 +285,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        // do not use extension to not shutdown the executor
-        executor.submit {}.get()
+        executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
         assertEquals(1, File(path, apiKey).listFiles()!!.size)
@@ -297,8 +294,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        // do not use extension to not shutdown the executor
-        executor.submit {}.get()
+        executor.awaitExecution()
 
         assertEquals(2, sut.dequeList.size)
         assertEquals(2, File(path, apiKey).listFiles()!!.size)
