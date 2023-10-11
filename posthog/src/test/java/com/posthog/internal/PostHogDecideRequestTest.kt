@@ -13,7 +13,7 @@ internal class PostHogDecideRequestTest {
     fun `sets the decide request content`() {
         val request = PostHogDecideRequest(apiKey, distinctId, anonId, groups)
 
-        assertEquals(apiKey, request["token"])
+        assertEquals(apiKey, request["api_key"])
         assertEquals(distinctId, request["distinct_id"])
         assertEquals(anonId, request["\$anon_distinct_id"])
         assertEquals(groups, request["\$groups"])

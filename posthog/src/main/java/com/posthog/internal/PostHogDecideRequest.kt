@@ -11,7 +11,7 @@ internal class PostHogDecideRequest(
     // add person_properties, group_properties
 ) : HashMap<String, Any>() {
     init {
-        this["token"] = apiKey
+        this["api_key"] = apiKey
         this["distinct_id"] = distinctId
         this["\$anon_distinct_id"] = anonymousId
         if (groups?.isNotEmpty() == true) {
