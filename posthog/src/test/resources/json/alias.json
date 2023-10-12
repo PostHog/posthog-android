@@ -21,7 +21,6 @@
     "$lib_version": "version",
     "$app_namespace": "com.posthog.myapplication",
     "$app_build": "1",
-    "distinct_id": "my_identify",
     "$feature/4535-funnel-bar-viz": true,
     "$active_feature_flags": [
       "4535-funnel-bar-viz"
