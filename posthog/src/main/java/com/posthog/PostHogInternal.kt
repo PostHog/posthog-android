@@ -14,5 +14,6 @@ package com.posthog
     AnnotationTarget.CONSTRUCTOR,
     AnnotationTarget.FIELD,
     AnnotationTarget.FILE,
+    AnnotationTarget.PROPERTY,
 )
 public annotation class PostHogInternal

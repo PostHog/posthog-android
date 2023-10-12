@@ -93,7 +93,6 @@ public class com/posthog/PostHogConfig {
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
-	public final fun setSerializer (Lcom/posthog/internal/PostHogSerializer;)V
 	public final fun setStoragePrefix (Ljava/lang/String;)V
 }
 

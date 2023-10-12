@@ -95,7 +95,9 @@ public open class PostHogConfig(
     public var logger: PostHogLogger = PostHogPrintLogger(this)
 
     @PostHogInternal
-    public var serializer: PostHogSerializer = PostHogSerializer(this)
+    public val serializer: PostHogSerializer by lazy {
+        PostHogSerializer(this)
+    }
 
     @PostHogInternal
     public var context: PostHogContext? = null
