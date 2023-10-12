@@ -38,9 +38,6 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
         text = AnnotatedString("Hello $name!"),
         modifier = modifier,
         onClick = {
-            val props = mutableMapOf<String, Any>()
-            props["test_key"] = "test_value"
-            PostHog.group("theType", "theKey", groupProperties = props)
 //            PostHog.optOut()
 //            PostHog.optIn()
 //            PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))

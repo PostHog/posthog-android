@@ -121,7 +121,8 @@ internal class PostHogSharedPreferences(
     private fun deserializeObject(value: String): Any {
         try {
             config.serializer.deserializeString(value)?.let {
-                // only return the deserialized object if it's not null otherwise fallback to the original value
+                // only return the deserialized object if it's not null otherwise fallback
+                // to the original (and stringified) value
                 return it
             }
         } catch (ignored: Throwable) { }
