@@ -1,6 +1,7 @@
 ## Next
 
 - SDK only sends the `$feature_flag_called` event once per flag ([#47](https://github.com/PostHog/posthog-android/pull/47))
+- Groups are cached in the disk ([#48](https://github.com/PostHog/posthog-android/pull/48))
 
 ## 3.0.0-alpha.7 - 2023-10-10
 

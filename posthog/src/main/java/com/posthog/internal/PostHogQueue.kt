@@ -18,14 +18,12 @@ import kotlin.math.min
  * The class that manages the events Queue
  * @property config the Config
  * @property api the API
- * @property serializer the Serializer
  * @property dateProvider the Date provider
  * @property executor the Executor
  */
 internal class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,
-    private val serializer: PostHogSerializer,
     private val dateProvider: PostHogDateProvider,
     private val executor: ExecutorService,
 ) {
@@ -83,7 +81,7 @@ internal class PostHogQueue(
 
                 try {
                     val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
-                    serializer.serialize(event, os.writer().buffered())
+                    config.serializer.serialize(event, os.writer().buffered())
                     config.logger.log("Queued event ${file.name}.")
 
                     flushIfOverThreshold(true)
@@ -167,7 +165,7 @@ internal class PostHogQueue(
             try {
                 val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
 
-                val event = serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
+                val event = config.serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
                 event?.let {
                     events.add(it)
                 }

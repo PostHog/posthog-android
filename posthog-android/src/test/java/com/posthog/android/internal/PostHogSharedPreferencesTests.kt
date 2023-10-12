@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.android.FakeSharedPreferences
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.apiKey
+import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
 import kotlin.test.Test
@@ -94,12 +95,33 @@ internal class PostHogSharedPreferencesTests {
     }
 
     @Test
-    fun `preferences does not set a non valid type`() {
+    fun `preferences stringify a non valid type`() {
         val sut = getSut()
 
         sut.setValue("key", Any())
 
-        assertNull(sut.getValue("key"))
+        assertEquals("{}", sut.getValue("key"))
+    }
+
+    @Test
+    fun `preferences deserialize groups`() {
+        val sut = getSut()
+
+        val props = mapOf("key" to "value")
+        sut.setValue(GROUPS, props)
+
+        assertEquals(props, sut.getValue(GROUPS))
+    }
+
+    @Test
+    fun `preferences fallback to stringified version if not special key`() {
+        val sut = getSut()
+
+        val props = mapOf("key" to "value")
+        sut.setValue("key", props)
+
+        val json = """{"key":"value"}"""
+        assertEquals(json, sut.getValue("key"))
     }
 
     @Test

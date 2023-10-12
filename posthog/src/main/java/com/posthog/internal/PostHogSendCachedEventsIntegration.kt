@@ -13,14 +13,12 @@ import java.util.concurrent.ExecutorService
  * The integration that send all the cached events, triggered once the SDK is setup
  * @property config the Config
  * @property api the API class
- * @property serializer the Serializer
  * @property startDate the startDate cut off so we don't race with the Queue
  * @property executor the Executor
  */
 internal class PostHogSendCachedEventsIntegration(
     private val config: PostHogConfig,
     private val api: PostHogApi,
-    private val serializer: PostHogSerializer,
     private val startDate: Date,
     private val executor: ExecutorService,
 ) : PostHogIntegration {
@@ -62,7 +60,7 @@ internal class PostHogSendCachedEventsIntegration(
 
                         try {
                             val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
-                            val event = serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
+                            val event = config.serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
                             event?.let {
                                 events.add(event)
                                 eventsCount++
@@ -151,7 +149,7 @@ internal class PostHogSendCachedEventsIntegration(
                         try {
                             val inputStream =
                                 config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
-                            val event = serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
+                            val event = config.serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
                             event?.let {
                                 events.add(event)
                                 eventsCount++

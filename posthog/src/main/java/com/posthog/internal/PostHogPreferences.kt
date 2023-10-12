@@ -17,4 +17,13 @@ public interface PostHogPreferences {
     public fun remove(key: String)
 
     public fun getAll(): Map<String, Any>
+
+    public companion object {
+        public const val GROUPS: String = "groups"
+        internal const val ANONYMOUS_ID = "anonymousId"
+        internal const val DISTINCT_ID = "distinctId"
+        internal const val OPT_OUT = "opt-out"
+        public const val VERSION: String = "version"
+        public const val BUILD: String = "build"
+    }
 }

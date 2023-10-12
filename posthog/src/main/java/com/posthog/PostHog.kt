@@ -4,6 +4,12 @@ import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogCalendarDateProvider
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
+import com.posthog.internal.PostHogPreferences.Companion.BUILD
+import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
+import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
@@ -53,15 +59,14 @@ public class PostHog private constructor(
 
                 val cachePreferences = config.cachePreferences ?: PostHogMemoryPreferences()
                 config.cachePreferences = cachePreferences
-                val serializer = PostHogSerializer(config)
                 val dateProvider = PostHogCalendarDateProvider()
-                val api = PostHogApi(config, serializer, dateProvider)
-                val queue = PostHogQueue(config, api, serializer, dateProvider, queueExecutor)
-                val featureFlags = PostHogFeatureFlags(config, serializer, api, featureFlagsExecutor)
+                val api = PostHogApi(config, dateProvider)
+                val queue = PostHogQueue(config, api, dateProvider, queueExecutor)
+                val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut = config.cachePreferences?.getValue(
-                    "opt-out",
+                    OPT_OUT,
                     defaultValue = config.optOut,
                 ) as? Boolean
                 optOut?.let {
@@ -72,7 +77,6 @@ public class PostHog private constructor(
                 val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(
                     config,
                     api,
-                    serializer,
                     startDate,
                     cachedEventsExecutor,
                 )
@@ -83,7 +87,7 @@ public class PostHog private constructor(
 
                 config.addIntegration(sendCachedEventsIntegration)
 
-                legacyPreferences(config, serializer)
+                legacyPreferences(config, config.serializer)
 
                 enabled = true
 
@@ -160,7 +164,7 @@ public class PostHog private constructor(
         get() {
             var anonymousId: String?
             synchronized(anonymousLock) {
-                anonymousId = config?.cachePreferences?.getValue("anonymousId") as? String
+                anonymousId = config?.cachePreferences?.getValue(ANONYMOUS_ID) as? String
                 if (anonymousId == null) {
                     anonymousId = UUID.randomUUID().toString()
                     this.anonymousId = anonymousId ?: ""
@@ -169,18 +173,18 @@ public class PostHog private constructor(
             return anonymousId ?: ""
         }
         set(value) {
-            config?.cachePreferences?.setValue("anonymousId", value)
+            config?.cachePreferences?.setValue(ANONYMOUS_ID, value)
         }
 
     private var distinctId: String
         get() {
             return config?.cachePreferences?.getValue(
-                "distinctId",
+                DISTINCT_ID,
                 defaultValue = anonymousId,
             ) as? String ?: ""
         }
         set(value) {
-            config?.cachePreferences?.setValue("distinctId", value)
+            config?.cachePreferences?.setValue(DISTINCT_ID, value)
         }
 
     private fun buildProperties(
@@ -290,7 +294,7 @@ public class PostHog private constructor(
 
         synchronized(lockOptOut) {
             config?.optOut = false
-            config?.cachePreferences?.setValue("opt-out", false)
+            config?.cachePreferences?.setValue(OPT_OUT, false)
         }
     }
 
@@ -301,7 +305,7 @@ public class PostHog private constructor(
 
         synchronized(lockOptOut) {
             config?.optOut = true
-            config?.cachePreferences?.setValue("opt-out", true)
+            config?.cachePreferences?.setValue(OPT_OUT, true)
         }
     }
 
@@ -397,8 +401,11 @@ public class PostHog private constructor(
             props["\$group_set"] = it
         }
 
+        // just defensive, if there's no cachePreferences, we fallback to in memory
+        val preferences = config?.cachePreferences ?: memoryPreferences
+
         @Suppress("UNCHECKED_CAST")
-        val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
+        val groups = preferences.getValue(GROUPS) as? Map<String, Any>
         val newGroups = mutableMapOf<String, Any>()
         var reloadFeatureFlags = false
 
@@ -415,7 +422,7 @@ public class PostHog private constructor(
 
         capture("\$groupidentify", properties = props)
 
-        memoryPreferences.setValue("\$groups", newGroups)
+        preferences.setValue(GROUPS, newGroups)
 
         if (reloadFeatureFlags) {
             loadFeatureFlagsRequest(null)
@@ -434,8 +441,11 @@ public class PostHog private constructor(
         props["\$anon_distinct_id"] = anonymousId
         props["distinct_id"] = distinctId
 
+        // just defensive, if there's no config.cachePreferences, we fallback to in memory
+        val preferences = config?.cachePreferences ?: memoryPreferences
+
         @Suppress("UNCHECKED_CAST")
-        val groups = memoryPreferences.getValue("\$groups") as? Map<String, Any>
+        val groups = preferences.getValue(GROUPS) as? Map<String, Any>
 
         featureFlags?.loadFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags)
     }
@@ -495,10 +505,11 @@ public class PostHog private constructor(
             return
         }
 
-        memoryPreferences.clear()
         // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
-        config?.cachePreferences?.clear(except = listOf("build", "version"))
+        val except = listOf(VERSION, BUILD)
+        memoryPreferences.clear(except = except)
+        config?.cachePreferences?.clear(except = except)
         featureFlags?.clear()
         queue?.clear()
         featureFlagsCalled.clear()

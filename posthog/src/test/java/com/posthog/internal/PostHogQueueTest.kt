@@ -42,9 +42,8 @@ internal class PostHogQueueTest {
             this.networkStatus = networkStatus
             this.maxBatchSize = maxBatchSize
         }
-        val serializer = PostHogSerializer(config)
-        val api = PostHogApi(config, serializer, dateProvider)
-        return PostHogQueue(config, api, serializer, executor = executor, dateProvider = dateProvider)
+        val api = PostHogApi(config, dateProvider)
+        return PostHogQueue(config, api, executor = executor, dateProvider = dateProvider)
     }
 
     @Test

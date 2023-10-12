@@ -13,12 +13,10 @@ import java.io.OutputStream
 /**
  * The class that calls the PostHog API
  * @property config the Config
- * @property serializer the JSON Serializer
  * @property dateProvider the Date provider
  */
 internal class PostHogApi(
     private val config: PostHogConfig,
-    private val serializer: PostHogSerializer,
     private val dateProvider: PostHogDateProvider,
 ) {
     private val mediaType by lazy {
@@ -45,7 +43,7 @@ internal class PostHogApi(
 
         val request = makeRequest("$theHost/batch") {
             batch.sentAt = dateProvider.currentDate()
-            serializer.serialize(batch, it.bufferedWriter())
+            config.serializer.serialize(batch, it.bufferedWriter())
         }
 
         client.newCall(request).execute().use {
@@ -78,14 +76,14 @@ internal class PostHogApi(
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups)
 
         val request = makeRequest("$theHost/decide/?v=3") {
-            serializer.serialize(decideRequest, it.bufferedWriter())
+            config.serializer.serialize(decideRequest, it.bufferedWriter())
         }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
 
             it.body?.let { body ->
-                return serializer.deserialize(body.charStream().buffered())
+                return config.serializer.deserialize(body.charStream().buffered())
             }
             return null
         }
