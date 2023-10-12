@@ -73,6 +73,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
+	public final fun getSerializer ()Lcom/posthog/internal/PostHogSerializer;
 	public final fun getStoragePrefix ()Ljava/lang/String;
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
@@ -92,6 +93,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
+	public final fun setSerializer (Lcom/posthog/internal/PostHogSerializer;)V
 	public final fun setStoragePrefix (Ljava/lang/String;)V
 }
 
@@ -206,11 +208,21 @@ public abstract interface class com/posthog/internal/PostHogNetworkStatus {
 }
 
 public abstract interface class com/posthog/internal/PostHogPreferences {
+	public static final field BUILD Ljava/lang/String;
+	public static final field Companion Lcom/posthog/internal/PostHogPreferences$Companion;
+	public static final field GROUPS Ljava/lang/String;
+	public static final field VERSION Ljava/lang/String;
 	public abstract fun clear (Ljava/util/List;)V
 	public abstract fun getAll ()Ljava/util/Map;
 	public abstract fun getValue (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun remove (Ljava/lang/String;)V
 	public abstract fun setValue (Ljava/lang/String;Ljava/lang/Object;)V
+}
+
+public final class com/posthog/internal/PostHogPreferences$Companion {
+	public static final field BUILD Ljava/lang/String;
+	public static final field GROUPS Ljava/lang/String;
+	public static final field VERSION Ljava/lang/String;
 }
 
 public final class com/posthog/internal/PostHogPreferences$DefaultImpls {
@@ -222,5 +234,12 @@ public final class com/posthog/internal/PostHogPrintLogger : com/posthog/interna
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public fun isEnabled ()Z
 	public fun log (Ljava/lang/String;)V
+}
+
+public final class com/posthog/internal/PostHogSerializer {
+	public fun <init> (Lcom/posthog/PostHogConfig;)V
+	public final fun deserializeString (Ljava/lang/String;)Ljava/lang/Object;
+	public final fun getGson ()Lcom/google/gson/Gson;
+	public final fun serializeObject (Ljava/lang/Object;)Ljava/lang/String;
 }
 

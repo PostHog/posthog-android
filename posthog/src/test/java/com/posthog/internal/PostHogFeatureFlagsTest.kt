@@ -27,10 +27,9 @@ internal class PostHogFeatureFlagsTest {
         val config = PostHogConfig(apiKey, host).apply {
             this.networkStatus = networkStatus
         }
-        val serializer = PostHogSerializer(config)
         val dateProvider = PostHogCalendarDateProvider()
-        val api = PostHogApi(config, serializer, dateProvider)
-        return PostHogFeatureFlags(config, serializer, api, executor = executor)
+        val api = PostHogApi(config, dateProvider)
+        return PostHogFeatureFlags(config, api, executor = executor)
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogSerializer
 
 /**
  * The SDK Config
@@ -92,6 +93,9 @@ public open class PostHogConfig(
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal
     public var logger: PostHogLogger = PostHogPrintLogger(this)
+
+    @PostHogInternal
+    public var serializer: PostHogSerializer = PostHogSerializer(this)
 
     @PostHogInternal
     public var context: PostHogContext? = null

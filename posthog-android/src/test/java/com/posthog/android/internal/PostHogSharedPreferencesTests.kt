@@ -94,12 +94,12 @@ internal class PostHogSharedPreferencesTests {
     }
 
     @Test
-    fun `preferences does not set a non valid type`() {
+    fun `preferences stringify a non valid type`() {
         val sut = getSut()
 
         sut.setValue("key", Any())
 
-        assertNull(sut.getValue("key"))
+        assertEquals("{}", sut.getValue("key"))
     }
 
     @Test

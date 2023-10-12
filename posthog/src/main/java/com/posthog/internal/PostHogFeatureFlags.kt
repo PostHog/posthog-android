@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
-    private val serializer: PostHogSerializer,
     private val api: PostHogApi,
     private val executor: ExecutorService,
 ) {
@@ -94,7 +93,7 @@ internal class PostHogFeatureFlags(
                 // only try to parse if its a String, since the JSON values are stringified
                 if (value is String) {
                     // try to deserialize as Any?
-                    serializer.deserializeString(value)?.let {
+                    config.serializer.deserializeString(value)?.let {
                         parsedPayloads[item.key] = it
                     }
                 }

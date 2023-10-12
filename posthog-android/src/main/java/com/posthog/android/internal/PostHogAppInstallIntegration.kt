@@ -4,6 +4,8 @@ import android.content.Context
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogPreferences.Companion.BUILD
+import com.posthog.internal.PostHogPreferences.Companion.VERSION
 
 /**
  * Captures app installed and updated events
@@ -20,8 +22,8 @@ internal class PostHogAppInstallIntegration(
                 val versionName = packageInfo.versionName
                 val versionCode = packageInfo.versionCodeCompat()
 
-                val previousVersion = preferences.getValue("version") as? String
-                var previousBuild = preferences.getValue("build")
+                val previousVersion = preferences.getValue(VERSION) as? String
+                var previousBuild = preferences.getValue(BUILD)
 
                 val event: String
                 val props = mutableMapOf<String, Any>()
@@ -47,8 +49,8 @@ internal class PostHogAppInstallIntegration(
                 props["version"] = versionName
                 props["build"] = versionCode
 
-                preferences.setValue("version", versionName)
-                preferences.setValue("build", versionCode)
+                preferences.setValue(VERSION, versionName)
+                preferences.setValue(BUILD, versionCode)
 
                 PostHog.capture(event, properties = props)
             }

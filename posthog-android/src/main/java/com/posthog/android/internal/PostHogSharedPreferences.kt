@@ -5,6 +5,7 @@ import android.content.Context.MODE_PRIVATE
 import android.content.SharedPreferences
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences
+import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 
 /**
  * Reads and writes to the SDKs shared preferences
@@ -23,11 +24,24 @@ internal class PostHogSharedPreferences(
     private val lock = Any()
 
     override fun getValue(key: String, defaultValue: Any?): Any? {
-        val defValue: Any?
+        val value: Any?
         synchronized(lock) {
-            defValue = sharedPreferences.all[key] ?: defaultValue
+            value = sharedPreferences.all[key] ?: defaultValue
         }
-        return defValue
+
+        return when (value) {
+            is String -> {
+                // we only want to deserialize special keys
+                if (SPECIAL_KEYS.contains(key)) {
+                    deserializeObject(value)
+                } else {
+                    value
+                }
+            }
+            else -> {
+                value
+            }
+        }
     }
 
     override fun setValue(key: String, value: Any) {
@@ -59,7 +73,7 @@ internal class PostHogSharedPreferences(
                     (value.toSet() as? Set<String>)?.let {
                         edit.putStringSet(key, it)
                     } ?: run {
-                        config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
+                        stringifyObject(key, value, edit)
                     }
                 }
                 is Array<*> -> {
@@ -67,10 +81,10 @@ internal class PostHogSharedPreferences(
                     (value.toSet() as? Set<String>)?.let {
                         edit.putStringSet(key, it)
                     } ?: run {
-                        config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
+                        stringifyObject(key, value, edit)
                     }
                 } else -> {
-                    config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
+                    stringifyObject(key, value, edit)
                 }
             }
 
@@ -94,6 +108,26 @@ internal class PostHogSharedPreferences(
         }
     }
 
+    private fun stringifyObject(key: String, value: Any, editor: SharedPreferences.Editor) {
+        try {
+            config.serializer.serializeObject(value)?.let {
+                editor.putString(key, it)
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
+        }
+    }
+
+    private fun deserializeObject(value: String): Any {
+        try {
+            config.serializer.deserializeString(value)?.let {
+                // only return the deserialized object if it's not null otherwise fallback to the original value
+                return it
+            }
+        } catch (ignored: Throwable) { }
+        return value
+    }
+
     override fun remove(key: String) {
         val edit = sharedPreferences.edit()
         synchronized(lock) {
@@ -103,11 +137,15 @@ internal class PostHogSharedPreferences(
     }
 
     override fun getAll(): Map<String, Any> {
-        val props: Map<String, Any>
+        val preferences: Map<String, Any>
         synchronized(lock) {
             @Suppress("UNCHECKED_CAST")
-            props = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
+            preferences = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
         }
-        return props
+        return preferences
+    }
+
+    companion object {
+        private val SPECIAL_KEYS = listOf(GROUPS)
     }
 }
