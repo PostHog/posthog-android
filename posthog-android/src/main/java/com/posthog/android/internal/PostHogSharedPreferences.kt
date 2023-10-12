@@ -73,7 +73,7 @@ internal class PostHogSharedPreferences(
                     (value.toSet() as? Set<String>)?.let {
                         edit.putStringSet(key, it)
                     } ?: run {
-                        stringifyObject(key, value, edit)
+                        serializeObject(key, value, edit)
                     }
                 }
                 is Array<*> -> {
@@ -81,10 +81,10 @@ internal class PostHogSharedPreferences(
                     (value.toSet() as? Set<String>)?.let {
                         edit.putStringSet(key, it)
                     } ?: run {
-                        stringifyObject(key, value, edit)
+                        serializeObject(key, value, edit)
                     }
                 } else -> {
-                    stringifyObject(key, value, edit)
+                    serializeObject(key, value, edit)
                 }
             }
 
@@ -108,7 +108,7 @@ internal class PostHogSharedPreferences(
         }
     }
 
-    private fun stringifyObject(key: String, value: Any, editor: SharedPreferences.Editor) {
+    private fun serializeObject(key: String, value: Any, editor: SharedPreferences.Editor) {
         try {
             config.serializer.serializeObject(value)?.let {
                 editor.putString(key, it)
