@@ -188,7 +188,6 @@ public class PostHog private constructor(
         }
 
     private fun buildProperties(
-        distinctId: String,
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
@@ -247,11 +246,6 @@ public class PostHog private constructor(
             props["\$groups"] = it
         }
 
-        // only set if not there.
-        props["distinct_id"]?.let {
-            props["distinct_id"] = distinctId
-        }
-
         return props
     }
 
@@ -277,11 +271,10 @@ public class PostHog private constructor(
             event,
             newDistinctId,
             properties = buildProperties(
-                newDistinctId,
-                properties,
-                userProperties,
-                userPropertiesSetOnce,
-                groupProperties,
+                properties = properties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groupProperties = groupProperties,
             ),
         )
         queue?.add(postHogEvent)
@@ -363,7 +356,6 @@ public class PostHog private constructor(
 
         val props = mutableMapOf<String, Any>()
         props["\$anon_distinct_id"] = anonymousId
-        props["distinct_id"] = distinctId
 
         properties?.let {
             props.putAll(it)
@@ -437,10 +429,6 @@ public class PostHog private constructor(
     }
 
     private fun loadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
-        val props = mutableMapOf<String, Any>()
-        props["\$anon_distinct_id"] = anonymousId
-        props["distinct_id"] = distinctId
-
         // just defensive, if there's no config.cachePreferences, we fallback to in memory
         val preferences = config?.cachePreferences ?: memoryPreferences
 

@@ -26,7 +26,6 @@
     "$active_feature_flags": [
       "4535-funnel-bar-viz"
     ],
-    "distinct_id": "my_identify",
     "$groups": {
       "company": "company_id_in_your_db"
     }
