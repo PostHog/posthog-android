@@ -5,6 +5,7 @@ import android.content.Context.MODE_PRIVATE
 import android.content.SharedPreferences
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences
+import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 
 /**
@@ -29,10 +30,15 @@ internal class PostHogSharedPreferences(
             value = sharedPreferences.all[key] ?: defaultValue
         }
 
+        return convertValue(key, value)
+    }
+
+    private fun convertValue(key: String, value: Any?): Any? {
         return when (value) {
             is String -> {
                 // we only want to deserialize special keys
-                if (SPECIAL_KEYS.contains(key)) {
+                // or keys that are not internal
+                if (SPECIAL_KEYS.contains(key) || !ALL_INTERNAL_KEYS.contains(key)) {
                     deserializeObject(value)
                 } else {
                     value
@@ -112,6 +118,8 @@ internal class PostHogSharedPreferences(
         try {
             config.serializer.serializeObject(value)?.let {
                 editor.putString(key, it)
+            } ?: run {
+                config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
             }
         } catch (e: Throwable) {
             config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
@@ -143,6 +151,21 @@ internal class PostHogSharedPreferences(
             @Suppress("UNCHECKED_CAST")
             preferences = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
         }
+        return preferences
+    }
+
+    override fun getAllRegisteredKeys(): Map<String, Any> {
+        val allPreferences = getAll()
+        val filteredPreferences = allPreferences.filterKeys { key ->
+            !ALL_INTERNAL_KEYS.contains(key)
+        }
+        val preferences = mutableMapOf<String, Any>()
+        for ((key, value) in filteredPreferences) {
+            convertValue(key, value)?.let {
+                preferences[key] = it
+            }
+        }
+
         return preferences
     }
 

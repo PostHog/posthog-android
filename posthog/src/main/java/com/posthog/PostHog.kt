@@ -4,6 +4,7 @@ import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogCalendarDateProvider
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
@@ -57,7 +58,7 @@ public class PostHog private constructor(
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
                 }
 
-                val cachePreferences = config.cachePreferences ?: PostHogMemoryPreferences()
+                val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
                 val dateProvider = PostHogCalendarDateProvider()
                 val api = PostHogApi(config, dateProvider)
@@ -65,7 +66,7 @@ public class PostHog private constructor(
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
-                val optOut = config.cachePreferences?.getValue(
+                val optOut = getPreferences().getValue(
                     OPT_OUT,
                     defaultValue = config.optOut,
                 ) as? Boolean
@@ -110,8 +111,12 @@ public class PostHog private constructor(
         }
     }
 
+    private fun getPreferences(): PostHogPreferences {
+        return config?.cachePreferences ?: memoryPreferences
+    }
+
     private fun legacyPreferences(config: PostHogConfig, serializer: PostHogSerializer) {
-        val cachedPrefs = config.cachePreferences?.getValue(config.apiKey) as? String
+        val cachedPrefs = getPreferences().getValue(config.apiKey) as? String
         cachedPrefs?.let {
             try {
                 serializer.deserialize<Map<String, Any>?>(it.reader())?.let { props ->
@@ -125,7 +130,7 @@ public class PostHog private constructor(
                         this.distinctId = distId
                     }
 
-                    config.cachePreferences?.remove(config.apiKey)
+                    getPreferences().remove(config.apiKey)
                 }
             } catch (e: Throwable) {
                 config.logger.log("Legacy cached prefs: $cachedPrefs failed to parse: $e.")
@@ -164,7 +169,7 @@ public class PostHog private constructor(
         get() {
             var anonymousId: String?
             synchronized(anonymousLock) {
-                anonymousId = config?.cachePreferences?.getValue(ANONYMOUS_ID) as? String
+                anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
                 if (anonymousId == null) {
                     anonymousId = UUID.randomUUID().toString()
                     this.anonymousId = anonymousId ?: ""
@@ -173,18 +178,18 @@ public class PostHog private constructor(
             return anonymousId ?: ""
         }
         set(value) {
-            config?.cachePreferences?.setValue(ANONYMOUS_ID, value)
+            getPreferences().setValue(ANONYMOUS_ID, value)
         }
 
     private var distinctId: String
         get() {
-            return config?.cachePreferences?.getValue(
+            return getPreferences().getValue(
                 DISTINCT_ID,
                 defaultValue = anonymousId,
             ) as? String ?: ""
         }
         set(value) {
-            config?.cachePreferences?.setValue(DISTINCT_ID, value)
+            getPreferences().setValue(DISTINCT_ID, value)
         }
 
     private fun buildProperties(
@@ -197,7 +202,7 @@ public class PostHog private constructor(
         val props = mutableMapOf<String, Any>()
 
         if (appendSharedProps) {
-            val registeredPrefs = memoryPreferences.getAll()
+            val registeredPrefs = getPreferences().getAllRegisteredKeys()
             if (registeredPrefs.isNotEmpty()) {
                 props.putAll(registeredPrefs)
             }
@@ -287,7 +292,7 @@ public class PostHog private constructor(
 
         synchronized(lockOptOut) {
             config?.optOut = false
-            config?.cachePreferences?.setValue(OPT_OUT, false)
+            getPreferences().setValue(OPT_OUT, false)
         }
     }
 
@@ -298,7 +303,7 @@ public class PostHog private constructor(
 
         synchronized(lockOptOut) {
             config?.optOut = true
-            config?.cachePreferences?.setValue(OPT_OUT, true)
+            getPreferences().setValue(OPT_OUT, true)
         }
     }
 
@@ -393,8 +398,7 @@ public class PostHog private constructor(
             props["\$group_set"] = it
         }
 
-        // just defensive, if there's no cachePreferences, we fallback to in memory
-        val preferences = config?.cachePreferences ?: memoryPreferences
+        val preferences = getPreferences()
 
         @Suppress("UNCHECKED_CAST")
         val groups = preferences.getValue(GROUPS) as? Map<String, Any>
@@ -429,11 +433,8 @@ public class PostHog private constructor(
     }
 
     private fun loadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
-        // just defensive, if there's no config.cachePreferences, we fallback to in memory
-        val preferences = config?.cachePreferences ?: memoryPreferences
-
         @Suppress("UNCHECKED_CAST")
-        val groups = preferences.getValue(GROUPS) as? Map<String, Any>
+        val groups = getPreferences().getValue(GROUPS) as? Map<String, Any>
 
         featureFlags?.loadFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags)
     }
@@ -496,8 +497,7 @@ public class PostHog private constructor(
         // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
         val except = listOf(VERSION, BUILD)
-        memoryPreferences.clear(except = except)
-        config?.cachePreferences?.clear(except = except)
+        getPreferences().clear(except = except)
         featureFlags?.clear()
         queue?.clear()
         featureFlagsCalled.clear()
@@ -514,14 +514,14 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return
         }
-        memoryPreferences.setValue(key, value)
+        getPreferences().setValue(key, value)
     }
 
     public override fun unregister(key: String) {
         if (!isEnabled()) {
             return
         }
-        memoryPreferences.remove(key)
+        getPreferences().remove(key)
     }
 
     override fun distinctId(): String {

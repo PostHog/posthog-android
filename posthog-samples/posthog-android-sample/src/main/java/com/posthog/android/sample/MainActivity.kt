@@ -41,6 +41,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 //            PostHog.optOut()
 //            PostHog.optIn()
 //            PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))
+            PostHog.register("test", mapOf("one" to "two"))
             PostHog.capture("testEvent", properties = mapOf("testProperty" to "testValue"))
 //            PostHog.reloadFeatureFlagsRequest()
 //            PostHog.isFeatureEnabled("sessionRecording")

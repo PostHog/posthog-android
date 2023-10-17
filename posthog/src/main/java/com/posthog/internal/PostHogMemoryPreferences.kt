@@ -49,4 +49,11 @@ public class PostHogMemoryPreferences : PostHogPreferences {
         }
         return props
     }
+
+    override fun getAllRegisteredKeys(): Map<String, Any> {
+        val preferences = getAll()
+        return preferences.filterKeys { key ->
+            !PostHogPreferences.ALL_INTERNAL_KEYS.contains(key)
+        }
+    }
 }
