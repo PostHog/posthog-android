@@ -126,6 +126,15 @@ internal class PostHogSharedPreferences(
         editor.putStringSet(STRINGIFIED_KEYS, stringifiedKeys)
     }
 
+    private fun removeFromStringifiedKeys(key: String, editor: SharedPreferences.Editor) {
+        val keys = getStringifiedKeys().toMutableSet()
+        if (!keys.contains(key)) {
+            return
+        }
+        keys.remove(key)
+        editor.putStringSet(STRINGIFIED_KEYS, keys)
+    }
+
     private fun getStringifiedKeys(): Set<String> {
         return sharedPreferences.getStringSet(STRINGIFIED_KEYS, setOf()) ?: setOf()
     }
@@ -163,6 +172,7 @@ internal class PostHogSharedPreferences(
         val edit = sharedPreferences.edit()
         synchronized(lock) {
             edit.remove(key)
+            removeFromStringifiedKeys(key, edit)
             edit.apply()
         }
     }
