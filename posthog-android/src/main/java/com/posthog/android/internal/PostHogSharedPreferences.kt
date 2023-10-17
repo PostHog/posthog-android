@@ -7,6 +7,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
 
 /**
  * Reads and writes to the SDKs shared preferences
@@ -30,15 +31,18 @@ internal class PostHogSharedPreferences(
             value = sharedPreferences.all[key] ?: defaultValue
         }
 
-        return convertValue(key, value)
+        val stringifiedKeys = getStringifiedKeys()
+        return convertValue(key, value, stringifiedKeys)
     }
 
-    private fun convertValue(key: String, value: Any?): Any? {
+    private fun convertValue(key: String, value: Any?, keys: Set<String>): Any? {
         return when (value) {
             is String -> {
                 // we only want to deserialize special keys
-                // or keys that are not internal
-                if (SPECIAL_KEYS.contains(key) || !ALL_INTERNAL_KEYS.contains(key)) {
+                // or keys that were stringified.
+                if (SPECIAL_KEYS.contains(key) ||
+                    isStringifiedKey(key, keys)
+                ) {
                     deserializeObject(value)
                 } else {
                     value
@@ -114,10 +118,28 @@ internal class PostHogSharedPreferences(
         }
     }
 
+    private fun addToStringifiedKeys(key: String, editor: SharedPreferences.Editor) {
+        val stringifiedKeys = mutableSetOf<String>()
+        val keys = getStringifiedKeys()
+        stringifiedKeys.addAll(keys)
+        stringifiedKeys.add(key)
+        editor.putStringSet(STRINGIFIED_KEYS, stringifiedKeys)
+    }
+
+    private fun getStringifiedKeys(): Set<String> {
+        return sharedPreferences.getStringSet(STRINGIFIED_KEYS, setOf()) ?: setOf()
+    }
+
+    private fun isStringifiedKey(key: String, keys: Set<String>): Boolean {
+        return keys.contains(key)
+    }
+
     private fun serializeObject(key: String, value: Any, editor: SharedPreferences.Editor) {
         try {
             config.serializer.serializeObject(value)?.let {
                 editor.putString(key, it)
+
+                addToStringifiedKeys(key, editor)
             } ?: run {
                 config.logger.log("Value type: ${value.javaClass.name} and value: $value isn't valid.")
             }
@@ -146,22 +168,18 @@ internal class PostHogSharedPreferences(
     }
 
     override fun getAll(): Map<String, Any> {
-        val preferences: Map<String, Any>
+        val allPreferences: Map<String, Any>
         synchronized(lock) {
             @Suppress("UNCHECKED_CAST")
-            preferences = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
+            allPreferences = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
         }
-        return preferences
-    }
-
-    override fun getAllRegisteredKeys(): Map<String, Any> {
-        val allPreferences = getAll()
         val filteredPreferences = allPreferences.filterKeys { key ->
             !ALL_INTERNAL_KEYS.contains(key)
         }
         val preferences = mutableMapOf<String, Any>()
+        val stringifiedKeys = getStringifiedKeys()
         for ((key, value) in filteredPreferences) {
-            convertValue(key, value)?.let {
+            convertValue(key, value, stringifiedKeys)?.let {
                 preferences[key] = it
             }
         }

@@ -202,7 +202,7 @@ public class PostHog private constructor(
         val props = mutableMapOf<String, Any>()
 
         if (appendSharedProps) {
-            val registeredPrefs = getPreferences().getAllRegisteredKeys()
+            val registeredPrefs = getPreferences().getAll()
             if (registeredPrefs.isNotEmpty()) {
                 props.putAll(registeredPrefs)
             }

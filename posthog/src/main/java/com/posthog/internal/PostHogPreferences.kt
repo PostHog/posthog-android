@@ -18,8 +18,6 @@ public interface PostHogPreferences {
 
     public fun getAll(): Map<String, Any>
 
-    public fun getAllRegisteredKeys(): Map<String, Any>
-
     public companion object {
         public const val GROUPS: String = "groups"
         internal const val ANONYMOUS_ID = "anonymousId"
@@ -27,6 +25,7 @@ public interface PostHogPreferences {
         internal const val OPT_OUT = "opt-out"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
+        public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
 
         public val ALL_INTERNAL_KEYS: Set<String> = setOf(
             GROUPS,
@@ -35,6 +34,7 @@ public interface PostHogPreferences {
             OPT_OUT,
             VERSION,
             BUILD,
+            STRINGIFIED_KEYS,
         )
     }
 }

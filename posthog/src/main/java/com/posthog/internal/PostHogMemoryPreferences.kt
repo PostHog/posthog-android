@@ -47,12 +47,7 @@ public class PostHogMemoryPreferences : PostHogPreferences {
         synchronized(lock) {
             props = preferences.toMap()
         }
-        return props
-    }
-
-    override fun getAllRegisteredKeys(): Map<String, Any> {
-        val preferences = getAll()
-        return preferences.filterKeys { key ->
+        return props.filterKeys { key ->
             !PostHogPreferences.ALL_INTERNAL_KEYS.contains(key)
         }
     }
