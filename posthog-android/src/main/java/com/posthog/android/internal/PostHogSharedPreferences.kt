@@ -41,7 +41,7 @@ internal class PostHogSharedPreferences(
                 // we only want to deserialize special keys
                 // or keys that were stringified.
                 if (SPECIAL_KEYS.contains(key) ||
-                    isStringifiedKey(key, keys)
+                    keys.contains(key)
                 ) {
                     deserializeObject(value)
                 } else {
@@ -137,10 +137,6 @@ internal class PostHogSharedPreferences(
 
     private fun getStringifiedKeys(): Set<String> {
         return sharedPreferences.getStringSet(STRINGIFIED_KEYS, setOf()) ?: setOf()
-    }
-
-    private fun isStringifiedKey(key: String, keys: Set<String>): Boolean {
-        return keys.contains(key)
     }
 
     private fun serializeObject(key: String, value: Any, editor: SharedPreferences.Editor) {

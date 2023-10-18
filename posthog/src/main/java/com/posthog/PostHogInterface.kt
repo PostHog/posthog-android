@@ -129,14 +129,17 @@ public interface PostHogInterface {
     public fun isOptOut(): Boolean
 
     /**
-     * Register a property to always be sent within this session
+     * Register a property to always be sent with all the following events until you call
+     * [unregister] with the same key
+     * PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by
+     * the SDK only.
      * @param key the Key
      * @param value the Value
      */
     public fun register(key: String, value: Any)
 
     /**
-     * Unregisters the previously set property to be sent within this session
+     * Unregisters the previously set property to be sent with all the following events
      * @param key the Key
      */
     public fun unregister(key: String)

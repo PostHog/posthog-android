@@ -5,6 +5,7 @@ import com.posthog.internal.PostHogCalendarDateProvider
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences
+import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
@@ -512,6 +513,10 @@ public class PostHog private constructor(
 
     public override fun register(key: String, value: Any) {
         if (!isEnabled()) {
+            return
+        }
+        if (ALL_INTERNAL_KEYS.contains(key)) {
+            config?.logger?.log("Key: $key is reserved for internal use.")
             return
         }
         getPreferences().setValue(key, value)

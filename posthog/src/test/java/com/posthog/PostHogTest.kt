@@ -559,6 +559,38 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `registers ignore internal keys`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.register("version", "123")
+
+        sut.capture(
+            event,
+            distinctId,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groupProperties = groupProps,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertNull(theEvent.properties!!["version"])
+
+        sut.close()
+    }
+
+    @Test
     fun `unregister removes property`() {
         val http = mockHttp()
         val url = http.url("/")
