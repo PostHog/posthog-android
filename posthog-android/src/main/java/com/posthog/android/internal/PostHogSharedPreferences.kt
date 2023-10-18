@@ -119,10 +119,7 @@ internal class PostHogSharedPreferences(
     }
 
     private fun addToStringifiedKeys(key: String, editor: SharedPreferences.Editor) {
-        val stringifiedKeys = mutableSetOf<String>()
-        val keys = getStringifiedKeys()
-        stringifiedKeys.addAll(keys)
-        stringifiedKeys.add(key)
+        val stringifiedKeys = getStringifiedKeys() + key
         editor.putStringSet(STRINGIFIED_KEYS, stringifiedKeys)
     }
 
