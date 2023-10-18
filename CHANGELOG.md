@@ -1,5 +1,7 @@
 ## Next
 
+## 3.0.0-beta.1 - 2023-10-18
+
 - Registered keys are cached in the disk preferences ([#51](https://github.com/PostHog/posthog-android/pull/51))
 
 ## 3.0.0-alpha.8 - 2023-10-12
