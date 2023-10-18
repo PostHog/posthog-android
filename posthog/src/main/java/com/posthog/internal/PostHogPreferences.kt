@@ -25,5 +25,16 @@ public interface PostHogPreferences {
         internal const val OPT_OUT = "opt-out"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
+        public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
+
+        public val ALL_INTERNAL_KEYS: Set<String> = setOf(
+            GROUPS,
+            ANONYMOUS_ID,
+            DISTINCT_ID,
+            OPT_OUT,
+            VERSION,
+            BUILD,
+            STRINGIFIED_KEYS,
+        )
     }
 }

@@ -1,5 +1,7 @@
 ## Next
 
+- Registered keys are cached in the disk preferences ([#51](https://github.com/PostHog/posthog-android/pull/51))
+
 ## 3.0.0-alpha.8 - 2023-10-12
 
 - SDK only sends the `$feature_flag_called` event once per flag ([#47](https://github.com/PostHog/posthog-android/pull/47))

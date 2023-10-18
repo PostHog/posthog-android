@@ -47,6 +47,8 @@ public class PostHogMemoryPreferences : PostHogPreferences {
         synchronized(lock) {
             props = preferences.toMap()
         }
-        return props
+        return props.filterKeys { key ->
+            !PostHogPreferences.ALL_INTERNAL_KEYS.contains(key)
+        }
     }
 }

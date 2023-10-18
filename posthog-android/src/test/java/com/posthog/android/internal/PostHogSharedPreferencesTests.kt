@@ -6,6 +6,7 @@ import com.posthog.android.FakeSharedPreferences
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.apiKey
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
 import kotlin.test.Test
@@ -100,7 +101,8 @@ internal class PostHogSharedPreferencesTests {
 
         sut.setValue("key", Any())
 
-        assertEquals("{}", sut.getValue("key"))
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(emptyMap(), sut.getValue("key") as? Map<String, Any>)
     }
 
     @Test
@@ -114,14 +116,17 @@ internal class PostHogSharedPreferencesTests {
     }
 
     @Test
-    fun `preferences fallback to stringified version if not special key`() {
+    fun `preferences fallback to stringified version if not special and not stringified key`() {
         val sut = getSut()
 
         val props = mapOf("key" to "value")
-        sut.setValue("key", props)
+        sut.setValue("myJson", props)
+
+        // removing to make it testable
+        sut.remove(STRINGIFIED_KEYS)
 
         val json = """{"key":"value"}"""
-        assertEquals(json, sut.getValue("key"))
+        assertEquals(json, sut.getValue("myJson"))
     }
 
     @Test
