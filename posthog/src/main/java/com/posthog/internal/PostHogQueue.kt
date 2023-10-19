@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.PostHogAttachment
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogVisibleForTesting
@@ -138,6 +139,7 @@ internal class PostHogQueue(
 
     private fun executeBatch() {
         if (!isConnected()) {
+            isFlushing.set(false)
             return
         }
 
@@ -182,6 +184,8 @@ internal class PostHogQueue(
             var deleteFiles = true
             try {
                 api.batch(events)
+
+                sendAttachments(events)
             } catch (e: PostHogApiError) {
                 if (e.statusCode < 400) {
                     deleteFiles = false
@@ -203,6 +207,32 @@ internal class PostHogQueue(
                         it.deleteSafely(config)
                     }
                 }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun sendAttachments(events: List<PostHogEvent>) {
+        for (event in events) {
+            try {
+                val properties = event.properties ?: mapOf()
+                val contentType = properties["attachment_content_type"] as? String?
+                val filePath = properties["attachment_path"] as? String?
+                val eventId = event.uuid ?: event.messageId
+
+                if (eventId != null && contentType != null && filePath != null) {
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        val attachment = PostHogAttachment(contentType, file)
+                        api.attachment(eventId, attachment)
+
+                        // TODO: should we delete the file?
+                        file.deleteSafely(config)
+                    }
+                }
+            } catch (ignored: Throwable) {
+                // best effort, if it fails, it fails
+                // a better approach would be its own queueing system, with its own retry logic
             }
         }
     }

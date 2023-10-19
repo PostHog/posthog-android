@@ -148,4 +148,11 @@ public interface PostHogInterface {
      * Returns the registered [distinctId] property
      */
     public fun distinctId(): String
+
+    /**
+     * Captures a $feedback event along with properties and attachments
+     * @param properties the custom properties
+     * @param attachment the [PostHogAttachment] with an attachment file
+     */
+    public fun feedback(properties: Map<String, Any>? = null, attachment: PostHogAttachment? = null)
 }

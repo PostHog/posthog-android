@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">PostHog Android Sample</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
 </resources>

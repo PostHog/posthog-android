@@ -1,7 +1,9 @@
 package com.posthog.internal
 
+import com.posthog.PostHogAttachment
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -9,6 +11,7 @@ import okhttp3.RequestBody
 import okio.BufferedSink
 import java.io.IOException
 import java.io.OutputStream
+import java.util.UUID
 
 /**
  * The class that calls the PostHog API
@@ -41,7 +44,7 @@ internal class PostHogApi(
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
 
-        val request = makeRequest("$theHost/batch") {
+        val request = makeRequest("$theHost/batch", mediaType) {
             batch.sentAt = dateProvider.currentDate()
             config.serializer.serialize(batch, it.bufferedWriter())
         }
@@ -51,7 +54,7 @@ internal class PostHogApi(
         }
     }
 
-    private fun makeRequest(url: String, serializer: (outputStream: OutputStream) -> Unit): Request {
+    private fun makeRequest(url: String, mediaType: MediaType?, serializer: (outputStream: OutputStream) -> Unit): Request {
         val requestBody = object : RequestBody() {
             override fun contentType() = mediaType
 
@@ -75,7 +78,7 @@ internal class PostHogApi(
     ): PostHogDecideResponse? {
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups)
 
-        val request = makeRequest("$theHost/decide/?v=3") {
+        val request = makeRequest("$theHost/decide/?v=3", mediaType) {
             config.serializer.serialize(decideRequest, it.bufferedWriter())
         }
 
@@ -86,6 +89,17 @@ internal class PostHogApi(
                 return config.serializer.deserialize(body.charStream().buffered())
             }
             return null
+        }
+    }
+
+    @Throws(PostHogApiError::class, IOException::class, OutOfMemoryError::class)
+    fun attachment(eventId: UUID, attachment: PostHogAttachment) {
+        val request = makeRequest("$theHost/api/attachments/$eventId", attachment.contentType.toMediaType()) {
+            it.write(attachment.file.readBytes())
+        }
+
+        client.newCall(request).execute().use {
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
         }
     }
 }

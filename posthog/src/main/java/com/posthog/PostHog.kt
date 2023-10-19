@@ -536,6 +536,34 @@ public class PostHog private constructor(
         return distinctId
     }
 
+    override fun feedback(properties: Map<String, Any>?, attachment: PostHogAttachment?) {
+        if (!isEnabled()) {
+            return
+        }
+        if (config?.optOut == true) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        val newProperties = (properties ?: mapOf()).toMutableMap()
+        attachment?.let {
+            newProperties["attachment_content_type"] = it.contentType
+            newProperties["attachment_path"] = it.file.absolutePath
+        }
+
+        val postHogEvent = PostHogEvent(
+            "\$feedback",
+            distinctId,
+            properties = buildProperties(
+                properties = newProperties,
+                userProperties = null,
+                userPropertiesSetOnce = null,
+                groupProperties = null,
+            ),
+        )
+        queue?.add(postHogEvent)
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
@@ -673,5 +701,8 @@ public class PostHog private constructor(
         }
 
         override fun distinctId(): String = shared.distinctId()
+        override fun feedback(properties: Map<String, Any>?, attachment: PostHogAttachment?) {
+            shared.feedback(properties, attachment)
+        }
     }
 }

@@ -4,6 +4,10 @@
 
     <!--    optional permission-->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WRITE_INTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -16,8 +20,9 @@
         android:theme="@style/Theme.PostHogAndroidSample"
         tools:targetApi="34"
         android:name=".MyApp">
+<!--        android:requestLegacyExternalStorage="true"-->
         <activity
-            android:name="com.posthog.android.sample.MainActivity"
+            android:name="com.posthog.android.sample.RecordingActivity"
             android:exported="true"
             android:theme="@style/Theme.PostHogAndroidSample">
             <intent-filter>
