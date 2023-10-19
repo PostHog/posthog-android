@@ -142,6 +142,7 @@ public final class com/posthog/PostHogEvent {
 	public final fun getType ()Ljava/lang/String;
 	public final fun getUuid ()Ljava/util/UUID;
 	public fun hashCode ()I
+	public final fun setProperties (Ljava/util/Map;)V
 	public fun toString ()Ljava/lang/String;
 }
 

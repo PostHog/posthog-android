@@ -159,6 +159,7 @@ internal class PostHogQueue(
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun batchEvents() {
         val files = takeFiles()
 
@@ -183,9 +184,22 @@ internal class PostHogQueue(
         if (events.isNotEmpty()) {
             var deleteFiles = true
             try {
-                api.batch(events)
+                val responses = sendAttachments(events)
 
-                sendAttachments(events)
+                if (responses.isNotEmpty()) {
+                    for (event in events) {
+                        (event.uuid ?: event.messageId)?.let { eventId ->
+                            responses[eventId]?.let { attachment ->
+                                val properties = (event.properties ?: mapOf()).toMutableMap()
+                                properties["\$attachments"] = listOf(attachment.attachmentLocation)
+
+                                event.properties = properties
+                            }
+                        }
+                    }
+                }
+
+                api.batch(events)
             } catch (e: PostHogApiError) {
                 if (e.statusCode < 400) {
                     deleteFiles = false
@@ -212,23 +226,26 @@ internal class PostHogQueue(
     }
 
     @Suppress("DEPRECATION")
-    private fun sendAttachments(events: List<PostHogEvent>) {
+    private fun sendAttachments(events: List<PostHogEvent>): Map<UUID, PostHogAttachmentResponse> {
+        val attachments = mutableMapOf<UUID, PostHogAttachmentResponse>()
         for (event in events) {
             try {
-                val properties = event.properties ?: mapOf()
-                // this (attachment_content_type, attachment_path) should have been removed from
-                // the properties before being sent, but if we upload attachments before,
-                // the eventIds don't exist yet.
-                // a better API would be needed to handle this
+                val properties = (event.properties ?: mapOf()).toMutableMap()
+
                 val contentType = properties["attachment_content_type"] as? String?
                 val filePath = properties["attachment_path"] as? String?
                 val eventId = event.uuid ?: event.messageId
 
                 if (eventId != null && contentType != null && filePath != null) {
+                    properties.remove("attachment_content_type")
+                    properties.remove("attachment_path")
+
                     val file = File(filePath)
                     if (file.exists()) {
                         val attachment = PostHogAttachment(contentType, file)
-                        api.attachment(eventId, attachment)
+                        api.attachment(eventId, attachment)?.let {
+                            attachments[eventId] = it
+                        }
 
                         file.deleteSafely(config)
                     }
@@ -238,6 +255,7 @@ internal class PostHogQueue(
                 // a better approach would be its own queueing system, with its own retry logic
             }
         }
+        return attachments
     }
 
     fun flush() {

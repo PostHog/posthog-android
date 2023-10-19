@@ -93,13 +93,18 @@ internal class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class, OutOfMemoryError::class)
-    fun attachment(eventId: UUID, attachment: PostHogAttachment) {
+    fun attachment(eventId: UUID, attachment: PostHogAttachment): PostHogAttachmentResponse? {
         val request = makeRequest("$theHost/api/attachments/$eventId", attachment.contentType.toMediaType()) {
             it.write(attachment.file.readBytes())
         }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+
+            it.body?.let { body ->
+                return config.serializer.deserialize(body.charStream().buffered())
+            }
+            return null
         }
     }
 }
