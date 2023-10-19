@@ -1,5 +1,6 @@
 package com.posthog.android
 
+import com.posthog.PostHogAttachment
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
@@ -86,5 +87,8 @@ public class PostHogFake : PostHogInterface {
 
     override fun distinctId(): String {
         return ""
+    }
+
+    override fun feedback(properties: Map<String, Any>?, attachment: PostHogAttachment?) {
     }
 }

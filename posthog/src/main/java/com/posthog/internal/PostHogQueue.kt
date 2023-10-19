@@ -216,6 +216,10 @@ internal class PostHogQueue(
         for (event in events) {
             try {
                 val properties = event.properties ?: mapOf()
+                // this (attachment_content_type, attachment_path) should have been removed from
+                // the properties before being sent, but if we upload attachments before,
+                // the eventIds don't exist yet.
+                // a better API would be needed to handle this
                 val contentType = properties["attachment_content_type"] as? String?
                 val filePath = properties["attachment_path"] as? String?
                 val eventId = event.uuid ?: event.messageId
@@ -226,7 +230,6 @@ internal class PostHogQueue(
                         val attachment = PostHogAttachment(contentType, file)
                         api.attachment(eventId, attachment)
 
-                        // TODO: should we delete the file?
                         file.deleteSafely(config)
                     }
                 }

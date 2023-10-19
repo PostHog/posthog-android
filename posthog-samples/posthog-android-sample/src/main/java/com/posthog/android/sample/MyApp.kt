@@ -11,7 +11,7 @@ class MyApp : Application() {
 
         val config = PostHogAndroidConfig("_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI").apply {
             debug = true
-            flushAt = 1
+            flushAt = 5
             maxBatchSize = 5
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
         }

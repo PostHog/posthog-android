@@ -20,7 +20,6 @@
         android:theme="@style/Theme.PostHogAndroidSample"
         tools:targetApi="34"
         android:name=".MyApp">
-<!--        android:requestLegacyExternalStorage="true"-->
         <activity
             android:name="com.posthog.android.sample.RecordingActivity"
             android:exported="true"
