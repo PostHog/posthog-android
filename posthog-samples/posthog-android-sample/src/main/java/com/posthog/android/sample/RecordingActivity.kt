@@ -1,14 +1,15 @@
 package com.posthog.android.sample
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.app.ActivityCompat
@@ -29,6 +30,9 @@ class RecordingActivity : ComponentActivity(), HBRecorderListener {
 
     lateinit var hbRecorder: HBRecorder
 
+    var count = 0
+
+    @SuppressLint("SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -36,6 +40,17 @@ class RecordingActivity : ComponentActivity(), HBRecorderListener {
 
         // Init HBRecorder
         hbRecorder = HBRecorder(this, this)
+
+        val txt = findViewById<TextView>(R.id.txt)
+
+        findViewById<Button>(R.id.count).setOnClickListener {
+            count++
+            txt.text = count.toString()
+
+            if (count % 2 == 0) {
+                Toast.makeText(this, "Even number!", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         findViewById<Button>(R.id.start_recording_button).setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -91,7 +106,7 @@ class RecordingActivity : ComponentActivity(), HBRecorderListener {
                     "video/mp4"
                 }
                 if (file.exists()) {
-                    PostHog.feedback(mapOf("name" to "Manoel"), attachment = PostHogAttachment(mediaType, file))
+                    PostHog.feedback(mapOf("\$title" to "The even number demo!"), attachment = PostHogAttachment(mediaType, file))
                 }
             }
         }

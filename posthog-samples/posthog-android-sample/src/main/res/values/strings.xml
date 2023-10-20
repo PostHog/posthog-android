@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">PostHog Android Sample</string>
-    <string name="start">Start</string>
-    <string name="stop">Stop</string>
+    <string name="start">Start recording</string>
+    <string name="stop">Stop recording</string>
+    <string name="total">Total</string>
+    <string name="plus_one">+1</string>
 </resources>
