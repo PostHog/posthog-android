@@ -191,7 +191,7 @@ internal class PostHogQueue(
                         (event.uuid ?: event.messageId)?.let { eventId ->
                             responses[eventId]?.let { attachment ->
                                 val properties = (event.properties ?: mapOf()).toMutableMap()
-                                properties["\$attachments"] = listOf(attachment.id)
+                                properties["\$attachments"] = listOf(attachment.attachmentLocation)
 
                                 event.properties = properties
                             }
@@ -239,6 +239,7 @@ internal class PostHogQueue(
                 if (eventId != null && contentType != null && filePath != null) {
                     properties.remove("attachment_content_type")
                     properties.remove("attachment_path")
+                    event.properties = properties
 
                     val file = File(filePath)
                     if (file.exists()) {

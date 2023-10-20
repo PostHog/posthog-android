@@ -18,6 +18,8 @@ class MyApp : Application() {
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
             captureApplicationLifecycleEvents = false
             captureScreenViews = false
+            captureDeepLinks = false
+//            preloadFeatureFlags = false
         }
         PostHogAndroid.setup(this, config)
     }
