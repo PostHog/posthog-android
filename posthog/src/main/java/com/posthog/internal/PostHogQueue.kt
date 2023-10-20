@@ -271,6 +271,7 @@ internal class PostHogQueue(
 
         executor.executeSafely {
             if (!isConnected()) {
+                isFlushing.set(false)
                 return@executeSafely
             }
 
