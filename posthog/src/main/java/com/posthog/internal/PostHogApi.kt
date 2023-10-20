@@ -8,6 +8,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import java.io.IOException
 import java.io.OutputStream
@@ -94,9 +95,20 @@ internal class PostHogApi(
 
     @Throws(PostHogApiError::class, IOException::class, OutOfMemoryError::class)
     fun attachment(eventId: UUID, attachment: PostHogAttachment): PostHogAttachmentResponse? {
-        val request = makeRequest("$theHost/api/attachments/$eventId", attachment.contentType.toMediaType()) {
-            it.write(attachment.file.readBytes())
-        }
+        println(eventId)
+//        val request = makeRequest("$theHost/api/attachments/upload?api_key=${config.apiKey}", attachment.contentType.toMediaType()) {
+//            it.write(attachment.file.readBytes())
+//        }
+
+        val bytes = attachment.file.readBytes()
+        val length = bytes.size
+        val request = Request.Builder()
+            .url("$theHost/api/attachments/upload?api_key=${config.apiKey}")
+            .header("User-Agent", config.userAgent)
+            .header("Content-Length", length.toString())
+            .header("Content-Disposition", "attachment; filename=${attachment.file.name}")
+            .post(bytes.toRequestBody(attachment.contentType.toMediaType()))
+            .build()
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)

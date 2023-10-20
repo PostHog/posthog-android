@@ -191,7 +191,7 @@ internal class PostHogQueue(
                         (event.uuid ?: event.messageId)?.let { eventId ->
                             responses[eventId]?.let { attachment ->
                                 val properties = (event.properties ?: mapOf()).toMutableMap()
-                                properties["\$attachments"] = listOf(attachment.attachmentLocation)
+                                properties["\$attachments"] = listOf(attachment.id)
 
                                 event.properties = properties
                             }

@@ -9,11 +9,15 @@ class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        val config = PostHogAndroidConfig("_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI").apply {
+        val host = "https://tadpole-wanted-indirectly.ngrok-free.app"
+        val apiKey = "phc_Kddg1MpLcrZmeVynOSC2V9REk5ssjWGNYip53M25gh8"
+        val config = PostHogAndroidConfig(apiKey, host = host).apply {
             debug = true
-            flushAt = 5
+            flushAt = 1
             maxBatchSize = 5
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
+            captureApplicationLifecycleEvents = false
+            captureScreenViews = false
         }
         PostHogAndroid.setup(this, config)
     }
