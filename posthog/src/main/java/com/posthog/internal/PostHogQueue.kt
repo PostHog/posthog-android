@@ -138,6 +138,7 @@ internal class PostHogQueue(
 
     private fun executeBatch() {
         if (!isConnected()) {
+            isFlushing.set(false)
             return
         }
 
@@ -220,6 +221,7 @@ internal class PostHogQueue(
 
         executor.executeSafely {
             if (!isConnected()) {
+                isFlushing.set(false)
                 return@executeSafely
             }
 

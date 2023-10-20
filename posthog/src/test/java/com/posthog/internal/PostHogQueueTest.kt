@@ -168,6 +168,29 @@ internal class PostHogQueueTest {
     }
 
     @Test
+    fun `does not flush if not connected but try to flush again`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        var connected = false
+        val sut = getSut(host = url.toString(), flushAt = 1, networkStatus = {
+            connected
+        })
+
+        sut.add(generateEvent())
+
+        executor.awaitExecution()
+
+        connected = true
+
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
     fun `does not delete file if API is 3xx`() {
         val http = mockHttp(response = MockResponse().setResponseCode(300).setBody("error"))
         val url = http.url("/")
