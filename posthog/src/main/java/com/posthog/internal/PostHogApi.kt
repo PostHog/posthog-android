@@ -6,6 +6,7 @@ import com.posthog.PostHogEvent
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.UUID
@@ -85,14 +86,11 @@ internal class PostHogApi(
     fun attachment(eventId: UUID, attachment: PostHogAttachment): PostHogAttachmentResponse? {
         println(eventId)
 
-        val bytes = attachment.file.readBytes()
-        val length = bytes.size
         val request = Request.Builder()
             .url("$theHost/api/attachments/upload?api_key=${config.apiKey}")
             .header("User-Agent", config.userAgent)
-            .header("Content-Length", "$length")
             .header("Content-Disposition", "attachment; filename=${attachment.file.name}")
-            .post(bytes.toRequestBody(attachment.contentType.toMediaType()))
+            .post(attachment.file.asRequestBody(attachment.contentType.toMediaType()))
             .build()
 
         client.newCall(request).execute().use {

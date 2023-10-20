@@ -248,7 +248,7 @@ internal class PostHogQueue(
                             attachments[eventId] = it
                         }
 
-                        file.deleteSafely(config)
+//                        file.deleteSafely(config)
                     }
                 }
             } catch (ignored: Throwable) {

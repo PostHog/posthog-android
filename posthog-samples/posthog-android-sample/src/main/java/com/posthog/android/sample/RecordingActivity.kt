@@ -161,20 +161,18 @@ class RecordingActivity : ComponentActivity(), HBRecorderListener {
     }
 
     private fun setOutputPath() {
-        createFolder()
-        hbRecorder.setOutputPath(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-                .toString() + "/HBRecorder",
-        )
+        val cacheFolder = File(cacheDir, "PH")
+        createFolder(cacheFolder)
+        hbRecorder.setOutputPath(cacheFolder.absolutePath)
     }
 
-    private fun createFolder() {
-        val f1 = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-            "HBRecorder",
-        )
-        if (!f1.exists()) {
-            if (f1.mkdirs()) {
+    private fun createFolder(cacheFolder: File) {
+//        val f1 = File(
+//            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+//            "HBRecorder",
+//        )
+        if (!cacheFolder.exists()) {
+            if (cacheFolder.mkdirs()) {
                 Log.i("Folder ", "created")
             }
         }
