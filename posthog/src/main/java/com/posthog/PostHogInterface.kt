@@ -37,13 +37,11 @@ public interface PostHogInterface {
      * Identifies the user
      * Docs https://posthog.com/docs/product-analytics/identify
      * @param distinctId the distinctId
-     * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      */
     public fun identify(
         distinctId: String,
-        properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
     )
@@ -119,9 +117,8 @@ public interface PostHogInterface {
      * Creates an alias for the user
      * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
      * @param alias the alias
-     * @param properties the custom properties
      */
-    public fun alias(alias: String, properties: Map<String, Any>? = null)
+    public fun alias(alias: String)
 
     /**
      * Checks if the [optOut] mode is enabled or disabled

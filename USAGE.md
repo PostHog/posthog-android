@@ -89,8 +89,7 @@ Identify the user
 
 ```kotlin
 PostHog.identify(
-    "user123", 
-    properties = mapOf("is_free_trial" to true), 
+    "user123",
     userProperties = mapOf("email" to "user@posthog.com")
 )
 ```
@@ -98,7 +97,7 @@ PostHog.identify(
 Create an alias for the current user
 
 ```kotlin
-PostHog.alias("theAlias", properties = mapOf("is_free_trial" to true))
+PostHog.alias("theAlias")
 ```
 
 Identify a group

@@ -333,7 +333,7 @@ public class PostHog private constructor(
         capture("\$screen", properties = props)
     }
 
-    public override fun alias(alias: String, properties: Map<String, Any>?) {
+    public override fun alias(alias: String) {
         if (!isEnabled()) {
             return
         }
@@ -341,16 +341,11 @@ public class PostHog private constructor(
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
 
-        properties?.let {
-            props.putAll(it)
-        }
-
         capture("\$create_alias", properties = props)
     }
 
     public override fun identify(
         distinctId: String,
-        properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
@@ -362,10 +357,6 @@ public class PostHog private constructor(
 
         val props = mutableMapOf<String, Any>()
         props["\$anon_distinct_id"] = anonymousId
-
-        properties?.let {
-            props.putAll(it)
-        }
 
         capture(
             "\$identify",
@@ -609,13 +600,11 @@ public class PostHog private constructor(
 
         public override fun identify(
             distinctId: String,
-            properties: Map<String, Any>?,
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
         ) {
             shared.identify(
                 distinctId,
-                properties = properties,
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
             )
@@ -658,8 +647,8 @@ public class PostHog private constructor(
             shared.screen(screenTitle, properties = properties)
         }
 
-        public override fun alias(alias: String, properties: Map<String, Any>?) {
-            shared.alias(alias, properties = properties)
+        public override fun alias(alias: String) {
+            shared.alias(alias)
         }
 
         public override fun isOptOut(): Boolean = shared.isOptOut()
