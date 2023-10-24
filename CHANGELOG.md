@@ -1,7 +1,7 @@
 ## Next
 
 - Ship proguard rules for proguard/r8 full mode ([#52](https://github.com/PostHog/posthog-android/pull/52))
-- Remove properties ties from `identify` and `alias ([#55](https://github.com/PostHog/posthog-android/pull/55))
+- Remove properties ties from `identify` and `alias` ([#55](https://github.com/PostHog/posthog-android/pull/55))
 
 ## 3.0.0-beta.2 - 2023-10-20
 
