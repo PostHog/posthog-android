@@ -1,5 +1,7 @@
 ## Next
 
+- Ship proguard rules for proguard/r8 full mode ([#52](https://github.com/PostHog/posthog-android/pull/52))
+
 ## 3.0.0-beta.2 - 2023-10-20
 
 - Keep trying to flush events till the device is connected ([#54](https://github.com/PostHog/posthog-android/pull/54))
