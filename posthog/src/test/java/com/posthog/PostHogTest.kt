@@ -446,7 +446,6 @@ internal class PostHogTest {
 
         sut.identify(
             distinctId,
-            props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
         )
@@ -462,7 +461,6 @@ internal class PostHogTest {
         val theEvent = batch.batch.first()
         assertEquals("\$identify", theEvent.event)
         assertEquals(distinctId, theEvent.distinctId)
-        assertEquals("value", theEvent.properties!!["prop"] as String)
         assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
@@ -479,7 +477,6 @@ internal class PostHogTest {
 
         sut.alias(
             "theAlias",
-            props,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -493,7 +490,6 @@ internal class PostHogTest {
         assertEquals("\$create_alias", theEvent.event)
         assertNotNull(theEvent.distinctId)
         assertEquals("theAlias", theEvent.properties!!["alias"] as String)
-        assertEquals("value", theEvent.properties!!["prop"] as String)
 
         sut.close()
     }

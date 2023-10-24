@@ -31,7 +31,6 @@ public class PostHogFake : PostHogInterface {
 
     override fun identify(
         distinctId: String,
-        properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
@@ -71,7 +70,7 @@ public class PostHogFake : PostHogInterface {
         this.screenTitle = screenTitle
     }
 
-    override fun alias(alias: String, properties: Map<String, Any>?) {
+    override fun alias(alias: String) {
     }
 
     override fun isOptOut(): Boolean {
