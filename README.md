@@ -1,22 +1,14 @@
+[![GH Workflow](https://img.shields.io/github/actions/workflow/status/PostHog/posthog-android/build.yml?branch=main)](https://github.com/PostHog/posthog-android/actions)
+
+| Packages                                | Maven Central                                                                                                                                                                                                                        | Android API |
+|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ------- |
+| posthog-android                          | [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.posthog/posthog-android/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.posthog/posthog-android)                                                   | 21 |
+
 # PostHog Android
 
 Please see the main [PostHog docs](https://posthog.com/docs).
 
 Specifically, the [Android integration](https://posthog.com/docs/integrations/android-integration) details.
-
-## Development guide
-
-1. Install Android Studio
-2. Follow instructions here for setup https://developer.android.com/studio/run/emulator
-3. Make sure you have Java 17 installed locally - `brew install openjdk@17`
-4. Change the JDK in Android Studio to build using the correct version.
-5. Select `posthog-android-sample` and the device on the top bar and click run
-
-## How to run tests
-
-```bash
-make compile
-```
 
 ## Questions?
 
