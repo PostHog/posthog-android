@@ -42,8 +42,11 @@ jobs:
 
       - name: Commit & push
         run: |
-          echo "Tag name from github.ref_name: ${{ github.event.release.target_commitish }}"
           ./scripts/commit-code.sh ${{ github.event.release.target_commitish }}
+
+      - name: Update tag
+        run: |
+          ./scripts/update-tag.sh ${{ github.event.release.tag_name }} ${{ github.event.release.target_commitish }}
 
       # Let's be sure that everything works before we release    
       - name: Dry release
