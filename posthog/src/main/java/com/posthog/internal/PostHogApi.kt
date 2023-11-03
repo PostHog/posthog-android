@@ -1,14 +1,15 @@
 package com.posthog.internal
 
+import com.posthog.PostHogAttachment
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
-import okio.BufferedSink
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.io.OutputStream
+import java.util.UUID
 
 /**
  * The class that calls the PostHog API
@@ -29,7 +30,6 @@ internal class PostHogApi(
     }
 
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(GzipRequestInterceptor(config))
         .build()
 
     private val theHost: String
@@ -39,32 +39,20 @@ internal class PostHogApi(
 
     @Throws(PostHogApiError::class, IOException::class)
     fun batch(events: List<PostHogEvent>) {
-        val batch = PostHogBatchEvent(config.apiKey, events)
+        val batch = PostHogBatchEvent(config.apiKey, events, sentAt = dateProvider.currentDate())
 
-        val request = makeRequest("$theHost/batch") {
-            batch.sentAt = dateProvider.currentDate()
-            config.serializer.serialize(batch, it.bufferedWriter())
-        }
+        val json = config.serializer.serializeObject(batch)!!
+        val body = json.toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url("$theHost/batch")
+            .header("User-Agent", config.userAgent)
+            .header("Content-Length", "${body.contentLength()}")
+            .post(body)
+            .build()
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
         }
-    }
-
-    private fun makeRequest(url: String, serializer: (outputStream: OutputStream) -> Unit): Request {
-        val requestBody = object : RequestBody() {
-            override fun contentType() = mediaType
-
-            override fun writeTo(sink: BufferedSink) {
-                serializer(sink.outputStream())
-            }
-        }
-
-        return Request.Builder()
-            .url(url)
-            .header("User-Agent", config.userAgent)
-            .post(requestBody)
-            .build()
     }
 
     @Throws(PostHogApiError::class, IOException::class)
@@ -75,9 +63,35 @@ internal class PostHogApi(
     ): PostHogDecideResponse? {
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups)
 
-        val request = makeRequest("$theHost/decide/?v=3") {
-            config.serializer.serialize(decideRequest, it.bufferedWriter())
+        val json = config.serializer.serializeObject(decideRequest)!!
+        val body = json.toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url("$theHost/decide/?v=3")
+            .header("User-Agent", config.userAgent)
+            .header("Content-Length", "${body.contentLength()}")
+            .post(body)
+            .build()
+
+        client.newCall(request).execute().use {
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+
+            it.body?.let { body ->
+                return config.serializer.deserialize(body.charStream().buffered())
+            }
+            return null
         }
+    }
+
+    @Throws(PostHogApiError::class, IOException::class, OutOfMemoryError::class)
+    fun attachment(eventId: UUID, attachment: PostHogAttachment): PostHogAttachmentResponse? {
+        println(eventId)
+
+        val request = Request.Builder()
+            .url("$theHost/api/attachments/upload?api_key=${config.apiKey}")
+            .header("User-Agent", config.userAgent)
+            .header("Content-Disposition", "attachment; filename=${attachment.file.name}")
+            .post(attachment.file.asRequestBody(attachment.contentType.toMediaType()))
+            .build()
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)

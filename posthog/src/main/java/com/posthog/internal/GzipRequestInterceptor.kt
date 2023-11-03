@@ -43,6 +43,7 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
 
         return if (body == null ||
             originalRequest.header("Content-Encoding") != null ||
+            originalRequest.header("Content-Disposition") != null ||
             body is MultipartBody
         ) {
             chain.proceed(originalRequest)

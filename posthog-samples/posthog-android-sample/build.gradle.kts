@@ -10,7 +10,7 @@ android {
     defaultConfig {
         applicationId = "com.posthog.android.sample"
         minSdk = PosthogBuildConfig.Android.MIN_SDK
-        targetSdk = PosthogBuildConfig.Android.TARGET_SDK
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0"
 
@@ -54,6 +54,8 @@ android {
 
 dependencies {
     implementation(project(mapOf("path" to ":posthog-android")))
+
+    implementation("com.github.HBiSoft:HBRecorder:3.0.1")
 
     implementation("androidx.activity:activity-compose:1.7.2")
     implementation(platform("androidx.compose:compose-bom:2023.03.00"))
