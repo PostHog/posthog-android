@@ -51,12 +51,29 @@ internal class PostHogApi(
         }
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
+    fun snapshot(event: PostHogEvent) {
+        event.apiKey = config.apiKey
+        val events = listOf(event)
+        // TODO: read endpoint from decide API
+        // missing sent_at?
+        val request = makeRequest("$theHost/s") {
+            config.serializer.serialize(events, it.bufferedWriter())
+        }
+
+        client.newCall(request).execute().use {
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+        }
+    }
+
     private fun makeRequest(url: String, serializer: (outputStream: OutputStream) -> Unit): Request {
         val requestBody = object : RequestBody() {
             override fun contentType() = mediaType
 
             override fun writeTo(sink: BufferedSink) {
-                serializer(sink.outputStream())
+                sink.outputStream().use {
+                    serializer(it)
+                }
             }
         }
 

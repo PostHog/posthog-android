@@ -80,8 +80,10 @@ internal class PostHogQueue(
                 }
 
                 try {
-                    val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
-                    config.serializer.serialize(event, os.writer().buffered())
+                    val fileOutputStream = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
+                    fileOutputStream.use { fos ->
+                        config.serializer.serialize(event, fos.writer().buffered())
+                    }
                     config.logger.log("Queued event ${file.name}.")
 
                     flushIfOverThreshold(true)
@@ -165,10 +167,11 @@ internal class PostHogQueue(
         for (file in files) {
             try {
                 val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
-
-                val event = config.serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
-                event?.let {
-                    events.add(it)
+                inputStream.use {
+                    val event = config.serializer.deserialize<PostHogEvent?>(it.reader().buffered())
+                    event?.let { theEvent ->
+                        events.add(theEvent)
+                    }
                 }
             } catch (e: Throwable) {
                 synchronized(dequeLock) {
@@ -179,30 +182,40 @@ internal class PostHogQueue(
             }
         }
 
-        if (events.isNotEmpty()) {
-            var deleteFiles = true
-            try {
-                api.batch(events)
-            } catch (e: PostHogApiError) {
-                if (e.statusCode < 400) {
-                    deleteFiles = false
-                }
-                throw e
-            } catch (e: IOException) {
-                // no connection should try again
-                if (e.isNetworkingError()) {
-                    deleteFiles = false
-                }
-                throw e
-            } finally {
-                if (deleteFiles) {
-                    synchronized(dequeLock) {
-                        deque.removeAll(files)
-                    }
+        val snapshotEvents = events.filter {
+            it.event == "\$snapshot"
+        }
+        events.removeAll(snapshotEvents)
 
-                    files.forEach {
-                        it.deleteSafely(config)
-                    }
+        var deleteFiles = true
+        try {
+            if (events.isNotEmpty()) {
+                api.batch(events)
+            }
+
+            // TODO: obviously this has to be somewhere else, not part of this queue, etc
+            snapshotEvents.forEach {
+                api.snapshot(it)
+            }
+        } catch (e: PostHogApiError) {
+            if (e.statusCode < 400) {
+                deleteFiles = false
+            }
+            throw e
+        } catch (e: IOException) {
+            // no connection should try again
+            if (e.isNetworkingError()) {
+                deleteFiles = false
+            }
+            throw e
+        } finally {
+            if (deleteFiles) {
+                synchronized(dequeLock) {
+                    deque.removeAll(files)
+                }
+
+                files.forEach {
+                    it.deleteSafely(config)
                 }
             }
         }

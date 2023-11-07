@@ -67,7 +67,7 @@ public class PostHogAndroid private constructor() {
             config.sdkName = "posthog-android"
 
             if (context is Application) {
-                if (config.captureDeepLinks || config.captureScreenViews) {
+                if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
                     config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
                 }
             }

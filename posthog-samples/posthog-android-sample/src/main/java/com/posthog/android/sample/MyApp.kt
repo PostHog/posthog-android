@@ -8,11 +8,16 @@ import com.posthog.android.PostHogAndroidConfig
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-
-        val config = PostHogAndroidConfig("_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI").apply {
+// Demo _6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI
+// ManoelTesting
+//        phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8
+        val config = PostHogAndroidConfig("phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8").apply {
             debug = true
-            flushAt = 5
-            maxBatchSize = 5
+            flushAt = 1
+            captureDeepLinks = false
+            captureApplicationLifecycleEvents = false
+            captureScreenViews = true
+            sessionReplay = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
         }
         PostHogAndroid.setup(this, config)

@@ -60,10 +60,12 @@ internal class PostHogSendCachedEventsIntegration(
 
                         try {
                             val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
-                            val event = config.serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
-                            event?.let {
-                                events.add(event)
-                                eventsCount++
+                            inputStream.use { theInputStream ->
+                                val event = config.serializer.deserialize<PostHogEvent?>(theInputStream.reader().buffered())
+                                event?.let { theEvent ->
+                                    events.add(theEvent)
+                                    eventsCount++
+                                }
                             }
                         } catch (e: Throwable) {
                             iterator.remove()
@@ -149,10 +151,12 @@ internal class PostHogSendCachedEventsIntegration(
                         try {
                             val inputStream =
                                 config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
-                            val event = config.serializer.deserialize<PostHogEvent?>(inputStream.reader().buffered())
-                            event?.let {
-                                events.add(event)
-                                eventsCount++
+                            inputStream.use { theInputStream ->
+                                val event = config.serializer.deserialize<PostHogEvent?>(theInputStream.reader().buffered())
+                                event?.let { theEvent ->
+                                    events.add(theEvent)
+                                    eventsCount++
+                                }
                             }
                         } catch (e: Throwable) {
                             config.logger.log("File: ${file.name} failed to parse: $e.")

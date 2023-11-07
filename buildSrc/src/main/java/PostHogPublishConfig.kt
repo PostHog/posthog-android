@@ -105,7 +105,7 @@ fun MavenPublication.postHogConfig(projectName: String, properties: Map<String, 
 fun SigningExtension.postHogConfig(variantName: String, publishingExtension: PublishingExtension) {
     val privateKey = System.getenv("GPG_PRIVATE_KEY")
     val password = System.getenv("GPG_PASSPHRASE")
-    isRequired = true
+    isRequired = false
     useInMemoryPgpKeys(privateKey, password)
     sign(publishingExtension.publications.getByName(variantName))
 }

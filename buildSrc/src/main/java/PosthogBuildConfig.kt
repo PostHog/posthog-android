@@ -11,7 +11,7 @@ object PosthogBuildConfig {
 
     object Android {
         val COMPILE_SDK = 34
-        val MIN_SDK = 21
+        val MIN_SDK = 24 // TODO: because of path.approximate, addOnFrameMetricsAvailableListener
         val TARGET_SDK = COMPILE_SDK
     }
 

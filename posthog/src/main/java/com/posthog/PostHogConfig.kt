@@ -89,6 +89,14 @@ public open class PostHogConfig(
      * Defaults to no callback
      */
     public var onFeatureFlags: PostHogOnFeatureFlags? = null,
+
+    /**
+     * Enable Recording of Session Replays for Android
+     * Defaults to true
+     */
+    public var sessionReplay: Boolean = true,
+
+    public var sessionReplaySampleRate: Double = 1.0,
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal

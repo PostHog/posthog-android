@@ -63,6 +63,26 @@ internal class PostHogFeatureFlags(
                             val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
                             this.featureFlagPayloads = normalizedPayloads
                         }
+
+                        if (response.sessionRecording is Boolean) {
+                            // TODO: rollback
+//                            config.sessionReplay = response.sessionRecording
+                            config.sessionReplay = true
+                        } else if (response.sessionRecording is Map<*, *>) {
+                            @Suppress("UNCHECKED_CAST")
+                            (response.sessionRecording as? Map<String, Any?>).let { sessionRecording ->
+                                // TODO: implement logic of enabled or not depending on client vs server side config
+                                config.sessionReplay = true
+                                config.sessionReplaySampleRate = sessionRecording?.get("sampleRate") as? Double ?: config.sessionReplaySampleRate
+                                // TODO: implement session recording config
+                                // endpoint=/s/
+                                // consoleLogRecordingEnabled
+                                // recorderVersion=v2
+                                // sampleRate
+                                // minimumDurationMilliseconds
+                                // linkedFlag
+                            }
+                        }
                     }
                     isFeatureFlagsLoaded = true
                 } ?: run {
