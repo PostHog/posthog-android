@@ -1,5 +1,7 @@
 ## Next
 
+- Fix leaked resources identified by StrictMode ([#52](https://github.com/PostHog/posthog-android/pull/52))
+
 ## 3.0.0-beta.3 - 2023-11-02
 
 - Ship proguard rules for proguard/r8 full mode ([#52](https://github.com/PostHog/posthog-android/pull/52))
