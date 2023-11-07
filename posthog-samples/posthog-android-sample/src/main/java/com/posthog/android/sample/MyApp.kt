@@ -1,6 +1,7 @@
 package com.posthog.android.sample
 
 import android.app.Application
+import android.os.StrictMode
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
@@ -9,6 +10,8 @@ class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        enableStrictMode()
+
         val config = PostHogAndroidConfig("_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI").apply {
             debug = true
             flushAt = 5
@@ -16,5 +19,15 @@ class MyApp : Application() {
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
         }
         PostHogAndroid.setup(this, config)
+    }
+
+    private fun enableStrictMode() {
+        if (BuildConfig.DEBUG) {
+            val threadPolicyBuilder = StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog()
+            val vmPolicyBuilder = StrictMode.VmPolicy.Builder().detectAll().penaltyLog()
+
+            StrictMode.setThreadPolicy(threadPolicyBuilder.build())
+            StrictMode.setVmPolicy(vmPolicyBuilder.build())
+        }
     }
 }

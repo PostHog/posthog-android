@@ -56,7 +56,9 @@ internal class PostHogApi(
             override fun contentType() = mediaType
 
             override fun writeTo(sink: BufferedSink) {
-                serializer(sink.outputStream())
+                sink.outputStream().use {
+                    serializer(it)
+                }
             }
         }
 
