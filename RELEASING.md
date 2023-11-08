@@ -8,5 +8,6 @@ Releasing
  4. Choose a release name (e.g. `3.0.0`), ideally it matches the above.
  5. Write a description of the release.
  6. Publish the release.
+     1. The release will be published as a Draft, so you have to publish it again after CI is done.
  7. GH Action (release.yml) is doing everything else automatically.
  8. Done.
