@@ -145,4 +145,9 @@ public interface PostHogInterface {
      * Returns the registered [distinctId] property
      */
     public fun distinctId(): String
+
+    /**
+     * Enables or disables the debug mode
+     */
+    public fun debug(enable: Boolean = true)
 }

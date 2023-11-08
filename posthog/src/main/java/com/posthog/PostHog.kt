@@ -527,6 +527,13 @@ public class PostHog private constructor(
         return distinctId
     }
 
+    override fun debug(enable: Boolean) {
+        if (!isEnabled()) {
+            return
+        }
+        config?.debug = enable
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
@@ -662,5 +669,8 @@ public class PostHog private constructor(
         }
 
         override fun distinctId(): String = shared.distinctId()
+        override fun debug(enable: Boolean) {
+            shared.debug(enable)
+        }
     }
 }
