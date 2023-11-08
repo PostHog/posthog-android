@@ -784,4 +784,28 @@ internal class PostHogTest {
 
         sut.close()
     }
+
+    @Test
+    fun `enables debug mode`() {
+        val config = PostHogConfig(apiKey)
+        val sut = PostHog.with(config)
+
+        sut.debug(true)
+
+        assertTrue(config.debug)
+
+        sut.close()
+    }
+
+    @Test
+    fun `disables debug mode`() {
+        val config = PostHogConfig(apiKey).apply {
+            debug = true
+        }
+        val sut = PostHog.with(config)
+
+        sut.debug(false)
+
+        assertFalse(config.debug)
+    }
 }

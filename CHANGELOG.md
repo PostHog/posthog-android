@@ -1,5 +1,7 @@
 ## Next
 
+- Expose and allow to enable and disable the debug mode at runtime ([#60](https://github.com/PostHog/posthog-android/pull/60))
+
 ## 3.0.0-beta.4 - 2023-11-08
 
 - Fix leaked resources identified by StrictMode ([#59](https://github.com/PostHog/posthog-android/pull/59))
