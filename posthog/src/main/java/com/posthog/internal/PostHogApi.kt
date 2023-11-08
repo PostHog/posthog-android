@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.google.gson.Gson
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import okhttp3.MediaType.Companion.toMediaType
@@ -54,6 +55,13 @@ internal class PostHogApi(
     @Throws(PostHogApiError::class, IOException::class)
     fun snapshot(event: PostHogEvent) {
         event.apiKey = config.apiKey
+        @Suppress("UNCHECKED_CAST")
+        val props = event.properties?.get("\$snapshot_data") as? List<Any> ?: listOf()
+
+        config.serializer.serializeObject(props)?.let {
+            print("rrweb event: $it")
+        }
+
         val events = listOf(event)
         // TODO: read endpoint from decide API
         // missing sent_at?

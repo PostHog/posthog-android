@@ -109,14 +109,12 @@ internal class PostHogWindowRecorder(private val activity: Activity) : Window.On
         // cheap debounce for testing
         // TODO remove
         val now = SystemClock.uptimeMillis()
-        val localLastCapturedAtMs = lastCapturedAtMs
-        if (localLastCapturedAtMs != null && (now - localLastCapturedAtMs) < MIN_TIME_BETWEEN_FRAMES_MS) {
+        if (lastCapturedAtMs != null && (now - lastCapturedAtMs!!) < MIN_TIME_BETWEEN_FRAMES_MS) {
             return
         }
         lastCapturedAtMs = now
 
-        var localCanvasDelegate = canvasDelegate
-        if (localCanvasDelegate == null) {
+        if (canvasDelegate == null) {
             val displayMetrics = DisplayMetrics()
             activity.windowManager.defaultDisplay.getMetrics(displayMetrics)
             val bitmap = Bitmap.createBitmap(
@@ -124,17 +122,15 @@ internal class PostHogWindowRecorder(private val activity: Activity) : Window.On
                 displayMetrics.heightPixels,
                 Bitmap.Config.ARGB_8888,
             )
-            val localCanvas = Canvas(bitmap)
-            canvas = localCanvas
-            localCanvasDelegate = CanvasDelegate(
+            canvas = Canvas(bitmap)
+            canvasDelegate = CanvasDelegate(
                 recorder,
-                localCanvas,
+                canvas!!,
             )
         }
-        canvasDelegate = localCanvasDelegate
 
         // reset the canvas first, as it will be re-used for clipping operations
-        localCanvasDelegate.restoreToCount(1)
+        canvas!!.restoreToCount(1)
         recorder.beginFrame(System.currentTimeMillis(), view.width, view.height)
 
         val location = IntArray(2)
@@ -152,13 +148,13 @@ internal class PostHogWindowRecorder(private val activity: Activity) : Window.On
                     val x = location[0].toFloat() + item.translationX
                     val y = location[1].toFloat() + item.translationY
 
-                    val saveCount = localCanvasDelegate.save()
+                    val saveCount = canvasDelegate!!.save()
                     recorder.translate(
                         x,
                         y,
                     )
-                    ViewHelper.executeOnDraw(item, localCanvasDelegate)
-                    localCanvasDelegate.restoreToCount(saveCount)
+                    ViewHelper.executeOnDraw(item, canvasDelegate!!)
+                    canvasDelegate!!.restoreToCount(saveCount)
                 }
 
                 if (item is ViewGroup) {
