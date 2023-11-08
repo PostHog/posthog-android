@@ -1,5 +1,7 @@
 ## Next
 
+## 3.0.0-beta.4 - 2023-11-08
+
 - Fix leaked resources identified by StrictMode ([#59](https://github.com/PostHog/posthog-android/pull/59))
 
 ## 3.0.0-beta.3 - 2023-11-02
