@@ -86,4 +86,7 @@ public class PostHogFake : PostHogInterface {
     override fun distinctId(): String {
         return ""
     }
+
+    override fun debug(enable: Boolean) {
+    }
 }
