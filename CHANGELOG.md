@@ -1,6 +1,7 @@
 ## Next
 
 - Expose and allow to enable and disable the debug mode at runtime ([#60](https://github.com/PostHog/posthog-android/pull/60))
+- Pick up consumer proguard rules correctly ([#62](https://github.com/PostHog/posthog-android/pull/62))
 
 ## 3.0.0-beta.4 - 2023-11-08
 

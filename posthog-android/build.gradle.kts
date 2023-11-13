@@ -21,7 +21,6 @@ android {
         minSdk = PosthogBuildConfig.Android.MIN_SDK
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
 
         buildFeatures {
             buildConfig = true
@@ -32,7 +31,7 @@ android {
 
     buildTypes {
         release {
-            consumerProguardFiles("proguard-rules.pro")
+            consumerProguardFiles("consumer-rules.pro")
         }
     }
     compileOptions {
