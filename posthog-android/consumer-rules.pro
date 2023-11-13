@@ -11,10 +11,10 @@
 #-keep class com.google.gson.stream.** { *; }
 
 # Application classes that will be serialized/deserialized over Gson
--keep class com.posthog.PostHogEvent { <fields>; }
--keep class com.posthog.internal.PostHogBatchEvent { <fields>; }
--keep class com.posthog.internal.PostHogDecideRequest { <fields>; }
--keep class com.posthog.internal.PostHogDecideResponse { <fields>; }
+-keep class com.posthog.PostHogEvent { *; }
+-keep class com.posthog.internal.PostHogBatchEvent { *; }
+-keep class com.posthog.internal.PostHogDecideRequest { *; }
+-keep class com.posthog.internal.PostHogDecideResponse { *; }
 
 # Prevent proguard from stripping interface information from TypeAdapter, TypeAdapterFactory,
 # JsonSerializer, JsonDeserializer instances (so they can be used in @JsonAdapter)
