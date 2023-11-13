@@ -90,26 +90,24 @@ internal class PostHogFeatureFlags(
     }
 
     private fun loadFeatureFlagsFromCache() {
-        synchronized(featureFlagsLock) {
-            config.cachePreferences?.let { preferences ->
-                synchronized(featureFlagsLock) {
-                    @Suppress("UNCHECKED_CAST")
-                    val flags = preferences.getValue(
-                        FEATURE_FLAGS,
-                        mapOf<String, Any>(),
-                    ) as? Map<String, Any> ?: mapOf()
+        config.cachePreferences?.let { preferences ->
+            synchronized(featureFlagsLock) {
+                @Suppress("UNCHECKED_CAST")
+                val flags = preferences.getValue(
+                    FEATURE_FLAGS,
+                    mapOf<String, Any>(),
+                ) as? Map<String, Any> ?: mapOf()
 
-                    @Suppress("UNCHECKED_CAST")
-                    val payloads = preferences.getValue(
-                        FEATURE_FLAGS_PAYLOAD,
-                        mapOf<String, Any?>(),
-                    ) as? Map<String, Any?> ?: mapOf()
+                @Suppress("UNCHECKED_CAST")
+                val payloads = preferences.getValue(
+                    FEATURE_FLAGS_PAYLOAD,
+                    mapOf<String, Any?>(),
+                ) as? Map<String, Any?> ?: mapOf()
 
-                    this.featureFlags = flags
-                    this.featureFlagPayloads = payloads
+                this.featureFlags = flags
+                this.featureFlagPayloads = payloads
 
-                    isFeatureFlagsLoaded = true
-                }
+                isFeatureFlagsLoaded = true
             }
         }
     }
