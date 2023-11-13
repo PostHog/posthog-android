@@ -65,13 +65,13 @@ internal class PostHogFeatureFlags(
                             val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
                             this.featureFlagPayloads = normalizedPayloads
                         }
-                        config.cachePreferences?.let { preferences ->
-                            val flags = this.featureFlags ?: mapOf()
-                            preferences.setValue(FEATURE_FLAGS, flags)
+                    }
+                    config.cachePreferences?.let { preferences ->
+                        val flags = this.featureFlags ?: mapOf()
+                        preferences.setValue(FEATURE_FLAGS, flags)
 
-                            val payloads = this.featureFlagPayloads ?: mapOf()
-                            preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
-                        }
+                        val payloads = this.featureFlagPayloads ?: mapOf()
+                        preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
                     }
                     isFeatureFlagsLoaded = true
                 }
@@ -91,19 +91,19 @@ internal class PostHogFeatureFlags(
 
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
+            @Suppress("UNCHECKED_CAST")
+            val flags = preferences.getValue(
+                FEATURE_FLAGS,
+                mapOf<String, Any>(),
+            ) as? Map<String, Any> ?: mapOf()
+
+            @Suppress("UNCHECKED_CAST")
+            val payloads = preferences.getValue(
+                FEATURE_FLAGS_PAYLOAD,
+                mapOf<String, Any?>(),
+            ) as? Map<String, Any?> ?: mapOf()
+
             synchronized(featureFlagsLock) {
-                @Suppress("UNCHECKED_CAST")
-                val flags = preferences.getValue(
-                    FEATURE_FLAGS,
-                    mapOf<String, Any>(),
-                ) as? Map<String, Any> ?: mapOf()
-
-                @Suppress("UNCHECKED_CAST")
-                val payloads = preferences.getValue(
-                    FEATURE_FLAGS_PAYLOAD,
-                    mapOf<String, Any?>(),
-                ) as? Map<String, Any?> ?: mapOf()
-
                 this.featureFlags = flags
                 this.featureFlagPayloads = payloads
 
