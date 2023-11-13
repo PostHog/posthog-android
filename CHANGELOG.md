@@ -1,6 +1,7 @@
 ## Next
 
 - Expose and allow to enable and disable the debug mode at runtime ([#60](https://github.com/PostHog/posthog-android/pull/60))
+- Cache and read feature flags on the disk ([#61](https://github.com/PostHog/posthog-android/pull/61))
 
 ## 3.0.0-beta.4 - 2023-11-08
 
