@@ -9,7 +9,7 @@ Releasing
     ./scripts/prepare-release.sh 3.0.0
     ```
  3. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases)
- 4. Choose a release name (e.g. `3.0.0`), ideally it matches the above.
+ 4. Choose a release name (e.g. `3.0.0`), and the tag you just created, ideally the same.
  5. Write a description of the release.
  6. Publish the release.
  7. GH Action (release.yml) is doing everything else automatically.
