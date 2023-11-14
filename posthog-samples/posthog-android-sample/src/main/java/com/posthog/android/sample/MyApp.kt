@@ -3,6 +3,7 @@ package com.posthog.android.sample
 import android.app.Application
 import android.os.StrictMode
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.PostHogPropertiesSanitizer
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
 
@@ -17,6 +18,11 @@ class MyApp : Application() {
             flushAt = 5
             maxBatchSize = 5
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
+            propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
+                properties.apply {
+                    remove("\$device_name")
+                }
+            }
         }
         PostHogAndroid.setup(this, config)
     }
