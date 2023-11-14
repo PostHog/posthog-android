@@ -159,6 +159,20 @@ Read the current `distinctId`
 val distinctId = PostHog.distinctId()
 ```
 
+Sanitize event properties
+
+```kotlin
+val config = PostHogAndroidConfig(apiKey).apply {
+    propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
+        properties.apply {
+            // will remove the property from the event
+            remove("\$device_name")
+        }
+    }
+}
+PostHogAndroid.setup(applicationContext, config)
+```
+
 Flush the SDK by sending all the pending events right away
 
 ```kotlin
