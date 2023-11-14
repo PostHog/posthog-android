@@ -3,14 +3,18 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.apiKey
 import com.posthog.awaitExecution
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
 import java.io.File
 import java.util.concurrent.Executors
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -19,6 +23,7 @@ internal class PostHogFeatureFlagsTest {
 
     private val file = File("src/test/resources/json/basic-decide-no-errors.json")
     private val responseDecideApi = file.readText()
+    private val preferences = PostHogMemoryPreferences()
 
     private fun getSut(
         host: String,
@@ -26,10 +31,16 @@ internal class PostHogFeatureFlagsTest {
     ): PostHogFeatureFlags {
         val config = PostHogConfig(apiKey, host).apply {
             this.networkStatus = networkStatus
+            cachePreferences = preferences
         }
         val dateProvider = PostHogCalendarDateProvider()
         val api = PostHogApi(config, dateProvider)
         return PostHogFeatureFlags(config, api, executor = executor)
+    }
+
+    @BeforeTest
+    fun `set up`() {
+        preferences.clear()
     }
 
     @Test
@@ -91,10 +102,14 @@ internal class PostHogFeatureFlagsTest {
         executor.shutdownAndAwaitTermination()
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        assertNotNull(preferences.getValue(FEATURE_FLAGS))
+        assertNotNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
 
         sut.clear()
 
         assertNull(sut.getFeatureFlags())
+        assertNull(preferences.getValue(FEATURE_FLAGS))
+        assertNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
     }
 
     @Test
@@ -221,5 +236,49 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(sut.getFeatureFlagPayload("theBoolean", defaultValue = null) as Boolean)
         assertNull(sut.getFeatureFlagPayload("theNull", defaultValue = null))
         assertEquals("[1, 2", sut.getFeatureFlagPayload("theBroken", defaultValue = null) as String)
+    }
+
+    @Test
+    fun `cache feature flags after loading from the network`() {
+        // preload items
+        preferences.setValue(FEATURE_FLAGS, mapOf("foo" to true))
+        preferences.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("foo" to true))
+
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(file.readText()),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertTrue(sut.isFeatureEnabled("foo", defaultValue = false))
+        assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false) as Boolean)
+    }
+
+    @Test
+    fun `load feature flags from cache if not loaded from the network yet`() {
+        val http = mockHttp(
+            response =
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        @Suppress("UNCHECKED_CAST")
+        val flags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any>
+
+        @Suppress("UNCHECKED_CAST")
+        val payloads = preferences.getValue(FEATURE_FLAGS_PAYLOAD) as? Map<String, Any?>
+
+        assertTrue(flags?.get("4535-funnel-bar-viz") as Boolean)
+        assertTrue(payloads?.get("thePayload") as Boolean)
     }
 }
