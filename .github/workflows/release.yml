@@ -37,17 +37,6 @@ jobs:
           java-version: ${{ matrix.java }}
           distribution: 'temurin'
 
-      - name: Update version
-        run: ./scripts/bump-version.sh ${{ github.event.release.tag_name }}
-
-      - name: Commit & push
-        run: |
-          ./scripts/commit-code.sh ${{ github.event.release.target_commitish }}
-
-      - name: Update tag
-        run: |
-          ./scripts/update-tag.sh ${{ github.event.release.tag_name }} ${{ github.event.release.target_commitish }}
-
       # Let's be sure that everything works before we release    
       - name: Dry release
         run: make dryRelease
