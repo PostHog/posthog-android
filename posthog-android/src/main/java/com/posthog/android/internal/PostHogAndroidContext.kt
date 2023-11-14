@@ -80,7 +80,10 @@ internal class PostHogAndroidContext(
         }
 
         context.telephonyManager()?.let {
-            dynamicContext["\$network_carrier"] = it.networkOperatorName
+            val networkOperatorName = it.networkOperatorName
+            if (!networkOperatorName.isNullOrEmpty()) {
+                dynamicContext["\$network_carrier"] = networkOperatorName
+            }
         }
 
         return dynamicContext
