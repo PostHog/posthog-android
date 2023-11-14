@@ -273,15 +273,20 @@ public class PostHog private constructor(
 
         val newDistinctId = distinctId ?: this.distinctId
 
+        val mergedProperties = buildProperties(
+            properties = properties,
+            userProperties = userProperties,
+            userPropertiesSetOnce = userPropertiesSetOnce,
+            groupProperties = groupProperties,
+        )
+
+        // sanitize the properties or fallback to the original properties
+        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
+
         val postHogEvent = PostHogEvent(
             event,
             newDistinctId,
-            properties = buildProperties(
-                properties = properties,
-                userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce,
-                groupProperties = groupProperties,
-            ),
+            properties = sanitizedProperties,
         )
         queue?.add(postHogEvent)
     }
