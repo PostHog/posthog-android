@@ -1,5 +1,7 @@
 ## Next
 
+## 3.0.0-beta.6 - 2023-11-14
+
 - Add a `propertiesSanitizer` callback configuration ([#64](https://github.com/PostHog/posthog-android/pull/64))
 
 ## 3.0.0-beta.5 - 2023-11-14
