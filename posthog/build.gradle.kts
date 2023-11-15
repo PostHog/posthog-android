@@ -16,6 +16,9 @@ plugins {
 
     // tests
     id("org.jetbrains.kotlinx.kover")
+
+    // compatibility
+    id("ru.vyarus.animalsniffer")
 }
 
 configure<JavaPluginExtension> {
@@ -74,6 +77,17 @@ configure<SourceSetContainer> {
     }
 }
 
+tasks.compileJava {
+    options.release.set(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion.toInt())
+}
+
+animalsniffer {
+//    com.posthog.internal.PostHogDecideRequest  Undefined reference (android-api-level-21-5.0.1_r2): boolean java.util.HashMap.remove(Object, Object)
+//    com.posthog.internal.PostHogDecideRequest  Undefined reference (android-api-level-21-5.0.1_r2): Object java.util.HashMap.getOrDefault(Object, Object)
+//    we don't use these methods, so ignore them, they are only available on Android >= 24
+    ignore("java.util.HashMap")
+}
+
 dependencies {
     implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
 
@@ -81,6 +95,11 @@ dependencies {
 
     implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
     implementation("com.squareup.okhttp3:okhttp")
+
+    // compatibility
+    signature("org.codehaus.mojo.signature:java18:1.0@signature")
+    signature("net.sf.androidscents.signature:android-api-level-${PosthogBuildConfig.Android.MIN_SDK}:5.0.1_r2@signature")
+    signature("com.toasttab.android:gummy-bears-api-21:0.6.1@signature")
 
     // tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")

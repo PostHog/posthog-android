@@ -11,6 +11,8 @@ object PosthogBuildConfig {
 
     object Android {
         val COMPILE_SDK = 34
+
+        // when changing this, remember to check the net.sf.androidscents.signature
         val MIN_SDK = 21
         val TARGET_SDK = COMPILE_SDK
     }
@@ -27,6 +29,7 @@ object PosthogBuildConfig {
     }
 
     object Plugins {
+        val ANIMAL_SNIFFER = "1.7.1"
         val SPOTLESS = "6.21.0"
         val DETEKT = "1.23.1"
         val API_VALIDATOR = "0.13.2"
