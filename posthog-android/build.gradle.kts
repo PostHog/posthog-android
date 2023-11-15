@@ -81,6 +81,7 @@ dependencies {
     // compatibility
     signature("org.codehaus.mojo.signature:java18:1.0@signature")
     signature("net.sf.androidscents.signature:android-api-level-${PosthogBuildConfig.Android.MIN_SDK}:5.0.1_r2@signature")
+    signature("com.toasttab.android:gummy-bears-api-${PosthogBuildConfig.Android.MIN_SDK}:0.6.1@signature")
 
     // tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")
