@@ -1,5 +1,7 @@
 ## Next
 
+- Bump Kotlin to min. 1.6 compatibility ([#68](https://github.com/PostHog/posthog-android/pull/68))
+
 ## 3.0.0-RC.1 - 2023-11-20
 
 - Do not set `$network_carrier` property if empty ([#66](https://github.com/PostHog/posthog-android/pull/66))

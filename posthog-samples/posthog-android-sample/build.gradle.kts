@@ -54,6 +54,11 @@ android {
     }
 }
 
+kotlin {
+    val javaVersion = JavaLanguageVersion.of(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion).asInt()
+    jvmToolchain(javaVersion)
+}
+
 dependencies {
     implementation(project(mapOf("path" to ":posthog-android")))
 

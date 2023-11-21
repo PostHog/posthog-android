@@ -21,11 +21,6 @@ plugins {
     id("ru.vyarus.animalsniffer")
 }
 
-configure<JavaPluginExtension> {
-    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
-    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
-}
-
 buildConfig {
     useKotlinOutput()
     packageName("com.posthog")
@@ -69,16 +64,13 @@ tasks.withType<KotlinCompile>().configureEach {
 
 kotlin {
     explicitApi()
+    jvmToolchain(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion.toInt())
 }
 
 configure<SourceSetContainer> {
     test {
         java.srcDir("src/test/java")
     }
-}
-
-tasks.compileJava {
-    options.release.set(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion.toInt())
 }
 
 animalsniffer {
