@@ -1,6 +1,6 @@
 ## Next
 
-- Bump Kotlin to min. 1.6 compatibility ([#67](https://github.com/PostHog/posthog-android/pull/67))
+- Bump Kotlin to min. 1.6 compatibility ([#68](https://github.com/PostHog/posthog-android/pull/68))
 
 ## 3.0.0-RC.1 - 2023-11-20
 
