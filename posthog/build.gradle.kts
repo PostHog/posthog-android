@@ -21,11 +21,6 @@ plugins {
     id("ru.vyarus.animalsniffer")
 }
 
-configure<JavaPluginExtension> {
-    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
-    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
-}
-
 buildConfig {
     useKotlinOutput()
     packageName("com.posthog")
@@ -34,6 +29,9 @@ buildConfig {
 
 java {
     withSourcesJar()
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion)
+    }
 }
 
 val dokkaJavadocJar by tasks.register<Jar>("dokkaJavadocJar") {
@@ -75,10 +73,6 @@ configure<SourceSetContainer> {
     test {
         java.srcDir("src/test/java")
     }
-}
-
-tasks.compileJava {
-    options.release.set(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion.toInt())
 }
 
 animalsniffer {

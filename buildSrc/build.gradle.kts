@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 plugins {
     `kotlin-dsl`
 }
@@ -11,23 +9,22 @@ repositories {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
-
-tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions.jvmTarget = JavaVersion.VERSION_17.toString()
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
 }
 
 dependencies {
     // also update PosthogBuildConfig.Kotlin.KOTLIN
-    val kotlinVersion = "1.8.10"
+    val kotlinVersion = "1.8.22"
+    // there's no 1.8.22 for dokka yet
+    val dokkaVersion = "1.8.20"
     implementation("com.android.tools.build:gradle:8.1.3")
     // kotlin version has to match kotlinCompilerExtensionVersion
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
 
     // publish
-    implementation("org.jetbrains.dokka:dokka-gradle-plugin:$kotlinVersion")
+    implementation("org.jetbrains.dokka:dokka-gradle-plugin:$dokkaVersion")
     implementation("io.github.gradle-nexus:publish-plugin:1.3.0")
 
     // tests
