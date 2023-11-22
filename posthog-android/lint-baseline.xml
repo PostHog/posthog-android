@@ -3,7 +3,7 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of org.mockito.kotlin:mockito-kotlin than 4.1.0 is available: 5.1.0"
+        message="A newer version of org.mockito.kotlin:mockito-kotlin than 4.1.0 is available: 5.0.0"
         errorLine1="    testImplementation(&quot;org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}&quot;)"
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location

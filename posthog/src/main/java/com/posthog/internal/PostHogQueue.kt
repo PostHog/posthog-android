@@ -80,9 +80,9 @@ internal class PostHogQueue(
                 }
 
                 try {
-                    val fileOutputStream = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
-                    fileOutputStream.use { fos ->
-                        config.serializer.serialize(event, fos.writer().buffered())
+                    val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
+                    os.use { theOutputStream ->
+                        config.serializer.serialize(event, theOutputStream.writer().buffered())
                     }
                     config.logger.log("Queued event ${file.name}.")
 

@@ -11,6 +11,9 @@ plugins {
 
     // tests
     id("org.jetbrains.kotlinx.kover")
+
+    // compatibility
+    id("ru.vyarus.animalsniffer")
 }
 
 android {
@@ -21,7 +24,6 @@ android {
         minSdk = PosthogBuildConfig.Android.MIN_SDK
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
 
         buildFeatures {
             buildConfig = true
@@ -32,7 +34,7 @@ android {
 
     buildTypes {
         release {
-            consumerProguardFiles("proguard-rules.pro")
+            consumerProguardFiles("consumer-rules.pro")
         }
     }
     compileOptions {
@@ -69,12 +71,22 @@ android {
     kotlinOptions.postHogConfig()
 }
 
+kotlin {
+    val javaVersion = JavaLanguageVersion.of(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion).asInt()
+    jvmToolchain(javaVersion)
+}
+
 dependencies {
     // runtime
     api(project(mapOf("path" to ":posthog")))
     implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
     implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
+
+    // compatibility
+    signature("org.codehaus.mojo.signature:java18:1.0@signature")
+    signature("net.sf.androidscents.signature:android-api-level-${PosthogBuildConfig.Android.MIN_SDK}:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_VERSION}@signature")
+    signature("com.toasttab.android:gummy-bears-api-${PosthogBuildConfig.Android.MIN_SDK}:0.6.1@signature")
 
     // tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")

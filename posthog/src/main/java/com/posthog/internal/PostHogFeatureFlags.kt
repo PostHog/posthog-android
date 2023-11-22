@@ -2,6 +2,8 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -84,12 +86,16 @@ internal class PostHogFeatureFlags(
                             }
                         }
                     }
+                    config.cachePreferences?.let { preferences ->
+                        val flags = this.featureFlags ?: mapOf()
+                        preferences.setValue(FEATURE_FLAGS, flags)
+
+                        val payloads = this.featureFlagPayloads ?: mapOf()
+                        preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
+                    }
                     isFeatureFlagsLoaded = true
-                } ?: run {
-                    isFeatureFlagsLoaded = false
                 }
             } catch (e: Throwable) {
-                isFeatureFlagsLoaded = false
                 config.logger.log("Loading feature flags failed: $e")
             } finally {
                 try {
@@ -99,6 +105,29 @@ internal class PostHogFeatureFlags(
                 } finally {
                     isLoadingFeatureFlags.set(false)
                 }
+            }
+        }
+    }
+
+    private fun loadFeatureFlagsFromCache() {
+        config.cachePreferences?.let { preferences ->
+            @Suppress("UNCHECKED_CAST")
+            val flags = preferences.getValue(
+                FEATURE_FLAGS,
+                mapOf<String, Any>(),
+            ) as? Map<String, Any> ?: mapOf()
+
+            @Suppress("UNCHECKED_CAST")
+            val payloads = preferences.getValue(
+                FEATURE_FLAGS_PAYLOAD,
+                mapOf<String, Any?>(),
+            ) as? Map<String, Any?> ?: mapOf()
+
+            synchronized(featureFlagsLock) {
+                this.featureFlags = flags
+                this.featureFlagPayloads = payloads
+
+                isFeatureFlagsLoaded = true
             }
         }
     }
@@ -126,7 +155,7 @@ internal class PostHogFeatureFlags(
 
     fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
         if (!isFeatureFlagsLoaded) {
-            return defaultValue
+            loadFeatureFlagsFromCache()
         }
         val value: Any?
 
@@ -148,7 +177,7 @@ internal class PostHogFeatureFlags(
 
     private fun readFeatureFlag(key: String, defaultValue: Any?, flags: Map<String, Any?>?): Any? {
         if (!isFeatureFlagsLoaded) {
-            return defaultValue
+            loadFeatureFlagsFromCache()
         }
         val value: Any?
 
@@ -179,6 +208,11 @@ internal class PostHogFeatureFlags(
         synchronized(featureFlagsLock) {
             featureFlags = null
             featureFlagPayloads = null
+
+            config.cachePreferences?.let { preferences ->
+                preferences.remove(FEATURE_FLAGS)
+                preferences.remove(FEATURE_FLAGS_PAYLOAD)
+            }
         }
     }
 }

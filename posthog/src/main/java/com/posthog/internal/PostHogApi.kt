@@ -1,6 +1,5 @@
 package com.posthog.internal
 
-import com.google.gson.Gson
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import okhttp3.MediaType.Companion.toMediaType

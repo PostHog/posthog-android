@@ -16,11 +16,9 @@ plugins {
 
     // tests
     id("org.jetbrains.kotlinx.kover")
-}
 
-configure<JavaPluginExtension> {
-    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
-    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+    // compatibility
+    id("ru.vyarus.animalsniffer")
 }
 
 buildConfig {
@@ -66,12 +64,20 @@ tasks.withType<KotlinCompile>().configureEach {
 
 kotlin {
     explicitApi()
+    jvmToolchain(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion.toInt())
 }
 
 configure<SourceSetContainer> {
     test {
         java.srcDir("src/test/java")
     }
+}
+
+animalsniffer {
+//    com.posthog.internal.PostHogDecideRequest  Undefined reference (android-api-level-21-5.0.1_r2): boolean java.util.HashMap.remove(Object, Object)
+//    com.posthog.internal.PostHogDecideRequest  Undefined reference (android-api-level-21-5.0.1_r2): Object java.util.HashMap.getOrDefault(Object, Object)
+//    we don't use these methods, so ignore them, they are only available on Android >= 24
+    ignore("java.util.HashMap")
 }
 
 dependencies {
@@ -81,6 +87,11 @@ dependencies {
 
     implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
     implementation("com.squareup.okhttp3:okhttp")
+
+    // compatibility
+    signature("org.codehaus.mojo.signature:java18:1.0@signature")
+    signature("net.sf.androidscents.signature:android-api-level-${PosthogBuildConfig.Android.MIN_SDK}:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_VERSION}@signature")
+    signature("com.toasttab.android:gummy-bears-api-21:0.6.1@signature")
 
     // tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")

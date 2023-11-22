@@ -97,6 +97,13 @@ public open class PostHogConfig(
     public var sessionReplay: Boolean = true,
 
     public var sessionReplaySampleRate: Double = 1.0,
+
+    /**
+     * Hook that allows to sanitize the event properties
+     * The hook is called before the event is cached or sent over the wire
+     */
+    public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal

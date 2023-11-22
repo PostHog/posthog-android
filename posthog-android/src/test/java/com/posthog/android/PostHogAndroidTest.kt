@@ -194,10 +194,11 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `does not add captureDeepLinks and captureScreenViews integration if disabled`() {
+    fun `does not add captureDeepLinks, captureScreenViews and sessionReplay integration if disabled`() {
         val config = PostHogAndroidConfig(apiKey).apply {
             captureDeepLinks = false
             captureScreenViews = false
+            sessionReplay = false
         }
 
         mockContextAppStart(context, tmpDir)

@@ -5,6 +5,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuffColorFilter
+import android.os.Build
 import android.view.MotionEvent
 import kotlin.math.roundToInt
 
@@ -271,7 +272,8 @@ internal class RRWebRecorder : PostHogRecorder {
     override fun drawPath(path: Path, paint: Paint) {
         setupPaint(paint)
 
-        val points = path.approximate(1f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val points = path.approximate(1f)
 //        val type = when (path.fillType) {
 //            Path.FillType.WINDING -> "nonzero"
 //            Path.FillType.EVEN_ODD -> "evenodd"
@@ -279,24 +281,25 @@ internal class RRWebRecorder : PostHogRecorder {
 //            Path.FillType.INVERSE_WINDING -> "??"
 //        }
 
-        currentFrameCommands.add(
-            mapOf(
-                "property" to "beginPath",
-                "args" to emptyList<Any>(),
-            ),
-        )
-        for (i in points.indices step 3) {
-            val command = if (i == 0) {
-                "moveTo"
-            } else {
-                "lineTo"
-            }
             currentFrameCommands.add(
                 mapOf(
-                    "property" to command,
-                    "args" to listOf(points[i + 1], points[i + 2]),
+                    "property" to "beginPath",
+                    "args" to emptyList<Any>(),
                 ),
             )
+            for (i in points.indices step 3) {
+                val command = if (i == 0) {
+                    "moveTo"
+                } else {
+                    "lineTo"
+                }
+                currentFrameCommands.add(
+                    mapOf(
+                        "property" to command,
+                        "args" to listOf(points[i + 1], points[i + 2]),
+                    ),
+                )
+            }
         }
         draw(paint)
     }

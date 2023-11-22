@@ -11,22 +11,27 @@ object PosthogBuildConfig {
 
     object Android {
         val COMPILE_SDK = 34
-        val MIN_SDK = 24 // TODO: because of path.approximate, addOnFrameMetricsAvailableListener
+        val MIN_SDK = 24 // TODO: addOnFrameMetricsAvailableListener
         val TARGET_SDK = COMPILE_SDK
     }
 
     object Kotlin {
         // compiler has to match kotlin version
         // https://developer.android.com/jetpack/androidx/releases/compose-kotlin
-        val COMPILER_EXTENSION_VERSION = "1.4.3" // kotlin 1.8.10
+        val COMPILER_EXTENSION_VERSION = "1.4.8" // kotlin 1.8.22
 
-        val KOTLIN_COMPATIBILITY = "1.5"
+        val KOTLIN_COMPATIBILITY = "1.6"
 
         // also update buildSrc/gradle.kts - kotlinVersion
-        val KOTLIN = "1.8.10"
+        val KOTLIN = "1.8.22"
     }
 
     object Plugins {
+        val ANIMAL_SNIFFER = "1.7.1"
+
+        val ANIMAL_SNIFFER_SDK_VERSION = "7.0_r2" // 24
+
+//        val ANIMAL_SNIFFER_SDK_VERSION = "5.0.1_r2" // 21
         val SPOTLESS = "6.21.0"
         val DETEKT = "1.23.1"
         val API_VALIDATOR = "0.13.2"

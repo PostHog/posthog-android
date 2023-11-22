@@ -1,6 +1,5 @@
 package com.posthog.android.replay.internal
 
-import android.os.Build
 import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
@@ -86,11 +85,12 @@ internal open class PostHogWindowDelegate(val callback: Window.Callback) : Windo
     }
 
     override fun onSearchRequested(searchEvent: SearchEvent?): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            callback.onSearchRequested(searchEvent)
-        } else {
-            return false
-        }
+//        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            callback.onSearchRequested(searchEvent)
+//        } else {
+//            return false
+//        }
+        return callback.onSearchRequested(searchEvent)
     }
 
     override fun onWindowStartingActionMode(callback: ActionMode.Callback?): ActionMode? {
@@ -101,11 +101,12 @@ internal open class PostHogWindowDelegate(val callback: Window.Callback) : Windo
         callback: ActionMode.Callback?,
         type: Int,
     ): ActionMode? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            this.callback.onWindowStartingActionMode(callback, type)
-        } else {
-            return null
-        }
+//        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            this.callback.onWindowStartingActionMode(callback, type)
+//        } else {
+//            return null
+//        }
+        return this.callback.onWindowStartingActionMode(callback, type)
     }
 
     override fun onActionModeStarted(mode: ActionMode?) {

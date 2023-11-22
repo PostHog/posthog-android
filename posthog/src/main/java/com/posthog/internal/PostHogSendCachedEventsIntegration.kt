@@ -62,8 +62,8 @@ internal class PostHogSendCachedEventsIntegration(
                             val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
                             inputStream.use { theInputStream ->
                                 val event = config.serializer.deserialize<PostHogEvent?>(theInputStream.reader().buffered())
-                                event?.let { theEvent ->
-                                    events.add(theEvent)
+                                event?.let {
+                                    events.add(event)
                                     eventsCount++
                                 }
                             }
@@ -153,8 +153,8 @@ internal class PostHogSendCachedEventsIntegration(
                                 config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
                             inputStream.use { theInputStream ->
                                 val event = config.serializer.deserialize<PostHogEvent?>(theInputStream.reader().buffered())
-                                event?.let { theEvent ->
-                                    events.add(theEvent)
+                                event?.let {
+                                    events.add(event)
                                     eventsCount++
                                 }
                             }

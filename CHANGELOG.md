@@ -1,5 +1,25 @@
 ## Next
 
+- Bump Kotlin to min. 1.6 compatibility ([#68](https://github.com/PostHog/posthog-android/pull/68))
+
+## 3.0.0-RC.1 - 2023-11-20
+
+- Do not set `$network_carrier` property if empty ([#66](https://github.com/PostHog/posthog-android/pull/66))
+
+## 3.0.0-beta.6 - 2023-11-14
+
+- Add a `propertiesSanitizer` callback configuration ([#64](https://github.com/PostHog/posthog-android/pull/64))
+
+## 3.0.0-beta.5 - 2023-11-14
+
+- Expose and allow to enable and disable the debug mode at runtime ([#60](https://github.com/PostHog/posthog-android/pull/60))
+- Cache and read feature flags on the disk ([#61](https://github.com/PostHog/posthog-android/pull/61))
+- Pick up consumer proguard rules correctly ([#62](https://github.com/PostHog/posthog-android/pull/62))
+
+## 3.0.0-beta.4 - 2023-11-08
+
+- Fix leaked resources identified by StrictMode ([#59](https://github.com/PostHog/posthog-android/pull/59))
+
 ## 3.0.0-beta.3 - 2023-11-02
 
 - Ship proguard rules for proguard/r8 full mode ([#52](https://github.com/PostHog/posthog-android/pull/52))

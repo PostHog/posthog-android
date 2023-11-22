@@ -23,6 +23,8 @@ public interface PostHogPreferences {
         internal const val ANONYMOUS_ID = "anonymousId"
         internal const val DISTINCT_ID = "distinctId"
         internal const val OPT_OUT = "opt-out"
+        internal const val FEATURE_FLAGS = "featureFlags"
+        internal const val FEATURE_FLAGS_PAYLOAD = "featureFlagsPayload"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
@@ -32,6 +34,8 @@ public interface PostHogPreferences {
             ANONYMOUS_ID,
             DISTINCT_ID,
             OPT_OUT,
+            FEATURE_FLAGS,
+            FEATURE_FLAGS_PAYLOAD,
             VERSION,
             BUILD,
             STRINGIFIED_KEYS,

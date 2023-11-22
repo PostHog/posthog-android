@@ -2,6 +2,7 @@ package android.graphics
 
 import android.graphics.fonts.Font
 import android.graphics.text.MeasuredText
+import android.os.Build
 import android.util.Log
 import com.posthog.android.replay.internal.PostHogRecorder
 
@@ -253,22 +254,34 @@ internal class CanvasDelegate(
 
     override fun clipOutRect(rect: RectF): Boolean {
         Log.d(TAG, "TODO clipOutRect: rect: RectF")
-        return original.clipOutRect(rect)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return original.clipOutRect(rect)
+        }
+        return false
     }
 
     override fun clipOutRect(rect: Rect): Boolean {
         Log.d(TAG, "TODO clipOutRect: ")
-        return original.clipOutRect(rect)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return original.clipOutRect(rect)
+        }
+        return false
     }
 
     override fun clipOutRect(left: Float, top: Float, right: Float, bottom: Float): Boolean {
         Log.d(TAG, "TODO clipOutRect: ")
-        return original.clipOutRect(left, top, right, bottom)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return original.clipOutRect(left, top, right, bottom)
+        }
+        return false
     }
 
     override fun clipOutRect(left: Int, top: Int, right: Int, bottom: Int): Boolean {
         Log.d(TAG, "TODO clipOutRect: ")
-        return original.clipOutRect(left, top, right, bottom)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return original.clipOutRect(left, top, right, bottom)
+        }
+        return false
     }
 
     @Suppress("DEPRECATION")
@@ -284,7 +297,10 @@ internal class CanvasDelegate(
 
     override fun clipOutPath(path: Path): Boolean {
         Log.d(TAG, "TODO clipOutPath: ")
-        return original.clipOutPath(path)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return original.clipOutPath(path)
+        }
+        return false
     }
 
     override fun getDrawFilter(): DrawFilter? {
@@ -305,7 +321,10 @@ internal class CanvasDelegate(
     override fun quickReject(rect: RectF): Boolean {
         // seems to not have any effect
         Log.d(TAG, "TODO quickReject: ")
-        return original.quickReject(rect)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return original.quickReject(rect)
+        }
+        return false
     }
 
     @Suppress("DEPRECATION")
@@ -318,7 +337,10 @@ internal class CanvasDelegate(
     override fun quickReject(path: Path): Boolean {
         // seems to not have any effect
         Log.d(TAG, "TODO quickReject: ")
-        return original.quickReject(path)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return original.quickReject(path)
+        }
+        return false
     }
 
     @Suppress("DEPRECATION")
@@ -337,7 +359,10 @@ internal class CanvasDelegate(
     override fun quickReject(left: Float, top: Float, right: Float, bottom: Float): Boolean {
         // seems to not have any effect
         Log.d(TAG, "TODO quickReject: ")
-        return original.quickReject(left, top, right, bottom)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return original.quickReject(left, top, right, bottom)
+        }
+        return false
     }
 
     override fun getClipBounds(bounds: Rect): Boolean {

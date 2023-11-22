@@ -55,7 +55,7 @@ fun Project.publishingAndroidConfig() {
 
 fun Project.javadocConfig() {
     tasks.withType(DokkaTask::class.java).configureEach {
-        val toOutputDirectory = file("${buildDir.canonicalPath}/reports/javadoc")
+        val toOutputDirectory = file("${layout.buildDirectory.asFile.get()}/reports/javadoc")
         outputDirectory.set(toOutputDirectory)
         doFirst {
             if (!toOutputDirectory.exists()) {

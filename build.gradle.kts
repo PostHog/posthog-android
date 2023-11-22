@@ -12,6 +12,7 @@ plugins {
     id("io.gitlab.arturbosch.detekt") version PosthogBuildConfig.Plugins.DETEKT apply true
     id("org.jetbrains.kotlinx.binary-compatibility-validator") version PosthogBuildConfig.Plugins.API_VALIDATOR apply true
     id("com.github.gmazzo.buildconfig") version PosthogBuildConfig.Plugins.BUILD_CONFIG apply false
+    id("ru.vyarus.animalsniffer") version PosthogBuildConfig.Plugins.ANIMAL_SNIFFER apply false
 
     // TODO: add jacoco/codecov, gradle-versions-plugin
 }
