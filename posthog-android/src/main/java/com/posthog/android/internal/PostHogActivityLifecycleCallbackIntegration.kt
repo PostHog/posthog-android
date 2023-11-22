@@ -78,11 +78,9 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                     val rrEvents = it.stopRecording()
                     val properties = mutableMapOf<String, Any>()
                     properties["\$snapshot_data"] = rrEvents
-                    // TODO: implement session id and window id
-                    properties["\$session_id"] = UUID.randomUUID().toString()
+                    // TODO: implement window id
                     properties["\$window_id"] = UUID.randomUUID().toString()
                     properties["distinct_id"] = PostHog.distinctId()
-                    // TODO: missing $snapshot_bytes
                     PostHog.capture("\$snapshot", properties = properties)
                 }
             }

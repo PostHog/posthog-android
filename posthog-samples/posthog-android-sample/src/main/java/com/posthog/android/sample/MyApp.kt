@@ -13,16 +13,17 @@ class MyApp : Application() {
 
         enableStrictMode()
 
-        // Demo _6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI
-        // ManoelTesting
-//        phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8
-        val config = PostHogAndroidConfig("phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8").apply {
+        // Demo:
+        // val apiKey = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+        // ManoelTesting:
+        val apiKey = "phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8"
+        val config = PostHogAndroidConfig(apiKey).apply {
             debug = true
             flushAt = 1
             captureDeepLinks = false
-            captureApplicationLifecycleEvents = false
-            captureScreenViews = true
-            sessionReplay = true
+//            captureApplicationLifecycleEvents = false
+//            captureScreenViews = false
+//            sessionReplay = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
             propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
                 properties.apply {

@@ -38,6 +38,9 @@ public class PostHog private constructor(
     private val lockSetup = Any()
     private val lockOptOut = Any()
     private val anonymousLock = Any()
+    private val sessionLock = Any()
+    private val sessionIdNone = UUID(0, 0)
+    private var sessionId = sessionIdNone
     private val featureFlagsCalledLock = Any()
 
     private var config: PostHogConfig? = null
@@ -94,6 +97,8 @@ public class PostHog private constructor(
                 enabled = true
 
                 queue.start()
+
+                startSession()
 
                 config.integrations.forEach {
                     try {
@@ -160,6 +165,8 @@ public class PostHog private constructor(
                 queue?.stop()
 
                 featureFlagsCalled.clear()
+
+                sessionId = sessionIdNone
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
@@ -233,6 +240,12 @@ public class PostHog private constructor(
                         props["\$active_feature_flags"] = keys
                     }
                 }
+            }
+        }
+
+        synchronized(sessionLock) {
+            if (sessionId != sessionIdNone) {
+                props["\$session_id"] = sessionId.toString()
             }
         }
 
@@ -539,6 +552,20 @@ public class PostHog private constructor(
         config?.debug = enable
     }
 
+    override fun startSession() {
+        synchronized(sessionLock) {
+            if (sessionId == sessionIdNone) {
+                sessionId = UUID.randomUUID()
+            }
+        }
+    }
+
+    override fun endSession() {
+        synchronized(sessionLock) {
+            sessionId = sessionIdNone
+        }
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
@@ -676,6 +703,14 @@ public class PostHog private constructor(
         override fun distinctId(): String = shared.distinctId()
         override fun debug(enable: Boolean) {
             shared.debug(enable)
+        }
+
+        override fun startSession() {
+            shared.startSession()
+        }
+
+        override fun endSession() {
+            shared.endSession()
         }
     }
 }

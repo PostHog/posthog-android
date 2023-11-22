@@ -89,4 +89,10 @@ public class PostHogFake : PostHogInterface {
 
     override fun debug(enable: Boolean) {
     }
+
+    override fun startSession() {
+    }
+
+    override fun endSession() {
+    }
 }
