@@ -54,16 +54,18 @@ internal class PostHogApi(
     @Throws(PostHogApiError::class, IOException::class)
     fun snapshot(event: PostHogEvent) {
         event.apiKey = config.apiKey
+        // TODO: is it a list?
         @Suppress("UNCHECKED_CAST")
         val props = event.properties?.get("\$snapshot_data") as? List<Any> ?: listOf()
 
+        // TODO: remove it
         config.serializer.serializeObject(props)?.let {
             print("rrweb event: $it")
         }
 
         val events = listOf(event)
         // TODO: read endpoint from decide API
-        // missing sent_at?
+        // TODO: missing sent_at?
         val request = makeRequest("$theHost/s") {
             config.serializer.serialize(events, it.bufferedWriter())
         }

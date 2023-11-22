@@ -30,7 +30,8 @@ internal class PostHogSendCachedEventsIntegration(
             }
 
             flushLegacyEvents()
-            flushEvents()
+            flushEvents(config.storagePrefix)
+            flushEvents(config.recordingStoragePrefix)
         }
         executor.shutdown()
     }
@@ -120,8 +121,8 @@ internal class PostHogSendCachedEventsIntegration(
         }
     }
 
-    private fun flushEvents() {
-        config.storagePrefix?.let {
+    private fun flushEvents(storagePrefix: String?) {
+        storagePrefix.let {
             val dir = File(it, config.apiKey)
 
             if (!dir.existsSafely(config)) {

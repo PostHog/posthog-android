@@ -43,7 +43,7 @@ internal class PostHogQueueTest {
             this.maxBatchSize = maxBatchSize
         }
         val api = PostHogApi(config, dateProvider)
-        return PostHogQueue(config, api, executor = executor, dateProvider = dateProvider)
+        return PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, executor = executor, dateProvider = dateProvider)
     }
 
     @Test

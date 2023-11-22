@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogCalendarDateProvider
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
@@ -23,6 +24,9 @@ import java.util.concurrent.Executors
 public class PostHog private constructor(
     private val queueExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogQueueThread"),
+    ),
+    private val recordingExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
+        PostHogThreadFactory("PostHogRecordingQueueThread"),
     ),
     private val featureFlagsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogFeatureFlagsThread"),
@@ -47,6 +51,7 @@ public class PostHog private constructor(
 
     private var featureFlags: PostHogFeatureFlags? = null
     private var queue: PostHogQueue? = null
+    private var recordingQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
@@ -66,7 +71,8 @@ public class PostHog private constructor(
                 config.cachePreferences = cachePreferences
                 val dateProvider = PostHogCalendarDateProvider()
                 val api = PostHogApi(config, dateProvider)
-                val queue = PostHogQueue(config, api, dateProvider, queueExecutor)
+                val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, dateProvider, queueExecutor)
+                val recordingQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.recordingStoragePrefix, dateProvider, recordingExecutor)
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -88,6 +94,7 @@ public class PostHog private constructor(
 
                 this.config = config
                 this.queue = queue
+                this.recordingQueue = recordingQueue
                 this.featureFlags = featureFlags
 
                 config.addIntegration(sendCachedEventsIntegration)
@@ -163,6 +170,7 @@ public class PostHog private constructor(
                 }
 
                 queue?.stop()
+                recordingQueue?.stop()
 
                 featureFlagsCalled.clear()
 
@@ -301,6 +309,13 @@ public class PostHog private constructor(
             newDistinctId,
             properties = sanitizedProperties,
         )
+
+        // recording has its own queue
+        if (event == "\$snapshot") {
+            recordingQueue?.add(postHogEvent)
+            return
+        }
+
         queue?.add(postHogEvent)
     }
 
@@ -497,6 +512,7 @@ public class PostHog private constructor(
             return
         }
         queue?.flush()
+        recordingQueue?.flush()
     }
 
     public override fun reset() {
@@ -510,6 +526,7 @@ public class PostHog private constructor(
         getPreferences().clear(except = except)
         featureFlags?.clear()
         queue?.clear()
+        recordingQueue?.clear()
         featureFlagsCalled.clear()
     }
 
@@ -597,12 +614,14 @@ public class PostHog private constructor(
         internal fun <T : PostHogConfig> withInternal(
             config: T,
             queueExecutor: ExecutorService,
+            recordingExecutor: ExecutorService,
             featureFlagsExecutor: ExecutorService,
             cachedEventsExecutor: ExecutorService,
             reloadFeatureFlags: Boolean,
         ): PostHogInterface {
             val instance = PostHog(
                 queueExecutor,
+                recordingExecutor,
                 featureFlagsExecutor,
                 cachedEventsExecutor,
                 reloadFeatureFlags = reloadFeatureFlags,

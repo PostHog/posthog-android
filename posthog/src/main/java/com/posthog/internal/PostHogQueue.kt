@@ -24,6 +24,8 @@ import kotlin.math.min
 internal class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,
+    private val endpoint: PostHogApiEndpoint,
+    private val storagePrefix: String?,
     private val dateProvider: PostHogDateProvider,
     private val executor: ExecutorService,
 ) {
@@ -66,7 +68,7 @@ internal class PostHogQueue(
                 } catch (ignored: NoSuchElementException) {}
             }
 
-            config.storagePrefix?.let {
+            storagePrefix?.let {
                 val dir = File(it, config.apiKey)
 
                 if (!dirCreated) {
@@ -182,20 +184,16 @@ internal class PostHogQueue(
             }
         }
 
-        val snapshotEvents = events.filter {
-            it.event == "\$snapshot"
-        }
-        events.removeAll(snapshotEvents)
-
         var deleteFiles = true
         try {
             if (events.isNotEmpty()) {
-                api.batch(events)
-            }
-
-            // TODO: obviously this has to be somewhere else, not part of this queue, etc
-            snapshotEvents.forEach {
-                api.snapshot(it)
+                when (endpoint) {
+                    PostHogApiEndpoint.BATCH -> api.batch(events)
+                    // TODO: error flow here should be different since its 1 by 1
+                    PostHogApiEndpoint.SNAPSHOT -> events.forEach {
+                        api.snapshot(it)
+                    }
+                }
             }
         } catch (e: PostHogApiError) {
             if (e.statusCode < 400) {

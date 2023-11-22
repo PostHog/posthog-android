@@ -132,6 +132,9 @@ public open class PostHogConfig(
     public var storagePrefix: String? = null
 
     @PostHogInternal
+    public var recordingStoragePrefix: String? = null
+
+    @PostHogInternal
     public var cachePreferences: PostHogPreferences? = null
 
     @PostHogInternal

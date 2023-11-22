@@ -58,8 +58,10 @@ public class PostHogAndroid private constructor() {
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
             val path = File(context.cacheDir, "posthog-disk-queue")
+            val recordingPath = File(context.cacheDir, "posthog-disk-recording-queue")
             config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
             config.storagePrefix = config.storagePrefix ?: path.absolutePath
+            config.recordingStoragePrefix = config.recordingStoragePrefix ?: recordingPath.absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
