@@ -1,5 +1,6 @@
 package com.posthog.android.sample
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -8,6 +9,10 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,24 +36,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@SuppressLint("UnrememberedMutableState")
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
+    var text by remember { mutableStateOf("Hello $name!") }
+
     ClickableText(
-        text = AnnotatedString("Hello $name!"),
+        text = AnnotatedString(text),
         modifier = modifier,
         onClick = {
-//            PostHog.optOut()
-//            PostHog.optIn()
-//            PostHog.identify("my_distinct_id", properties = mapOf("my_property" to 1), userProperties = mapOf("name" to "hello"))
-//            PostHog.register("test", mapOf("one" to "two"))
-//            PostHog.capture("testEvent", properties = mapOf("testProperty" to "testValue"))
-//            PostHog.reloadFeatureFlagsRequest()
-//            PostHog.isFeatureEnabled("sessionRecording")
-//            val props = mutableMapOf<String, Any>()
-//            props["test_key"] = "test_value"
-//            PostHog.group("theType", "theKey", groupProperties = props)
-//            PostHog.flush()
-//            PostHog.reset()
+            text = "Clicked!"
         },
     )
 }

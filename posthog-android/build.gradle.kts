@@ -82,6 +82,7 @@ dependencies {
     implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
     implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
+    implementation("com.squareup.curtains:curtains:1.2.4")
 
     // compatibility
     signature("org.codehaus.mojo.signature:java18:1.0@signature")

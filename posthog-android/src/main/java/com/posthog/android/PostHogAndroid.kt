@@ -12,6 +12,7 @@ import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
+import com.posthog.android.replay.PostHogReplayListeners
 import com.posthog.internal.PostHogPrintLogger
 import java.io.File
 
@@ -68,6 +69,7 @@ public class PostHogAndroid private constructor() {
             config.sdkVersion = BuildConfig.VERSION_NAME
             config.sdkName = "posthog-android"
 
+            config.addIntegration(PostHogReplayListeners(context))
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
                     config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
