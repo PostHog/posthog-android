@@ -6,14 +6,14 @@ internal open class RREvent(
     val timestamp: Long = System.currentTimeMillis(),
 )
 
-//internal enum class RRNodeType(val value: Int) {
+// internal enum class RRNodeType(val value: Int) {
 //    Document(0),
 //    DocumentType(1),
 //    Element(2),
 //    Text(3),
 //    CDATA(4),
 //    Comment(5),
-//}
+// }
 
 internal enum class RREventType(val value: Int) {
     DomContentLoaded(0),
@@ -25,7 +25,7 @@ internal enum class RREventType(val value: Int) {
     Plugin(6),
 }
 
-//internal enum class RRIncrementalSource(val value: Int) {
+// internal enum class RRIncrementalSource(val value: Int) {
 //    Mutation(0),
 //    MouseMove(1),
 //    MouseInteraction(2),
@@ -43,7 +43,7 @@ internal enum class RREventType(val value: Int) {
 //    Selection(14),
 //    AdoptedStyleSheet(15),
 //    CustomElement(16),
-//}
+// }
 
 internal class RRDomContentLoadedEvent(timestamp: Long) : RREvent(
     type = RREventType.DomContentLoaded,
@@ -57,9 +57,11 @@ internal class RRLoadedEvent(timestamp: Long) : RREvent(
 
 internal class RRFullSnapshotEvent(node: Any, initialOffsetTop: Int, initialOffsetLeft: Int) : RREvent(
     type = RREventType.FullSnapshot,
-    data = mapOf("node" to node,
+    data = mapOf(
+        "node" to node,
         "initialOffsetTop" to initialOffsetTop,
-        "initialOffsetLeft" to initialOffsetLeft),
+        "initialOffsetLeft" to initialOffsetLeft,
+    ),
 )
 
 internal class RRIncrementalSnapshotEvent(override val data: Any? = null) : RREvent(
@@ -69,28 +71,36 @@ internal class RRIncrementalSnapshotEvent(override val data: Any? = null) : RREv
 
 internal class RRMetaEvent(href: String, width: Int, height: Int, timestamp: Long) : RREvent(
     type = RREventType.Meta,
-    data = mapOf("href" to href,
+    data = mapOf(
+        "href" to href,
         "width" to width,
-        "height" to height),
+        "height" to height,
+    ),
     timestamp = timestamp,
 )
 
 internal class RRCustomEvent(tag: String, payload: Any) : RREvent(
     type = RREventType.Custom,
-    data = mapOf("tag" to tag,
-        "payload" to payload),
+    data = mapOf(
+        "tag" to tag,
+        "payload" to payload,
+    ),
 )
 
 internal class RRPluginEvent(plugin: String, payload: Any) : RREvent(
     type = RREventType.Plugin,
-    data = mapOf("plugin" to plugin,
-        "payload" to payload),
+    data = mapOf(
+        "plugin" to plugin,
+        "payload" to payload,
+    ),
 )
 
 internal class RRDocumentNode(tag: String, payload: Any) : RREvent(
     type = RREventType.Custom,
-    data = mapOf("tag" to tag,
-        "payload" to payload),
+    data = mapOf(
+        "tag" to tag,
+        "payload" to payload,
+    ),
 )
 
 // type

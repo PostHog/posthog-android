@@ -2,7 +2,6 @@ package com.posthog.android.replay.internal
 
 import android.os.Handler
 import android.os.Looper
-//import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
 
 internal class Debouncer {

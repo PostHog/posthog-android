@@ -5,7 +5,7 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 
-class NormalActivity: ComponentActivity() {
+class NormalActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

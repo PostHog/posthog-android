@@ -4,7 +4,7 @@ import android.os.Build
 import android.view.View
 import android.view.ViewTreeObserver
 
-internal class NextDrawListener(private val view: View, private val onDrawCallback: () -> Unit): ViewTreeObserver.OnDrawListener {
+internal class NextDrawListener(private val view: View, private val onDrawCallback: () -> Unit) : ViewTreeObserver.OnDrawListener {
 
     private val debounce = Debouncer()
     override fun onDraw() {

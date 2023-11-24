@@ -19,7 +19,7 @@ import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.util.WeakHashMap
 
-public class PostHogReplayListeners(private val context: Context): PostHogIntegration {
+public class PostHogReplayListeners(private val context: Context) : PostHogIntegration {
 
     private val decorViews = WeakHashMap<View, NextDrawListener>()
     private val events = mutableListOf<RREvent>()
@@ -38,10 +38,14 @@ public class PostHogReplayListeners(private val context: Context): PostHogIntegr
                     if (view.windowAttachCount == 0) {
                         window.onDecorViewReady { decorView ->
                             val displayMetrics = context.displayMetrics()
-                            events.add(RRMetaEvent(window.attributes.title.toString().substringAfter("/"),
-                                width = displayMetrics.widthPixels,
-                                height = displayMetrics.heightPixels,
-                                startTimeMs))
+                            events.add(
+                                RRMetaEvent(
+                                    window.attributes.title.toString().substringAfter("/"),
+                                    width = displayMetrics.widthPixels,
+                                    height = displayMetrics.heightPixels,
+                                    startTimeMs,
+                                ),
+                            )
 
                             val hasDecorView = decorViews.containsKey(decorView)
                             if (!hasDecorView) {
@@ -49,12 +53,13 @@ public class PostHogReplayListeners(private val context: Context): PostHogIntegr
                                     print("onNextDraw")
                                     generateSnapshot()
                                 }
-                                // TODO: check if WeakHashMap still works
+                                // TODO: check if WeakHashMap still works since the listener
+                                // is still of the decorView and may lose the ability to be destroyed
                                 decorViews[decorView] = listener
                             }
                         }
 
-                        window.touchEventInterceptors += OnTouchEventListener { motionEvent ->
+                        window.touchEventInterceptors += OnTouchEventListener { _ ->
                             // TODO: add touch events
                         }
                     }
@@ -76,7 +81,6 @@ public class PostHogReplayListeners(private val context: Context): PostHogIntegr
     private fun generateSnapshot() {
         val currentDecorViews = decorViews.keys
         if (currentDecorViews.isNotEmpty()) {
-
         }
     }
 }
