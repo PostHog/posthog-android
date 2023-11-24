@@ -22,6 +22,7 @@ public class PostHogSerializer(private val config: PostHogConfig) {
         setObjectToNumberStrategy(GsonNumberPolicy())
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
             .setLenient()
+        registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer())
     }.create()
 
     @Throws(JsonIOException::class, IOException::class)
