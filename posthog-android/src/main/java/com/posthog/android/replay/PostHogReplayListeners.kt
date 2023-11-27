@@ -19,8 +19,8 @@ import android.widget.TextView
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.internal.displayMetrics
-import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
+import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.RRAddedNode
 import com.posthog.internal.RREvent
@@ -39,17 +39,15 @@ import curtains.phoneWindow
 import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.io.ByteArrayOutputStream
+import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import java.util.concurrent.Executors
 
 public class PostHogReplayListeners(private val context: Context) : PostHogIntegration {
 
-    private val decorViews = WeakHashMap<View, NextDrawListener>()
+    private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
-
-    private var lastSnapshots = listOf<RRWireframe>()
-    private var sentFullSnapshot = false
 
     private val displayMetrics by lazy {
         context.displayMetrics()
@@ -77,12 +75,13 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
                                 val timestamp = System.currentTimeMillis()
                                 val listener = decorView.onNextDraw {
                                     executor.submit {
-                                        generateSnapshot(timestamp)
+                                        generateSnapshot(WeakReference(decorView), timestamp)
                                     }
                                 }
                                 // TODO: check if WeakHashMap still works since the listener
                                 // is still of the decorView and may lose the ability to be destroyed
-                                decorViews[decorView] = listener
+                                val status = ViewTreeSnapshotStatus(listener)
+                                decorViews[decorView] = status
                             }
                         }
 
@@ -94,8 +93,8 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
             } else {
                 view.phoneWindow?.let { window ->
                     window.peekDecorView()?.let { decorView ->
-                        decorViews[decorView]?.let { listener ->
-                            decorView.viewTreeObserver.removeOnDrawListener(listener)
+                        decorViews[decorView]?.let { status ->
+                            decorView.viewTreeObserver.removeOnDrawListener(status.listener)
                             decorViews.remove(decorView)
                         }
                     }
@@ -105,60 +104,58 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         }
     }
 
-    private fun generateSnapshot(timestamp: Long) {
-        val currentDecorViews = decorViews.keys
-        if (currentDecorViews.isNotEmpty()) {
-            val wireframes = currentDecorViews.mapNotNull {
-                convertViewToWireframe(it)
+    private fun generateSnapshot(viewRef: WeakReference<View>, timestamp: Long) {
+        val view = viewRef.get() ?: return
+        val status = decorViews[view] ?: return
+        val wireframe = convertViewToWireframe(view) ?: return
+
+        val events = mutableListOf<RREvent>()
+
+        if (!status.sentFullSnapshot) {
+            val event = RRFullSnapshotEvent(
+                listOf(wireframe),
+                initialOffsetTop = 0,
+                initialOffsetLeft = 0,
+                timestamp = timestamp,
+            )
+            events.add(event)
+            status.sentFullSnapshot = true
+        } else {
+            val lastSnapshot = status.lastSnapshot
+            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
+            val (addedItems, removedItems) = findAddedAndRemovedItems(flattenList(lastSnapshots), flattenList(listOf(wireframe)))
+
+            val addedNodes = mutableListOf<RRAddedNode>()
+            addedItems.forEach {
+                val item = RRAddedNode(it, parentId = it.parentId)
+                addedNodes.add(item)
             }
 
-            val events = mutableListOf<RREvent>()
+            val removedNodes = mutableListOf<RRRemovedNode>()
+            removedItems.forEach {
+                val item = RRRemovedNode(it.id, parentId = it.parentId)
+                removedNodes.add(item)
+            }
 
-            if (!sentFullSnapshot) {
-                val event = RRFullSnapshotEvent(
-                    wireframes,
-                    initialOffsetTop = 0,
-                    initialOffsetLeft = 0,
+            val incrementalMutationData = RRIncrementalMutationData(
+                adds = addedNodes.ifEmpty { null },
+                removes = removedNodes.ifEmpty { null },
+            )
+
+            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty()) {
+                val incrementalSnapshotEvent = RRIncrementalSnapshotEvent(
+                    mutationData = incrementalMutationData,
                     timestamp = timestamp,
                 )
-                events.add(event)
-                sentFullSnapshot = true
-            } else {
-                // TODO: incremental snapshot
-                val (addedItems, removedItems) = findAddedAndRemovedItems(flattenList(lastSnapshots), flattenList(wireframes))
-
-                val addedNodes = mutableListOf<RRAddedNode>()
-                addedItems.forEach {
-                    val item = RRAddedNode(it, parentId = it.parentId)
-                    addedNodes.add(item)
-                }
-
-                val removedNodes = mutableListOf<RRRemovedNode>()
-                removedItems.forEach {
-                    val item = RRRemovedNode(it.id, parentId = it.parentId)
-                    removedNodes.add(item)
-                }
-
-                val incrementalMutationData = RRIncrementalMutationData(
-                    adds = addedNodes.ifEmpty { null },
-                    removes = removedNodes.ifEmpty { null },
-                )
-
-                if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty()) {
-                    val incrementalSnapshotEvent = RRIncrementalSnapshotEvent(
-                        mutationData = incrementalMutationData,
-                        timestamp = timestamp,
-                    )
-                    events.add(incrementalSnapshotEvent)
-                }
+                events.add(incrementalSnapshotEvent)
             }
-
-            if (events.isNotEmpty()) {
-                captureSnapshot(events)
-            }
-
-            lastSnapshots = wireframes
         }
+
+        if (events.isNotEmpty()) {
+            captureSnapshot(events)
+        }
+
+        status.lastSnapshot = wireframe
     }
 
     private fun captureSnapshot(events: List<RREvent>) {

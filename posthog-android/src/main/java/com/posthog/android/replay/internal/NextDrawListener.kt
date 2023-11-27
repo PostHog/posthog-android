@@ -1,3 +1,5 @@
+// Inspired from https://github.com/square/curtains/blob/487bda6de00638c6decb3394b8a50bf83bed7496/curtains/src/main/java/curtains/internal/NextDrawListener.kt#L13
+
 package com.posthog.android.replay.internal
 
 import android.os.Build

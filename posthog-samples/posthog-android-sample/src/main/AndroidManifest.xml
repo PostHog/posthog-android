@@ -27,10 +27,10 @@
             </intent-filter>
         </activity>
 
-<!--        <activity-->
-<!--            android:name="com.posthog.android.sample.NormalActivity"-->
-<!--            android:exported="true"-->
-<!--            android:theme="@style/Theme.PostHogAndroidSample" />-->
+        <activity
+            android:name="com.posthog.android.sample.NothingActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PostHogAndroidSample" />
     </application>
 
 </manifest>

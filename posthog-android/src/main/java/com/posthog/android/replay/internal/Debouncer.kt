@@ -9,7 +9,6 @@ internal class Debouncer {
 
     private var lastCall = 0L
     private val oneFrameNs = TimeUnit.MILLISECONDS.toNanos(ONE_FRAME_MS)
-//    private val runnables = WeakHashMap<Runnable, Any?>()
 
     internal fun debounce(runnable: Runnable) {
         if (lastCall == 0L) {
@@ -21,14 +20,12 @@ internal class Debouncer {
         if (timePassedSinceLastExecution >= oneFrameNs) {
             execute(runnable)
         } else {
-//            runnables[runnable] = null
             handler.postDelayed({ execute(runnable) }, ONE_FRAME_MS)
         }
     }
 
     private fun execute(runnable: Runnable) {
         runnable.run()
-//        runnables.remove(runnable)
         lastCall = System.nanoTime()
     }
 
