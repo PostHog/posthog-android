@@ -130,11 +130,17 @@ public data class RRWireframe(
     val childWireframes: List<RRWireframe>? = null,
     val type: String? = null,
     val text: String? = null,
-    val textStyle: RRTextStyle? = null,
     val base64: String? = null,
+    val style: RRStyle? = null,
 )
 
-public data class RRTextStyle(val color: String)
+public data class RRStyle(
+    var color: String? = null,
+    var backgroundColor: String? = null,
+    var borderWidth: Int? = null,
+    var borderRadius: Int? = null,
+    var borderColor: String? = null,
+)
 
 // type
 // name

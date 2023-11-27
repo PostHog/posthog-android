@@ -2,7 +2,13 @@ package com.posthog.android.replay
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.VectorDrawable
 import android.util.Base64
 import android.util.DisplayMetrics
@@ -17,12 +23,10 @@ import com.posthog.android.internal.displayMetrics
 import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.internal.PostHogThreadFactory
-import com.posthog.internal.RRDomContentLoadedEvent
 import com.posthog.internal.RREvent
 import com.posthog.internal.RRFullSnapshotEvent
-import com.posthog.internal.RRLoadedEvent
 import com.posthog.internal.RRMetaEvent
-import com.posthog.internal.RRTextStyle
+import com.posthog.internal.RRStyle
 import com.posthog.internal.RRWireframe
 import curtains.Curtains
 import curtains.OnRootViewsChangedListener
@@ -38,7 +42,6 @@ import java.util.concurrent.Executors
 public class PostHogReplayListeners(private val context: Context) : PostHogIntegration {
 
     private val decorViews = WeakHashMap<View, NextDrawListener>()
-    private val events = mutableListOf<RREvent>()
 
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
 
@@ -47,23 +50,18 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
             if (added) {
                 val startTimeMs = System.currentTimeMillis()
 
-                if (events.isEmpty()) {
-                    events.add(RRDomContentLoadedEvent(startTimeMs))
-                    events.add(RRLoadedEvent(startTimeMs))
-                }
-
                 view.phoneWindow?.let { window ->
                     if (view.windowAttachCount == 0) {
                         window.onDecorViewReady { decorView ->
                             val displayMetrics = context.displayMetrics()
-                            events.add(
-                                RRMetaEvent(
-                                    window.attributes.title.toString().substringAfter("/"),
-                                    width = displayMetrics.widthPixels,
-                                    height = displayMetrics.heightPixels,
-                                    startTimeMs,
-                                ),
+                            // TODO: only send if the screen change sizes, does the onNextDraw gets called in this case?
+                            val event = RRMetaEvent(
+                                window.attributes.title.toString().substringAfter("/"),
+                                width = displayMetrics.widthPixels,
+                                height = displayMetrics.heightPixels,
+                                startTimeMs,
                             )
+                            captureSnapshot(listOf(event))
 
                             val hasDecorView = decorViews.containsKey(decorView)
                             if (!hasDecorView) {
@@ -105,15 +103,18 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
                 convertViewToWireframe(it, displayMetrics)
             }
             if (wireframes.isNotEmpty()) {
-                val eventsCopy = events.toMutableList()
-                eventsCopy.add(RRFullSnapshotEvent(wireframes, 0, 0))
+                val events = mutableListOf(RRFullSnapshotEvent(wireframes, 0, 0))
 
-                val properties = mutableMapOf<String, Any>(
-                    "\$snapshot_data" to eventsCopy,
-                )
-                PostHog.capture("\$snapshot", properties = properties)
+                captureSnapshot(events)
             }
         }
+    }
+
+    private fun captureSnapshot(events: List<RREvent>) {
+        val properties = mutableMapOf<String, Any>(
+            "\$snapshot_data" to events,
+        )
+        PostHog.capture("\$snapshot", properties = properties)
     }
 
     private fun convertViewToWireframe(view: View, displayMetrics: DisplayMetrics): RRWireframe? {
@@ -130,17 +131,25 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         val y = densityValue(coordinates[1], displayMetrics.density)
         val width = densityValue(view.width, displayMetrics.density)
         val height = densityValue(view.height, displayMetrics.density)
-        // TODO: background, styles, etc
+        val style = RRStyle()
+        // TODO: styles, etc
+        view.background?.let { background ->
+            background.getColor()?.let { color ->
+                style.backgroundColor = color
+            }
+        }
 
         var text: String? = null
         var type: String? = null
-        var textStyle: RRTextStyle? = null
         // button inherits from textview
         if (view is TextView) {
+            // TODO: masking
             text = view.text.toString()
             type = "text"
-            val color = String.format("#%06X", (0xFFFFFF and view.currentTextColor))
-            textStyle = RRTextStyle(color)
+            style.color = view.currentTextColor.toRRColor()
+            // TODO: how to get border details?
+            style.borderWidth = 1
+            style.borderColor = "#000000ff"
         }
 
         var base64: String? = null
@@ -159,18 +168,53 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
             }
         }
 
+//        val viewId = if (view.id != View.NO_ID) view.id else null
+        val viewId = System.identityHashCode(view)
+
         return RRWireframe(
-            id = view.id,
+            id = viewId,
             x = x,
             y = y,
             width = width,
             height = height,
             text = text,
             type = type,
-            textStyle = textStyle,
+            style = style,
             childWireframes = children.ifEmpty { null },
             base64 = base64,
         )
+    }
+
+    private fun Drawable.getColor(): String? {
+        if (this is ColorDrawable) {
+            return this.color.toRRColor()
+        } else if (this is RippleDrawable && numberOfLayers >= 1) {
+            try {
+                val drawable = getDrawable(0)
+                return drawable?.getColor()
+            } catch (e: Throwable) {
+                // ignore
+            }
+        } else if (this is InsetDrawable) {
+            return drawable?.getColor()
+        } else if (this is GradientDrawable) {
+            colors?.let { rgcColors ->
+                if (rgcColors.isNotEmpty()) {
+                    // Get the first color from the array
+                    val color = rgcColors[0]
+
+                    // Extract RGB values
+                    val red = Color.red(color)
+                    val green = Color.green(color)
+                    val blue = Color.blue(color)
+
+                    // Construct the RGB color
+                    val rgb = Color.rgb(red, green, blue)
+                    return rgb.toRRColor()
+                }
+            }
+        }
+        return null
     }
 
     private fun ImageView.base64(): String? {
@@ -189,5 +233,10 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
 
     private fun densityValue(pixels: Int, density: Float): Int {
         return (pixels / density).toInt()
+    }
+
+    private fun Int.toRRColor(): String {
+        // TODO: missing alpha
+        return String.format("#%06X", (0xFFFFFF and this))
     }
 }

@@ -17,6 +17,9 @@ class MyApp : Application() {
         // val apiKey = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
         // ManoelTesting:
         val apiKey = "phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8"
+        // PaulKey
+//        val apiKey = "phc_GavhjwMwc75N4HsaLjMTEvH8Kpsz70rZ3N0E9ho89YJ"
+//        val config = PostHogAndroidConfig(apiKey, host = "https://6432-86-27-112-156.ngrok-free.app").apply {
         val config = PostHogAndroidConfig(apiKey).apply {
             debug = true
             flushAt = 1
