@@ -4,6 +4,7 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:gravity="center"
     tools:context=".NormalActivity"
     tools:ignore="MissingDefaultResource">
 
@@ -16,8 +17,9 @@
         />
 
     <ImageView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:id="@+id/imvAndroid"
+        android:layout_width="230dp"
+        android:layout_height="391dp"
         android:src="@drawable/android_logo"
         />
 

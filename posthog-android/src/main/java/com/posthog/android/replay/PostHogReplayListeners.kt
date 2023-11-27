@@ -11,7 +11,6 @@ import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.VectorDrawable
 import android.util.Base64
-import android.util.DisplayMetrics
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
@@ -23,9 +22,13 @@ import com.posthog.android.internal.displayMetrics
 import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.RRAddedNode
 import com.posthog.internal.RREvent
 import com.posthog.internal.RRFullSnapshotEvent
+import com.posthog.internal.RRIncrementalMutationData
+import com.posthog.internal.RRIncrementalSnapshotEvent
 import com.posthog.internal.RRMetaEvent
+import com.posthog.internal.RRRemovedNode
 import com.posthog.internal.RRStyle
 import com.posthog.internal.RRWireframe
 import curtains.Curtains
@@ -45,6 +48,13 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
 
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
 
+    private var lastSnapshots = listOf<RRWireframe>()
+    private var sentFullSnapshot = false
+
+    private val displayMetrics by lazy {
+        context.displayMetrics()
+    }
+
     override fun install() {
         Curtains.onRootViewsChangedListeners += OnRootViewsChangedListener { view, added ->
             if (added) {
@@ -53,7 +63,6 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
                 view.phoneWindow?.let { window ->
                     if (view.windowAttachCount == 0) {
                         window.onDecorViewReady { decorView ->
-                            val displayMetrics = context.displayMetrics()
                             // TODO: only send if the screen change sizes, does the onNextDraw gets called in this case?
                             val event = RRMetaEvent(
                                 window.attributes.title.toString().substringAfter("/"),
@@ -99,22 +108,56 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
     private fun generateSnapshot(timestamp: Long) {
         val currentDecorViews = decorViews.keys
         if (currentDecorViews.isNotEmpty()) {
-            val displayMetrics = context.displayMetrics()
             val wireframes = currentDecorViews.mapNotNull {
-                convertViewToWireframe(it, displayMetrics)
+                convertViewToWireframe(it)
             }
-            if (wireframes.isNotEmpty()) {
-                val events = mutableListOf(
-                    RRFullSnapshotEvent(
-                        wireframes,
-                        initialOffsetTop = 0,
-                        initialOffsetLeft = 0,
-                        timestamp = timestamp,
-                    ),
+
+            val events = mutableListOf<RREvent>()
+
+            if (!sentFullSnapshot) {
+                val event = RRFullSnapshotEvent(
+                    wireframes,
+                    initialOffsetTop = 0,
+                    initialOffsetLeft = 0,
+                    timestamp = timestamp,
+                )
+                events.add(event)
+                sentFullSnapshot = true
+            } else {
+                // TODO: incremental snapshot
+                val (addedItems, removedItems) = findAddedAndRemovedItems(flattenList(lastSnapshots), flattenList(wireframes))
+
+                val addedNodes = mutableListOf<RRAddedNode>()
+                addedItems.forEach {
+                    val item = RRAddedNode(it, parentId = it.parentId)
+                    addedNodes.add(item)
+                }
+
+                val removedNodes = mutableListOf<RRRemovedNode>()
+                removedItems.forEach {
+                    val item = RRRemovedNode(it.id, parentId = it.parentId)
+                    removedNodes.add(item)
+                }
+
+                val incrementalMutationData = RRIncrementalMutationData(
+                    adds = addedNodes.ifEmpty { null },
+                    removes = removedNodes.ifEmpty { null },
                 )
 
+                if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty()) {
+                    val incrementalSnapshotEvent = RRIncrementalSnapshotEvent(
+                        mutationData = incrementalMutationData,
+                        timestamp = timestamp,
+                    )
+                    events.add(incrementalSnapshotEvent)
+                }
+            }
+
+            if (events.isNotEmpty()) {
                 captureSnapshot(events)
             }
+
+            lastSnapshots = wireframes
         }
     }
 
@@ -125,7 +168,7 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         PostHog.capture("\$snapshot", properties = properties)
     }
 
-    private fun convertViewToWireframe(view: View, displayMetrics: DisplayMetrics): RRWireframe? {
+    private fun convertViewToWireframe(view: View, parentId: Int? = null): RRWireframe? {
         if (!view.isShown || view.width <= 0 || view.height <= 0) {
             return null
         }
@@ -140,7 +183,7 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         val width = densityValue(view.width, displayMetrics.density)
         val height = densityValue(view.height, displayMetrics.density)
         val style = RRStyle()
-        // TODO: styles, etc
+        // TODO: font family, font size,
         view.background?.let { background ->
             background.getColor()?.let { color ->
                 style.backgroundColor = color
@@ -166,18 +209,17 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
             base64 = view.base64()
         }
 
+        val viewId = System.identityHashCode(view)
+
         val children = mutableListOf<RRWireframe>()
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                convertViewToWireframe(viewChild, displayMetrics)?.let {
+                convertViewToWireframe(viewChild, parentId = viewId)?.let {
                     children.add(it)
                 }
             }
         }
-
-//        val viewId = if (view.id != View.NO_ID) view.id else null
-        val viewId = System.identityHashCode(view)
 
         return RRWireframe(
             id = viewId,
@@ -190,6 +232,7 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
             style = style,
             childWireframes = children.ifEmpty { null },
             base64 = base64,
+            parentId = parentId,
         )
     }
 
@@ -246,5 +289,39 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
     private fun Int.toRRColor(): String {
         // TODO: missing alpha
         return String.format("#%06X", (0xFFFFFF and this))
+    }
+
+    private fun flattenList(items: List<RRWireframe>): List<RRWireframe> {
+        val result = mutableListOf<RRWireframe>()
+
+        for (item in items) {
+            result.add(item)
+
+            item.childWireframes?.let {
+                result.addAll(flattenList(it))
+            }
+        }
+
+        return result
+    }
+
+    private fun findAddedAndRemovedItems(
+        oldItems: List<RRWireframe>,
+        newItems: List<RRWireframe>,
+    ): Pair<List<RRWireframe>, List<RRWireframe>> {
+        // Create HashSet to track unique IDs
+        // TODO: should we use System.identityHashCode instead?
+        val oldItemIds = HashSet(oldItems.map { it.id })
+        val newItemIds = HashSet(newItems.map { it.id })
+
+        // Find added items by subtracting oldItemIds from newItemIds
+        val addedIds = newItemIds - oldItemIds
+        val addedItems = newItems.filter { it.id in addedIds }
+
+        // Find removed items by subtracting newItemIds from oldItemIds
+        val removedIds = oldItemIds - newItemIds
+        val removedItems = oldItems.filter { it.id in removedIds }
+
+        return Pair(addedItems, removedItems)
     }
 }

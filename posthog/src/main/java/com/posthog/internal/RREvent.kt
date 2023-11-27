@@ -2,7 +2,7 @@ package com.posthog.internal
 
 public open class RREvent(
     public val type: RREventType,
-    public open val data: Any? = null,
+    public val data: Any? = null,
     public val timestamp: Long = System.currentTimeMillis(),
 )
 
@@ -41,25 +41,51 @@ public enum class RREventType(public val value: Int) {
     }
 }
 
-// internal enum class RRIncrementalSource(val value: Int) {
-//    Mutation(0),
-//    MouseMove(1),
-//    MouseInteraction(2),
-//    Scroll(3),
-//    ViewportResize(4),
-//    Input(5),
-//    TouchMove(6),
-//    MediaInteraction(7),
-//    StyleSheetRule(8),
-//    CanvasMutation(9),
-//    Font(10),
-//    Log(11),
-//    Drag(12),
-//    StyleDeclaration(13),
-//    Selection(14),
-//    AdoptedStyleSheet(15),
-//    CustomElement(16),
-// }
+public enum class RRIncrementalSource(public val value: Int) {
+    Mutation(0),
+    MouseMove(1),
+    MouseInteraction(2),
+    Scroll(3),
+    ViewportResize(4),
+    Input(5),
+    TouchMove(6),
+    MediaInteraction(7),
+    StyleSheetRule(8),
+    CanvasMutation(9),
+    Font(10),
+    Log(11),
+    Drag(12),
+    StyleDeclaration(13),
+    Selection(14),
+    AdoptedStyleSheet(15),
+    CustomElement(16),
+    ;
+
+    public companion object {
+        public fun fromValue(value: Int): RRIncrementalSource {
+            return when (value) {
+                0 -> Mutation
+                1 -> MouseMove
+                2 -> MouseInteraction
+                3 -> Scroll
+                4 -> ViewportResize
+                5 -> Input
+                6 -> TouchMove
+                7 -> MediaInteraction
+                8 -> StyleSheetRule
+                9 -> CanvasMutation
+                10 -> Font
+                11 -> Log
+                12 -> Drag
+                13 -> StyleDeclaration
+                14 -> Selection
+                15 -> AdoptedStyleSheet
+                16 -> CustomElement
+                else -> throw IllegalArgumentException("Unknown value $value")
+            }
+        }
+    }
+}
 
 public class RRDomContentLoadedEvent(timestamp: Long) : RREvent(
     type = RREventType.DomContentLoaded,
@@ -88,9 +114,30 @@ public class RRFullSnapshotEvent(
     timestamp = timestamp,
 )
 
-public class RRIncrementalSnapshotEvent(override val data: Any? = null) : RREvent(
+public class RRIncrementalSnapshotEvent(
+    mutationData: RRIncrementalMutationData? = null,
+    timestamp: Long,
+) : RREvent(
     type = RREventType.IncrementalSnapshot,
-    data = data,
+    data = mutationData,
+    timestamp = timestamp,
+)
+
+public data class RRAddedNode(
+    val wireframe: RRWireframe,
+    val parentId: Int? = null,
+)
+
+public data class RRRemovedNode(
+    val id: Int,
+    val parentId: Int? = null,
+)
+
+public class RRIncrementalMutationData(
+    public val adds: List<RRAddedNode>? = null,
+    public val removes: List<RRRemovedNode>? = null,
+    public val source: RRIncrementalSource = RRIncrementalSource.Mutation,
+    // TODO: do we need updates?
 )
 
 public class RRMetaEvent(href: String, width: Int, height: Int, timestamp: Long) : RREvent(
@@ -127,6 +174,7 @@ public class RRDocumentNode(tag: String, payload: Any) : RREvent(
     ),
 )
 
+// TODO: create abstractions on top of RRWireframe, eg RRTextWireframe, etc
 public data class RRWireframe(
     val id: Int,
     val x: Int,
@@ -138,6 +186,8 @@ public data class RRWireframe(
     val text: String? = null,
     val base64: String? = null,
     val style: RRStyle? = null,
+    @Transient
+    val parentId: Int? = null,
 )
 
 public data class RRStyle(
@@ -147,8 +197,3 @@ public data class RRStyle(
     var borderRadius: Int? = null,
     var borderColor: String? = null,
 )
-
-// type
-// name
-// publicId
-// systemId

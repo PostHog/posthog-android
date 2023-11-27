@@ -62,8 +62,7 @@ internal class PostHogApi(
             print("rrweb events: $it")
         }
 
-        // TODO: read endpoint from decide API
-        // TODO: missing sent_at?
+        // sent_at isn't supported by the snapshot endpoint
         val request = makeRequest("$theHost${config.snapshotEndpoint}") {
             config.serializer.serialize(events, it.bufferedWriter())
         }

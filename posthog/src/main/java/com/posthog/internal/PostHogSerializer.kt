@@ -23,6 +23,7 @@ public class PostHogSerializer(private val config: PostHogConfig) {
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
             .setLenient()
         registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer())
+        registerTypeAdapter(RRIncrementalSource::class.java, GsonRRIncrementalSourceSerializer())
     }.create()
 
     @Throws(JsonIOException::class, IOException::class)
