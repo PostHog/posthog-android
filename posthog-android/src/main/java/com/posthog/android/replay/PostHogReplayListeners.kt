@@ -65,9 +65,10 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
 
                             val hasDecorView = decorViews.containsKey(decorView)
                             if (!hasDecorView) {
+                                val timestamp = System.currentTimeMillis()
                                 val listener = decorView.onNextDraw {
                                     executor.submit {
-                                        generateSnapshot()
+                                        generateSnapshot(timestamp)
                                     }
                                 }
                                 // TODO: check if WeakHashMap still works since the listener
@@ -95,7 +96,7 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         }
     }
 
-    private fun generateSnapshot() {
+    private fun generateSnapshot(timestamp: Long) {
         val currentDecorViews = decorViews.keys
         if (currentDecorViews.isNotEmpty()) {
             val displayMetrics = context.displayMetrics()
@@ -103,7 +104,14 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
                 convertViewToWireframe(it, displayMetrics)
             }
             if (wireframes.isNotEmpty()) {
-                val events = mutableListOf(RRFullSnapshotEvent(wireframes, 0, 0))
+                val events = mutableListOf(
+                    RRFullSnapshotEvent(
+                        wireframes,
+                        initialOffsetTop = 0,
+                        initialOffsetLeft = 0,
+                        timestamp = timestamp,
+                    ),
+                )
 
                 captureSnapshot(events)
             }

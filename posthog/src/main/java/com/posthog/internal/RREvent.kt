@@ -71,7 +71,12 @@ public class RRLoadedEvent(timestamp: Long) : RREvent(
     timestamp = timestamp,
 )
 
-public class RRFullSnapshotEvent(wireframes: List<RRWireframe>, initialOffsetTop: Int, initialOffsetLeft: Int) : RREvent(
+public class RRFullSnapshotEvent(
+    wireframes: List<RRWireframe>,
+    initialOffsetTop: Int,
+    initialOffsetLeft: Int,
+    timestamp: Long,
+) : RREvent(
     type = RREventType.FullSnapshot,
     data = mapOf(
         "wireframes" to wireframes,
@@ -80,6 +85,7 @@ public class RRFullSnapshotEvent(wireframes: List<RRWireframe>, initialOffsetTop
             "left" to initialOffsetLeft,
         ),
     ),
+    timestamp = timestamp,
 )
 
 public class RRIncrementalSnapshotEvent(override val data: Any? = null) : RREvent(
