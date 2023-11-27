@@ -25,8 +25,8 @@ public class PostHog private constructor(
     private val queueExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogQueueThread"),
     ),
-    private val recordingExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("PostHogRecordingQueueThread"),
+    private val replayExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
+        PostHogThreadFactory("PostHogReplayQueueThread"),
     ),
     private val featureFlagsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogFeatureFlagsThread"),
@@ -51,7 +51,7 @@ public class PostHog private constructor(
 
     private var featureFlags: PostHogFeatureFlags? = null
     private var queue: PostHogQueue? = null
-    private var recordingQueue: PostHogQueue? = null
+    private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
@@ -72,7 +72,7 @@ public class PostHog private constructor(
                 val dateProvider = PostHogCalendarDateProvider()
                 val api = PostHogApi(config, dateProvider)
                 val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, dateProvider, queueExecutor)
-                val recordingQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.recordingStoragePrefix, dateProvider, recordingExecutor)
+                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, dateProvider, replayExecutor)
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -94,7 +94,7 @@ public class PostHog private constructor(
 
                 this.config = config
                 this.queue = queue
-                this.recordingQueue = recordingQueue
+                this.replayQueue = replayQueue
                 this.featureFlags = featureFlags
 
                 config.addIntegration(sendCachedEventsIntegration)
@@ -170,7 +170,7 @@ public class PostHog private constructor(
                 }
 
                 queue?.stop()
-                recordingQueue?.stop()
+                replayQueue?.stop()
 
                 featureFlagsCalled.clear()
 
@@ -213,37 +213,40 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groupProperties: Map<String, Any>?,
+        appendSharedProps: Boolean = true,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
-        val registeredPrefs = getPreferences().getAll()
-        if (registeredPrefs.isNotEmpty()) {
-            props.putAll(registeredPrefs)
-        }
+        if (appendSharedProps) {
+            val registeredPrefs = getPreferences().getAll()
+            if (registeredPrefs.isNotEmpty()) {
+                props.putAll(registeredPrefs)
+            }
 
-        config?.context?.getStaticContext()?.let {
-            props.putAll(it)
-        }
+            config?.context?.getStaticContext()?.let {
+                props.putAll(it)
+            }
 
-        config?.context?.getDynamicContext()?.let {
-            props.putAll(it)
-        }
+            config?.context?.getDynamicContext()?.let {
+                props.putAll(it)
+            }
 
-        if (config?.sendFeatureFlagEvent == true) {
-            featureFlags?.getFeatureFlags()?.let {
-                if (it.isNotEmpty()) {
-                    val keys = mutableListOf<String>()
-                    for (entry in it.entries) {
-                        props["\$feature/${entry.key}"] = entry.value
+            if (config?.sendFeatureFlagEvent == true) {
+                featureFlags?.getFeatureFlags()?.let {
+                    if (it.isNotEmpty()) {
+                        val keys = mutableListOf<String>()
+                        for (entry in it.entries) {
+                            props["\$feature/${entry.key}"] = entry.value
 
-                        // only add active feature flags
-                        val active = entry.value as? Boolean ?: true
+                            // only add active feature flags
+                            val active = entry.value as? Boolean ?: true
 
-                        if (active) {
-                            keys.add(entry.key)
+                            if (active) {
+                                keys.add(entry.key)
+                            }
                         }
+                        props["\$active_feature_flags"] = keys
                     }
-                    props["\$active_feature_flags"] = keys
                 }
             }
         }
@@ -251,8 +254,7 @@ public class PostHog private constructor(
         synchronized(sessionLock) {
             if (sessionId != sessionIdNone) {
                 props["\$session_id"] = sessionId.toString()
-                // TODO: should I generate a new window_id similarly to session id?
-                props["\$window_id"] = sessionId.toString()
+//                props["\$window_id"] = sessionId.toString()
             }
         }
 
@@ -298,11 +300,18 @@ public class PostHog private constructor(
 
         val newDistinctId = distinctId ?: this.distinctId
 
+        var snapshotEvent = false
+        if (event == "\$snapshot") {
+            snapshotEvent = true
+        }
+
         val mergedProperties = buildProperties(
             properties = properties,
             userProperties = userProperties,
             userPropertiesSetOnce = userPropertiesSetOnce,
             groupProperties = groupProperties,
+            // only append shared props if not a snapshot event
+            appendSharedProps = !snapshotEvent,
         )
 
         // sanitize the properties or fallback to the original properties
@@ -314,9 +323,9 @@ public class PostHog private constructor(
             properties = sanitizedProperties,
         )
 
-        // recording has its own queue
-        if (event == "\$snapshot") {
-            recordingQueue?.add(postHogEvent)
+        // Replay has its own queue
+        if (snapshotEvent) {
+            replayQueue?.add(postHogEvent)
             return
         }
 
@@ -516,7 +525,7 @@ public class PostHog private constructor(
             return
         }
         queue?.flush()
-        recordingQueue?.flush()
+        replayQueue?.flush()
     }
 
     public override fun reset() {
@@ -530,7 +539,7 @@ public class PostHog private constructor(
         getPreferences().clear(except = except)
         featureFlags?.clear()
         queue?.clear()
-        recordingQueue?.clear()
+        replayQueue?.clear()
         featureFlagsCalled.clear()
     }
 
@@ -618,14 +627,14 @@ public class PostHog private constructor(
         internal fun <T : PostHogConfig> withInternal(
             config: T,
             queueExecutor: ExecutorService,
-            recordingExecutor: ExecutorService,
+            replayExecutor: ExecutorService,
             featureFlagsExecutor: ExecutorService,
             cachedEventsExecutor: ExecutorService,
             reloadFeatureFlags: Boolean,
         ): PostHogInterface {
             val instance = PostHog(
                 queueExecutor,
-                recordingExecutor,
+                replayExecutor,
                 featureFlagsExecutor,
                 cachedEventsExecutor,
                 reloadFeatureFlags = reloadFeatureFlags,

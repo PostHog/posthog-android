@@ -31,7 +31,7 @@ internal class PostHogSendCachedEventsIntegration(
 
             flushLegacyEvents()
             flushEvents(config.storagePrefix)
-            flushEvents(config.recordingStoragePrefix)
+            flushEvents(config.replayStoragePrefix)
         }
         executor.shutdown()
     }

@@ -34,7 +34,7 @@ public data class PostHogEvent(
     @Deprecated("Do not use it, prefer [properties]")
     @SerializedName("\$set")
     val set: Map<String, Any>? = null,
-    // Only used for recording
+    // Only used for Replay
     @SerializedName("api_key")
     var apiKey: String? = null,
 )
