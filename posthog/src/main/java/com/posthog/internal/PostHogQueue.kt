@@ -189,10 +189,7 @@ internal class PostHogQueue(
             if (events.isNotEmpty()) {
                 when (endpoint) {
                     PostHogApiEndpoint.BATCH -> api.batch(events)
-                    // TODO: error flow here should be different since its 1 by 1
-                    PostHogApiEndpoint.SNAPSHOT -> events.forEach {
-                        api.snapshot(it)
-                    }
+                    PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
                 }
             }
         } catch (e: PostHogApiError) {

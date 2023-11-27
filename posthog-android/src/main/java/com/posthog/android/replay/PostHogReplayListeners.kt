@@ -16,6 +16,7 @@ import com.posthog.PostHogIntegration
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
+import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.RRDomContentLoadedEvent
 import com.posthog.internal.RREvent
 import com.posthog.internal.RRFullSnapshotEvent
@@ -32,11 +33,14 @@ import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.io.ByteArrayOutputStream
 import java.util.WeakHashMap
+import java.util.concurrent.Executors
 
 public class PostHogReplayListeners(private val context: Context) : PostHogIntegration {
 
     private val decorViews = WeakHashMap<View, NextDrawListener>()
     private val events = mutableListOf<RREvent>()
+
+    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
 
     override fun install() {
         Curtains.onRootViewsChangedListeners += OnRootViewsChangedListener { view, added ->
@@ -64,8 +68,9 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
                             val hasDecorView = decorViews.containsKey(decorView)
                             if (!hasDecorView) {
                                 val listener = decorView.onNextDraw {
-                                    print("onNextDraw")
-                                    generateSnapshot()
+                                    executor.submit {
+                                        generateSnapshot()
+                                    }
                                 }
                                 // TODO: check if WeakHashMap still works since the listener
                                 // is still of the decorView and may lose the ability to be destroyed
@@ -103,7 +108,10 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
                 val eventsCopy = events.toMutableList()
                 eventsCopy.add(RRFullSnapshotEvent(wireframes, 0, 0))
 
-                PostHog.capture()
+                val properties = mutableMapOf<String, Any>(
+                    "\$snapshot_data" to eventsCopy,
+                )
+                PostHog.capture("\$snapshot", properties = properties)
             }
         }
     }

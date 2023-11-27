@@ -140,6 +140,9 @@ public open class PostHogConfig(
     @PostHogInternal
     public var networkStatus: PostHogNetworkStatus? = null
 
+    @PostHogInternal
+    public var snapshotEndpoint: String = "/s/"
+
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()
 

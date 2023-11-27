@@ -213,40 +213,37 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groupProperties: Map<String, Any>?,
-        appendSharedProps: Boolean = true,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
-        if (appendSharedProps) {
-            val registeredPrefs = getPreferences().getAll()
-            if (registeredPrefs.isNotEmpty()) {
-                props.putAll(registeredPrefs)
-            }
+        val registeredPrefs = getPreferences().getAll()
+        if (registeredPrefs.isNotEmpty()) {
+            props.putAll(registeredPrefs)
+        }
 
-            config?.context?.getStaticContext()?.let {
-                props.putAll(it)
-            }
+        config?.context?.getStaticContext()?.let {
+            props.putAll(it)
+        }
 
-            config?.context?.getDynamicContext()?.let {
-                props.putAll(it)
-            }
+        config?.context?.getDynamicContext()?.let {
+            props.putAll(it)
+        }
 
-            if (config?.sendFeatureFlagEvent == true) {
-                featureFlags?.getFeatureFlags()?.let {
-                    if (it.isNotEmpty()) {
-                        val keys = mutableListOf<String>()
-                        for (entry in it.entries) {
-                            props["\$feature/${entry.key}"] = entry.value
+        if (config?.sendFeatureFlagEvent == true) {
+            featureFlags?.getFeatureFlags()?.let {
+                if (it.isNotEmpty()) {
+                    val keys = mutableListOf<String>()
+                    for (entry in it.entries) {
+                        props["\$feature/${entry.key}"] = entry.value
 
-                            // only add active feature flags
-                            val active = entry.value as? Boolean ?: true
+                        // only add active feature flags
+                        val active = entry.value as? Boolean ?: true
 
-                            if (active) {
-                                keys.add(entry.key)
-                            }
+                        if (active) {
+                            keys.add(entry.key)
                         }
-                        props["\$active_feature_flags"] = keys
                     }
+                    props["\$active_feature_flags"] = keys
                 }
             }
         }
@@ -254,6 +251,8 @@ public class PostHog private constructor(
         synchronized(sessionLock) {
             if (sessionId != sessionIdNone) {
                 props["\$session_id"] = sessionId.toString()
+                // TODO: should I generate a new window_id similarly to session id?
+                props["\$window_id"] = sessionId.toString()
             }
         }
 
@@ -271,6 +270,11 @@ public class PostHog private constructor(
 
         groupProperties?.let {
             props["\$groups"] = it
+        }
+
+        // Replay needs distinct_id also in the props
+        props["distinct_id"]?.let {
+            props["distinct_id"] = distinctId
         }
 
         return props

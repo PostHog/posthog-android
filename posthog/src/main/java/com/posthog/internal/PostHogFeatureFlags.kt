@@ -76,6 +76,7 @@ internal class PostHogFeatureFlags(
                                 // TODO: implement logic of enabled or not depending on client vs server side config
                                 config.sessionReplay = true
                                 config.sessionReplaySampleRate = sessionRecording?.get("sampleRate") as? Double ?: config.sessionReplaySampleRate
+                                config.snapshotEndpoint = sessionRecording?.get("endpoint") as? String ?: config.snapshotEndpoint
                                 // TODO: implement session recording config
                                 // endpoint=/s/
                                 // consoleLogRecordingEnabled

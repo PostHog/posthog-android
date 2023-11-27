@@ -21,8 +21,8 @@ class MyApp : Application() {
             debug = true
             flushAt = 1
             captureDeepLinks = false
-//            captureApplicationLifecycleEvents = false
-//            captureScreenViews = false
+            captureApplicationLifecycleEvents = false
+            captureScreenViews = false
 //            sessionReplay = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
             propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
