@@ -1,5 +1,8 @@
 package com.posthog.internal
 
+import com.posthog.PostHogInternal
+
+@PostHogInternal
 public open class RREvent(
     public val type: RREventType,
     public val data: Any? = null,
@@ -15,6 +18,7 @@ public open class RREvent(
 //    Comment(5),
 // }
 
+@PostHogInternal
 public enum class RREventType(public val value: Int) {
     DomContentLoaded(0),
     Load(1),
@@ -41,6 +45,7 @@ public enum class RREventType(public val value: Int) {
     }
 }
 
+@PostHogInternal
 public enum class RRIncrementalSource(public val value: Int) {
     Mutation(0),
     MouseMove(1),
@@ -87,16 +92,19 @@ public enum class RRIncrementalSource(public val value: Int) {
     }
 }
 
+@PostHogInternal
 public class RRDomContentLoadedEvent(timestamp: Long) : RREvent(
     type = RREventType.DomContentLoaded,
     timestamp = timestamp,
 )
 
+@PostHogInternal
 public class RRLoadedEvent(timestamp: Long) : RREvent(
     type = RREventType.Load,
     timestamp = timestamp,
 )
 
+@PostHogInternal
 public class RRFullSnapshotEvent(
     wireframes: List<RRWireframe>,
     initialOffsetTop: Int,
@@ -114,6 +122,7 @@ public class RRFullSnapshotEvent(
     timestamp = timestamp,
 )
 
+@PostHogInternal
 public class RRIncrementalSnapshotEvent(
     mutationData: RRIncrementalMutationData? = null,
     timestamp: Long,
@@ -123,6 +132,7 @@ public class RRIncrementalSnapshotEvent(
     timestamp = timestamp,
 )
 
+@PostHogInternal
 public class RRIncrementalMouseInteractionEvent(
     mouseInteractionData: RRIncrementalMouseInteractionData? = null,
     timestamp: Long,
@@ -132,16 +142,19 @@ public class RRIncrementalMouseInteractionEvent(
     timestamp = timestamp,
 )
 
-public data class RRAddedNode(
-    val wireframe: RRWireframe,
-    val parentId: Int? = null,
+@PostHogInternal
+public class RRAddedNode(
+    public val wireframe: RRWireframe,
+    public val parentId: Int? = null,
 )
 
-public data class RRRemovedNode(
-    val id: Int,
-    val parentId: Int? = null,
+@PostHogInternal
+public class RRRemovedNode(
+    public val id: Int,
+    public val parentId: Int? = null,
 )
 
+@PostHogInternal
 public class RRIncrementalMutationData(
     public val adds: List<RRAddedNode>? = null,
     public val removes: List<RRRemovedNode>? = null,
@@ -149,6 +162,7 @@ public class RRIncrementalMutationData(
     // TODO: do we need updates?
 )
 
+@PostHogInternal
 public enum class RRMouseInteraction(public val value: Int) {
     MouseUp(0),
     MouseDown(1),
@@ -183,6 +197,7 @@ public enum class RRMouseInteraction(public val value: Int) {
     }
 }
 
+@PostHogInternal
 public class RRIncrementalMouseInteractionData(
     public val id: Int,
     public val type: RRMouseInteraction,
@@ -192,6 +207,7 @@ public class RRIncrementalMouseInteractionData(
     public val pointerType: Int = 2, // always Touch
 )
 
+@PostHogInternal
 public class RRMetaEvent(width: Int, height: Int, timestamp: Long, href: String) : RREvent(
     type = RREventType.Meta,
     data = mapOf(
@@ -202,6 +218,7 @@ public class RRMetaEvent(width: Int, height: Int, timestamp: Long, href: String)
     timestamp = timestamp,
 )
 
+@PostHogInternal
 public class RRCustomEvent(tag: String, payload: Any) : RREvent(
     type = RREventType.Custom,
     data = mapOf(
@@ -210,6 +227,7 @@ public class RRCustomEvent(tag: String, payload: Any) : RREvent(
     ),
 )
 
+@PostHogInternal
 public class RRPluginEvent(plugin: String, payload: Any) : RREvent(
     type = RREventType.Plugin,
     data = mapOf(
@@ -218,6 +236,7 @@ public class RRPluginEvent(plugin: String, payload: Any) : RREvent(
     ),
 )
 
+@PostHogInternal
 public class RRDocumentNode(tag: String, payload: Any) : RREvent(
     type = RREventType.Custom,
     data = mapOf(
@@ -227,25 +246,27 @@ public class RRDocumentNode(tag: String, payload: Any) : RREvent(
 )
 
 // TODO: create abstractions on top of RRWireframe, eg RRTextWireframe, etc
-public data class RRWireframe(
-    val id: Int,
-    val x: Int,
-    val y: Int,
-    val width: Int,
-    val height: Int,
-    val childWireframes: List<RRWireframe>? = null,
-    val type: String? = null,
-    val text: String? = null,
-    val base64: String? = null,
-    val style: RRStyle? = null,
+@PostHogInternal
+public class RRWireframe(
+    public val id: Int,
+    public val x: Int,
+    public val y: Int,
+    public val width: Int,
+    public val height: Int,
+    public val childWireframes: List<RRWireframe>? = null,
+    public val type: String? = null,
+    public val text: String? = null,
+    public val base64: String? = null,
+    public val style: RRStyle? = null,
     @Transient
-    val parentId: Int? = null,
+    public val parentId: Int? = null,
 )
 
-public data class RRStyle(
-    var color: String? = null,
-    var backgroundColor: String? = null,
-    var borderWidth: Int? = null,
-    var borderRadius: Int? = null,
-    var borderColor: String? = null,
+@PostHogInternal
+public class RRStyle(
+    public var color: String? = null,
+    public var backgroundColor: String? = null,
+    public var borderWidth: Int? = null,
+    public var borderRadius: Int? = null,
+    public var borderColor: String? = null,
 )

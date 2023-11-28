@@ -26,8 +26,8 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public final fun setCaptureScreenViews (Z)V
 }
 
-public final class com/posthog/android/replay/PostHogReplayListeners : com/posthog/PostHogIntegration {
-	public fun <init> (Landroid/content/Context;)V
+public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration {
+	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)V
 	public fun install ()V
 	public fun uninstall ()V
 }

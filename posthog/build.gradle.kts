@@ -77,7 +77,9 @@ animalsniffer {
 //    com.posthog.internal.PostHogDecideRequest  Undefined reference (android-api-level-21-5.0.1_r2): boolean java.util.HashMap.remove(Object, Object)
 //    com.posthog.internal.PostHogDecideRequest  Undefined reference (android-api-level-21-5.0.1_r2): Object java.util.HashMap.getOrDefault(Object, Object)
 //    we don't use these methods, so ignore them, they are only available on Android >= 24
-    ignore("java.util.HashMap")
+//    [Undefined reference | android-api-level-21-5.0.1_r2] com.posthog.internal.(RREvent.kt:1)
+//    >> int Integer.hashCode(int)
+    ignore("java.util.HashMap", "com.posthog.internal.RREvent")
 }
 
 dependencies {

@@ -19,8 +19,10 @@ internal class NextDrawListener(private val view: View, private val onDrawCallba
         // Prior to API 26, OnDrawListener wasn't merged back from the floating ViewTreeObserver into
         // the real ViewTreeObserver.
         // https://android.googlesource.com/platform/frameworks/base/+/9f8ec54244a5e0343b9748db3329733f259604f3
-        if (Build.VERSION.SDK_INT >= 26 || (view.viewTreeObserver.isAlive && view.isAttachedToWindow)) {
-            view.viewTreeObserver.addOnDrawListener(this)
+        view.viewTreeObserver?.let { viewTreeObserver ->
+            if (Build.VERSION.SDK_INT >= 26 || (viewTreeObserver.isAlive && view.isAttachedToWindow)) {
+                viewTreeObserver.addOnDrawListener(this)
+            }
         }
     }
 

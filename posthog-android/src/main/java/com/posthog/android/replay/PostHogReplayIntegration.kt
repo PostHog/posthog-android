@@ -11,6 +11,8 @@ import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.VectorDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import android.view.MotionEvent
 import android.view.View
@@ -59,6 +61,8 @@ public class PostHogReplayIntegration(
     private val executor by lazy {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
+
+    private val handler = Handler(Looper.getMainLooper())
 
     @Volatile
     private var isSessionActive = false
@@ -152,7 +156,13 @@ public class PostHogReplayIntegration(
     }
 
     private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
-        view.viewTreeObserver.removeOnDrawListener(status.listener)
+        view.viewTreeObserver?.let { viewTreeObserver ->
+            if (viewTreeObserver.isAlive) {
+                handler.post {
+                    viewTreeObserver.removeOnDrawListener(status.listener)
+                }
+            }
+        }
         view.phoneWindow?.let { window ->
             window.touchEventInterceptors -= onTouchEventListener
         }

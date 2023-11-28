@@ -11,7 +11,7 @@ object PosthogBuildConfig {
 
     object Android {
         val COMPILE_SDK = 34
-        val MIN_SDK = 24 // TODO: addOnFrameMetricsAvailableListener
+        val MIN_SDK = 21 // Session Replay (addOnFrameMetricsAvailableListener requires API 26)
         val TARGET_SDK = COMPILE_SDK
     }
 
@@ -29,9 +29,9 @@ object PosthogBuildConfig {
     object Plugins {
         val ANIMAL_SNIFFER = "1.7.1"
 
-        val ANIMAL_SNIFFER_SDK_VERSION = "7.0_r2" // 24
+//        val ANIMAL_SNIFFER_SDK_VERSION = "7.0_r2" // 24
 
-//        val ANIMAL_SNIFFER_SDK_VERSION = "5.0.1_r2" // 21
+        val ANIMAL_SNIFFER_SDK_VERSION = "5.0.1_r2" // 21
         val SPOTLESS = "6.21.0"
         val DETEKT = "1.23.1"
         val API_VALIDATOR = "0.13.2"
