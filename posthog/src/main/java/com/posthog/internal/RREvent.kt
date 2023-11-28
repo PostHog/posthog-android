@@ -123,6 +123,15 @@ public class RRIncrementalSnapshotEvent(
     timestamp = timestamp,
 )
 
+public class RRIncrementalMouseInteractionEvent(
+    mouseInteractionData: RRIncrementalMouseInteractionData? = null,
+    timestamp: Long,
+) : RREvent(
+    type = RREventType.IncrementalSnapshot,
+    data = mouseInteractionData,
+    timestamp = timestamp,
+)
+
 public data class RRAddedNode(
     val wireframe: RRWireframe,
     val parentId: Int? = null,
@@ -140,7 +149,50 @@ public class RRIncrementalMutationData(
     // TODO: do we need updates?
 )
 
-public class RRMetaEvent(href: String, width: Int, height: Int, timestamp: Long) : RREvent(
+public enum class RRMouseInteraction(public val value: Int) {
+    MouseUp(0),
+    MouseDown(1),
+    Click(2),
+    ContextMenu(3),
+    DblClick(4),
+    Focus(5),
+    Blur(6),
+    TouchStart(7),
+    TouchMoveDeparted(8), // we will start a separate observer for touch move event
+    TouchEnd(9),
+    TouchCancel(10),
+    ;
+
+    public companion object {
+        public fun fromValue(value: Int): RRMouseInteraction {
+            return when (value) {
+                0 -> MouseUp
+                1 -> MouseDown
+                2 -> Click
+                3 -> ContextMenu
+                4 -> DblClick
+                5 -> Focus
+                6 -> Blur
+                7 -> TouchStart
+                8 -> TouchMoveDeparted
+                9 -> TouchEnd
+                10 -> TouchCancel
+                else -> throw IllegalArgumentException("Unknown value $value")
+            }
+        }
+    }
+}
+
+public class RRIncrementalMouseInteractionData(
+    public val id: Int,
+    public val type: RRMouseInteraction,
+    public val x: Int,
+    public val y: Int,
+    public val source: RRIncrementalSource = RRIncrementalSource.MouseInteraction,
+    public val pointerType: Int = 2, // always Touch
+)
+
+public class RRMetaEvent(width: Int, height: Int, timestamp: Long, href: String) : RREvent(
     type = RREventType.Meta,
     data = mapOf(
         "href" to href,

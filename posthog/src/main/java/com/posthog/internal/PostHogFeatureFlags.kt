@@ -67,18 +67,14 @@ internal class PostHogFeatureFlags(
                         }
 
                         if (response.sessionRecording is Boolean) {
-                            // TODO: rollback
-//                            config.sessionReplay = response.sessionRecording
-                            config.sessionReplay = true
+                            config.sessionReplay = response.sessionRecording && config.sessionReplay
                         } else if (response.sessionRecording is Map<*, *>) {
                             @Suppress("UNCHECKED_CAST")
                             (response.sessionRecording as? Map<String, Any?>).let { sessionRecording ->
-                                // TODO: implement logic of enabled or not depending on client vs server side config
-                                config.sessionReplay = true
+                                config.sessionReplay = true && config.sessionReplay
                                 config.sessionReplaySampleRate = sessionRecording?.get("sampleRate") as? Double ?: config.sessionReplaySampleRate
                                 config.snapshotEndpoint = sessionRecording?.get("endpoint") as? String ?: config.snapshotEndpoint
                                 // TODO: implement session recording config
-                                // endpoint=/s/
                                 // consoleLogRecordingEnabled
                                 // recorderVersion=v2
                                 // sampleRate

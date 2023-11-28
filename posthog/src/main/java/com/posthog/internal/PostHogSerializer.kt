@@ -24,6 +24,7 @@ public class PostHogSerializer(private val config: PostHogConfig) {
             .setLenient()
         registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer())
         registerTypeAdapter(RRIncrementalSource::class.java, GsonRRIncrementalSourceSerializer())
+        registerTypeAdapter(RRMouseInteraction::class.java, GsonRRMouseInteractionsSerializer())
     }.create()
 
     @Throws(JsonIOException::class, IOException::class)

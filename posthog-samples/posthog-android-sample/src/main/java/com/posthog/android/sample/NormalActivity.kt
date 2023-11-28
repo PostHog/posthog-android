@@ -23,6 +23,7 @@ class NormalActivity : ComponentActivity() {
 //                imvAndroid.visibility = View.VISIBLE
 //            }
             startActivity(Intent(this, NothingActivity::class.java))
+            finish()
         }
     }
 }

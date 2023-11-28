@@ -10,7 +10,9 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.VectorDrawable
+import android.os.Build
 import android.util.Base64
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
@@ -18,6 +20,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
@@ -25,9 +28,12 @@ import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.RRAddedNode
 import com.posthog.internal.RREvent
 import com.posthog.internal.RRFullSnapshotEvent
+import com.posthog.internal.RRIncrementalMouseInteractionData
+import com.posthog.internal.RRIncrementalMouseInteractionEvent
 import com.posthog.internal.RRIncrementalMutationData
 import com.posthog.internal.RRIncrementalSnapshotEvent
 import com.posthog.internal.RRMetaEvent
+import com.posthog.internal.RRMouseInteraction
 import com.posthog.internal.RRRemovedNode
 import com.posthog.internal.RRStyle
 import com.posthog.internal.RRWireframe
@@ -43,73 +49,147 @@ import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import java.util.concurrent.Executors
 
-public class PostHogReplayListeners(private val context: Context) : PostHogIntegration {
+public class PostHogReplayIntegration(
+    private val context: Context,
+    private val config: PostHogAndroidConfig,
+) : PostHogIntegration {
 
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
-    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
+    private val executor by lazy {
+        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
+    }
+
+    @Volatile
+    private var isSessionActive = false
 
     private val displayMetrics by lazy {
         context.displayMetrics()
     }
 
-    override fun install() {
-        Curtains.onRootViewsChangedListeners += OnRootViewsChangedListener { view, added ->
-            if (added) {
-                val startTimeMs = System.currentTimeMillis()
+    private val isSessionReplayEnabled: Boolean
+        get() = config.sessionReplay && isSessionActive
 
-                view.phoneWindow?.let { window ->
-                    if (view.windowAttachCount == 0) {
-                        window.onDecorViewReady { decorView ->
-                            // TODO: only send if the screen change sizes, does the onNextDraw gets called in this case?
-                            val event = RRMetaEvent(
-                                window.attributes.title.toString().substringAfter("/"),
-                                width = displayMetrics.widthPixels,
-                                height = displayMetrics.heightPixels,
-                                startTimeMs,
-                            )
-                            captureSnapshot(listOf(event))
+    private val onRootViewsChangedListener = OnRootViewsChangedListener { view, added ->
+        if (added) {
+            view.phoneWindow?.let { window ->
+                if (view.windowAttachCount == 0) {
+                    window.onDecorViewReady { decorView ->
+                        val listener = decorView.onNextDraw {
+                            if (!isSessionReplayEnabled) {
+                                return@onNextDraw
+                            }
+                            val timestamp = System.currentTimeMillis()
 
-                            val hasDecorView = decorViews.containsKey(decorView)
-                            if (!hasDecorView) {
-                                val timestamp = System.currentTimeMillis()
-                                val listener = decorView.onNextDraw {
-                                    executor.submit {
-                                        generateSnapshot(WeakReference(decorView), timestamp)
-                                    }
-                                }
-                                // TODO: check if WeakHashMap still works since the listener
-                                // is still of the decorView and may lose the ability to be destroyed
-                                val status = ViewTreeSnapshotStatus(listener)
-                                decorViews[decorView] = status
+                            executor.submit {
+                                generateSnapshot(WeakReference(decorView), timestamp)
                             }
                         }
 
-                        window.touchEventInterceptors += OnTouchEventListener { _ ->
-                            // TODO: add touch events
-                        }
+                        val status = ViewTreeSnapshotStatus(listener)
+                        decorViews[decorView] = status
                     }
+
+                    window.touchEventInterceptors += onTouchEventListener
                 }
-            } else {
-                view.phoneWindow?.let { window ->
-                    window.peekDecorView()?.let { decorView ->
-                        decorViews[decorView]?.let { status ->
-                            decorView.viewTreeObserver.removeOnDrawListener(status.listener)
-                            decorViews.remove(decorView)
-                        }
-                    }
-                }
-                // TODO: flush and start full snapshot?
             }
+        } else {
+            view.phoneWindow?.let { window ->
+                window.peekDecorView()?.let { decorView ->
+                    decorViews[decorView]?.let { status ->
+                        cleanSessionState(decorView, status)
+                    }
+                }
+            }
+        }
+    }
+
+    private val onTouchEventListener = OnTouchEventListener { motionEvent ->
+        if (!isSessionReplayEnabled) {
+            return@OnTouchEventListener
+        }
+        val timestamp = System.currentTimeMillis()
+        when (motionEvent.action) {
+            // TODO: figure out the best way to handle move events, move does not exist
+            // mouse does not make sense, touch maybe?
+            MotionEvent.ACTION_DOWN -> {
+                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.MouseDown)
+            }
+            MotionEvent.ACTION_UP -> {
+                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.MouseUp)
+            }
+        }
+    }
+
+    private fun generateMouseInteractions(timestamp: Long, motionEvent: MotionEvent, type: RRMouseInteraction) {
+        val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
+        for (index in 0 until motionEvent.pointerCount) {
+            val id = motionEvent.getPointerId(index)
+            val absX = motionEvent.getRawXCompat(index)
+            val absY = motionEvent.getRawYCompat(index)
+
+            val mouseInteractionData = RRIncrementalMouseInteractionData(
+                id = id,
+                type = type,
+                x = absX.toInt(),
+                y = absY.toInt(),
+            )
+            val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
+            mouseInteractions.add(mouseInteraction)
+        }
+
+        if (mouseInteractions.isNotEmpty()) {
+            // TODO: we can probably batch those
+            // if we batch them, we need to be aware that the order of the events matters
+            // also because if we send a mouse interaction later, it might be attached to the wrong
+            // screen
+            mouseInteractions.capture()
+        }
+    }
+
+    internal fun sessionActive(enabled: Boolean) {
+        isSessionActive = enabled
+    }
+
+    private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
+        view.viewTreeObserver.removeOnDrawListener(status.listener)
+        view.phoneWindow?.let { window ->
+            window.touchEventInterceptors -= onTouchEventListener
+        }
+
+        decorViews.remove(view)
+    }
+
+    override fun install() {
+        Curtains.onRootViewsChangedListeners += onRootViewsChangedListener
+    }
+
+    override fun uninstall() {
+        Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
+
+        decorViews.entries.forEach {
+            cleanSessionState(it.key, it.value)
         }
     }
 
     private fun generateSnapshot(viewRef: WeakReference<View>, timestamp: Long) {
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
-        val wireframe = convertViewToWireframe(view) ?: return
+        val wireframe = view.toWireframe() ?: return
 
         val events = mutableListOf<RREvent>()
+
+        if (!status.sentMetaEvent) {
+            val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
+            val metaEvent = RRMetaEvent(
+                href = title,
+                width = displayMetrics.widthPixels,
+                height = displayMetrics.heightPixels,
+                timestamp = timestamp,
+            )
+            events.add(metaEvent)
+            status.sentMetaEvent = true
+        }
 
         if (!status.sentFullSnapshot) {
             val event = RRFullSnapshotEvent(
@@ -123,7 +203,7 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         } else {
             val lastSnapshot = status.lastSnapshot
             val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
-            val (addedItems, removedItems) = findAddedAndRemovedItems(flattenList(lastSnapshots), flattenList(listOf(wireframe)))
+            val (addedItems, removedItems) = findAddedAndRemovedItems(lastSnapshots.flattenChildren(), listOf(wireframe).flattenChildren())
 
             val addedNodes = mutableListOf<RRAddedNode>()
             addedItems.forEach {
@@ -152,20 +232,21 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         }
 
         if (events.isNotEmpty()) {
-            captureSnapshot(events)
+            events.capture()
         }
 
         status.lastSnapshot = wireframe
     }
 
-    private fun captureSnapshot(events: List<RREvent>) {
+    private fun List<RREvent>.capture() {
         val properties = mutableMapOf<String, Any>(
-            "\$snapshot_data" to events,
+            "\$snapshot_data" to this,
         )
         PostHog.capture("\$snapshot", properties = properties)
     }
 
-    private fun convertViewToWireframe(view: View, parentId: Int? = null): RRWireframe? {
+    private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
+        val view = this
         if (!view.isShown || view.width <= 0 || view.height <= 0) {
             return null
         }
@@ -175,10 +256,10 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
 
         val coordinates = IntArray(2)
         view.getLocationOnScreen(coordinates)
-        val x = densityValue(coordinates[0], displayMetrics.density)
-        val y = densityValue(coordinates[1], displayMetrics.density)
-        val width = densityValue(view.width, displayMetrics.density)
-        val height = densityValue(view.height, displayMetrics.density)
+        val x = coordinates[0].densityValue(displayMetrics.density)
+        val y = coordinates[1].densityValue(displayMetrics.density)
+        val width = view.width.densityValue(displayMetrics.density)
+        val height = view.height.densityValue(displayMetrics.density)
         val style = RRStyle()
         // TODO: font family, font size,
         view.background?.let { background ->
@@ -212,7 +293,7 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                convertViewToWireframe(viewChild, parentId = viewId)?.let {
+                viewChild.toWireframe(parentId = viewId)?.let {
                     children.add(it)
                 }
             }
@@ -279,8 +360,8 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         return null
     }
 
-    private fun densityValue(pixels: Int, density: Float): Int {
-        return (pixels / density).toInt()
+    private fun Int.densityValue(density: Float): Int {
+        return (this / density).toInt()
     }
 
     private fun Int.toRRColor(): String {
@@ -288,14 +369,14 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         return String.format("#%06X", (0xFFFFFF and this))
     }
 
-    private fun flattenList(items: List<RRWireframe>): List<RRWireframe> {
+    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
         val result = mutableListOf<RRWireframe>()
 
-        for (item in items) {
+        for (item in this) {
             result.add(item)
 
             item.childWireframes?.let {
-                result.addAll(flattenList(it))
+                result.addAll(it.flattenChildren())
             }
         }
 
@@ -320,5 +401,21 @@ public class PostHogReplayListeners(private val context: Context) : PostHogInteg
         val removedItems = oldItems.filter { it.id in removedIds }
 
         return Pair(addedItems, removedItems)
+    }
+
+    private fun MotionEvent.getRawXCompat(index: Int): Float {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getRawX(index)
+        } else {
+            rawX
+        }
+    }
+
+    private fun MotionEvent.getRawYCompat(index: Int): Float {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getRawY(index)
+        } else {
+            rawY
+        }
     }
 }

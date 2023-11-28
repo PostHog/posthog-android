@@ -26,7 +26,7 @@ class MyApp : Application() {
             captureDeepLinks = false
             captureApplicationLifecycleEvents = false
             captureScreenViews = false
-//            sessionReplay = true
+            sessionReplay = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
             propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
                 properties.apply {

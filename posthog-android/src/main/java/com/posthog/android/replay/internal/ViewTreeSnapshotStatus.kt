@@ -5,5 +5,6 @@ import com.posthog.internal.RRWireframe
 internal data class ViewTreeSnapshotStatus(
     val listener: NextDrawListener,
     var sentFullSnapshot: Boolean = false,
+    var sentMetaEvent: Boolean = false,
     var lastSnapshot: RRWireframe? = null,
 )
