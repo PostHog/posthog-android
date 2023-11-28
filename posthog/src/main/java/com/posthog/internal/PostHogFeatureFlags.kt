@@ -74,12 +74,6 @@ internal class PostHogFeatureFlags(
                                 config.sessionReplay = true && config.sessionReplay
                                 config.sessionReplaySampleRate = sessionRecording?.get("sampleRate") as? Double ?: config.sessionReplaySampleRate
                                 config.snapshotEndpoint = sessionRecording?.get("endpoint") as? String ?: config.snapshotEndpoint
-                                // TODO: implement session recording config
-                                // consoleLogRecordingEnabled
-                                // recorderVersion=v2
-                                // sampleRate
-                                // minimumDurationMilliseconds
-                                // linkedFlag
                             }
                         }
                     }
