@@ -274,7 +274,7 @@ public class PostHog private constructor(
         }
 
         // Replay needs distinct_id also in the props
-        props["distinct_id"]?.let {
+        if (props["distinct_id"] == null && !appendSharedProps) {
             props["distinct_id"] = distinctId
         }
 

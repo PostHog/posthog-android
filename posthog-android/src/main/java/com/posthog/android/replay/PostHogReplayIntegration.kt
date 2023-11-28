@@ -193,8 +193,8 @@ public class PostHogReplayIntegration(
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
             val metaEvent = RRMetaEvent(
                 href = title,
-                width = displayMetrics.widthPixels,
-                height = displayMetrics.heightPixels,
+                width = displayMetrics.widthPixels.densityValue(displayMetrics.density),
+                height = displayMetrics.heightPixels.densityValue(displayMetrics.density),
                 timestamp = timestamp,
             )
             events.add(metaEvent)
@@ -273,7 +273,7 @@ public class PostHogReplayIntegration(
         val style = RRStyle()
         // TODO: font family, font size,
         view.background?.let { background ->
-            background.getColor()?.let { color ->
+            background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             }
         }
@@ -324,18 +324,18 @@ public class PostHogReplayIntegration(
         )
     }
 
-    private fun Drawable.getColor(): String? {
+    private fun Drawable.toRGBColor(): String? {
         if (this is ColorDrawable) {
             return this.color.toRRColor()
         } else if (this is RippleDrawable && numberOfLayers >= 1) {
             try {
                 val drawable = getDrawable(0)
-                return drawable?.getColor()
+                return drawable?.toRGBColor()
             } catch (e: Throwable) {
                 // ignore
             }
         } else if (this is InsetDrawable) {
-            return drawable?.getColor()
+            return drawable?.toRGBColor()
         } else if (this is GradientDrawable) {
             colors?.let { rgcColors ->
                 if (rgcColors.isNotEmpty()) {
@@ -351,6 +351,9 @@ public class PostHogReplayIntegration(
                     val rgb = Color.rgb(red, green, blue)
                     return rgb.toRRColor()
                 }
+            }
+            color?.let {
+                return it.defaultColor.toRRColor()
             }
         }
         return null
