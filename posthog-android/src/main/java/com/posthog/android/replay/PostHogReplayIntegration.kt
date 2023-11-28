@@ -349,11 +349,11 @@ public class PostHogReplayIntegration(
     private fun ImageView.base64(): String? {
         if (drawable is BitmapDrawable) {
             val bitmap = (drawable as BitmapDrawable).bitmap
-            val byteArrayOutputStream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.PNG, 30, byteArrayOutputStream)
-
-            val byteArray = byteArrayOutputStream.toByteArray()
-            return Base64.encodeToString(byteArray, Base64.DEFAULT)
+            ByteArrayOutputStream().use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 30, it)
+                val byteArray = it.toByteArray()
+                return Base64.encodeToString(byteArray, Base64.DEFAULT)
+            }
         } else if (drawable is VectorDrawable) {
             // TODO: vector drawable
         }
