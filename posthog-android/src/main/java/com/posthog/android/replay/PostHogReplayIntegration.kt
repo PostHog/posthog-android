@@ -273,7 +273,6 @@ public class PostHogReplayIntegration(
         val width = view.width.densityValue(displayMetrics.density)
         val height = view.height.densityValue(displayMetrics.density)
         val style = RRStyle()
-        // TODO: font family, font size,
         view.background?.let { background ->
             // TODO: if its not a solid color, we need to do something else
             // probably a gradient, which is a new Drawable and we'd
