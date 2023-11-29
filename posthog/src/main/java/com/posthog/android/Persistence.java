@@ -16,6 +16,7 @@ import java.util.Map;
 public class Persistence extends ValueMap {
     public static final String ENABLED_FEATURE_FLAGS_KEY = "$enabled_feature_flags";
     public static final String GROUPS_KEY = "$groups";
+    public static final ValueMap EMPTY = new ValueMap();
 
     static Persistence create() {
         Persistence persistence = new Persistence();
@@ -43,7 +44,13 @@ public class Persistence extends ValueMap {
     }
 
     public ValueMap enabledFeatureFlags() {
-        return getValueMap(ENABLED_FEATURE_FLAGS_KEY);
+        ValueMap map = getValueMap(ENABLED_FEATURE_FLAGS_KEY);
+
+        if (map == null) {
+            map = EMPTY;
+        }
+
+        return map;
     }
 
     Persistence putGroups(Map groups) {

@@ -30,7 +30,6 @@ public class PostHogFeatureFlags {
     private Map<String, Boolean> flagCallReported;
     private Boolean reloadFeatureFlagsQueued;
     private Boolean reloadFeatureFlagsInAction;
-    private Boolean featureFlagsLoaded;
     private final Logger logger;
     private final Client client;
 
@@ -46,13 +45,12 @@ public class PostHogFeatureFlags {
         this.flagCallReported = flagCallReported == null ? new HashMap() : flagCallReported;
         this.reloadFeatureFlagsQueued = reloadFeatureFlagsQueued == null ? false : reloadFeatureFlagsQueued;
         this.reloadFeatureFlagsInAction = reloadFeatureFlagsInAction == null ? false : reloadFeatureFlagsInAction;
-        this.featureFlagsLoaded = false;
         this.logger = logger;
         this.client = client;
     }
 
     public List<String> getFlags() {
-        return new ArrayList<String>(this.getFlagVariants().keySet());
+        return new ArrayList<>(this.getFlagVariants().keySet());
     }
 
     public ValueMap getFlagVariants() {
@@ -61,10 +59,6 @@ public class PostHogFeatureFlags {
     }
 
     public Object getFeatureFlag(final @NonNull String key, final @Nullable Object defaultValue, final @Nullable Map<String, Object> options) {
-        if (!this.featureFlagsLoaded) {
-            this.logger.error(null, "getFeatureFlag for key %s failed. Feature flags didn't load in time.", key);
-            return defaultValue;
-        }
         Object flagValue = this.getFlagVariants().get(key);
         if (options != null && (Boolean) options.get("send_event") && this.flagCallReported.get(key) == null) {
             this.flagCallReported.put(key, true);
@@ -81,10 +75,6 @@ public class PostHogFeatureFlags {
     }
 
     public Boolean isFeatureEnabled(final @NonNull String key, final @Nullable Boolean defaultValue, final @Nullable Map<String, Object> options) {
-        if (!this.featureFlagsLoaded) {
-            this.logger.error(null, "isFeatureEnabled for key %s failed. Feature flags didn't load in time.", key);
-            return defaultValue;
-        }
         Object value = this.getFeatureFlag(key, defaultValue, options);
         if (value != null) {
             if (value instanceof Boolean) {
@@ -139,6 +129,8 @@ public class PostHogFeatureFlags {
         } else {
             persistence.put(ENABLED_FEATURE_FLAGS_KEY, null);
         }
+
+        this.posthog.persistenceCache.set(persistence);
     }
 
     protected void reloadFeatureFlagsRequest() {
@@ -183,9 +175,7 @@ public class PostHogFeatureFlags {
             this.receivedFeatureFlags(mapResponse);
 
             // :TRICKY: Reload - start another request if queued!
-            this.featureFlagsLoaded = true;
             this.reloadFeatureFlagsWithDebounce();
-
         } catch (IllegalArgumentException e) {
             logger.error(e, "Error while sending reload feature flags request");
             return;
