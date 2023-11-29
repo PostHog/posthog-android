@@ -311,16 +311,16 @@ public class PostHogReplayIntegration(
             style.fontSize = view.textSize.toInt().densityValue(displayMetrics.density)
             when (view.textAlignment) {
                 View.TEXT_ALIGNMENT_CENTER -> {
-                    style.verticalAlignment = "center"
-                    style.horizontalAlignment = "center"
+                    style.verticalAlign = "center"
+                    style.horizontalAlign = "center"
                 }
                 View.TEXT_ALIGNMENT_TEXT_END, View.TEXT_ALIGNMENT_VIEW_END -> {
-                    style.verticalAlignment = "center"
-                    style.horizontalAlignment = "right"
+                    style.verticalAlign = "center"
+                    style.horizontalAlign = "right"
                 }
                 View.TEXT_ALIGNMENT_TEXT_START, View.TEXT_ALIGNMENT_VIEW_START -> {
-                    style.verticalAlignment = "center"
-                    style.horizontalAlignment = "left"
+                    style.verticalAlign = "center"
+                    style.horizontalAlign = "left"
                 }
                 View.TEXT_ALIGNMENT_GRAVITY -> {
                     val horizontalAlignment = when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
@@ -329,7 +329,7 @@ public class PostHogReplayIntegration(
                         Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
                         else -> "left"
                     }
-                    style.horizontalAlignment = horizontalAlignment
+                    style.horizontalAlign = horizontalAlignment
 
                     val verticalAlignment = when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
                         Gravity.TOP -> "top"
@@ -337,11 +337,11 @@ public class PostHogReplayIntegration(
                         Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
                         else -> "center"
                     }
-                    style.verticalAlignment = verticalAlignment
+                    style.verticalAlign = verticalAlignment
                 }
                 else -> {
-                    style.verticalAlignment = "center"
-                    style.horizontalAlignment = "left"
+                    style.verticalAlign = "center"
+                    style.horizontalAlign = "left"
                 }
             }
 
