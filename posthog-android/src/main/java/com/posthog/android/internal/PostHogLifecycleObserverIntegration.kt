@@ -32,7 +32,7 @@ internal class PostHogLifecycleObserverIntegration(
     private var timer = Timer(true)
     private var timerTask: TimerTask? = null
     private val lastUpdatedSession = AtomicLong(0L)
-    private val sessionMaxInterval = 30_000L // 30 seconds
+    private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
 
     companion object {
         // in case there are multiple instances or the SDK is closed/setup again
