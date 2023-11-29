@@ -14,3 +14,9 @@ Releasing
  6. Publish the release.
  7. GH Action (release.yml) is doing everything else automatically.
  8. Done.
+
+
+### BY TRUST WALLET:
+- Set `versionName` in [gradle.properties](gradle.properties)
+- Set OSSRH_USERNAME, OSSRH_PASSWORD, GPG_PRIVATE_KEY, GPG_PASSPHRASE to env if needed
+- Check stagingProfileId

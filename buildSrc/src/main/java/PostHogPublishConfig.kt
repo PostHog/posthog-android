@@ -5,8 +5,6 @@ import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPom
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.kotlin.dsl.findByType
-import org.gradle.kotlin.dsl.get
-import org.gradle.kotlin.dsl.repositories
 import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.dokka.gradle.DokkaTask
 
@@ -68,7 +66,7 @@ fun Project.javadocConfig() {
 fun MavenPom.postHogConfig(projectName: String, repo: String = "posthog-android") {
     name.set(projectName)
     description.set("SDK for posthog.com")
-    url.set("https://github.com/postHog/$repo")
+    url.set("https://github.com/trustwallet/$repo")
 
     licenses {
         license {
@@ -97,7 +95,7 @@ fun MavenPom.postHogConfig(projectName: String, repo: String = "posthog-android"
 }
 
 fun MavenPublication.postHogConfig(projectName: String, properties: Map<String, Any?>) {
-    groupId = "com.posthog"
+    groupId = "com.github.trustwallet"
     artifactId = projectName
     version = properties[PostHogPublishConfig.versionNameProperty].toString()
 }

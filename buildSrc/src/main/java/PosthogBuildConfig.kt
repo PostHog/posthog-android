@@ -6,7 +6,7 @@ object PosthogBuildConfig {
     }
 
     object Build {
-        val JAVA_VERSION = JavaVersion.VERSION_1_8
+        val JAVA_VERSION = JavaVersion.VERSION_17
     }
 
     object Android {
