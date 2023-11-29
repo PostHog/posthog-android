@@ -269,7 +269,7 @@ public class RRStyle(
     public var borderWidth: Int? = null,
     public var borderRadius: Int? = null,
     public var borderColor: String? = null,
-    public var textSize: Int? = null,
+    public var fontSize: Int? = null,
     public var fontFamily: String? = null,
     public var horizontalAlignment: String? = null,
     public var verticalAlignment: String? = null,

@@ -3,13 +3,14 @@ package com.posthog.android.replay
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
-import android.graphics.drawable.VectorDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -279,6 +280,8 @@ public class PostHogReplayIntegration(
             // need to handle it it as a new wireframe (image most likely)
             background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
+            } ?: run {
+                style.backgroundColor = "#ffffff"
             }
         }
 
@@ -292,14 +295,20 @@ public class PostHogReplayIntegration(
             style.color = view.currentTextColor.toRGBColor()
             // TODO: how to get border details?
             style.borderWidth = 1
-            style.borderColor = "#000000ff"
+            style.borderColor = "#000000"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 style.fontFamily = view.typeface?.systemFontFamilyName
             } else {
-                // TODO: probably need to do a switch with a few options and stringify them
-                style.fontFamily = view.typeface?.toString()
+                view.typeface?.let {
+                    when (it) {
+                        Typeface.DEFAULT -> style.fontFamily = "sans-serif"
+                        Typeface.DEFAULT_BOLD -> style.fontFamily = "sans-serif-bold"
+                        Typeface.MONOSPACE -> style.fontFamily = "monospace"
+                        Typeface.SERIF -> style.fontFamily = "serif"
+                    }
+                }
             }
-            style.textSize = view.textSize.toInt().densityValue(displayMetrics.density)
+            style.fontSize = view.textSize.toInt().densityValue(displayMetrics.density)
             when (view.textAlignment) {
                 View.TEXT_ALIGNMENT_CENTER -> {
                     style.verticalAlignment = "center"
@@ -349,7 +358,7 @@ public class PostHogReplayIntegration(
         if (view is ImageView) {
             type = "image"
             // TODO: we can probably do a LRU caching here
-            base64 = view.base64()
+            base64 = view.drawable?.base64()
         }
 
         val viewId = System.identityHashCode(view)
@@ -420,9 +429,8 @@ public class PostHogReplayIntegration(
             this.height > 0
     }
 
-    private fun ImageView.base64(): String? {
-        if (drawable is BitmapDrawable) {
-            val bitmap = (drawable as BitmapDrawable).bitmap
+    private fun Drawable.base64(): String? {
+        if (this is BitmapDrawable) {
             if (!bitmap.isValid()) {
                 return null
             }
@@ -433,9 +441,18 @@ public class PostHogReplayIntegration(
                 val byteArray = it.toByteArray()
                 return Base64.encodeToString(byteArray, Base64.DEFAULT)
             }
-        } else if (drawable is VectorDrawable) {
-            // TODO: vector drawable
+        } else if (this is LayerDrawable) {
+            if (numberOfLayers > 0) {
+                getDrawable(0)?.let {
+                    return it.base64()
+                }
+            }
+        } else if (this is InsetDrawable) {
+            drawable?.let {
+                return it.base64()
+            }
         }
+        // TODO: vector, gradient drawables
         return null
     }
 
