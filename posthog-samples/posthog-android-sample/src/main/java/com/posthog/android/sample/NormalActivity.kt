@@ -2,7 +2,7 @@ package com.posthog.android.sample
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Button
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 
 class NormalActivity : ComponentActivity() {
@@ -11,7 +11,7 @@ class NormalActivity : ComponentActivity() {
 
         setContentView(R.layout.normal_activity)
 
-        val button = findViewById<Button>(R.id.button)
+        val button = findViewById<TextView>(R.id.button)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)
         button.setOnClickListener {
             // do nothing

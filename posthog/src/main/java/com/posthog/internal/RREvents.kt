@@ -269,4 +269,12 @@ public class RRStyle(
     public var borderWidth: Int? = null,
     public var borderRadius: Int? = null,
     public var borderColor: String? = null,
+    public var textSize: Int? = null,
+    public var fontFamily: String? = null,
+    public var horizontalAlignment: String? = null,
+    public var verticalAlignment: String? = null,
+    public var paddingTop: Int? = null,
+    public var paddingBottom: Int? = null,
+    public var paddingLeft: Int? = null,
+    public var paddingRight: Int? = null,
 )

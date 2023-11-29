@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -113,7 +114,7 @@ public class PostHogReplayIntegration(
             return@OnTouchEventListener
         }
         val timestamp = System.currentTimeMillis()
-        when (motionEvent.action) {
+        when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
             // TODO: figure out the best way to handle move events, move does not exist
             // mouse does not make sense, touch maybe?
             MotionEvent.ACTION_DOWN -> {
@@ -273,6 +274,9 @@ public class PostHogReplayIntegration(
         val style = RRStyle()
         // TODO: font family, font size,
         view.background?.let { background ->
+            // TODO: if its not a solid color, we need to do something else
+            // probably a gradient, which is a new Drawable and we'd
+            // need to handle it it as a new wireframe (image most likely)
             background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             }
@@ -285,15 +289,66 @@ public class PostHogReplayIntegration(
             // TODO: masking
             text = view.text.toString()
             type = "text"
-            style.color = view.currentTextColor.toRRColor()
+            style.color = view.currentTextColor.toRGBColor()
             // TODO: how to get border details?
             style.borderWidth = 1
             style.borderColor = "#000000ff"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                style.fontFamily = view.typeface?.systemFontFamilyName
+            } else {
+                // TODO: probably need to do a switch with a few options and stringify them
+                style.fontFamily = view.typeface?.toString()
+            }
+            style.textSize = view.textSize.toInt().densityValue(displayMetrics.density)
+            when (view.textAlignment) {
+                View.TEXT_ALIGNMENT_CENTER -> {
+                    style.verticalAlignment = "center"
+                    style.horizontalAlignment = "center"
+                }
+                View.TEXT_ALIGNMENT_TEXT_END, View.TEXT_ALIGNMENT_VIEW_END -> {
+                    style.verticalAlignment = "center"
+                    style.horizontalAlignment = "right"
+                }
+                View.TEXT_ALIGNMENT_TEXT_START, View.TEXT_ALIGNMENT_VIEW_START -> {
+                    style.verticalAlignment = "center"
+                    style.horizontalAlignment = "left"
+                }
+                View.TEXT_ALIGNMENT_GRAVITY -> {
+                    val horizontalAlignment = when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
+                        Gravity.START, Gravity.LEFT -> "left"
+                        Gravity.END, Gravity.RIGHT -> "right"
+                        Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
+                        else -> "left"
+                    }
+                    style.horizontalAlignment = horizontalAlignment
+
+                    val verticalAlignment = when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
+                        Gravity.TOP -> "top"
+                        Gravity.BOTTOM -> "bottom"
+                        Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
+                        else -> "center"
+                    }
+                    style.verticalAlignment = verticalAlignment
+                }
+                else -> {
+                    style.verticalAlignment = "center"
+                    style.horizontalAlignment = "left"
+                }
+            }
+
+            style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
+            style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
+            style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
+            style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
+
+            // TODO: the 4 possible drawables
+            // view.compoundDrawables
         }
 
         var base64: String? = null
         if (view is ImageView) {
             type = "image"
+            // TODO: we can probably do a LRU caching here
             base64 = view.base64()
         }
 
@@ -326,7 +381,7 @@ public class PostHogReplayIntegration(
 
     private fun Drawable.toRGBColor(): String? {
         if (this is ColorDrawable) {
-            return this.color.toRRColor()
+            return this.color.toRGBColor()
         } else if (this is RippleDrawable && numberOfLayers >= 1) {
             try {
                 val drawable = getDrawable(0)
@@ -349,20 +404,31 @@ public class PostHogReplayIntegration(
 
                     // Construct the RGB color
                     val rgb = Color.rgb(red, green, blue)
-                    return rgb.toRRColor()
+                    return rgb.toRGBColor()
                 }
             }
             color?.let {
-                return it.defaultColor.toRRColor()
+                return it.defaultColor.toRGBColor()
             }
         }
         return null
     }
 
+    private fun Bitmap.isValid(): Boolean {
+        return !this.isRecycled &&
+            this.width > 0 &&
+            this.height > 0
+    }
+
     private fun ImageView.base64(): String? {
         if (drawable is BitmapDrawable) {
             val bitmap = (drawable as BitmapDrawable).bitmap
-            ByteArrayOutputStream().use {
+            if (!bitmap.isValid()) {
+                return null
+            }
+
+            ByteArrayOutputStream(bitmap.allocationByteCount).use {
+                // TODO: or webp?
                 bitmap.compress(Bitmap.CompressFormat.PNG, 30, it)
                 val byteArray = it.toByteArray()
                 return Base64.encodeToString(byteArray, Base64.DEFAULT)
@@ -377,7 +443,7 @@ public class PostHogReplayIntegration(
         return (this / density).toInt()
     }
 
-    private fun Int.toRRColor(): String {
+    private fun Int.toRGBColor(): String {
         // TODO: missing alpha
         return String.format("#%06X", (0xFFFFFF and this))
     }
