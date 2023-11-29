@@ -289,7 +289,6 @@ public class PostHogReplayIntegration(
         // button inherits from textview
         if (view is TextView) {
             text = if (!view.isNoCapture() && !config.maskAllInputs) {
-                // TODO: masking
                 view.text.toString()
             } else {
                 "*".repeat(view.text.length)
