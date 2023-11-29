@@ -15,4 +15,6 @@ public open class PostHogAndroidConfig(
     public var captureApplicationLifecycleEvents: Boolean = true,
     public var captureDeepLinks: Boolean = true,
     public var captureScreenViews: Boolean = true,
+    // TODO: better to create a new class for all Replay config
+    public var maskAllInputs: Boolean = true,
 ) : PostHogConfig(apiKey, host)

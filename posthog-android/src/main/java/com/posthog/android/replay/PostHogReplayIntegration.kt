@@ -211,7 +211,7 @@ public class PostHogReplayIntegration(
                 timestamp = timestamp,
             )
             events.add(event)
-            status.sentFullSnapshot = true
+//            status.sentFullSnapshot = true
         } else {
             val lastSnapshot = status.lastSnapshot
             val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
@@ -288,8 +288,12 @@ public class PostHogReplayIntegration(
         var type: String? = null
         // button inherits from textview
         if (view is TextView) {
-            // TODO: masking
-            text = view.text.toString()
+            text = if (!view.isNoCapture() && !config.maskAllInputs) {
+                // TODO: masking
+                view.text.toString()
+            } else {
+                "*".repeat(view.text.length)
+            }
             type = "text"
             style.color = view.currentTextColor.toRGBColor()
             // TODO: how to get border details?
@@ -356,8 +360,10 @@ public class PostHogReplayIntegration(
         var base64: String? = null
         if (view is ImageView) {
             type = "image"
-            // TODO: we can probably do a LRU caching here
-            base64 = view.drawable?.base64()
+            if (!view.isNoCapture()) {
+                // TODO: we can probably do a LRU caching here
+                base64 = view.drawable?.base64()
+            }
         }
 
         val viewId = System.identityHashCode(view)
@@ -512,5 +518,12 @@ public class PostHogReplayIntegration(
         } else {
             rawY
         }
+    }
+
+    private fun View.isNoCapture(): Boolean {
+        if ((this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true) {
+            return true
+        }
+        return false
     }
 }
