@@ -22,10 +22,10 @@ import android.view.ViewGroup
 import android.view.ViewStub
 import android.widget.ImageView
 import android.widget.TextView
-import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.displayMetrics
+import com.posthog.android.replay.internal.LogcatParser
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogThreadFactory
@@ -38,9 +38,11 @@ import com.posthog.internal.RRIncrementalMutationData
 import com.posthog.internal.RRIncrementalSnapshotEvent
 import com.posthog.internal.RRMetaEvent
 import com.posthog.internal.RRMouseInteraction
+import com.posthog.internal.RRPluginEvent
 import com.posthog.internal.RRRemovedNode
 import com.posthog.internal.RRStyle
 import com.posthog.internal.RRWireframe
+import com.posthog.internal.capture
 import curtains.Curtains
 import curtains.OnRootViewsChangedListener
 import curtains.OnTouchEventListener
@@ -50,8 +52,12 @@ import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.WeakHashMap
 import java.util.concurrent.Executors
+import java.util.regex.Pattern
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -119,10 +125,10 @@ public class PostHogReplayIntegration(
             // TODO: figure out the best way to handle move events, move does not exist
             // mouse does not make sense, touch maybe?
             MotionEvent.ACTION_DOWN -> {
-                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.MouseDown)
+                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
             }
             MotionEvent.ACTION_UP -> {
-                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.MouseUp)
+                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
             }
         }
     }
@@ -155,6 +161,8 @@ public class PostHogReplayIntegration(
 
     internal fun sessionActive(enabled: Boolean) {
         isSessionActive = enabled
+
+        initLogcatWatcher(Date())
     }
 
     private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
@@ -248,13 +256,6 @@ public class PostHogReplayIntegration(
         }
 
         status.lastSnapshot = wireframe
-    }
-
-    private fun List<RREvent>.capture() {
-        val properties = mutableMapOf<String, Any>(
-            "\$snapshot_data" to this,
-        )
-        PostHog.capture("\$snapshot", properties = properties)
     }
 
     private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
@@ -524,5 +525,66 @@ public class PostHogReplayIntegration(
             return true
         }
         return false
+    }
+
+    private val ignore = Pattern.compile("--------- beginning of (.*)")
+
+    private var thread: Thread? = null
+
+    private fun initLogcatWatcher(date: Date) {
+        if (!config.captureLogcat) {
+            return
+        }
+        // TODO: check if its API 23 or higher
+        val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
+        val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
+        cmd.add("-T")
+        cmd.add(sdf.format(date.time))
+
+        thread?.interrupt()
+        thread = Thread {
+            var process: Process? = null
+            try {
+                process = Runtime.getRuntime().exec(cmd.toTypedArray())
+                process.inputStream.bufferedReader().use {
+                    var line: String? = null
+                    do {
+                        try {
+                            line = it.readLine()
+
+                            if (line.isNullOrEmpty()) {
+                                continue
+                            }
+                            if (ignore.matcher(line).matches()) {
+                                continue
+                            }
+                            // TODO: filter out all non useful stuff
+                            if (line.contains("PostHog") || line.contains("StrictMode")) {
+                                continue
+                            } else {
+                                val log = LogcatParser().parse(line) ?: continue
+
+                                val props = mutableMapOf<String, Any>()
+                                props["level"] = log.level.toString()
+                                val tag = log.tag?.trim() ?: ""
+                                val content = log.text?.trim() ?: ""
+                                props["payload"] = listOf("$tag: $content")
+                                val time = log.time?.timeInMillis ?: System.currentTimeMillis()
+                                val event = RRPluginEvent("rrweb/console@1", props, time)
+                                // TODO: batch events
+                                listOf(event).capture()
+                            }
+                        } catch (e: Throwable) {
+                            // ignore
+                        }
+                    } while (line != null)
+                }
+            } catch (e: Throwable) {
+                // ignore
+            } finally {
+                process?.destroy()
+            }
+        }
+        thread?.start()
     }
 }

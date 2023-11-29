@@ -22,5 +22,6 @@
         android:layout_height="391dp"
         android:src="@drawable/android_logo"
         />
+<!--    android:tag="ph-no-capture"-->
 
 </LinearLayout>

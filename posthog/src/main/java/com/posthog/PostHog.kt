@@ -254,6 +254,7 @@ public class PostHog private constructor(
         synchronized(sessionLock) {
             if (sessionId != sessionIdNone) {
                 props["\$session_id"] = sessionId.toString()
+                props["\$window_id"] = sessionId.toString()
             }
         }
 

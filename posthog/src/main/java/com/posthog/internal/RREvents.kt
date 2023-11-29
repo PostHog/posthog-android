@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.PostHog
 import com.posthog.PostHogInternal
 
 @PostHogInternal
@@ -228,12 +229,13 @@ public class RRCustomEvent(tag: String, payload: Any) : RREvent(
 )
 
 @PostHogInternal
-public class RRPluginEvent(plugin: String, payload: Any) : RREvent(
+public class RRPluginEvent(plugin: String, payload: Map<String, Any>, timestamp: Long) : RREvent(
     type = RREventType.Plugin,
     data = mapOf(
         "plugin" to plugin,
         "payload" to payload,
     ),
+    timestamp = timestamp,
 )
 
 @PostHogInternal
@@ -278,3 +280,10 @@ public class RRStyle(
     public var paddingLeft: Int? = null,
     public var paddingRight: Int? = null,
 )
+
+public fun List<RREvent>.capture() {
+    val properties = mutableMapOf<String, Any>(
+        "\$snapshot_data" to this,
+    )
+    PostHog.capture("\$snapshot", properties = properties)
+}

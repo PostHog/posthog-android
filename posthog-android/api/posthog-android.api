@@ -16,19 +16,39 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 }
 
 public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZ)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z
 	public final fun getCaptureDeepLinks ()Z
+	public final fun getCaptureLogcat ()Z
 	public final fun getCaptureScreenViews ()Z
+	public final fun getMaskAllInputs ()Z
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
 	public final fun setCaptureDeepLinks (Z)V
+	public final fun setCaptureLogcat (Z)V
 	public final fun setCaptureScreenViews (Z)V
+	public final fun setMaskAllInputs (Z)V
 }
 
 public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration {
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)V
 	public fun install ()V
 	public fun uninstall ()V
+}
+
+public class com/posthog/android/replay/internal/LogLine {
+	public field level Ljava/lang/String;
+	public field tag Ljava/lang/String;
+	public field text Ljava/lang/String;
+	public field time Ljava/util/GregorianCalendar;
+	public fun <init> ()V
+}
+
+public class com/posthog/android/replay/internal/LogcatParser {
+	public static final field BUFFER_BEGIN_RE Ljava/util/regex/Pattern;
+	public static final field DATE_TIME_MS_PATTERN Ljava/lang/String;
+	public static final field UTC Ljava/util/TimeZone;
+	public fun <init> ()V
+	public fun parse (Ljava/lang/String;)Lcom/posthog/android/replay/internal/LogLine;
 }
 
