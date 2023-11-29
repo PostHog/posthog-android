@@ -1,0 +1,52 @@
+name: 'Build & Test'
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+
+jobs:
+  cancel-previous-workflow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@01ce38bf961b4e243a6342cbade0dbc8ba3f0432 # pin@0.12.0
+        with:
+          access_token: ${{ github.token }}
+
+  build:
+    name: Build Job ${{ matrix.os }} - Java ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        java: ['17']
+
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v4
+
+      - name: 'Set up Java: ${{ matrix.java }}'
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Make compile
+        run: make compile
+
+      - name: Make stop
+        run: make stop

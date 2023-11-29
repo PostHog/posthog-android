@@ -1,0 +1,35 @@
+{
+  "event": "$groupidentify",
+  "uuid": "25f24a61-0b25-4a70-a95e-d77f91607d40",
+  "timestamp": "2023-09-20T11:58:49Z",
+  "properties": {
+    "$device_manufacturer": "Google",
+    "$os_version": "13",
+    "$screen_density": 2.625,
+    "$timezone": "Europe/Vienna",
+    "$locale": "en-US",
+    "$screen_width": 1080,
+    "$os_name": "Android",
+    "$screen_height": 2274,
+    "$user_agent": "Dalvik/2.1.0 (Linux; U; Android 13; sdk_gphone64_arm64 Build/TE1A.220922.012)",
+    "$app_version": "1.0",
+    "$lib": "posthog-android",
+    "$device_name": "emu64a",
+    "$network_carrier": "T-Mobile",
+    "$app_name": "My Application",
+    "$device_model": "sdk_gphone64_arm64",
+    "$lib_version": "version",
+    "$app_namespace": "com.posthog.myapplication",
+    "$app_build": "1",
+    "$feature/4535-funnel-bar-viz": true,
+    "$active_feature_flags": [
+      "4535-funnel-bar-viz"
+    ],
+    "$group_type": "the_type",
+    "$group_key": "the_key",
+    "$group_set": {
+      "myProperty": "myValue"
+    }
+  },
+  "distinct_id": "my_identify"
+}

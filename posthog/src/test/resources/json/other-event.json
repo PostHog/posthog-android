@@ -1,0 +1,9 @@
+{
+  "uuid": "8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5",
+  "event": "testNewEvent",
+  "distinct_id": "9740f814-0b10-42e2-b3d4-8f35af1b11f6",
+  "properties": {
+    "testProperty": "testValue"
+  },
+  "timestamp": "2023-09-19T07:23:00.165Z"
+}
