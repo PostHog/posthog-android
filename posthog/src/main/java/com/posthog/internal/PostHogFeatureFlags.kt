@@ -67,7 +67,8 @@ internal class PostHogFeatureFlags(
                         }
 
                         if (response.sessionRecording is Boolean) {
-                            config.sessionReplay = response.sessionRecording && config.sessionReplay
+                            // TODO: this is a && operation, revert it, due to Authorized Domains for Replay
+                            config.sessionReplay = response.sessionRecording || config.sessionReplay
                         } else if (response.sessionRecording is Map<*, *>) {
                             @Suppress("UNCHECKED_CAST")
                             (response.sessionRecording as? Map<String, Any?>).let { sessionRecording ->
@@ -76,8 +77,8 @@ internal class PostHogFeatureFlags(
                                 config.snapshotEndpoint = sessionRecording?.get("endpoint") as? String ?: config.snapshotEndpoint
 
                                 // TODO:
-                                // consoleLogRecordingEnabled -> {Boolean@26741} false
-                                // networkPayloadCapture -> null
+                                // consoleLogRecordingEnabled -> Boolean or null
+                                // networkPayloadCapture -> Boolean or null
                             }
                         }
                     }

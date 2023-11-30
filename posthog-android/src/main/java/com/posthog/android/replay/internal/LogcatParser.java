@@ -45,11 +45,7 @@ public class LogcatParser {
                 // Matched line
                 final LogLine ll = new LogLine();
 
-//                ll.rawText = text;
-//                ll.header = m.group(1);
                 ll.time = parseCalendar(m, 2, true);
-//                ll.pid = Integer.parseInt(m.group(9));
-//                ll.tid = Integer.parseInt(m.group(10));
                 char level = m.group(11).charAt(0);
 
                 switch (level) {
@@ -103,9 +99,9 @@ public class LogcatParser {
      *
      * @see #DATE_TIME_MS_PATTERN
      */
-    private static Calendar parseCalendar(Matcher matcher, int startGroup,
+    private static GregorianCalendar parseCalendar(Matcher matcher, int startGroup,
                                                   boolean milliseconds) {
-        final GregorianCalendar result = new GregorianCalendar(UTC);
+        final GregorianCalendar result = new GregorianCalendar();
 
         if (matcher.group(startGroup+0) != null) {
             result.set(Calendar.YEAR, Integer.parseInt(matcher.group(startGroup + 0)));

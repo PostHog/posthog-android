@@ -573,7 +573,7 @@ public class PostHogReplayIntegration(
                                 val tag = log.tag?.trim() ?: ""
                                 val content = log.text?.trim() ?: ""
                                 props["payload"] = listOf("$tag: $content")
-                                val time = log.time?.timeInMillis ?: System.currentTimeMillis()
+                                val time = log.time?.time?.time ?: System.currentTimeMillis()
                                 val event = RRPluginEvent("rrweb/console@1", props, time)
                                 // TODO: batch events
                                 listOf(event).capture()

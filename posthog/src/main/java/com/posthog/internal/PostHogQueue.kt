@@ -104,7 +104,7 @@ internal class PostHogQueue(
 
     private fun canFlushBatch(): Boolean {
         if (pausedUntil?.after(dateProvider.currentDate()) == true) {
-            config.logger.log("Queue is paused until $pausedUntil")
+//            config.logger.log("Queue is paused until $pausedUntil")
             // TODO: revert, just for testing
             return true
         }

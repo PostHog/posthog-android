@@ -24,17 +24,17 @@ class MyApp : Application() {
             debug = true
             flushAt = 1
             captureDeepLinks = false
-            captureApplicationLifecycleEvents = false
-            captureScreenViews = false
+            captureApplicationLifecycleEvents = true
+            captureScreenViews = true
             sessionReplay = true
-            preloadFeatureFlags = false
+            preloadFeatureFlags = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
             propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
                 properties.apply {
-                    remove("\$device_name")
+//                    remove("\$device_name")
                 }
             }
-            maskAllInputs = false
+            maskAllInputs = true
             captureLogcat = true
         }
         PostHogAndroid.setup(this, config)
