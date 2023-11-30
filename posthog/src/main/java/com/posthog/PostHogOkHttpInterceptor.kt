@@ -39,7 +39,7 @@ public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true
         val requestMap = mapOf<String, Any>(
             "name" to url,
             "method" to method,
-            "status" to statusCode,
+            "responseStatus" to statusCode,
             "timestamp" to end,
             "duration" to (end - start),
             "transferSize" to transferSize,
