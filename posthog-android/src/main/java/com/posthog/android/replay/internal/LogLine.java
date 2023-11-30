@@ -1,5 +1,6 @@
 package com.posthog.android.replay.internal;
 
+import java.util.Calendar;
 import java.util.GregorianCalendar;
 
 /**
@@ -26,7 +27,7 @@ public class LogLine {
     /**
      * The timestamp of the event. In UTC even though the device might not have been.
      */
-    public GregorianCalendar time;
+    public Calendar time;
 
 //    /**
 //     * The process that emitted the log.

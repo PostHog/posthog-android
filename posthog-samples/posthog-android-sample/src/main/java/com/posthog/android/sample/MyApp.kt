@@ -35,6 +35,7 @@ class MyApp : Application() {
                 }
             }
             maskAllInputs = false
+            captureLogcat = true
         }
         PostHogAndroid.setup(this, config)
     }

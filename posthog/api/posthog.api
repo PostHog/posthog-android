@@ -200,6 +200,8 @@ public abstract interface annotation class com/posthog/PostHogInternal : java/la
 
 public final class com/posthog/PostHogOkHttpInterceptor : okhttp3/Interceptor {
 	public fun <init> ()V
+	public fun <init> (Z)V
+	public synthetic fun <init> (ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun intercept (Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;
 }
 

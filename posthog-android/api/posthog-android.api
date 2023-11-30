@@ -40,7 +40,7 @@ public class com/posthog/android/replay/internal/LogLine {
 	public field level Ljava/lang/String;
 	public field tag Ljava/lang/String;
 	public field text Ljava/lang/String;
-	public field time Ljava/util/GregorianCalendar;
+	public field time Ljava/util/Calendar;
 	public fun <init> ()V
 }
 

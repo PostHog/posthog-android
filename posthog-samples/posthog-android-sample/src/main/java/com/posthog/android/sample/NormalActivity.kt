@@ -8,6 +8,7 @@ import android.widget.ImageView
 import androidx.activity.ComponentActivity
 import com.posthog.PostHogOkHttpInterceptor
 import okhttp3.OkHttpClient
+import okhttp3.internal.closeQuietly
 
 class NormalActivity : ComponentActivity() {
 
@@ -37,7 +38,7 @@ class NormalActivity : ComponentActivity() {
                     okhttp3.Request.Builder()
                         .url("https://google.com")
                         .build(),
-                ).execute()
+                ).execute().closeQuietly()
             }.start()
         }
     }

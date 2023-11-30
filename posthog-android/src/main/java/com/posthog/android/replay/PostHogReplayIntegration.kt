@@ -57,7 +57,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.WeakHashMap
 import java.util.concurrent.Executors
-import java.util.regex.Pattern
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -78,6 +77,11 @@ public class PostHogReplayIntegration(
     private val displayMetrics by lazy {
         context.displayMetrics()
     }
+
+    private var logcatThread: Thread? = null
+
+    @Volatile
+    private var logcatInProgress = false
 
     private val isSessionReplayEnabled: Boolean
         get() = config.sessionReplay && isSessionActive
@@ -162,7 +166,12 @@ public class PostHogReplayIntegration(
     internal fun sessionActive(enabled: Boolean) {
         isSessionActive = enabled
 
-        initLogcatWatcher(Date())
+        if (isSessionReplayEnabled) {
+            initLogcatWatcher(Date())
+        } else {
+            logcatInProgress = false
+            logcatThread?.interruptSafely()
+        }
     }
 
     private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
@@ -527,10 +536,6 @@ public class PostHogReplayIntegration(
         return false
     }
 
-    private val ignore = Pattern.compile("--------- beginning of (.*)")
-
-    private var thread: Thread? = null
-
     private fun initLogcatWatcher(date: Date) {
         if (!config.captureLogcat) {
             return
@@ -541,21 +546,20 @@ public class PostHogReplayIntegration(
         cmd.add("-T")
         cmd.add(sdf.format(date.time))
 
-        thread?.interrupt()
-        thread = Thread {
+        logcatInProgress = false
+        logcatThread?.interruptSafely()
+        logcatThread = Thread {
             var process: Process? = null
             try {
                 process = Runtime.getRuntime().exec(cmd.toTypedArray())
                 process.inputStream.bufferedReader().use {
                     var line: String? = null
+                    logcatInProgress = true
                     do {
                         try {
                             line = it.readLine()
 
                             if (line.isNullOrEmpty()) {
-                                continue
-                            }
-                            if (ignore.matcher(line).matches()) {
                                 continue
                             }
                             // TODO: filter out all non useful stuff
@@ -577,7 +581,7 @@ public class PostHogReplayIntegration(
                         } catch (e: Throwable) {
                             // ignore
                         }
-                    } while (line != null)
+                    } while (line != null && logcatInProgress)
                 }
             } catch (e: Throwable) {
                 // ignore
@@ -585,6 +589,14 @@ public class PostHogReplayIntegration(
                 process?.destroy()
             }
         }
-        thread?.start()
+        logcatThread?.start()
+    }
+
+    private fun Thread.interruptSafely() {
+        try {
+            interrupt()
+        } catch (e: Throwable) {
+            // ignore
+        }
     }
 }

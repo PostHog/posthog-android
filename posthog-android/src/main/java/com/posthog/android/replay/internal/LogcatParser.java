@@ -103,14 +103,15 @@ public class LogcatParser {
      *
      * @see #DATE_TIME_MS_PATTERN
      */
-    private static GregorianCalendar parseCalendar(Matcher matcher, int startGroup,
+    private static Calendar parseCalendar(Matcher matcher, int startGroup,
                                                   boolean milliseconds) {
         final GregorianCalendar result = new GregorianCalendar(UTC);
 
         if (matcher.group(startGroup+0) != null) {
             result.set(Calendar.YEAR, Integer.parseInt(matcher.group(startGroup + 0)));
         }
-        result.set(Calendar.MONTH, Integer.parseInt(matcher.group(startGroup + 1)));
+        // -1 because of https://stackoverflow.com/questions/344380/why-is-january-month-0-in-java-calendar
+        result.set(Calendar.MONTH, Integer.parseInt(matcher.group(startGroup + 1)) - 1);
         result.set(Calendar.DAY_OF_MONTH, Integer.parseInt(matcher.group(startGroup + 2)));
         result.set(Calendar.HOUR_OF_DAY, Integer.parseInt(matcher.group(startGroup + 3)));
         result.set(Calendar.MINUTE, Integer.parseInt(matcher.group(startGroup + 4)));
