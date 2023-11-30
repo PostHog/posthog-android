@@ -30,19 +30,21 @@ public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true
         val statusCode = response.code
         val start = response.sentRequestAtMillis
         val end = response.receivedResponseAtMillis
-        var transferSize = (response.body?.contentLength() ?: 0) + (request.body?.contentLength() ?: 0)
+        val transferSize = (response.body?.contentLength() ?: 0) + (request.body?.contentLength() ?: 0)
 
-        if (transferSize < 0) {
-            transferSize = 0
+        val requestMap = mutableMapOf<String, Any>()
+        if (transferSize >= 0) {
+            requestMap["transferSize"] = transferSize
         }
 
-        val requestMap = mapOf<String, Any>(
-            "name" to url,
-            "method" to method,
-            "responseStatus" to statusCode,
-            "timestamp" to end,
-            "duration" to (end - start),
-            "transferSize" to transferSize,
+        requestMap.putAll(
+            mapOf(
+                "name" to url,
+                "method" to method,
+                "responseStatus" to statusCode,
+                "timestamp" to end,
+                "duration" to (end - start),
+            ),
         )
         val requests = listOf(requestMap)
         val payload = mapOf<String, Any>("requests" to requests)
