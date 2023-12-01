@@ -24,11 +24,12 @@ internal class PostHogAndroidContext(
     private val cacheStaticContext by lazy {
         val staticContext = mutableMapOf<String, Any>()
 
-        context.screenSize()?.let {
-            staticContext["\$screen_density"] = it.density
-            staticContext["\$screen_height"] = it.height
-            staticContext["\$screen_width"] = it.width
-        }
+        // we don't use the context.screenSize() specifically because that requires a UI Context
+        // and here is the App Context always
+        val displayMetrics = context.displayMetrics()
+        staticContext["\$screen_density"] = displayMetrics.density
+        staticContext["\$screen_height"] = displayMetrics.heightPixels.densityValue(displayMetrics.density)
+        staticContext["\$screen_width"] = displayMetrics.widthPixels.densityValue(displayMetrics.density)
 
         getPackageInfo(context, config)?.let {
             it.versionName?.let { name ->

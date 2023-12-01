@@ -241,7 +241,7 @@ public class PostHogReplayIntegration(
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
             // TODO: cache and compare, if size changes, we send a ViewportResize event
 
-            val screenSizeInfo = context.screenSize() ?: return
+            val screenSizeInfo = view.context.screenSize() ?: return
 
             val metaEvent = RRMetaEvent(
                 href = title,
