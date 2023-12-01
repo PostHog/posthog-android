@@ -8,12 +8,12 @@
     tools:context=".NormalActivity"
     tools:ignore="MissingDefaultResource">
 
-    <Button
+    <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Text"
+        android:text="TextView text"
         android:textColor="#FF0000"
-        android:id="@+id/button"
+        android:textAlignment="center"
         />
 
     <ImageView
@@ -23,6 +23,70 @@
         android:src="@drawable/android_logo"
         android:tag="ph-no-capture"
         />
-<!--    android:tag="ph-no-capture"-->
+    <!--    android:tag="ph-no-capture"-->
 
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Button text"
+        android:textColor="#FF0000"
+        android:id="@+id/button"
+        />
+
+<!--    <View-->
+<!--        android:layout_width="match_parent"-->
+<!--        android:layout_height="5dp"-->
+<!--        android:background="#4E4B4F" />-->
+
+<!--    <EditText-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="EditText text"-->
+<!--        android:textColor="#FF0000"-->
+<!--        />-->
+
+<!--    <Spinner-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:entries="@array/array_name"-->
+<!--        />-->
+
+<!--    <CheckBox-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:checked="true"-->
+<!--        android:text="CheckBox text"-->
+<!--        />-->
+
+<!--    <RadioGroup-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:orientation="vertical"-->
+<!--        >-->
+<!--        <RadioButton-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Yes" />-->
+
+<!--        <RadioButton-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="No" />-->
+<!--    </RadioGroup>-->
+
+<!--    <Switch-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="Switch text" />-->
+
+<!--    <SearchView-->
+<!--        android:layout_width="match_parent"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:iconifiedByDefault="false"-->
+<!--        android:queryHint="Search me" />-->
+
+<!--    <ProgressBar-->
+<!--        style="?android:progressBarStyle"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content" />-->
 </LinearLayout>

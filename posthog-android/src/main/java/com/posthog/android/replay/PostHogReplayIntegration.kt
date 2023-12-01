@@ -1,6 +1,7 @@
 package com.posthog.android.replay
 
 import android.content.Context
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
@@ -15,6 +16,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -24,7 +26,9 @@ import android.widget.ImageView
 import android.widget.TextView
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
+import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.LogcatParser
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
@@ -107,6 +111,8 @@ public class PostHogReplayIntegration(
                     }
 
                     window.touchEventInterceptors += onTouchEventListener
+                    // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
+                    // window.keyEventInterceptors
                 }
             }
         } else {
@@ -124,6 +130,7 @@ public class PostHogReplayIntegration(
         if (!isSessionReplayEnabled) {
             return@OnTouchEventListener
         }
+        motionEvent.eventTime
         val timestamp = System.currentTimeMillis()
         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
             // TODO: figure out the best way to handle move events, move does not exist
@@ -140,15 +147,16 @@ public class PostHogReplayIntegration(
     private fun generateMouseInteractions(timestamp: Long, motionEvent: MotionEvent, type: RRMouseInteraction) {
         val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
         for (index in 0 until motionEvent.pointerCount) {
+            // if the id is 0, BE transformer will set it to the virtual bodyId
             val id = motionEvent.getPointerId(index)
-            val absX = motionEvent.getRawXCompat(index)
-            val absY = motionEvent.getRawYCompat(index)
+            val absX = motionEvent.getRawXCompat(index).toInt().densityValue(displayMetrics.density)
+            val absY = motionEvent.getRawYCompat(index).toInt().densityValue(displayMetrics.density)
 
             val mouseInteractionData = RRIncrementalMouseInteractionData(
                 id = id,
                 type = type,
-                x = absX.toInt(),
-                y = absY.toInt(),
+                x = absX,
+                y = absY,
             )
             val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
             mouseInteractions.add(mouseInteraction)
@@ -201,19 +209,44 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun Resources.Theme.toRGBColor(): String? {
+        val value = TypedValue()
+        resolveAttribute(android.R.attr.windowBackground, value, true)
+        return if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT &&
+            value.type <= TypedValue.TYPE_LAST_COLOR_INT
+        ) {
+            value.data
+        } else {
+            null
+        }?.toRGBColor()
+    }
+
+    @Suppress("DEPRECATION")
     private fun generateSnapshot(viewRef: WeakReference<View>, timestamp: Long) {
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
+
         val wireframe = view.toWireframe() ?: return
+
+        // if the decorView has no backgroundColor, we use the theme color
+        if (wireframe.style?.backgroundColor == null || wireframe.style?.backgroundColor == "#ffffff") {
+            context.theme?.toRGBColor()?.let {
+                wireframe.style?.backgroundColor = it
+            }
+        }
 
         val events = mutableListOf<RREvent>()
 
         if (!status.sentMetaEvent) {
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
+            // TODO: cache and compare, if size changes, we send a ViewportResize event
+
+            val screenSizeInfo = context.screenSize() ?: return
+
             val metaEvent = RRMetaEvent(
                 href = title,
-                width = displayMetrics.widthPixels.densityValue(displayMetrics.density),
-                height = displayMetrics.heightPixels.densityValue(displayMetrics.density),
+                width = screenSizeInfo.width,
+                height = screenSizeInfo.height,
                 timestamp = timestamp,
             )
             events.add(metaEvent)
@@ -365,6 +398,10 @@ public class PostHogReplayIntegration(
             // TODO: the 4 possible drawables
             // view.compoundDrawables
         }
+        // TODO: buttonDrawable
+//        if (view is CheckBox) {
+//            view.buttonDrawable
+//        }
 
         var base64: String? = null
         if (view is ImageView) {
@@ -468,10 +505,6 @@ public class PostHogReplayIntegration(
         }
         // TODO: vector, gradient drawables
         return null
-    }
-
-    private fun Int.densityValue(density: Float): Int {
-        return (this / density).toInt()
     }
 
     private fun Int.toRGBColor(): String {
