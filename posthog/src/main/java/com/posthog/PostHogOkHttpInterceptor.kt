@@ -33,8 +33,14 @@ public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true
         val transferSize = (response.body?.contentLength() ?: 0) + (request.body?.contentLength() ?: 0)
 
         val requestMap = mutableMapOf<String, Any>()
+
+        var cache = false
+        response.cacheResponse?.let {
+            cache = true
+        }
         if (transferSize >= 0) {
-            requestMap["transferSize"] = transferSize
+            // the UI special case if the transferSize is 0 as coming from cache
+            requestMap["transferSize"] = if (!cache) transferSize else 0
         }
 
         requestMap.putAll(
@@ -44,7 +50,7 @@ public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true
                 "responseStatus" to statusCode,
                 "timestamp" to end,
                 "duration" to (end - start),
-                "initiatorType" to "fetch"
+                "initiatorType" to "fetch",
             ),
         )
         val requests = listOf(requestMap)
