@@ -44,6 +44,7 @@ public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true
                 "responseStatus" to statusCode,
                 "timestamp" to end,
                 "duration" to (end - start),
+                "initiatorType" to "fetch"
             ),
         )
         val requests = listOf(requestMap)
