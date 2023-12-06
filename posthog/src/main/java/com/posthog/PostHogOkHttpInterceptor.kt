@@ -52,6 +52,7 @@ public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true
                 "duration" to (end - start),
                 // TODO: remove it if we don't need it (server defaults to fetch)
                 "initiatorType" to "fetch",
+                "entryType" to "resource"
             ),
         )
         val requests = listOf(requestMap)

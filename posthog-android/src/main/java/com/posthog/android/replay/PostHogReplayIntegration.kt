@@ -22,6 +22,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import com.posthog.PostHogIntegration
@@ -221,7 +222,6 @@ public class PostHogReplayIntegration(
         }?.toRGBColor()
     }
 
-    @Suppress("DEPRECATION")
     private fun generateSnapshot(viewRef: WeakReference<View>, timestamp: Long) {
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
@@ -308,6 +308,9 @@ public class PostHogReplayIntegration(
         if (view is ViewStub) {
             return null
         }
+        if (view.id == android.R.id.statusBarBackground || view.id == android.R.id.navigationBarBackground) {
+            return null
+        }
 
         val coordinates = IntArray(2)
         view.getLocationOnScreen(coordinates)
@@ -339,8 +342,10 @@ public class PostHogReplayIntegration(
             type = "text"
             style.color = view.currentTextColor.toRGBColor()
             // TODO: how to get border details?
-            style.borderWidth = 1
-            style.borderColor = "#000000"
+            if (view is Button) {
+                style.borderWidth = 1
+                style.borderColor = "#000000"
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 style.fontFamily = view.typeface?.systemFontFamilyName
             } else {
@@ -563,10 +568,7 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isNoCapture(): Boolean {
-        if ((this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true) {
-            return true
-        }
-        return false
+        return (this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true
     }
 
     private fun initLogcatWatcher(date: Date) {

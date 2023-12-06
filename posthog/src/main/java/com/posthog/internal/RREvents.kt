@@ -256,10 +256,15 @@ public class RRWireframe(
     public val width: Int,
     public val height: Int,
     public val childWireframes: List<RRWireframe>? = null,
-    public val type: String? = null,
+    public val type: String? = null, // image|input|radio group
+    public val inputType: String? = null, // checkbox|radio|text|password|email|number|search|tel|url|select|textarea|button
     public val text: String? = null,
+    public val label: String? = null,
     public val base64: String? = null,
     public val style: RRStyle? = null,
+    public val disabled: Boolean? = null,
+    public val checked: Boolean? = null,
+    public val options: List<String>? = null,
     @Transient
     public val parentId: Int? = null,
 )
