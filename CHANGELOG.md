@@ -1,6 +1,16 @@
 ## Next
 
+## 3.0.0 - 2023-12-06
+
+Check out the updated [docs](https://posthog.com/docs/libraries/android).
+
+Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md) guide.
+
+### Changes
+
 - Bump Kotlin to min. 1.6 compatibility ([#68](https://github.com/PostHog/posthog-android/pull/68))
+- `minSdk` set to 21.
+- Rewritten in Kotlin.
 
 ## 3.0.0-RC.1 - 2023-11-20
 
