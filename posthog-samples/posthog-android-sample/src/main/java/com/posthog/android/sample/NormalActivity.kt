@@ -21,25 +21,25 @@ class NormalActivity : ComponentActivity() {
 
         setContentView(R.layout.normal_activity)
 
-        val button = findViewById<Button>(R.id.button)
-        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)
-        button.setOnClickListener {
-            Log.e("MyApp", "Clicked on button ${button.text}")
-            button.text = "Test: ${(0..10).random()}"
-            if (imvAndroid.visibility == View.VISIBLE) {
-                imvAndroid.visibility = View.GONE
-            } else {
-                imvAndroid.visibility = View.VISIBLE
-            }
+//        val button = findViewById<Button>(R.id.button)
+//        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)
+//        button.setOnClickListener {
+//            Log.e("MyApp", "Clicked on button ${button.text}")
+//            button.text = "Test: ${(0..10).random()}"
+//            if (imvAndroid.visibility == View.VISIBLE) {
+//                imvAndroid.visibility = View.GONE
+//            } else {
+//                imvAndroid.visibility = View.VISIBLE
+//            }
 //            startActivity(Intent(this, NothingActivity::class.java))
 //            finish()
-            Thread {
-                client.newCall(
-                    okhttp3.Request.Builder()
-                        .url("https://google.com")
-                        .build(),
-                ).execute().closeQuietly()
-            }.start()
-        }
+//            Thread {
+//                client.newCall(
+//                    okhttp3.Request.Builder()
+//                        .url("https://google.com")
+//                        .build(),
+//                ).execute().closeQuietly()
+//            }.start()
+//        }
     }
 }

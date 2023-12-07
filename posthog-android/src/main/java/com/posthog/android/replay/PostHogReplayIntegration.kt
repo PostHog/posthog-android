@@ -23,7 +23,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
 import android.widget.Button
+import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.ImageView
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.widget.Spinner
+import android.widget.Switch
 import android.widget.TextView
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
@@ -330,21 +336,34 @@ public class PostHogReplayIntegration(
             }
         }
 
+        var checked: Boolean? = null
+
         var text: String? = null
         var type: String? = null
+        var inputType: String? = null
+        var value: String? = null
         // button inherits from textview
         if (view is TextView) {
             text = if (!view.isNoCapture() && !config.maskAllInputs) {
                 view.text.toString()
             } else {
-                "*".repeat(view.text.length)
+                view.text.toString().mask()
             }
+
+            if (text.isEmpty()) {
+                text = view.hint.toString().mask()
+            }
+
             type = "text"
             style.color = view.currentTextColor.toRGBColor()
             // TODO: how to get border details?
-            if (view is Button) {
+            if (view is Button && view !is CheckBox && view !is RadioButton) {
                 style.borderWidth = 1
                 style.borderColor = "#000000"
+                type = "input"
+                inputType = "button"
+                value = text
+                text = null
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 style.fontFamily = view.typeface?.systemFontFamilyName
@@ -403,10 +422,44 @@ public class PostHogReplayIntegration(
             // TODO: the 4 possible drawables
             // view.compoundDrawables
         }
-        // TODO: buttonDrawable
-//        if (view is CheckBox) {
+
+        var label: String? = null
+        if (view is CheckBox) {
+//            TODO: buttonDrawable
 //            view.buttonDrawable
-//        }
+            type = "input"
+            inputType = "checkbox"
+            label = text
+            text = null
+            checked = view.isChecked
+        }
+        if (view is RadioGroup) {
+            type = "radio_group"
+        }
+        if (view is RadioButton) {
+            type = "input"
+            inputType = "radio"
+            label = text
+            text = null
+            checked = view.isChecked
+        }
+
+        if (view is EditText) {
+            type = "input"
+            inputType = "text_area"
+            value = text
+            text = null
+        }
+        var options: List<String>? = null
+        if (view is Spinner) {
+            type = "input"
+            inputType = "select"
+            view.selectedItem?.let {
+                val maskedValue = it.toString().mask()
+                value = maskedValue
+                options = listOf(maskedValue)
+            }
+        }
 
         var base64: String? = null
         if (view is ImageView) {
@@ -441,6 +494,12 @@ public class PostHogReplayIntegration(
             childWireframes = children.ifEmpty { null },
             base64 = base64,
             parentId = parentId,
+            disabled = !view.isEnabled,
+            checked = checked,
+            inputType = inputType,
+            value = value,
+            label = label,
+            options = options,
         )
     }
 
@@ -633,5 +692,9 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             // ignore
         }
+    }
+
+    private fun String.mask(): String {
+        return "*".repeat(this.length)
     }
 }
