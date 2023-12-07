@@ -487,6 +487,7 @@ public class PostHogReplayIntegration(
         }
 
         if (view is Switch) {
+            type = "input"
             inputType = "toggle"
             checked = view.isChecked
             label = text
