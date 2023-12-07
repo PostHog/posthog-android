@@ -26,6 +26,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.Spinner
@@ -470,6 +471,21 @@ public class PostHogReplayIntegration(
             }
         }
 
+        var max: Int? = null
+        var progress: Int? = null
+        if (view is ProgressBar) {
+            inputType = "progress"
+            type = "input"
+            val bar = if (view.isIndeterminate) {
+                "circular"
+            } else {
+                max = view.max
+                progress = view.progress
+                "horizontal"
+            }
+            style.bar = bar
+        }
+
         val viewId = System.identityHashCode(view)
 
         val children = mutableListOf<RRWireframe>()
@@ -500,6 +516,8 @@ public class PostHogReplayIntegration(
             value = value,
             label = label,
             options = options,
+            progress = progress,
+            max = max,
         )
     }
 

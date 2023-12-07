@@ -268,6 +268,8 @@ public class RRWireframe(
     public val options: List<String>? = null,
     @Transient
     public val parentId: Int? = null,
+    public val max: Int? = null,
+    public val progress: Int? = null,
 )
 
 @PostHogInternal
@@ -285,6 +287,7 @@ public class RRStyle(
     public var paddingBottom: Int? = null,
     public var paddingLeft: Int? = null,
     public var paddingRight: Int? = null,
+    public var bar: String? = null,
 )
 
 public fun List<RREvent>.capture() {
