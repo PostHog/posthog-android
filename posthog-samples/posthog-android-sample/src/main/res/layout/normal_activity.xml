@@ -91,10 +91,11 @@
 <!--        </LinearLayout>-->
 <!--    </ScrollView>-->
 
-<!--    <Switch-->
-<!--        android:layout_width="wrap_content"-->
-<!--        android:layout_height="wrap_content"-->
-<!--        android:text="Switch text" />-->
+    <Switch
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:checked="true"
+        android:text="Switch text" />
 
 <!--    <SearchView-->
 <!--        android:layout_width="match_parent"-->
@@ -102,13 +103,13 @@
 <!--        android:iconifiedByDefault="false"-->
 <!--        android:queryHint="Search me" />-->
 
-    <ProgressBar
-        style="?android:progressBarStyleHorizontal"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:progress="50"
-        android:max="100"
-        />
+<!--    <ProgressBar-->
+<!--        style="?android:progressBarStyleHorizontal"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:progress="50"-->
+<!--        android:max="100"-->
+<!--        />-->
 
 <!--    <Spinner-->
 <!--        android:layout_width="wrap_content"-->

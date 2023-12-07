@@ -358,7 +358,7 @@ public class PostHogReplayIntegration(
             type = "text"
             style.color = view.currentTextColor.toRGBColor()
             // TODO: how to get border details?
-            if (view is Button && view !is CheckBox && view !is RadioButton) {
+            if (view is Button && view !is CheckBox && view !is RadioButton && view !is Switch) {
                 style.borderWidth = 1
                 style.borderColor = "#000000"
                 type = "input"
@@ -484,6 +484,13 @@ public class PostHogReplayIntegration(
                 "horizontal"
             }
             style.bar = bar
+        }
+
+        if (view is Switch) {
+            inputType = "toggle"
+            checked = view.isChecked
+            label = text
+            text = null
         }
 
         val viewId = System.identityHashCode(view)
