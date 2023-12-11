@@ -260,7 +260,7 @@ public class RRWireframe(
     public val inputType: String? = null, // checkbox|radio|text|password|email|number|search|tel|url|select|textarea|button
     public val text: String? = null,
     public val label: String? = null,
-    public val value: String? = null,
+    public val value: Any? = null, // string or number TODO; rename the number to progress and make a different field
     public val base64: String? = null,
     public val style: RRStyle? = null,
     public val disabled: Boolean? = null,
@@ -269,7 +269,6 @@ public class RRWireframe(
     @Transient
     public val parentId: Int? = null,
     public val max: Int? = null,
-    public val progress: Int? = null,
 )
 
 @PostHogInternal

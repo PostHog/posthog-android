@@ -96,8 +96,6 @@ public open class PostHogConfig(
      */
     public var sessionReplay: Boolean = true,
 
-    public var sessionReplaySampleRate: Double = 1.0,
-
     /**
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire

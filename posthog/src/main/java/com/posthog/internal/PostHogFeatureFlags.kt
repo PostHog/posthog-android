@@ -73,12 +73,12 @@ internal class PostHogFeatureFlags(
                             @Suppress("UNCHECKED_CAST")
                             (response.sessionRecording as? Map<String, Any?>).let { sessionRecording ->
                                 config.sessionReplay = true && config.sessionReplay
-                                config.sessionReplaySampleRate = sessionRecording?.get("sampleRate") as? Double ?: config.sessionReplaySampleRate
                                 config.snapshotEndpoint = sessionRecording?.get("endpoint") as? String ?: config.snapshotEndpoint
 
                                 // TODO:
                                 // consoleLogRecordingEnabled -> Boolean or null
                                 // networkPayloadCapture -> Boolean or null
+                                // sampleRate, etc
                             }
                         }
                     }

@@ -1,14 +1,10 @@
 package com.posthog.android.sample
 
 import android.os.Bundle
-import android.util.Log
-import android.view.View
-import android.widget.Button
-import android.widget.ImageView
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import com.posthog.PostHogOkHttpInterceptor
 import okhttp3.OkHttpClient
-import okhttp3.internal.closeQuietly
 
 class NormalActivity : ComponentActivity() {
 
@@ -20,6 +16,9 @@ class NormalActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.normal_activity)
+
+        val webview = findViewById<WebView>(R.id.webview)
+        webview.loadUrl("https://www.google.com")
 
 //        val button = findViewById<Button>(R.id.button)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)

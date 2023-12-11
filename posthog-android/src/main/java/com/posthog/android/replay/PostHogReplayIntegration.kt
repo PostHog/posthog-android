@@ -22,6 +22,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
+import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -342,7 +343,7 @@ public class PostHogReplayIntegration(
         var text: String? = null
         var type: String? = null
         var inputType: String? = null
-        var value: String? = null
+        var value: Any? = null
         // button inherits from textview
         if (view is TextView) {
             text = if (!view.isNoCapture() && !config.maskAllInputs) {
@@ -472,7 +473,6 @@ public class PostHogReplayIntegration(
         }
 
         var max: Int? = null
-        var progress: Int? = null
         if (view is ProgressBar) {
             inputType = "progress"
             type = "input"
@@ -480,7 +480,7 @@ public class PostHogReplayIntegration(
                 "circular"
             } else {
                 max = view.max
-                progress = view.progress
+                value = view.progress
                 "horizontal"
             }
             style.bar = bar
@@ -492,6 +492,12 @@ public class PostHogReplayIntegration(
             checked = view.isChecked
             label = text
             text = null
+        }
+
+        // TODO: people might be used androidx.webkit:webkit though
+        if (view is WebView) {
+            type = "web_view"
+            label = "WebView"
         }
 
         val viewId = System.identityHashCode(view)
@@ -524,7 +530,6 @@ public class PostHogReplayIntegration(
             value = value,
             label = label,
             options = options,
-            progress = progress,
             max = max,
         )
     }
@@ -583,17 +588,20 @@ public class PostHogReplayIntegration(
                 return Base64.encodeToString(byteArray, Base64.DEFAULT)
             }
         } else if (this is LayerDrawable) {
-            if (numberOfLayers > 0) {
-                getDrawable(0)?.let {
-                    return it.base64()
-                }
-            }
+            return getFirstDrawable()?.base64()
         } else if (this is InsetDrawable) {
             drawable?.let {
                 return it.base64()
             }
         }
         // TODO: vector, gradient drawables
+        return null
+    }
+
+    private fun LayerDrawable.getFirstDrawable(): Drawable? {
+        if (numberOfLayers > 0) {
+            return getDrawable(0)
+        }
         return null
     }
 
