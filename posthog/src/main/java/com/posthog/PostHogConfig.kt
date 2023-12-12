@@ -1,6 +1,8 @@
 package com.posthog
 
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
@@ -92,6 +94,7 @@ public open class PostHogConfig(
 
     /**
      * Enable Recording of Session Replays for Android
+     * Requires Authorized Domains to be disabled in the PostHog Project Settings
      * Defaults to true
      */
     public var sessionReplay: Boolean = true,
@@ -140,6 +143,9 @@ public open class PostHogConfig(
 
     @PostHogInternal
     public var snapshotEndpoint: String = "/s/"
+
+    @PostHogInternal
+    public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
 
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()

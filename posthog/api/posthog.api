@@ -62,6 +62,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
+	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getFlushAt ()I
@@ -88,6 +89,7 @@ public class com/posthog/PostHogConfig {
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
+	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFlushAt (I)V
@@ -219,6 +221,12 @@ public abstract interface class com/posthog/internal/PostHogContext {
 	public abstract fun getStaticContext ()Ljava/util/Map;
 }
 
+public abstract interface class com/posthog/internal/PostHogDateProvider {
+	public abstract fun addSecondsToCurrentDate (I)Ljava/util/Date;
+	public abstract fun currentDate ()Ljava/util/Date;
+	public abstract fun currentTimeMillis ()J
+}
+
 public abstract interface class com/posthog/internal/PostHogLogger {
 	public abstract fun isEnabled ()Z
 	public abstract fun log (Ljava/lang/String;)V
@@ -289,11 +297,11 @@ public final class com/posthog/internal/RRAddedNode {
 }
 
 public final class com/posthog/internal/RRCustomEvent : com/posthog/internal/RREvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/Object;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
 }
 
 public final class com/posthog/internal/RRDocumentNode : com/posthog/internal/RREvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/Object;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
 }
 
 public final class com/posthog/internal/RRDomContentLoadedEvent : com/posthog/internal/RREvent {
@@ -301,8 +309,8 @@ public final class com/posthog/internal/RRDomContentLoadedEvent : com/posthog/in
 }
 
 public class com/posthog/internal/RREvent {
-	public fun <init> (Lcom/posthog/internal/RREventType;Ljava/lang/Object;J)V
-	public synthetic fun <init> (Lcom/posthog/internal/RREventType;Ljava/lang/Object;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/posthog/internal/RREventType;JLjava/lang/Object;)V
+	public synthetic fun <init> (Lcom/posthog/internal/RREventType;JLjava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getData ()Ljava/lang/Object;
 	public final fun getTimestamp ()J
 	public final fun getType ()Lcom/posthog/internal/RREventType;

@@ -13,8 +13,6 @@ import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.util.Base64
 import android.util.TypedValue
 import android.view.Gravity
@@ -35,6 +33,7 @@ import android.widget.Switch
 import android.widget.TextView
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
@@ -74,6 +73,7 @@ import java.util.concurrent.Executors
 public class PostHogReplayIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
+    private val mainHandler: MainHandler,
 ) : PostHogIntegration {
 
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
@@ -81,8 +81,6 @@ public class PostHogReplayIntegration(
     private val executor by lazy {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
-
-    private val handler = Handler(Looper.getMainLooper())
 
     @Volatile
     private var isSessionActive = false
@@ -104,11 +102,11 @@ public class PostHogReplayIntegration(
             view.phoneWindow?.let { window ->
                 if (view.windowAttachCount == 0) {
                     window.onDecorViewReady { decorView ->
-                        val listener = decorView.onNextDraw {
+                        val listener = decorView.onNextDraw(mainHandler) {
                             if (!isSessionReplayEnabled) {
                                 return@onNextDraw
                             }
-                            val timestamp = System.currentTimeMillis()
+                            val timestamp = config.dateProvider.currentTimeMillis()
 
                             executor.submit {
                                 generateSnapshot(WeakReference(decorView), timestamp)
@@ -140,7 +138,7 @@ public class PostHogReplayIntegration(
             return@OnTouchEventListener
         }
         motionEvent.eventTime
-        val timestamp = System.currentTimeMillis()
+        val timestamp = config.dateProvider.currentTimeMillis()
         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
             // TODO: figure out the best way to handle move events, move does not exist
             // mouse does not make sense, touch maybe?
@@ -194,7 +192,7 @@ public class PostHogReplayIntegration(
     private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
         view.viewTreeObserver?.let { viewTreeObserver ->
             if (viewTreeObserver.isAlive) {
-                handler.post {
+                mainHandler.handler.post {
                     viewTreeObserver.removeOnDrawListener(status.listener)
                 }
             }
@@ -346,7 +344,7 @@ public class PostHogReplayIntegration(
         var value: Any? = null
         // button inherits from textview
         if (view is TextView) {
-            text = if (!view.isNoCapture() && !config.maskAllInputs) {
+            text = if (!view.isNoCapture(config.maskAllTextInputs)) {
                 view.text.toString()
             } else {
                 view.text.toString().mask()
@@ -466,7 +464,7 @@ public class PostHogReplayIntegration(
         var base64: String? = null
         if (view is ImageView) {
             type = "image"
-            if (!view.isNoCapture()) {
+            if (!view.isNoCapture(config.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here
                 base64 = view.drawable?.base64()
             }
@@ -497,7 +495,6 @@ public class PostHogReplayIntegration(
         // TODO: people might be used androidx.webkit:webkit though
         if (view is WebView) {
             type = "web_view"
-            label = "WebView"
         }
 
         val viewId = System.identityHashCode(view)
@@ -660,8 +657,8 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.isNoCapture(): Boolean {
-        return (this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true
+    private fun View.isNoCapture(maskInput: Boolean): Boolean {
+        return (this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
     }
 
     private fun initLogcatWatcher(date: Date) {
@@ -701,7 +698,7 @@ public class PostHogReplayIntegration(
                                 val tag = log.tag?.trim() ?: ""
                                 val content = log.text?.trim() ?: ""
                                 props["payload"] = listOf("$tag: $content")
-                                val time = log.time?.time?.time ?: System.currentTimeMillis()
+                                val time = log.time?.time?.time ?: config.dateProvider.currentTimeMillis()
                                 val event = RRPluginEvent("rrweb/console@1", props, time)
                                 // TODO: batch events
                                 listOf(event).capture()

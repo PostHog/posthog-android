@@ -82,12 +82,12 @@ dependencies {
     implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
     implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
-    implementation("com.squareup.curtains:curtains:1.2.4")
+    implementation("com.squareup.curtains:curtains:${PosthogBuildConfig.Dependencies.CURTAINS}")
 
     // compatibility
-    signature("org.codehaus.mojo.signature:java18:1.0@signature")
+    signature("org.codehaus.mojo.signature:java18:${PosthogBuildConfig.Plugins.SIGNATURE_JAVA18}@signature")
     signature("net.sf.androidscents.signature:android-api-level-${PosthogBuildConfig.Android.MIN_SDK}:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_VERSION}@signature")
-    signature("com.toasttab.android:gummy-bears-api-${PosthogBuildConfig.Android.MIN_SDK}:0.6.1@signature")
+    signature("com.toasttab.android:gummy-bears-api-${PosthogBuildConfig.Android.MIN_SDK}:${PosthogBuildConfig.Plugins.GUMMY_BEARS_API}@signature")
 
     // tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")

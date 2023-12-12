@@ -1,12 +1,9 @@
 package com.posthog.android.replay.internal
 
-import android.os.Handler
-import android.os.Looper
+import com.posthog.android.internal.MainHandler
 import java.util.concurrent.TimeUnit
 
-internal class Debouncer {
-    private val handler: Handler = Handler(Looper.getMainLooper())
-
+internal class Debouncer(private val mainHandler: MainHandler) {
     private var lastCall = 0L
     private val oneFrameNs = TimeUnit.MILLISECONDS.toNanos(ONE_FRAME_MS)
 
@@ -15,12 +12,12 @@ internal class Debouncer {
             lastCall = System.nanoTime()
         }
 
-        handler.removeCallbacksAndMessages(null)
+        mainHandler.handler.removeCallbacksAndMessages(null)
         val timePassedSinceLastExecution = System.nanoTime() - lastCall
         if (timePassedSinceLastExecution >= oneFrameNs) {
             execute(runnable)
         } else {
-            handler.postDelayed({ execute(runnable) }, ONE_FRAME_MS)
+            mainHandler.handler.postDelayed({ execute(runnable) }, ONE_FRAME_MS)
         }
     }
 

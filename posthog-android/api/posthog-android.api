@@ -16,22 +16,32 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 }
 
 public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZ)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z
 	public final fun getCaptureDeepLinks ()Z
 	public final fun getCaptureLogcat ()Z
 	public final fun getCaptureScreenViews ()Z
-	public final fun getMaskAllInputs ()Z
+	public final fun getMaskAllImages ()Z
+	public final fun getMaskAllTextInputs ()Z
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
 	public final fun setCaptureDeepLinks (Z)V
 	public final fun setCaptureLogcat (Z)V
 	public final fun setCaptureScreenViews (Z)V
-	public final fun setMaskAllInputs (Z)V
+	public final fun setMaskAllImages (Z)V
+	public final fun setMaskAllTextInputs (Z)V
+}
+
+public final class com/posthog/android/internal/MainHandler {
+	public fun <init> ()V
+	public fun <init> (Landroid/os/Looper;)V
+	public synthetic fun <init> (Landroid/os/Looper;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getHandler ()Landroid/os/Handler;
+	public final fun getMainLooper ()Landroid/os/Looper;
 }
 
 public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration {
-	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)V
+	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
 	public fun install ()V
 	public fun uninstall ()V
 }

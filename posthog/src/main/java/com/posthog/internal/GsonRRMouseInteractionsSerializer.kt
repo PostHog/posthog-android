@@ -22,7 +22,11 @@ internal class GsonRRMouseInteractionsSerializer :
         json: JsonElement,
         typeOfT: Type,
         context: JsonDeserializationContext,
-    ): RRMouseInteraction {
-        return RRMouseInteraction.fromValue(json.asInt)
+    ): RRMouseInteraction? {
+        return try {
+            RRMouseInteraction.fromValue(json.asInt)
+        } catch (e: Throwable) {
+            null
+        }
     }
 }

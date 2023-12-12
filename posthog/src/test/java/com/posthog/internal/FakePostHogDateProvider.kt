@@ -28,4 +28,8 @@ internal class FakePostHogDateProvider : PostHogDateProvider {
         cal.add(Calendar.SECOND, seconds)
         return cal.time
     }
+
+    override fun currentTimeMillis(): Long {
+        TODO("Not yet implemented")
+    }
 }

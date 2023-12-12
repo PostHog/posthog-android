@@ -2,6 +2,8 @@
 
 package com.posthog.android.replay.internal;
 
+import com.posthog.PostHogInternal;
+
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
@@ -11,6 +13,7 @@ import java.util.regex.Pattern;
 /**
  * Parses a stream of text as a logcat.
  */
+@PostHogInternal
 public class LogcatParser {
 
     /**

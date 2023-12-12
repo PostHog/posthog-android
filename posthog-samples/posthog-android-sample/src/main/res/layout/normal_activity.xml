@@ -97,17 +97,17 @@
 <!--        android:checked="true"-->
 <!--        android:text="Switch text" />-->
 
-<!--    <SearchView-->
-<!--        android:layout_width="match_parent"-->
-<!--        android:layout_height="wrap_content"-->
-<!--        android:iconifiedByDefault="false"-->
-<!--        android:queryHint="Search me" />-->
+    <SearchView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:iconifiedByDefault="false"
+        android:queryHint="Search me" />
 
-<!--    <ProgressBar-->
-<!--        style="?android:progressBarStyle"-->
-<!--        android:layout_width="wrap_content"-->
-<!--        android:layout_height="wrap_content"-->
-<!--        />-->
+    <ProgressBar
+        style="?android:progressBarStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        />
 
     <WebView
         android:layout_width="match_parent"

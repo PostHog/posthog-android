@@ -10,7 +10,6 @@ import android.content.pm.PackageManager.GET_META_DATA
 import android.graphics.Point
 import android.net.ConnectivityManager
 import android.os.Build
-import android.os.Looper
 import android.os.Process
 import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
@@ -130,6 +129,6 @@ internal fun Activity.activityLabel(config: PostHogAndroidConfig): String? {
     }
 }
 
-internal fun isMainThread(): Boolean {
-    return Thread.currentThread().id == Looper.getMainLooper().thread.id
+internal fun isMainThread(mainHandler: MainHandler): Boolean {
+    return Thread.currentThread().id == mainHandler.mainLooper.thread.id
 }

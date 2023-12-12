@@ -22,7 +22,11 @@ internal class GsonRRIncrementalSourceSerializer :
         json: JsonElement,
         typeOfT: Type,
         context: JsonDeserializationContext,
-    ): RRIncrementalSource {
-        return RRIncrementalSource.fromValue(json.asInt)
+    ): RRIncrementalSource? {
+        return try {
+            RRIncrementalSource.fromValue(json.asInt)
+        } catch (e: Throwable) {
+            null
+        }
     }
 }

@@ -5,9 +5,9 @@ import java.util.Date
 
 /**
  * The implementation of the PostHogDateProvider interface that reads the current time
- * based on the device's clock.
+ *  and more based on the device's clock.
  */
-internal class PostHogCalendarDateProvider : PostHogDateProvider {
+internal class PostHogDeviceDateProvider : PostHogDateProvider {
     override fun currentDate(): Date {
         val cal = Calendar.getInstance()
         return cal.time
@@ -17,5 +17,9 @@ internal class PostHogCalendarDateProvider : PostHogDateProvider {
         val cal = Calendar.getInstance()
         cal.add(Calendar.SECOND, seconds)
         return cal.time
+    }
+
+    override fun currentTimeMillis(): Long {
+        return System.currentTimeMillis()
     }
 }

@@ -6,18 +6,9 @@ import com.posthog.PostHogInternal
 @PostHogInternal
 public open class RREvent(
     public val type: RREventType,
+    public val timestamp: Long,
     public val data: Any? = null,
-    public val timestamp: Long = System.currentTimeMillis(),
 )
-
-// internal enum class RRNodeType(val value: Int) {
-//    Document(0),
-//    DocumentType(1),
-//    Element(2),
-//    Text(3),
-//    CDATA(4),
-//    Comment(5),
-// }
 
 @PostHogInternal
 public enum class RREventType(public val value: Int) {
@@ -31,7 +22,7 @@ public enum class RREventType(public val value: Int) {
     ;
 
     public companion object {
-        public fun fromValue(value: Int): RREventType {
+        public fun fromValue(value: Int): RREventType? {
             return when (value) {
                 0 -> DomContentLoaded
                 1 -> Load
@@ -40,7 +31,7 @@ public enum class RREventType(public val value: Int) {
                 4 -> Meta
                 5 -> Custom
                 6 -> Plugin
-                else -> throw IllegalArgumentException("Unknown value $value")
+                else -> null
             }
         }
     }
@@ -68,7 +59,7 @@ public enum class RRIncrementalSource(public val value: Int) {
     ;
 
     public companion object {
-        public fun fromValue(value: Int): RRIncrementalSource {
+        public fun fromValue(value: Int): RRIncrementalSource? {
             return when (value) {
                 0 -> Mutation
                 1 -> MouseMove
@@ -87,7 +78,7 @@ public enum class RRIncrementalSource(public val value: Int) {
                 14 -> Selection
                 15 -> AdoptedStyleSheet
                 16 -> CustomElement
-                else -> throw IllegalArgumentException("Unknown value $value")
+                else -> null
             }
         }
     }
@@ -160,7 +151,7 @@ public class RRIncrementalMutationData(
     public val adds: List<RRAddedNode>? = null,
     public val removes: List<RRRemovedNode>? = null,
     public val source: RRIncrementalSource = RRIncrementalSource.Mutation,
-    // TODO: do we need updates?
+    // TODO: mutations/updates pending
 )
 
 @PostHogInternal
@@ -173,13 +164,13 @@ public enum class RRMouseInteraction(public val value: Int) {
     Focus(5),
     Blur(6),
     TouchStart(7),
-    TouchMoveDeparted(8), // we will start a separate observer for touch move event
+    TouchMoveDeparted(8),
     TouchEnd(9),
     TouchCancel(10),
     ;
 
     public companion object {
-        public fun fromValue(value: Int): RRMouseInteraction {
+        public fun fromValue(value: Int): RRMouseInteraction? {
             return when (value) {
                 0 -> MouseUp
                 1 -> MouseDown
@@ -192,7 +183,7 @@ public enum class RRMouseInteraction(public val value: Int) {
                 8 -> TouchMoveDeparted
                 9 -> TouchEnd
                 10 -> TouchCancel
-                else -> throw IllegalArgumentException("Unknown value $value")
+                else -> null
             }
         }
     }
@@ -220,12 +211,13 @@ public class RRMetaEvent(width: Int, height: Int, timestamp: Long, href: String)
 )
 
 @PostHogInternal
-public class RRCustomEvent(tag: String, payload: Any) : RREvent(
+public class RRCustomEvent(tag: String, payload: Any, timestamp: Long) : RREvent(
     type = RREventType.Custom,
     data = mapOf(
         "tag" to tag,
         "payload" to payload,
     ),
+    timestamp = timestamp,
 )
 
 @PostHogInternal
@@ -239,12 +231,13 @@ public class RRPluginEvent(plugin: String, payload: Map<String, Any>, timestamp:
 )
 
 @PostHogInternal
-public class RRDocumentNode(tag: String, payload: Any) : RREvent(
+public class RRDocumentNode(tag: String, payload: Any, timestamp: Long) : RREvent(
     type = RREventType.Custom,
     data = mapOf(
         "tag" to tag,
         "payload" to payload,
     ),
+    timestamp = timestamp,
 )
 
 // TODO: create abstractions on top of RRWireframe, eg RRTextWireframe, etc
@@ -260,7 +253,7 @@ public class RRWireframe(
     public val inputType: String? = null, // checkbox|radio|text|password|email|number|search|tel|url|select|textarea|button
     public val text: String? = null,
     public val label: String? = null,
-    public val value: Any? = null, // string or number TODO; rename the number to progress and make a different field
+    public val value: Any? = null, // string or number
     public val base64: String? = null,
     public val style: RRStyle? = null,
     public val disabled: Boolean? = null,
@@ -290,8 +283,9 @@ public class RRStyle(
 )
 
 public fun List<RREvent>.capture() {
-    val properties = mutableMapOf<String, Any>(
+    val properties = mutableMapOf(
         "\$snapshot_data" to this,
+        "\$snapshot_source" to "mobile",
     )
     PostHog.capture("\$snapshot", properties = properties)
 }

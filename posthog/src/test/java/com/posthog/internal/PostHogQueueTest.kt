@@ -30,7 +30,7 @@ internal class PostHogQueueTest {
         maxQueueSize: Int = 1000,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         flushAt: Int = 20,
-        dateProvider: PostHogDateProvider = PostHogCalendarDateProvider(),
+        dateProvider: PostHogDateProvider = PostHogDeviceDateProvider(),
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
 

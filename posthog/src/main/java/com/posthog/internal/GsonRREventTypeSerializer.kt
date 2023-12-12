@@ -20,7 +20,11 @@ internal class GsonRREventTypeSerializer : JsonSerializer<RREventType>, JsonDese
         json: JsonElement,
         typeOfT: Type,
         context: JsonDeserializationContext,
-    ): RREventType {
-        return RREventType.fromValue(json.asInt)
+    ): RREventType? {
+        return try {
+            RREventType.fromValue(json.asInt)
+        } catch (e: Throwable) {
+            null
+        }
     }
 }

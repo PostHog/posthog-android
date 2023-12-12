@@ -17,7 +17,6 @@ import java.io.OutputStream
  */
 internal class PostHogApi(
     private val config: PostHogConfig,
-    private val dateProvider: PostHogDateProvider,
 ) {
     private val mediaType by lazy {
         try {
@@ -42,7 +41,7 @@ internal class PostHogApi(
         val batch = PostHogBatchEvent(config.apiKey, events)
 
         val request = makeRequest("$theHost/batch") {
-            batch.sentAt = dateProvider.currentDate()
+            batch.sentAt = config.dateProvider.currentDate()
             config.serializer.serialize(batch, it.bufferedWriter())
         }
 
@@ -57,10 +56,10 @@ internal class PostHogApi(
             it.apiKey = config.apiKey
         }
 
-        // TODO: remove it
-        config.serializer.serializeObject(events)?.let {
-            print("rrweb events: $it")
-        }
+//        // for easy debugging
+//        config.serializer.serializeObject(events)?.let {
+//            print("rrweb events: $it")
+//        }
 
         // sent_at isn't supported by the snapshot endpoint
         val request = makeRequest("$theHost${config.snapshotEndpoint}") {

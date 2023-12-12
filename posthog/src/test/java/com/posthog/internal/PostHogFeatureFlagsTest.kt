@@ -33,7 +33,7 @@ internal class PostHogFeatureFlagsTest {
             this.networkStatus = networkStatus
             cachePreferences = preferences
         }
-        val dateProvider = PostHogCalendarDateProvider()
+        val dateProvider = PostHogDeviceDateProvider()
         val api = PostHogApi(config, dateProvider)
         return PostHogFeatureFlags(config, api, executor = executor)
     }

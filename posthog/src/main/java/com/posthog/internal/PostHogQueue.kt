@@ -26,7 +26,6 @@ internal class PostHogQueue(
     private val api: PostHogApi,
     private val endpoint: PostHogApiEndpoint,
     private val storagePrefix: String?,
-    private val dateProvider: PostHogDateProvider,
     private val executor: ExecutorService,
 ) {
 
@@ -103,10 +102,9 @@ internal class PostHogQueue(
     }
 
     private fun canFlushBatch(): Boolean {
-        if (pausedUntil?.after(dateProvider.currentDate()) == true) {
-//            config.logger.log("Queue is paused until $pausedUntil")
-            // TODO: revert, just for testing
-            return true
+        if (pausedUntil?.after(config.dateProvider.currentDate()) == true) {
+            config.logger.log("Queue is paused until $pausedUntil")
+            return false
         }
 
         return true
@@ -163,6 +161,7 @@ internal class PostHogQueue(
         }
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
     private fun batchEvents() {
         val files = takeFiles()
 
@@ -262,7 +261,7 @@ internal class PostHogQueue(
 
     private fun calculateDelay(retry: Boolean) {
         val delay = if (retry) min(retryCount * retryDelaySeconds, maxRetryDelaySeconds) else config.flushIntervalSeconds
-        pausedUntil = dateProvider.addSecondsToCurrentDate(delay)
+        pausedUntil = config.dateProvider.addSecondsToCurrentDate(delay)
     }
 
     fun start() {

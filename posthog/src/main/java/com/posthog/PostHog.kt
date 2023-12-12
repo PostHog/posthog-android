@@ -2,7 +2,6 @@ package com.posthog
 
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
-import com.posthog.internal.PostHogCalendarDateProvider
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences
@@ -69,10 +68,9 @@ public class PostHog private constructor(
 
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
-                val dateProvider = PostHogCalendarDateProvider()
-                val api = PostHogApi(config, dateProvider)
-                val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, dateProvider, queueExecutor)
-                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, dateProvider, replayExecutor)
+                val api = PostHogApi(config)
+                val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
+                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -84,7 +82,7 @@ public class PostHog private constructor(
                     config.optOut = optOut
                 }
 
-                val startDate = dateProvider.currentDate()
+                val startDate = config.dateProvider.currentDate()
                 val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(
                     config,
                     api,
@@ -254,6 +252,7 @@ public class PostHog private constructor(
         synchronized(sessionLock) {
             if (sessionId != sessionIdNone) {
                 props["\$session_id"] = sessionId.toString()
+                // TODO: do we still need window_id?
                 props["\$window_id"] = sessionId.toString()
             }
         }
@@ -275,6 +274,7 @@ public class PostHog private constructor(
         }
 
         // Replay needs distinct_id also in the props
+        // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         if (props["distinct_id"] == null && !appendSharedProps) {
             props["distinct_id"] = distinctId
         }

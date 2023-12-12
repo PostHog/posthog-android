@@ -28,14 +28,13 @@ object PosthogBuildConfig {
 
     object Plugins {
         val ANIMAL_SNIFFER = "1.7.1"
-
-//        val ANIMAL_SNIFFER_SDK_VERSION = "7.0_r2" // 24
-
         val ANIMAL_SNIFFER_SDK_VERSION = "5.0.1_r2" // 21
         val SPOTLESS = "6.21.0"
         val DETEKT = "1.23.1"
         val API_VALIDATOR = "0.13.2"
         val BUILD_CONFIG = "4.1.2"
+        val GUMMY_BEARS_API = "0.6.1"
+        val SIGNATURE_JAVA18 = "1.0"
     }
 
     object Dependencies {
@@ -43,6 +42,7 @@ object PosthogBuildConfig {
         val LIFECYCLE = "2.6.2"
         val GSON = "2.10.1"
         val OKHTTP = "4.11.0"
+        val CURTAINS = "1.2.4"
 
         // tests
         val ANDROIDX_JUNIT = "1.1.5"

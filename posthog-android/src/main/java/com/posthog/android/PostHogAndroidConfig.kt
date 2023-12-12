@@ -16,6 +16,7 @@ public open class PostHogAndroidConfig(
     public var captureDeepLinks: Boolean = true,
     public var captureScreenViews: Boolean = true,
     // TODO: better to create a new class for all Replay config (eg maskInputFn, maskInputOptions)
-    public var maskAllInputs: Boolean = true,
+    public var maskAllTextInputs: Boolean = true,
+    public var maskAllImages: Boolean = true,
     public var captureLogcat: Boolean = true,
 ) : PostHogConfig(apiKey, host)

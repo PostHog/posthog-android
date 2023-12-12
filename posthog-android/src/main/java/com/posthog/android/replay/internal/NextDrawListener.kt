@@ -5,10 +5,15 @@ package com.posthog.android.replay.internal
 import android.os.Build
 import android.view.View
 import android.view.ViewTreeObserver
+import com.posthog.android.internal.MainHandler
 
-internal class NextDrawListener(private val view: View, private val onDrawCallback: () -> Unit) : ViewTreeObserver.OnDrawListener {
+internal class NextDrawListener(
+    private val view: View,
+    mainHandler: MainHandler,
+    private val onDrawCallback: () -> Unit,
+) : ViewTreeObserver.OnDrawListener {
 
-    private val debounce = Debouncer()
+    private val debounce = Debouncer(mainHandler)
     override fun onDraw() {
         debounce.debounce {
             onDrawCallback()
@@ -28,8 +33,8 @@ internal class NextDrawListener(private val view: View, private val onDrawCallba
 
     companion object {
         // only call if onDecorViewReady
-        internal fun View.onNextDraw(onDrawCallback: () -> Unit): NextDrawListener {
-            val nextDrawListener = NextDrawListener(this, onDrawCallback)
+        internal fun View.onNextDraw(mainHandler: MainHandler, onDrawCallback: () -> Unit): NextDrawListener {
+            val nextDrawListener = NextDrawListener(this, mainHandler, onDrawCallback)
             nextDrawListener.safelyRegisterForNextDraw()
             return nextDrawListener
         }

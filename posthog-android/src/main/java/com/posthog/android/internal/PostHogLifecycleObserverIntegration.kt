@@ -1,8 +1,6 @@
 package com.posthog.android.internal
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -25,9 +23,9 @@ internal class PostHogLifecycleObserverIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
     private val replayIntegration: PostHogReplayIntegration,
+    private val mainHandler: MainHandler,
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
 ) : DefaultLifecycleObserver, PostHogIntegration {
-    private val handler = Handler(Looper.getMainLooper())
     private val timerLock = Any()
     private var timer = Timer(true)
     private var timerTask: TimerTask? = null
@@ -65,7 +63,7 @@ internal class PostHogLifecycleObserverIntegration(
     private fun startSession() {
         cancelTask()
 
-        val currentTimeMillis = System.currentTimeMillis()
+        val currentTimeMillis = config.dateProvider.currentTimeMillis()
         val lastUpdatedSession = lastUpdatedSession.get()
 
         if (lastUpdatedSession == 0L ||
@@ -102,7 +100,7 @@ internal class PostHogLifecycleObserverIntegration(
             PostHog.capture("Application Backgrounded")
         }
 
-        val currentTimeMillis = System.currentTimeMillis()
+        val currentTimeMillis = config.dateProvider.currentTimeMillis()
         lastUpdatedSession.set(currentTimeMillis)
         scheduleEndSession()
     }
@@ -113,10 +111,10 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun install() {
         try {
-            if (isMainThread()) {
+            if (isMainThread(mainHandler)) {
                 add()
             } else {
-                handler.post {
+                mainHandler.handler.post {
                     add()
                 }
             }
@@ -131,10 +129,10 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun uninstall() {
         try {
-            if (isMainThread()) {
+            if (isMainThread(mainHandler)) {
                 remove()
             } else {
-                handler.post {
+                mainHandler.handler.post {
                     remove()
                 }
             }

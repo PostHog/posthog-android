@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
@@ -69,7 +70,8 @@ public class PostHogAndroid private constructor() {
             config.sdkVersion = BuildConfig.VERSION_NAME
             config.sdkName = "posthog-android"
 
-            val replayIntegration = PostHogReplayIntegration(context, config)
+            val mainHandler = MainHandler()
+            val replayIntegration = PostHogReplayIntegration(context, config, mainHandler)
             config.addIntegration(replayIntegration)
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
@@ -79,7 +81,7 @@ public class PostHogAndroid private constructor() {
             if (config.captureApplicationLifecycleEvents) {
                 config.addIntegration(PostHogAppInstallIntegration(context, config))
             }
-            config.addIntegration(PostHogLifecycleObserverIntegration(context, config, replayIntegration))
+            config.addIntegration(PostHogLifecycleObserverIntegration(context, config, replayIntegration, mainHandler))
         }
     }
 }

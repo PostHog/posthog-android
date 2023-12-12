@@ -36,6 +36,7 @@ internal class PostHogSendCachedEventsIntegration(
         executor.shutdown()
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
     private fun flushLegacyEvents() {
         config.legacyStoragePrefix?.let {
             val legacyDir = File(it)
@@ -121,6 +122,7 @@ internal class PostHogSendCachedEventsIntegration(
         }
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
     private fun flushEvents(storagePrefix: String?, endpoint: PostHogApiEndpoint) {
         storagePrefix.let {
             val dir = File(it, config.apiKey)
