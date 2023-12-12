@@ -225,6 +225,7 @@ public abstract interface class com/posthog/internal/PostHogDateProvider {
 	public abstract fun addSecondsToCurrentDate (I)Ljava/util/Date;
 	public abstract fun currentDate ()Ljava/util/Date;
 	public abstract fun currentTimeMillis ()J
+	public abstract fun nanoTime ()J
 }
 
 public abstract interface class com/posthog/internal/PostHogLogger {

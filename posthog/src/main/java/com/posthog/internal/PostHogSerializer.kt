@@ -22,9 +22,9 @@ public class PostHogSerializer(private val config: PostHogConfig) {
         setObjectToNumberStrategy(GsonNumberPolicy())
         registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
             .setLenient()
-        registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer())
-        registerTypeAdapter(RRIncrementalSource::class.java, GsonRRIncrementalSourceSerializer())
-        registerTypeAdapter(RRMouseInteraction::class.java, GsonRRMouseInteractionsSerializer())
+        registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer(config))
+        registerTypeAdapter(RRIncrementalSource::class.java, GsonRRIncrementalSourceSerializer(config))
+        registerTypeAdapter(RRMouseInteraction::class.java, GsonRRMouseInteractionsSerializer(config))
     }.create()
 
     @Throws(JsonIOException::class, IOException::class)

@@ -5,9 +5,10 @@ import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
+import com.posthog.PostHogConfig
 import java.lang.reflect.Type
 
-internal class GsonRREventTypeSerializer : JsonSerializer<RREventType>, JsonDeserializer<RREventType> {
+internal class GsonRREventTypeSerializer(private val config: PostHogConfig) : JsonSerializer<RREventType>, JsonDeserializer<RREventType> {
     override fun serialize(
         src: RREventType,
         typeOfSrc: Type,
@@ -24,6 +25,7 @@ internal class GsonRREventTypeSerializer : JsonSerializer<RREventType>, JsonDese
         return try {
             RREventType.fromValue(json.asInt)
         } catch (e: Throwable) {
+            config.logger.log("${json.asInt} isn't a known type: $e.")
             null
         }
     }

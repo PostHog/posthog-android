@@ -30,6 +30,10 @@ internal class FakePostHogDateProvider : PostHogDateProvider {
     }
 
     override fun currentTimeMillis(): Long {
-        TODO("Not yet implemented")
+        return System.currentTimeMillis()
+    }
+
+    override fun nanoTime(): Long {
+        return System.nanoTime()
     }
 }

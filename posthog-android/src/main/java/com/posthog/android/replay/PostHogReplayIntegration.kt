@@ -102,7 +102,7 @@ public class PostHogReplayIntegration(
             view.phoneWindow?.let { window ->
                 if (view.windowAttachCount == 0) {
                     window.onDecorViewReady { decorView ->
-                        val listener = decorView.onNextDraw(mainHandler) {
+                        val listener = decorView.onNextDraw(mainHandler, config.dateProvider) {
                             if (!isSessionReplayEnabled) {
                                 return@onNextDraw
                             }

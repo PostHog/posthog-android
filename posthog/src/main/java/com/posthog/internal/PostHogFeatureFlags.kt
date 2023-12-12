@@ -67,13 +67,15 @@ internal class PostHogFeatureFlags(
                         }
 
                         if (response.sessionRecording is Boolean) {
+                            // its only enabled if both are enabled, likely not in this case
+                            // because if sessionRecording is a Boolean, its always disabled
                             config.sessionReplay = response.sessionRecording && config.sessionReplay
                         } else if (response.sessionRecording is Map<*, *>) {
                             @Suppress("UNCHECKED_CAST")
                             (response.sessionRecording as? Map<String, Any?>).let { sessionRecording ->
                                 // keeps the value from config.sessionReplay since having sessionRecording
                                 // means its enabled on the project settings, but its only enabled
-                                // when local config.sessionReplay is also true
+                                // when local config.sessionReplay is also enabled
                                 config.snapshotEndpoint = sessionRecording?.get("endpoint") as? String ?: config.snapshotEndpoint
 
                                 // TODO:

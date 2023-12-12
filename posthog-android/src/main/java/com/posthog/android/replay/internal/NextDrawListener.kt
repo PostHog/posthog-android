@@ -6,14 +6,16 @@ import android.os.Build
 import android.view.View
 import android.view.ViewTreeObserver
 import com.posthog.android.internal.MainHandler
+import com.posthog.internal.PostHogDateProvider
 
 internal class NextDrawListener(
     private val view: View,
     mainHandler: MainHandler,
+    dateProvider: PostHogDateProvider,
     private val onDrawCallback: () -> Unit,
 ) : ViewTreeObserver.OnDrawListener {
 
-    private val debounce = Debouncer(mainHandler)
+    private val debounce = Debouncer(mainHandler, dateProvider)
     override fun onDraw() {
         debounce.debounce {
             onDrawCallback()
@@ -33,8 +35,8 @@ internal class NextDrawListener(
 
     companion object {
         // only call if onDecorViewReady
-        internal fun View.onNextDraw(mainHandler: MainHandler, onDrawCallback: () -> Unit): NextDrawListener {
-            val nextDrawListener = NextDrawListener(this, mainHandler, onDrawCallback)
+        internal fun View.onNextDraw(mainHandler: MainHandler, dateProvider: PostHogDateProvider, onDrawCallback: () -> Unit): NextDrawListener {
+            val nextDrawListener = NextDrawListener(this, mainHandler, dateProvider, onDrawCallback)
             nextDrawListener.safelyRegisterForNextDraw()
             return nextDrawListener
         }

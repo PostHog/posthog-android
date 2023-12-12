@@ -5,9 +5,10 @@ import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
+import com.posthog.PostHogConfig
 import java.lang.reflect.Type
 
-internal class GsonRRIncrementalSourceSerializer :
+internal class GsonRRIncrementalSourceSerializer(private val config: PostHogConfig) :
     JsonSerializer<RRIncrementalSource>,
     JsonDeserializer<RRIncrementalSource> {
     override fun serialize(
@@ -26,6 +27,7 @@ internal class GsonRRIncrementalSourceSerializer :
         return try {
             RRIncrementalSource.fromValue(json.asInt)
         } catch (e: Throwable) {
+            config.logger.log("${json.asInt} isn't a known type: $e.")
             null
         }
     }

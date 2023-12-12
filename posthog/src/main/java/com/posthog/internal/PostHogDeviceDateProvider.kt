@@ -22,4 +22,8 @@ internal class PostHogDeviceDateProvider : PostHogDateProvider {
     override fun currentTimeMillis(): Long {
         return System.currentTimeMillis()
     }
+
+    override fun nanoTime(): Long {
+        return System.nanoTime()
+    }
 }

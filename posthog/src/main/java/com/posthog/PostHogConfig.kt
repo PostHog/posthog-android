@@ -95,6 +95,7 @@ public open class PostHogConfig(
     /**
      * Enable Recording of Session Replays for Android
      * Requires Authorized Domains to be disabled in the PostHog Project Settings
+     * Requires Record user sessions to be enabled in the PostHog Project Settings
      * Defaults to true
      */
     public var sessionReplay: Boolean = true,

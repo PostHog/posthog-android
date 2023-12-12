@@ -13,4 +13,6 @@ public interface PostHogDateProvider {
     public fun addSecondsToCurrentDate(seconds: Int): Date
 
     public fun currentTimeMillis(): Long
+
+    public fun nanoTime(): Long
 }
