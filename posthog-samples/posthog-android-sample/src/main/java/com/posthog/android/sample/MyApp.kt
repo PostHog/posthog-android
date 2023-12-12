@@ -34,8 +34,8 @@ class MyApp : Application() {
 //                    remove("\$device_name")
                 }
             }
-            maskAllTextInputs = true
-            captureLogcat = true
+            sessionReplayConfig.maskAllTextInputs = true
+            sessionReplayConfig.captureLogcat = true
         }
         PostHogAndroid.setup(this, config)
     }

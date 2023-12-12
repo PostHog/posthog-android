@@ -2,7 +2,11 @@ import org.gradle.api.JavaVersion
 
 object PosthogBuildConfig {
     fun shouldSkipDebugVariant(name: String): Boolean {
-        return System.getenv("CI")?.toBoolean() ?: false && name == "debug"
+        return isCI() && name == "debug"
+    }
+
+    fun isCI(): Boolean {
+        return System.getenv("CI")?.toBoolean() ?: false
     }
 
     object Build {
@@ -13,7 +17,8 @@ object PosthogBuildConfig {
         val COMPILE_SDK = 34
 
         // when changing this, remember to check the ANIMAL_SNIFFER_SDK_VERSION
-        val MIN_SDK = 21 // Session Replay (addOnFrameMetricsAvailableListener requires API 26)
+        // Session Replay (addOnFrameMetricsAvailableListener requires API 26)
+        val MIN_SDK = 21
         val TARGET_SDK = COMPILE_SDK
     }
 

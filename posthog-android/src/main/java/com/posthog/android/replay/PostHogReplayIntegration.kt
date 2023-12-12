@@ -344,7 +344,7 @@ public class PostHogReplayIntegration(
         var value: Any? = null
         // button inherits from textview
         if (view is TextView) {
-            text = if (!view.isNoCapture(config.maskAllTextInputs)) {
+            text = if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
                 view.text.toString()
             } else {
                 view.text.toString().mask()
@@ -464,7 +464,7 @@ public class PostHogReplayIntegration(
         var base64: String? = null
         if (view is ImageView) {
             type = "image"
-            if (!view.isNoCapture(config.maskAllImages)) {
+            if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here
                 base64 = view.drawable?.base64()
             }
@@ -662,7 +662,7 @@ public class PostHogReplayIntegration(
     }
 
     private fun initLogcatWatcher(date: Date) {
-        if (!config.captureLogcat) {
+        if (!config.sessionReplayConfig.captureLogcat) {
             return
         }
         // TODO: check if its API 23 or higher

@@ -1,6 +1,7 @@
 package com.posthog.android
 
 import com.posthog.PostHogConfig
+import com.posthog.android.replay.PostHogSessionReplayConfig
 
 /**
  * The SDK Config
@@ -15,8 +16,5 @@ public open class PostHogAndroidConfig(
     public var captureApplicationLifecycleEvents: Boolean = true,
     public var captureDeepLinks: Boolean = true,
     public var captureScreenViews: Boolean = true,
-    // TODO: better to create a new class for all Replay config (eg maskInputFn, maskInputOptions)
-    public var maskAllTextInputs: Boolean = true,
-    public var maskAllImages: Boolean = true,
-    public var captureLogcat: Boolean = true,
+    public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
 ) : PostHogConfig(apiKey, host)

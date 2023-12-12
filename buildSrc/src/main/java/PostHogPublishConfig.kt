@@ -105,7 +105,8 @@ fun MavenPublication.postHogConfig(projectName: String, properties: Map<String, 
 fun SigningExtension.postHogConfig(variantName: String, publishingExtension: PublishingExtension) {
     val privateKey = System.getenv("GPG_PRIVATE_KEY")
     val password = System.getenv("GPG_PASSPHRASE")
-    isRequired = false
+    // releases are only signed on CI, so skip this locally
+    isRequired = PosthogBuildConfig.isCI()
     useInMemoryPgpKeys(privateKey, password)
     sign(publishingExtension.publications.getByName(variantName))
 }
