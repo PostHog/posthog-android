@@ -252,7 +252,8 @@ public class PostHog private constructor(
         synchronized(sessionLock) {
             if (sessionId != sessionIdNone) {
                 props["\$session_id"] = sessionId.toString()
-                // TODO: do we still need window_id?
+                // Session replay requires $window_id, so we set as the same as $session_id.
+                // the backend might fallback to $session_id if $window_id is not present next.
                 props["\$window_id"] = sessionId.toString()
             }
         }

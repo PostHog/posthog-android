@@ -130,7 +130,6 @@ public class PostHogReplayIntegration(
         motionEvent.eventTime
         val timestamp = config.dateProvider.currentTimeMillis()
         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
-            // TODO: figure out the move events
             MotionEvent.ACTION_DOWN -> {
                 generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
             }
@@ -343,7 +342,11 @@ public class PostHogReplayIntegration(
             }
 
             if (text.isEmpty()) {
-                text = view.hint.toString().mask()
+                text = if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                    view.hint.toString()
+                } else {
+                    view.hint.toString().mask()
+                }
             }
 
             type = "text"
@@ -443,10 +446,30 @@ public class PostHogReplayIntegration(
         if (view is Spinner) {
             type = "input"
             inputType = "select"
+            val mask = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
             view.selectedItem?.let {
-                val maskedValue = it.toString().mask()
-                value = maskedValue
-                options = listOf(maskedValue)
+                val theValue = if (!mask) {
+                    it.toString()
+                } else {
+                    it.toString().mask()
+                }
+                value = theValue
+            }
+
+            view.adapter?.let {
+                val items = mutableListOf<String>()
+                for (i in 0 until it.count) {
+                    val item = it.getItem(i)?.toString() ?: continue
+
+                    val theItem = if (!mask) {
+                        item
+                    } else {
+                        item.mask()
+                    }
+
+                    items.add(theItem)
+                }
+                options = items.ifEmpty { null }
             }
         }
 
@@ -471,7 +494,6 @@ public class PostHogReplayIntegration(
                 "horizontal"
             }
             style.bar = bar
-            // TODO: rating style for rating bar
         }
         if (view is RatingBar) {
             style.bar = "rating"

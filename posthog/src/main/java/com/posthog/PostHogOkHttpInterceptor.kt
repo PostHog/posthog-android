@@ -50,7 +50,6 @@ public class PostHogOkHttpInterceptor(private val captureNetworkTelemetry: Boole
                 "responseStatus" to statusCode,
                 "timestamp" to end,
                 "duration" to (end - start),
-                // TODO: remove it if we don't need it (server defaults to fetch)
                 "initiatorType" to "fetch",
                 "entryType" to "resource",
             ),
