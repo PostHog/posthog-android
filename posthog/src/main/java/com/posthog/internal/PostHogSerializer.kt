@@ -7,6 +7,9 @@ import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
+import com.posthog.internal.replay.RREventType
+import com.posthog.internal.replay.RRIncrementalSource
+import com.posthog.internal.replay.RRMouseInteraction
 import java.io.IOException
 import java.io.Reader
 import java.io.Writer

@@ -1,12 +1,12 @@
 package com.posthog
 
-import com.posthog.internal.RRPluginEvent
-import com.posthog.internal.capture
+import com.posthog.internal.replay.RRPluginEvent
+import com.posthog.internal.replay.capture
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 
-public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true) : Interceptor {
+public class PostHogOkHttpInterceptor(private val captureNetworkTelemetry: Boolean = true) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
 
@@ -22,7 +22,7 @@ public class PostHogOkHttpInterceptor(private val captureNetwork: Boolean = true
     }
 
     private fun captureNetworkEvent(request: Request, response: Response) {
-        if (!captureNetwork) {
+        if (!captureNetworkTelemetry) {
             return
         }
         val url = request.url.toString()

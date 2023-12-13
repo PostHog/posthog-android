@@ -41,9 +41,10 @@ internal class PostHogQueueTest {
             this.flushAt = flushAt
             this.networkStatus = networkStatus
             this.maxBatchSize = maxBatchSize
+            this.dateProvider = dateProvider
         }
-        val api = PostHogApi(config, dateProvider)
-        return PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, executor = executor, dateProvider = dateProvider)
+        val api = PostHogApi(config)
+        return PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, executor = executor)
     }
 
     @Test

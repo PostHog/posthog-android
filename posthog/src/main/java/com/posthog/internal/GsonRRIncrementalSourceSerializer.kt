@@ -6,6 +6,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.posthog.PostHogConfig
+import com.posthog.internal.replay.RRIncrementalSource
 import java.lang.reflect.Type
 
 internal class GsonRRIncrementalSourceSerializer(private val config: PostHogConfig) :

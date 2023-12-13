@@ -290,159 +290,169 @@ public final class com/posthog/internal/PostHogThreadFactory : java/util/concurr
 	public fun newThread (Ljava/lang/Runnable;)Ljava/lang/Thread;
 }
 
-public final class com/posthog/internal/RRAddedNode {
-	public fun <init> (Lcom/posthog/internal/RRWireframe;Ljava/lang/Integer;)V
-	public synthetic fun <init> (Lcom/posthog/internal/RRWireframe;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class com/posthog/internal/PostHogUtilsKt {
+	public static final fun interruptSafely (Ljava/lang/Thread;)V
+}
+
+public final class com/posthog/internal/replay/RRAddedNode {
+	public fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getParentId ()Ljava/lang/Integer;
-	public final fun getWireframe ()Lcom/posthog/internal/RRWireframe;
+	public final fun getWireframe ()Lcom/posthog/internal/replay/RRWireframe;
 }
 
-public final class com/posthog/internal/RRCustomEvent : com/posthog/internal/RREvent {
+public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
 }
 
-public final class com/posthog/internal/RRDocumentNode : com/posthog/internal/RREvent {
+public final class com/posthog/internal/replay/RRDocumentNode : com/posthog/internal/replay/RREvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
 }
 
-public final class com/posthog/internal/RRDomContentLoadedEvent : com/posthog/internal/RREvent {
+public final class com/posthog/internal/replay/RRDomContentLoadedEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (J)V
 }
 
-public class com/posthog/internal/RREvent {
-	public fun <init> (Lcom/posthog/internal/RREventType;JLjava/lang/Object;)V
-	public synthetic fun <init> (Lcom/posthog/internal/RREventType;JLjava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public class com/posthog/internal/replay/RREvent {
+	public fun <init> (Lcom/posthog/internal/replay/RREventType;JLjava/lang/Object;)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RREventType;JLjava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getData ()Ljava/lang/Object;
 	public final fun getTimestamp ()J
-	public final fun getType ()Lcom/posthog/internal/RREventType;
+	public final fun getType ()Lcom/posthog/internal/replay/RREventType;
 }
 
-public final class com/posthog/internal/RREventType : java/lang/Enum {
-	public static final field Companion Lcom/posthog/internal/RREventType$Companion;
-	public static final field Custom Lcom/posthog/internal/RREventType;
-	public static final field DomContentLoaded Lcom/posthog/internal/RREventType;
-	public static final field FullSnapshot Lcom/posthog/internal/RREventType;
-	public static final field IncrementalSnapshot Lcom/posthog/internal/RREventType;
-	public static final field Load Lcom/posthog/internal/RREventType;
-	public static final field Meta Lcom/posthog/internal/RREventType;
-	public static final field Plugin Lcom/posthog/internal/RREventType;
+public final class com/posthog/internal/replay/RREventType : java/lang/Enum {
+	public static final field Companion Lcom/posthog/internal/replay/RREventType$Companion;
+	public static final field Custom Lcom/posthog/internal/replay/RREventType;
+	public static final field DomContentLoaded Lcom/posthog/internal/replay/RREventType;
+	public static final field FullSnapshot Lcom/posthog/internal/replay/RREventType;
+	public static final field IncrementalSnapshot Lcom/posthog/internal/replay/RREventType;
+	public static final field Load Lcom/posthog/internal/replay/RREventType;
+	public static final field Meta Lcom/posthog/internal/replay/RREventType;
+	public static final field Plugin Lcom/posthog/internal/replay/RREventType;
 	public final fun getValue ()I
-	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/RREventType;
-	public static fun values ()[Lcom/posthog/internal/RREventType;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RREventType;
+	public static fun values ()[Lcom/posthog/internal/replay/RREventType;
 }
 
-public final class com/posthog/internal/RREventType$Companion {
-	public final fun fromValue (I)Lcom/posthog/internal/RREventType;
+public final class com/posthog/internal/replay/RREventType$Companion {
+	public final fun fromValue (I)Lcom/posthog/internal/replay/RREventType;
 }
 
-public final class com/posthog/internal/RREventsKt {
-	public static final fun capture (Ljava/util/List;)V
-}
-
-public final class com/posthog/internal/RRFullSnapshotEvent : com/posthog/internal/RREvent {
+public final class com/posthog/internal/replay/RRFullSnapshotEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (Ljava/util/List;IIJ)V
 }
 
-public final class com/posthog/internal/RRIncrementalMouseInteractionData {
-	public fun <init> (ILcom/posthog/internal/RRMouseInteraction;IILcom/posthog/internal/RRIncrementalSource;I)V
-	public synthetic fun <init> (ILcom/posthog/internal/RRMouseInteraction;IILcom/posthog/internal/RRIncrementalSource;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class com/posthog/internal/replay/RRIncrementalMouseInteractionData {
+	public fun <init> (ILcom/posthog/internal/replay/RRMouseInteraction;IILcom/posthog/internal/replay/RRIncrementalSource;ILjava/util/List;)V
+	public synthetic fun <init> (ILcom/posthog/internal/replay/RRMouseInteraction;IILcom/posthog/internal/replay/RRIncrementalSource;ILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getId ()I
 	public final fun getPointerType ()I
-	public final fun getSource ()Lcom/posthog/internal/RRIncrementalSource;
-	public final fun getType ()Lcom/posthog/internal/RRMouseInteraction;
+	public final fun getPositions ()Ljava/util/List;
+	public final fun getSource ()Lcom/posthog/internal/replay/RRIncrementalSource;
+	public final fun getType ()Lcom/posthog/internal/replay/RRMouseInteraction;
 	public final fun getX ()I
 	public final fun getY ()I
 }
 
-public final class com/posthog/internal/RRIncrementalMouseInteractionEvent : com/posthog/internal/RREvent {
-	public fun <init> (Lcom/posthog/internal/RRIncrementalMouseInteractionData;J)V
-	public synthetic fun <init> (Lcom/posthog/internal/RRIncrementalMouseInteractionData;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class com/posthog/internal/replay/RRIncrementalMouseInteractionEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (Lcom/posthog/internal/replay/RRIncrementalMouseInteractionData;J)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RRIncrementalMouseInteractionData;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
 }
 
-public final class com/posthog/internal/RRIncrementalMutationData {
+public final class com/posthog/internal/replay/RRIncrementalMutationData {
 	public fun <init> ()V
-	public fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/RRIncrementalSource;)V
-	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/RRIncrementalSource;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAdds ()Ljava/util/List;
 	public final fun getRemoves ()Ljava/util/List;
-	public final fun getSource ()Lcom/posthog/internal/RRIncrementalSource;
+	public final fun getSource ()Lcom/posthog/internal/replay/RRIncrementalSource;
 }
 
-public final class com/posthog/internal/RRIncrementalSnapshotEvent : com/posthog/internal/RREvent {
-	public fun <init> (Lcom/posthog/internal/RRIncrementalMutationData;J)V
-	public synthetic fun <init> (Lcom/posthog/internal/RRIncrementalMutationData;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class com/posthog/internal/replay/RRIncrementalSnapshotEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (Lcom/posthog/internal/replay/RRIncrementalMutationData;J)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RRIncrementalMutationData;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
 }
 
-public final class com/posthog/internal/RRIncrementalSource : java/lang/Enum {
-	public static final field AdoptedStyleSheet Lcom/posthog/internal/RRIncrementalSource;
-	public static final field CanvasMutation Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Companion Lcom/posthog/internal/RRIncrementalSource$Companion;
-	public static final field CustomElement Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Drag Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Font Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Input Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Log Lcom/posthog/internal/RRIncrementalSource;
-	public static final field MediaInteraction Lcom/posthog/internal/RRIncrementalSource;
-	public static final field MouseInteraction Lcom/posthog/internal/RRIncrementalSource;
-	public static final field MouseMove Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Mutation Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Scroll Lcom/posthog/internal/RRIncrementalSource;
-	public static final field Selection Lcom/posthog/internal/RRIncrementalSource;
-	public static final field StyleDeclaration Lcom/posthog/internal/RRIncrementalSource;
-	public static final field StyleSheetRule Lcom/posthog/internal/RRIncrementalSource;
-	public static final field TouchMove Lcom/posthog/internal/RRIncrementalSource;
-	public static final field ViewportResize Lcom/posthog/internal/RRIncrementalSource;
+public final class com/posthog/internal/replay/RRIncrementalSource : java/lang/Enum {
+	public static final field AdoptedStyleSheet Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field CanvasMutation Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Companion Lcom/posthog/internal/replay/RRIncrementalSource$Companion;
+	public static final field CustomElement Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Drag Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Font Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Input Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Log Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field MediaInteraction Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field MouseInteraction Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field MouseMove Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Mutation Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Scroll Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Selection Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field StyleDeclaration Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field StyleSheetRule Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field TouchMove Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field ViewportResize Lcom/posthog/internal/replay/RRIncrementalSource;
 	public final fun getValue ()I
-	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/RRIncrementalSource;
-	public static fun values ()[Lcom/posthog/internal/RRIncrementalSource;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static fun values ()[Lcom/posthog/internal/replay/RRIncrementalSource;
 }
 
-public final class com/posthog/internal/RRIncrementalSource$Companion {
-	public final fun fromValue (I)Lcom/posthog/internal/RRIncrementalSource;
+public final class com/posthog/internal/replay/RRIncrementalSource$Companion {
+	public final fun fromValue (I)Lcom/posthog/internal/replay/RRIncrementalSource;
 }
 
-public final class com/posthog/internal/RRLoadedEvent : com/posthog/internal/RREvent {
+public final class com/posthog/internal/replay/RRLoadedEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (J)V
 }
 
-public final class com/posthog/internal/RRMetaEvent : com/posthog/internal/RREvent {
+public final class com/posthog/internal/replay/RRMetaEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (IIJLjava/lang/String;)V
 }
 
-public final class com/posthog/internal/RRMouseInteraction : java/lang/Enum {
-	public static final field Blur Lcom/posthog/internal/RRMouseInteraction;
-	public static final field Click Lcom/posthog/internal/RRMouseInteraction;
-	public static final field Companion Lcom/posthog/internal/RRMouseInteraction$Companion;
-	public static final field ContextMenu Lcom/posthog/internal/RRMouseInteraction;
-	public static final field DblClick Lcom/posthog/internal/RRMouseInteraction;
-	public static final field Focus Lcom/posthog/internal/RRMouseInteraction;
-	public static final field MouseDown Lcom/posthog/internal/RRMouseInteraction;
-	public static final field MouseUp Lcom/posthog/internal/RRMouseInteraction;
-	public static final field TouchCancel Lcom/posthog/internal/RRMouseInteraction;
-	public static final field TouchEnd Lcom/posthog/internal/RRMouseInteraction;
-	public static final field TouchMoveDeparted Lcom/posthog/internal/RRMouseInteraction;
-	public static final field TouchStart Lcom/posthog/internal/RRMouseInteraction;
+public final class com/posthog/internal/replay/RRMouseInteraction : java/lang/Enum {
+	public static final field Blur Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field Click Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field Companion Lcom/posthog/internal/replay/RRMouseInteraction$Companion;
+	public static final field ContextMenu Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field DblClick Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field Focus Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field MouseDown Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field MouseUp Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchCancel Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchEnd Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchMoveDeparted Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchStart Lcom/posthog/internal/replay/RRMouseInteraction;
 	public final fun getValue ()I
-	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/RRMouseInteraction;
-	public static fun values ()[Lcom/posthog/internal/RRMouseInteraction;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static fun values ()[Lcom/posthog/internal/replay/RRMouseInteraction;
 }
 
-public final class com/posthog/internal/RRMouseInteraction$Companion {
-	public final fun fromValue (I)Lcom/posthog/internal/RRMouseInteraction;
+public final class com/posthog/internal/replay/RRMouseInteraction$Companion {
+	public final fun fromValue (I)Lcom/posthog/internal/replay/RRMouseInteraction;
 }
 
-public final class com/posthog/internal/RRPluginEvent : com/posthog/internal/RREvent {
+public final class com/posthog/internal/replay/RRMousePosition {
+	public fun <init> (IIILjava/lang/Long;)V
+	public synthetic fun <init> (IIILjava/lang/Long;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getId ()I
+	public final fun getTimeOffset ()Ljava/lang/Long;
+	public final fun getX ()I
+	public final fun getY ()I
+}
+
+public final class com/posthog/internal/replay/RRPluginEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (Ljava/lang/String;Ljava/util/Map;J)V
 }
 
-public final class com/posthog/internal/RRRemovedNode {
+public final class com/posthog/internal/replay/RRRemovedNode {
 	public fun <init> (ILjava/lang/Integer;)V
 	public synthetic fun <init> (ILjava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getId ()I
 	public final fun getParentId ()Ljava/lang/Integer;
 }
 
-public final class com/posthog/internal/RRStyle {
+public final class com/posthog/internal/replay/RRStyle {
 	public fun <init> ()V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -476,9 +486,13 @@ public final class com/posthog/internal/RRStyle {
 	public final fun setVerticalAlign (Ljava/lang/String;)V
 }
 
-public final class com/posthog/internal/RRWireframe {
-	public fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;)V
-	public synthetic fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+public final class com/posthog/internal/replay/RRUtilsKt {
+	public static final fun capture (Ljava/util/List;)V
+}
+
+public final class com/posthog/internal/replay/RRWireframe {
+	public fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;)V
+	public synthetic fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getBase64 ()Ljava/lang/String;
 	public final fun getChecked ()Ljava/lang/Boolean;
 	public final fun getChildWireframes ()Ljava/util/List;
@@ -490,7 +504,7 @@ public final class com/posthog/internal/RRWireframe {
 	public final fun getMax ()Ljava/lang/Integer;
 	public final fun getOptions ()Ljava/util/List;
 	public final fun getParentId ()Ljava/lang/Integer;
-	public final fun getStyle ()Lcom/posthog/internal/RRStyle;
+	public final fun getStyle ()Lcom/posthog/internal/replay/RRStyle;
 	public final fun getText ()Ljava/lang/String;
 	public final fun getType ()Ljava/lang/String;
 	public final fun getValue ()Ljava/lang/Object;

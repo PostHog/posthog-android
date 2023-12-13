@@ -28,6 +28,7 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.RatingBar
 import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
@@ -37,24 +38,19 @@ import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
-import com.posthog.android.replay.internal.LogcatParser
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
+import com.posthog.android.replay.internal.PostHogLogCatWatcher
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogThreadFactory
-import com.posthog.internal.RRAddedNode
-import com.posthog.internal.RREvent
-import com.posthog.internal.RRFullSnapshotEvent
-import com.posthog.internal.RRIncrementalMouseInteractionData
-import com.posthog.internal.RRIncrementalMouseInteractionEvent
-import com.posthog.internal.RRIncrementalMutationData
-import com.posthog.internal.RRIncrementalSnapshotEvent
-import com.posthog.internal.RRMetaEvent
-import com.posthog.internal.RRMouseInteraction
-import com.posthog.internal.RRPluginEvent
-import com.posthog.internal.RRRemovedNode
-import com.posthog.internal.RRStyle
-import com.posthog.internal.RRWireframe
-import com.posthog.internal.capture
+import com.posthog.internal.replay.RREvent
+import com.posthog.internal.replay.RRFullSnapshotEvent
+import com.posthog.internal.replay.RRIncrementalMouseInteractionData
+import com.posthog.internal.replay.RRIncrementalMouseInteractionEvent
+import com.posthog.internal.replay.RRMetaEvent
+import com.posthog.internal.replay.RRMouseInteraction
+import com.posthog.internal.replay.RRStyle
+import com.posthog.internal.replay.RRWireframe
+import com.posthog.internal.replay.capture
 import curtains.Curtains
 import curtains.OnRootViewsChangedListener
 import curtains.OnTouchEventListener
@@ -64,9 +60,6 @@ import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.WeakHashMap
 import java.util.concurrent.Executors
 
@@ -82,17 +75,14 @@ public class PostHogReplayIntegration(
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
 
+    private val logCatWatcher = PostHogLogCatWatcher(config)
+
     @Volatile
     private var isSessionActive = false
 
     private val displayMetrics by lazy {
         context.displayMetrics()
     }
-
-    private var logcatThread: Thread? = null
-
-    @Volatile
-    private var logcatInProgress = false
 
     private val isSessionReplayEnabled: Boolean
         get() = config.sessionReplay && isSessionActive
@@ -140,14 +130,17 @@ public class PostHogReplayIntegration(
         motionEvent.eventTime
         val timestamp = config.dateProvider.currentTimeMillis()
         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
-            // TODO: figure out the best way to handle move events, move does not exist
-            // mouse does not make sense, touch maybe?
+            // TODO: figure out the move events
             MotionEvent.ACTION_DOWN -> {
                 generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
             }
             MotionEvent.ACTION_UP -> {
                 generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
             }
+            // TODO: ACTION_MOVE requires the positions arrays caching since it triggers multiple times
+//            MotionEvent.ACTION_MOVE -> {
+//                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchMoveDeparted)
+//            }
         }
     }
 
@@ -182,10 +175,9 @@ public class PostHogReplayIntegration(
         isSessionActive = enabled
 
         if (isSessionReplayEnabled) {
-            initLogcatWatcher(Date())
+            logCatWatcher.init()
         } else {
-            logcatInProgress = false
-            logcatThread?.interruptSafely()
+            logCatWatcher.stop()
         }
     }
 
@@ -259,45 +251,45 @@ public class PostHogReplayIntegration(
             status.sentMetaEvent = true
         }
 
-        if (!status.sentFullSnapshot) {
-            val event = RRFullSnapshotEvent(
-                listOf(wireframe),
-                initialOffsetTop = 0,
-                initialOffsetLeft = 0,
-                timestamp = timestamp,
-            )
-            events.add(event)
+//        if (!status.sentFullSnapshot) {
+        val event = RRFullSnapshotEvent(
+            listOf(wireframe),
+            initialOffsetTop = 0,
+            initialOffsetLeft = 0,
+            timestamp = timestamp,
+        )
+        events.add(event)
 //            status.sentFullSnapshot = true
-        } else {
-            val lastSnapshot = status.lastSnapshot
-            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
-            val (addedItems, removedItems) = findAddedAndRemovedItems(lastSnapshots.flattenChildren(), listOf(wireframe).flattenChildren())
-
-            val addedNodes = mutableListOf<RRAddedNode>()
-            addedItems.forEach {
-                val item = RRAddedNode(it, parentId = it.parentId)
-                addedNodes.add(item)
-            }
-
-            val removedNodes = mutableListOf<RRRemovedNode>()
-            removedItems.forEach {
-                val item = RRRemovedNode(it.id, parentId = it.parentId)
-                removedNodes.add(item)
-            }
-
-            val incrementalMutationData = RRIncrementalMutationData(
-                adds = addedNodes.ifEmpty { null },
-                removes = removedNodes.ifEmpty { null },
-            )
-
-            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty()) {
-                val incrementalSnapshotEvent = RRIncrementalSnapshotEvent(
-                    mutationData = incrementalMutationData,
-                    timestamp = timestamp,
-                )
-                events.add(incrementalSnapshotEvent)
-            }
-        }
+//        } else {
+//            val lastSnapshot = status.lastSnapshot
+//            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
+//            val (addedItems, removedItems) = findAddedAndRemovedItems(lastSnapshots.flattenChildren(), listOf(wireframe).flattenChildren())
+//
+//            val addedNodes = mutableListOf<RRAddedNode>()
+//            addedItems.forEach {
+//                val item = RRAddedNode(it, parentId = it.parentId)
+//                addedNodes.add(item)
+//            }
+//
+//            val removedNodes = mutableListOf<RRRemovedNode>()
+//            removedItems.forEach {
+//                val item = RRRemovedNode(it.id, parentId = it.parentId)
+//                removedNodes.add(item)
+//            }
+//
+//            val incrementalMutationData = RRIncrementalMutationData(
+//                adds = addedNodes.ifEmpty { null },
+//                removes = removedNodes.ifEmpty { null },
+//            )
+//
+//            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty()) {
+//                val incrementalSnapshotEvent = RRIncrementalSnapshotEvent(
+//                    mutationData = incrementalMutationData,
+//                    timestamp = timestamp,
+//                )
+//                events.add(incrementalSnapshotEvent)
+//            }
+//        }
 
         if (events.isNotEmpty()) {
             events.capture()
@@ -328,7 +320,7 @@ public class PostHogReplayIntegration(
         view.background?.let { background ->
             // TODO: if its not a solid color, we need to do something else
             // probably a gradient, which is a new Drawable and we'd
-            // need to handle it it as a new wireframe (image most likely)
+            // need to handle it as a new wireframe (image most likely)
             background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             } ?: run {
@@ -356,7 +348,7 @@ public class PostHogReplayIntegration(
 
             type = "text"
             style.color = view.currentTextColor.toRGBColor()
-            // TODO: how to get border details?
+
             if (view is Button && view !is CheckBox && view !is RadioButton && view !is Switch) {
                 style.borderWidth = 1
                 style.borderColor = "#000000"
@@ -414,19 +406,16 @@ public class PostHogReplayIntegration(
                 }
             }
 
+            // TODO: the 4 possible drawables
+            // view.compoundDrawables
             style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
             style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
             style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
             style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
-
-            // TODO: the 4 possible drawables
-            // view.compoundDrawables
         }
 
         var label: String? = null
         if (view is CheckBox) {
-//            TODO: buttonDrawable
-//            view.buttonDrawable
             type = "input"
             inputType = "checkbox"
             label = text
@@ -465,12 +454,12 @@ public class PostHogReplayIntegration(
         if (view is ImageView) {
             type = "image"
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
-                // TODO: we can probably do a LRU caching here
+                // TODO: we can probably do a LRU caching here for already captured images
                 base64 = view.drawable?.base64()
             }
         }
 
-        var max: Int? = null
+        var max: Int? = null // can be a Int or Float
         if (view is ProgressBar) {
             inputType = "progress"
             type = "input"
@@ -482,6 +471,15 @@ public class PostHogReplayIntegration(
                 "horizontal"
             }
             style.bar = bar
+            // TODO: rating style for rating bar
+        }
+        if (view is RatingBar) {
+            style.bar = "rating"
+
+            // since stars allow half stars, we need to divide the max by 2, because
+            // 5 stars is 10
+            max = (view.max / 2)
+            value = view.rating
         }
 
         if (view is Switch) {
@@ -573,22 +571,27 @@ public class PostHogReplayIntegration(
     }
 
     private fun Drawable.base64(): String? {
-        if (this is BitmapDrawable) {
-            if (!bitmap.isValid()) {
-                return null
+        when (this) {
+            is BitmapDrawable -> {
+                if (!bitmap.isValid()) {
+                    return null
+                }
+
+                ByteArrayOutputStream(bitmap.allocationByteCount).use {
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 30, it)
+                    val byteArray = it.toByteArray()
+                    return Base64.encodeToString(byteArray, Base64.DEFAULT)
+                }
             }
 
-            ByteArrayOutputStream(bitmap.allocationByteCount).use {
-                // TODO: or webp?
-                bitmap.compress(Bitmap.CompressFormat.PNG, 30, it)
-                val byteArray = it.toByteArray()
-                return Base64.encodeToString(byteArray, Base64.DEFAULT)
+            is LayerDrawable -> {
+                return getFirstDrawable()?.base64()
             }
-        } else if (this is LayerDrawable) {
-            return getFirstDrawable()?.base64()
-        } else if (this is InsetDrawable) {
-            drawable?.let {
-                return it.base64()
+
+            is InsetDrawable -> {
+                drawable?.let {
+                    return it.base64()
+                }
             }
         }
         // TODO: vector, gradient drawables
@@ -607,39 +610,39 @@ public class PostHogReplayIntegration(
         return String.format("#%06X", (0xFFFFFF and this))
     }
 
-    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
-        val result = mutableListOf<RRWireframe>()
+//    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
+//        val result = mutableListOf<RRWireframe>()
+//
+//        for (item in this) {
+//            result.add(item)
+//
+//            item.childWireframes?.let {
+//                result.addAll(it.flattenChildren())
+//            }
+//        }
+//
+//        return result
+//    }
 
-        for (item in this) {
-            result.add(item)
-
-            item.childWireframes?.let {
-                result.addAll(it.flattenChildren())
-            }
-        }
-
-        return result
-    }
-
-    private fun findAddedAndRemovedItems(
-        oldItems: List<RRWireframe>,
-        newItems: List<RRWireframe>,
-    ): Pair<List<RRWireframe>, List<RRWireframe>> {
-        // Create HashSet to track unique IDs
-        // TODO: should we use System.identityHashCode instead?
-        val oldItemIds = HashSet(oldItems.map { it.id })
-        val newItemIds = HashSet(newItems.map { it.id })
-
-        // Find added items by subtracting oldItemIds from newItemIds
-        val addedIds = newItemIds - oldItemIds
-        val addedItems = newItems.filter { it.id in addedIds }
-
-        // Find removed items by subtracting newItemIds from oldItemIds
-        val removedIds = oldItemIds - newItemIds
-        val removedItems = oldItems.filter { it.id in removedIds }
-
-        return Pair(addedItems, removedItems)
-    }
+//    private fun findAddedAndRemovedItems(
+//        oldItems: List<RRWireframe>,
+//        newItems: List<RRWireframe>,
+//    ): Pair<List<RRWireframe>, List<RRWireframe>> {
+//        // Create HashSet to track unique IDs
+//        // TODO: should we use System.identityHashCode instead?
+//        val oldItemIds = HashSet(oldItems.map { it.id })
+//        val newItemIds = HashSet(newItems.map { it.id })
+//
+//        // Find added items by subtracting oldItemIds from newItemIds
+//        val addedIds = newItemIds - oldItemIds
+//        val addedItems = newItems.filter { it.id in addedIds }
+//
+//        // Find removed items by subtracting newItemIds from oldItemIds
+//        val removedIds = oldItemIds - newItemIds
+//        val removedItems = oldItems.filter { it.id in removedIds }
+//
+//        return Pair(addedItems, removedItems)
+//    }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -659,70 +662,6 @@ public class PostHogReplayIntegration(
 
     private fun View.isNoCapture(maskInput: Boolean): Boolean {
         return (this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
-    }
-
-    private fun initLogcatWatcher(date: Date) {
-        if (!config.sessionReplayConfig.captureLogcat) {
-            return
-        }
-        // TODO: check if its API 23 or higher
-        val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
-        val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
-        cmd.add("-T")
-        cmd.add(sdf.format(date.time))
-
-        logcatInProgress = false
-        logcatThread?.interruptSafely()
-        logcatThread = Thread {
-            var process: Process? = null
-            try {
-                process = Runtime.getRuntime().exec(cmd.toTypedArray())
-                process.inputStream.bufferedReader().use {
-                    var line: String? = null
-                    logcatInProgress = true
-                    do {
-                        try {
-                            line = it.readLine()
-
-                            if (line.isNullOrEmpty()) {
-                                continue
-                            }
-                            // TODO: filter out all non useful stuff
-                            if (line.contains("PostHog") || line.contains("StrictMode")) {
-                                continue
-                            } else {
-                                val log = LogcatParser().parse(line) ?: continue
-
-                                val props = mutableMapOf<String, Any>()
-                                props["level"] = log.level.toString()
-                                val tag = log.tag?.trim() ?: ""
-                                val content = log.text?.trim() ?: ""
-                                props["payload"] = listOf("$tag: $content")
-                                val time = log.time?.time?.time ?: config.dateProvider.currentTimeMillis()
-                                val event = RRPluginEvent("rrweb/console@1", props, time)
-                                // TODO: batch events
-                                listOf(event).capture()
-                            }
-                        } catch (e: Throwable) {
-                            // ignore
-                        }
-                    } while (line != null && logcatInProgress)
-                }
-            } catch (e: Throwable) {
-                // ignore
-            } finally {
-                process?.destroy()
-            }
-        }
-        logcatThread?.start()
-    }
-
-    private fun Thread.interruptSafely() {
-        try {
-            interrupt()
-        } catch (e: Throwable) {
-            // ignore
-        }
     }
 
     private fun String.mask(): String {
