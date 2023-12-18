@@ -4,7 +4,7 @@
 
 - Android Session Recording - Alpha preview ([#69](https://github.com/PostHog/posthog-android/pull/69))
 
-Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md) guide.
+Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/chore/session-replay/USAGE.md#android-session-recording) guide.
 
 ## 3.0.0 - 2023-12-06
 
