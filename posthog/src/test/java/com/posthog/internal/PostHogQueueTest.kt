@@ -30,7 +30,7 @@ internal class PostHogQueueTest {
         maxQueueSize: Int = 1000,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         flushAt: Int = 20,
-        dateProvider: PostHogDateProvider = PostHogCalendarDateProvider(),
+        dateProvider: PostHogDateProvider = PostHogDeviceDateProvider(),
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
 
@@ -41,9 +41,10 @@ internal class PostHogQueueTest {
             this.flushAt = flushAt
             this.networkStatus = networkStatus
             this.maxBatchSize = maxBatchSize
+            this.dateProvider = dateProvider
         }
-        val api = PostHogApi(config, dateProvider)
-        return PostHogQueue(config, api, executor = executor, dateProvider = dateProvider)
+        val api = PostHogApi(config)
+        return PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, executor = executor)
     }
 
     @Test

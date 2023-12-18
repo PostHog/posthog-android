@@ -1,5 +1,11 @@
 ## Next
 
+## 3.1.0-alpha.1 - 2023-12-18
+
+- Android Session Recording - Alpha preview ([#69](https://github.com/PostHog/posthog-android/pull/69))
+
+Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md) guide.
+
 ## 3.0.0 - 2023-12-06
 
 Check out the updated [docs](https://posthog.com/docs/libraries/android).

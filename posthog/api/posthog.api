@@ -1,11 +1,12 @@
 public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public static final field Companion Lcom/posthog/PostHog$Companion;
-	public synthetic fun <init> (Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun alias (Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
 	public fun close ()V
 	public fun debug (Z)V
 	public fun distinctId ()Ljava/lang/String;
+	public fun endSession ()V
 	public fun flush ()V
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -20,6 +21,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public fun reset ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
+	public fun startSession ()V
 	public fun unregister (Ljava/lang/String;)V
 }
 
@@ -29,6 +31,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun close ()V
 	public fun debug (Z)V
 	public fun distinctId ()Ljava/lang/String;
+	public fun endSession ()V
 	public fun flush ()V
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -45,6 +48,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public final fun resetSharedInstance ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
+	public fun startSession ()V
 	public fun unregister (Ljava/lang/String;)V
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHogInterface;
 }
@@ -52,12 +56,13 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 public class com/posthog/PostHogConfig {
 	public static final field Companion Lcom/posthog/PostHogConfig$Companion;
 	public static final field defaultHost Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogPropertiesSanitizer;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogPropertiesSanitizer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
+	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getFlushAt ()I
@@ -73,14 +78,18 @@ public class com/posthog/PostHogConfig {
 	public final fun getOptOut ()Z
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getPropertiesSanitizer ()Lcom/posthog/PostHogPropertiesSanitizer;
+	public final fun getReplayStoragePrefix ()Ljava/lang/String;
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
 	public final fun getSerializer ()Lcom/posthog/internal/PostHogSerializer;
+	public final fun getSessionReplay ()Z
+	public final fun getSnapshotEndpoint ()Ljava/lang/String;
 	public final fun getStoragePrefix ()Ljava/lang/String;
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
+	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFlushAt (I)V
@@ -94,9 +103,12 @@ public class com/posthog/PostHogConfig {
 	public final fun setOptOut (Z)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setPropertiesSanitizer (Lcom/posthog/PostHogPropertiesSanitizer;)V
+	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
+	public final fun setSessionReplay (Z)V
+	public final fun setSnapshotEndpoint (Ljava/lang/String;)V
 	public final fun setStoragePrefix (Ljava/lang/String;)V
 }
 
@@ -109,8 +121,8 @@ public abstract interface class com/posthog/PostHogEncryption {
 }
 
 public final class com/posthog/PostHogEvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/util/Map;
@@ -119,9 +131,11 @@ public final class com/posthog/PostHogEvent {
 	public final fun component6 ()Ljava/lang/String;
 	public final fun component7 ()Ljava/util/UUID;
 	public final fun component8 ()Ljava/util/Map;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;)Lcom/posthog/PostHogEvent;
-	public static synthetic fun copy$default (Lcom/posthog/PostHogEvent;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/PostHogEvent;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;Ljava/lang/String;)Lcom/posthog/PostHogEvent;
+	public static synthetic fun copy$default (Lcom/posthog/PostHogEvent;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Ljava/util/UUID;Ljava/lang/String;Ljava/util/UUID;Ljava/util/Map;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/PostHogEvent;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getDistinctId ()Ljava/lang/String;
 	public final fun getEvent ()Ljava/lang/String;
 	public final fun getMessageId ()Ljava/util/UUID;
@@ -131,6 +145,7 @@ public final class com/posthog/PostHogEvent {
 	public final fun getType ()Ljava/lang/String;
 	public final fun getUuid ()Ljava/util/UUID;
 	public fun hashCode ()I
+	public final fun setApiKey (Ljava/lang/String;)V
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -149,6 +164,7 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun close ()V
 	public abstract fun debug (Z)V
 	public abstract fun distinctId ()Ljava/lang/String;
+	public abstract fun endSession ()V
 	public abstract fun flush ()V
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
@@ -163,6 +179,7 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun reset ()V
 	public abstract fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun setup (Lcom/posthog/PostHogConfig;)V
+	public abstract fun startSession ()V
 	public abstract fun unregister (Ljava/lang/String;)V
 }
 
@@ -181,6 +198,13 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 public abstract interface annotation class com/posthog/PostHogInternal : java/lang/annotation/Annotation {
 }
 
+public final class com/posthog/PostHogOkHttpInterceptor : okhttp3/Interceptor {
+	public fun <init> ()V
+	public fun <init> (Z)V
+	public synthetic fun <init> (ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun intercept (Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;
+}
+
 public abstract interface class com/posthog/PostHogOnFeatureFlags {
 	public abstract fun loaded ()V
 }
@@ -195,6 +219,13 @@ public abstract interface annotation class com/posthog/PostHogVisibleForTesting 
 public abstract interface class com/posthog/internal/PostHogContext {
 	public abstract fun getDynamicContext ()Ljava/util/Map;
 	public abstract fun getStaticContext ()Ljava/util/Map;
+}
+
+public abstract interface class com/posthog/internal/PostHogDateProvider {
+	public abstract fun addSecondsToCurrentDate (I)Ljava/util/Date;
+	public abstract fun currentDate ()Ljava/util/Date;
+	public abstract fun currentTimeMillis ()J
+	public abstract fun nanoTime ()J
 }
 
 public abstract interface class com/posthog/internal/PostHogLogger {
@@ -252,5 +283,233 @@ public final class com/posthog/internal/PostHogSerializer {
 	public final fun deserializeString (Ljava/lang/String;)Ljava/lang/Object;
 	public final fun getGson ()Lcom/google/gson/Gson;
 	public final fun serializeObject (Ljava/lang/Object;)Ljava/lang/String;
+}
+
+public final class com/posthog/internal/PostHogThreadFactory : java/util/concurrent/ThreadFactory {
+	public fun <init> (Ljava/lang/String;)V
+	public fun newThread (Ljava/lang/Runnable;)Ljava/lang/Thread;
+}
+
+public final class com/posthog/internal/PostHogUtilsKt {
+	public static final fun interruptSafely (Ljava/lang/Thread;)V
+}
+
+public final class com/posthog/internal/replay/RRAddedNode {
+	public fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getParentId ()Ljava/lang/Integer;
+	public final fun getWireframe ()Lcom/posthog/internal/replay/RRWireframe;
+}
+
+public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
+}
+
+public final class com/posthog/internal/replay/RRDocumentNode : com/posthog/internal/replay/RREvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
+}
+
+public final class com/posthog/internal/replay/RRDomContentLoadedEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (J)V
+}
+
+public class com/posthog/internal/replay/RREvent {
+	public fun <init> (Lcom/posthog/internal/replay/RREventType;JLjava/lang/Object;)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RREventType;JLjava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getData ()Ljava/lang/Object;
+	public final fun getTimestamp ()J
+	public final fun getType ()Lcom/posthog/internal/replay/RREventType;
+}
+
+public final class com/posthog/internal/replay/RREventType : java/lang/Enum {
+	public static final field Companion Lcom/posthog/internal/replay/RREventType$Companion;
+	public static final field Custom Lcom/posthog/internal/replay/RREventType;
+	public static final field DomContentLoaded Lcom/posthog/internal/replay/RREventType;
+	public static final field FullSnapshot Lcom/posthog/internal/replay/RREventType;
+	public static final field IncrementalSnapshot Lcom/posthog/internal/replay/RREventType;
+	public static final field Load Lcom/posthog/internal/replay/RREventType;
+	public static final field Meta Lcom/posthog/internal/replay/RREventType;
+	public static final field Plugin Lcom/posthog/internal/replay/RREventType;
+	public final fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RREventType;
+	public static fun values ()[Lcom/posthog/internal/replay/RREventType;
+}
+
+public final class com/posthog/internal/replay/RREventType$Companion {
+	public final fun fromValue (I)Lcom/posthog/internal/replay/RREventType;
+}
+
+public final class com/posthog/internal/replay/RRFullSnapshotEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (Ljava/util/List;IIJ)V
+}
+
+public final class com/posthog/internal/replay/RRIncrementalMouseInteractionData {
+	public fun <init> (ILcom/posthog/internal/replay/RRMouseInteraction;IILcom/posthog/internal/replay/RRIncrementalSource;ILjava/util/List;)V
+	public synthetic fun <init> (ILcom/posthog/internal/replay/RRMouseInteraction;IILcom/posthog/internal/replay/RRIncrementalSource;ILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getId ()I
+	public final fun getPointerType ()I
+	public final fun getPositions ()Ljava/util/List;
+	public final fun getSource ()Lcom/posthog/internal/replay/RRIncrementalSource;
+	public final fun getType ()Lcom/posthog/internal/replay/RRMouseInteraction;
+	public final fun getX ()I
+	public final fun getY ()I
+}
+
+public final class com/posthog/internal/replay/RRIncrementalMouseInteractionEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (Lcom/posthog/internal/replay/RRIncrementalMouseInteractionData;J)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RRIncrementalMouseInteractionData;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class com/posthog/internal/replay/RRIncrementalMutationData {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAdds ()Ljava/util/List;
+	public final fun getRemoves ()Ljava/util/List;
+	public final fun getSource ()Lcom/posthog/internal/replay/RRIncrementalSource;
+}
+
+public final class com/posthog/internal/replay/RRIncrementalSnapshotEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (Lcom/posthog/internal/replay/RRIncrementalMutationData;J)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RRIncrementalMutationData;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class com/posthog/internal/replay/RRIncrementalSource : java/lang/Enum {
+	public static final field AdoptedStyleSheet Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field CanvasMutation Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Companion Lcom/posthog/internal/replay/RRIncrementalSource$Companion;
+	public static final field CustomElement Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Drag Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Font Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Input Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Log Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field MediaInteraction Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field MouseInteraction Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field MouseMove Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Mutation Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Scroll Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field Selection Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field StyleDeclaration Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field StyleSheetRule Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field TouchMove Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static final field ViewportResize Lcom/posthog/internal/replay/RRIncrementalSource;
+	public final fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static fun values ()[Lcom/posthog/internal/replay/RRIncrementalSource;
+}
+
+public final class com/posthog/internal/replay/RRIncrementalSource$Companion {
+	public final fun fromValue (I)Lcom/posthog/internal/replay/RRIncrementalSource;
+}
+
+public final class com/posthog/internal/replay/RRLoadedEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (J)V
+}
+
+public final class com/posthog/internal/replay/RRMetaEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (IIJLjava/lang/String;)V
+}
+
+public final class com/posthog/internal/replay/RRMouseInteraction : java/lang/Enum {
+	public static final field Blur Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field Click Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field Companion Lcom/posthog/internal/replay/RRMouseInteraction$Companion;
+	public static final field ContextMenu Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field DblClick Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field Focus Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field MouseDown Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field MouseUp Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchCancel Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchEnd Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchMoveDeparted Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static final field TouchStart Lcom/posthog/internal/replay/RRMouseInteraction;
+	public final fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static fun values ()[Lcom/posthog/internal/replay/RRMouseInteraction;
+}
+
+public final class com/posthog/internal/replay/RRMouseInteraction$Companion {
+	public final fun fromValue (I)Lcom/posthog/internal/replay/RRMouseInteraction;
+}
+
+public final class com/posthog/internal/replay/RRMousePosition {
+	public fun <init> (IIILjava/lang/Long;)V
+	public synthetic fun <init> (IIILjava/lang/Long;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getId ()I
+	public final fun getTimeOffset ()Ljava/lang/Long;
+	public final fun getX ()I
+	public final fun getY ()I
+}
+
+public final class com/posthog/internal/replay/RRPluginEvent : com/posthog/internal/replay/RREvent {
+	public fun <init> (Ljava/lang/String;Ljava/util/Map;J)V
+}
+
+public final class com/posthog/internal/replay/RRRemovedNode {
+	public fun <init> (ILjava/lang/Integer;)V
+	public synthetic fun <init> (ILjava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getId ()I
+	public final fun getParentId ()Ljava/lang/Integer;
+}
+
+public final class com/posthog/internal/replay/RRStyle {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBackgroundColor ()Ljava/lang/String;
+	public final fun getBar ()Ljava/lang/String;
+	public final fun getBorderColor ()Ljava/lang/String;
+	public final fun getBorderRadius ()Ljava/lang/Integer;
+	public final fun getBorderWidth ()Ljava/lang/Integer;
+	public final fun getColor ()Ljava/lang/String;
+	public final fun getFontFamily ()Ljava/lang/String;
+	public final fun getFontSize ()Ljava/lang/Integer;
+	public final fun getHorizontalAlign ()Ljava/lang/String;
+	public final fun getPaddingBottom ()Ljava/lang/Integer;
+	public final fun getPaddingLeft ()Ljava/lang/Integer;
+	public final fun getPaddingRight ()Ljava/lang/Integer;
+	public final fun getPaddingTop ()Ljava/lang/Integer;
+	public final fun getVerticalAlign ()Ljava/lang/String;
+	public final fun setBackgroundColor (Ljava/lang/String;)V
+	public final fun setBar (Ljava/lang/String;)V
+	public final fun setBorderColor (Ljava/lang/String;)V
+	public final fun setBorderRadius (Ljava/lang/Integer;)V
+	public final fun setBorderWidth (Ljava/lang/Integer;)V
+	public final fun setColor (Ljava/lang/String;)V
+	public final fun setFontFamily (Ljava/lang/String;)V
+	public final fun setFontSize (Ljava/lang/Integer;)V
+	public final fun setHorizontalAlign (Ljava/lang/String;)V
+	public final fun setPaddingBottom (Ljava/lang/Integer;)V
+	public final fun setPaddingLeft (Ljava/lang/Integer;)V
+	public final fun setPaddingRight (Ljava/lang/Integer;)V
+	public final fun setPaddingTop (Ljava/lang/Integer;)V
+	public final fun setVerticalAlign (Ljava/lang/String;)V
+}
+
+public final class com/posthog/internal/replay/RRUtilsKt {
+	public static final fun capture (Ljava/util/List;)V
+}
+
+public final class com/posthog/internal/replay/RRWireframe {
+	public fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;)V
+	public synthetic fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBase64 ()Ljava/lang/String;
+	public final fun getChecked ()Ljava/lang/Boolean;
+	public final fun getChildWireframes ()Ljava/util/List;
+	public final fun getDisabled ()Ljava/lang/Boolean;
+	public final fun getHeight ()I
+	public final fun getId ()I
+	public final fun getInputType ()Ljava/lang/String;
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getMax ()Ljava/lang/Integer;
+	public final fun getOptions ()Ljava/util/List;
+	public final fun getParentId ()Ljava/lang/Integer;
+	public final fun getStyle ()Lcom/posthog/internal/replay/RRStyle;
+	public final fun getText ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/Object;
+	public final fun getWidth ()I
+	public final fun getX ()I
+	public final fun getY ()I
 }
 

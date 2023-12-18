@@ -1,7 +1,7 @@
 package com.posthog
 
 import com.posthog.internal.PostHogApi
-import com.posthog.internal.PostHogCalendarDateProvider
+import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences
@@ -24,6 +24,9 @@ public class PostHog private constructor(
     private val queueExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogQueueThread"),
     ),
+    private val replayExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
+        PostHogThreadFactory("PostHogReplayQueueThread"),
+    ),
     private val featureFlagsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
         PostHogThreadFactory("PostHogFeatureFlagsThread"),
     ),
@@ -38,12 +41,16 @@ public class PostHog private constructor(
     private val lockSetup = Any()
     private val lockOptOut = Any()
     private val anonymousLock = Any()
+    private val sessionLock = Any()
+    private val sessionIdNone = UUID(0, 0)
+    private var sessionId = sessionIdNone
     private val featureFlagsCalledLock = Any()
 
     private var config: PostHogConfig? = null
 
     private var featureFlags: PostHogFeatureFlags? = null
     private var queue: PostHogQueue? = null
+    private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
@@ -61,9 +68,9 @@ public class PostHog private constructor(
 
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
-                val dateProvider = PostHogCalendarDateProvider()
-                val api = PostHogApi(config, dateProvider)
-                val queue = PostHogQueue(config, api, dateProvider, queueExecutor)
+                val api = PostHogApi(config)
+                val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
+                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -75,7 +82,7 @@ public class PostHog private constructor(
                     config.optOut = optOut
                 }
 
-                val startDate = dateProvider.currentDate()
+                val startDate = config.dateProvider.currentDate()
                 val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(
                     config,
                     api,
@@ -85,6 +92,7 @@ public class PostHog private constructor(
 
                 this.config = config
                 this.queue = queue
+                this.replayQueue = replayQueue
                 this.featureFlags = featureFlags
 
                 config.addIntegration(sendCachedEventsIntegration)
@@ -94,6 +102,8 @@ public class PostHog private constructor(
                 enabled = true
 
                 queue.start()
+
+                startSession()
 
                 config.integrations.forEach {
                     try {
@@ -158,8 +168,11 @@ public class PostHog private constructor(
                 }
 
                 queue?.stop()
+                replayQueue?.stop()
 
                 featureFlagsCalled.clear()
+
+                sessionId = sessionIdNone
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
@@ -236,6 +249,15 @@ public class PostHog private constructor(
             }
         }
 
+        synchronized(sessionLock) {
+            if (sessionId != sessionIdNone) {
+                props["\$session_id"] = sessionId.toString()
+                // Session replay requires $window_id, so we set as the same as $session_id.
+                // the backend might fallback to $session_id if $window_id is not present next.
+                props["\$window_id"] = sessionId.toString()
+            }
+        }
+
         properties?.let {
             props.putAll(it)
         }
@@ -250,6 +272,12 @@ public class PostHog private constructor(
 
         groupProperties?.let {
             props["\$groups"] = it
+        }
+
+        // Replay needs distinct_id also in the props
+        // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
+        if (props["distinct_id"] == null && !appendSharedProps) {
+            props["distinct_id"] = distinctId
         }
 
         return props
@@ -273,11 +301,18 @@ public class PostHog private constructor(
 
         val newDistinctId = distinctId ?: this.distinctId
 
+        var snapshotEvent = false
+        if (event == "\$snapshot") {
+            snapshotEvent = true
+        }
+
         val mergedProperties = buildProperties(
             properties = properties,
             userProperties = userProperties,
             userPropertiesSetOnce = userPropertiesSetOnce,
             groupProperties = groupProperties,
+            // only append shared props if not a snapshot event
+            appendSharedProps = !snapshotEvent,
         )
 
         // sanitize the properties or fallback to the original properties
@@ -288,6 +323,13 @@ public class PostHog private constructor(
             newDistinctId,
             properties = sanitizedProperties,
         )
+
+        // Replay has its own queue
+        if (snapshotEvent) {
+            replayQueue?.add(postHogEvent)
+            return
+        }
+
         queue?.add(postHogEvent)
     }
 
@@ -484,6 +526,7 @@ public class PostHog private constructor(
             return
         }
         queue?.flush()
+        replayQueue?.flush()
     }
 
     public override fun reset() {
@@ -497,6 +540,7 @@ public class PostHog private constructor(
         getPreferences().clear(except = except)
         featureFlags?.clear()
         queue?.clear()
+        replayQueue?.clear()
         featureFlagsCalled.clear()
     }
 
@@ -539,6 +583,20 @@ public class PostHog private constructor(
         config?.debug = enable
     }
 
+    override fun startSession() {
+        synchronized(sessionLock) {
+            if (sessionId == sessionIdNone) {
+                sessionId = UUID.randomUUID()
+            }
+        }
+    }
+
+    override fun endSession() {
+        synchronized(sessionLock) {
+            sessionId = sessionIdNone
+        }
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
@@ -570,12 +628,14 @@ public class PostHog private constructor(
         internal fun <T : PostHogConfig> withInternal(
             config: T,
             queueExecutor: ExecutorService,
+            replayExecutor: ExecutorService,
             featureFlagsExecutor: ExecutorService,
             cachedEventsExecutor: ExecutorService,
             reloadFeatureFlags: Boolean,
         ): PostHogInterface {
             val instance = PostHog(
                 queueExecutor,
+                replayExecutor,
                 featureFlagsExecutor,
                 cachedEventsExecutor,
                 reloadFeatureFlags = reloadFeatureFlags,
@@ -676,6 +736,14 @@ public class PostHog private constructor(
         override fun distinctId(): String = shared.distinctId()
         override fun debug(enable: Boolean) {
             shared.debug(enable)
+        }
+
+        override fun startSession() {
+            shared.startSession()
+        }
+
+        override fun endSession() {
+            shared.endSession()
         }
     }
 }

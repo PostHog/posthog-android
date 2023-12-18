@@ -2,7 +2,11 @@ import org.gradle.api.JavaVersion
 
 object PosthogBuildConfig {
     fun shouldSkipDebugVariant(name: String): Boolean {
-        return System.getenv("CI")?.toBoolean() ?: false && name == "debug"
+        return isCI() && name == "debug"
+    }
+
+    fun isCI(): Boolean {
+        return System.getenv("CI")?.toBoolean() ?: false
     }
 
     object Build {
@@ -12,7 +16,8 @@ object PosthogBuildConfig {
     object Android {
         val COMPILE_SDK = 34
 
-        // when changing this, remember to check the net.sf.androidscents.signature
+        // when changing this, remember to check the ANIMAL_SNIFFER_SDK_VERSION
+        // Session Replay (addOnFrameMetricsAvailableListener requires API 26)
         val MIN_SDK = 21
         val TARGET_SDK = COMPILE_SDK
     }
@@ -30,10 +35,13 @@ object PosthogBuildConfig {
 
     object Plugins {
         val ANIMAL_SNIFFER = "1.7.1"
+        val ANIMAL_SNIFFER_SDK_VERSION = "5.0.1_r2" // API 21
         val SPOTLESS = "6.21.0"
         val DETEKT = "1.23.1"
         val API_VALIDATOR = "0.13.2"
         val BUILD_CONFIG = "4.1.2"
+        val GUMMY_BEARS_API = "0.6.1"
+        val SIGNATURE_JAVA18 = "1.0"
     }
 
     object Dependencies {
@@ -41,6 +49,7 @@ object PosthogBuildConfig {
         val LIFECYCLE = "2.6.2"
         val GSON = "2.10.1"
         val OKHTTP = "4.11.0"
+        val CURTAINS = "1.2.4"
 
         // tests
         val ANDROIDX_JUNIT = "1.1.5"

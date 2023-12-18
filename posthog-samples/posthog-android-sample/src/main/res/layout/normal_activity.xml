@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    tools:context=".NormalActivity"
+    tools:ignore="MissingDefaultResource">
+
+    <!--    <ScrollView-->
+    <!--        android:layout_width="match_parent"-->
+    <!--        android:layout_height="match_parent">-->
+    <!--        <LinearLayout-->
+    <!--            android:layout_width="match_parent"-->
+    <!--            android:layout_height="match_parent"-->
+    <!--            android:orientation="vertical"-->
+    <!--            android:gravity="center">-->
+    <!--            <TextView-->
+    <!--                android:layout_width="wrap_content"-->
+    <!--                android:layout_height="wrap_content"-->
+    <!--                android:text="TextView text"-->
+    <!--                android:textColor="#FF0000"-->
+    <!--                android:textAlignment="center"-->
+    <!--                />-->
+    <!--            &lt;!&ndash;    android:visibility="gone"&ndash;&gt;-->
+
+    <!--            <ImageView-->
+    <!--                android:id="@+id/imvAndroid"-->
+    <!--                android:layout_width="230dp"-->
+    <!--                android:layout_height="391dp"-->
+    <!--                android:src="@drawable/android_logo"-->
+    <!--                android:tag="ph-no-capture"-->
+    <!--                />-->
+    <!--            &lt;!&ndash;        android:tag="ph-no-capture"&ndash;&gt;-->
+
+    <!--            <Button-->
+    <!--                android:layout_width="wrap_content"-->
+    <!--                android:layout_height="wrap_content"-->
+    <!--                android:text="Button text"-->
+    <!--                android:textColor="#FF0000"-->
+    <!--                android:id="@+id/button"-->
+    <!--                />-->
+
+    <!--            &lt;!&ndash;    <View&ndash;&gt;-->
+    <!--            &lt;!&ndash;        android:layout_width="match_parent"&ndash;&gt;-->
+    <!--            &lt;!&ndash;        android:layout_height="5dp"&ndash;&gt;-->
+    <!--            &lt;!&ndash;        android:background="#4E4B4F" />&ndash;&gt;-->
+
+    <!--            <EditText-->
+    <!--                android:layout_width="wrap_content"-->
+    <!--                android:layout_height="wrap_content"-->
+    <!--                android:text="EditText text"-->
+    <!--                android:textColor="#FF0000"-->
+    <!--                />-->
+
+<!--                <Spinner-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:entries="@array/array_name"-->
+<!--                    />-->
+
+    <!--            <CheckBox-->
+    <!--                android:layout_width="wrap_content"-->
+    <!--                android:layout_height="wrap_content"-->
+    <!--                android:checked="true"-->
+    <!--                android:text="CheckBox text"-->
+    <!--                />-->
+
+    <!--            <CheckBox-->
+    <!--                android:layout_width="wrap_content"-->
+    <!--                android:layout_height="wrap_content"-->
+    <!--                android:text="CheckBox false"-->
+    <!--                />-->
+
+    <!--            <RadioGroup-->
+    <!--                android:layout_width="wrap_content"-->
+    <!--                android:layout_height="wrap_content"-->
+    <!--                android:orientation="vertical"-->
+    <!--                >-->
+    <!--                <RadioButton-->
+    <!--                    android:layout_width="wrap_content"-->
+    <!--                    android:layout_height="wrap_content"-->
+    <!--                    android:checked="true"-->
+    <!--                    android:text="Yes" />-->
+
+    <!--                <RadioButton-->
+    <!--                    android:layout_width="wrap_content"-->
+    <!--                    android:layout_height="wrap_content"-->
+    <!--                    android:text="No" />-->
+    <!--            </RadioGroup>-->
+    <!--        </LinearLayout>-->
+    <!--    </ScrollView>-->
+
+<!--        <Switch-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:checked="true"-->
+<!--            android:text="Switch text" />-->
+
+    <!--    <SearchView-->
+    <!--        android:layout_width="match_parent"-->
+    <!--        android:layout_height="wrap_content"-->
+    <!--        android:iconifiedByDefault="false"-->
+    <!--        android:queryHint="Search me" />-->
+
+    <!--    <ProgressBar-->
+    <!--        style="?android:progressBarStyle"-->
+    <!--        android:layout_width="wrap_content"-->
+    <!--        android:layout_height="wrap_content"-->
+    <!--        />-->
+
+    <!--    <WebView-->
+    <!--        android:layout_width="match_parent"-->
+    <!--        android:layout_height="match_parent"-->
+    <!--        android:id="@+id/webview"-->
+    <!--        />-->
+
+    <RatingBar
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:numStars="4"
+        android:rating="3.5" />
+
+    <!--    <Spinner-->
+    <!--        android:layout_width="wrap_content"-->
+    <!--        android:layout_height="wrap_content"/>-->
+</LinearLayout>

@@ -5,8 +5,6 @@ import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPom
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.kotlin.dsl.findByType
-import org.gradle.kotlin.dsl.get
-import org.gradle.kotlin.dsl.repositories
 import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.dokka.gradle.DokkaTask
 
@@ -105,7 +103,8 @@ fun MavenPublication.postHogConfig(projectName: String, properties: Map<String, 
 fun SigningExtension.postHogConfig(variantName: String, publishingExtension: PublishingExtension) {
     val privateKey = System.getenv("GPG_PRIVATE_KEY")
     val password = System.getenv("GPG_PASSPHRASE")
-    isRequired = true
+    // releases are only signed on CI, so skip this locally
+    isRequired = PosthogBuildConfig.isCI()
     useInMemoryPgpKeys(privateKey, password)
     sign(publishingExtension.publications.getByName(variantName))
 }

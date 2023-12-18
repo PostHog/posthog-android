@@ -1,6 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogInternal
 import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -49,4 +50,13 @@ internal fun Executor.executeSafely(run: Runnable) {
         // can throw RejectedExecutionException
         execute(run)
     } catch (ignored: Throwable) {}
+}
+
+@PostHogInternal
+public fun Thread.interruptSafely() {
+    try {
+        interrupt()
+    } catch (e: Throwable) {
+        // ignore
+    }
 }

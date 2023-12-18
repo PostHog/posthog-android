@@ -24,6 +24,7 @@ internal class PostHogTest {
     val tmpDir = TemporaryFolder()
 
     private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
+    private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val featureFlagsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlags"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
     private val serializer = PostHogSerializer(PostHogConfig(apiKey))
@@ -56,7 +57,7 @@ internal class PostHogTest {
             this.cachePreferences = cachePreferences
             this.propertiesSanitizer = propertiesSanitizer
         }
-        return PostHog.withInternal(config, queueExecutor, featureFlagsExecutor, cachedEventsExecutor, reloadFeatureFlags)
+        return PostHog.withInternal(config, queueExecutor, replayQueueExecutor, featureFlagsExecutor, cachedEventsExecutor, reloadFeatureFlags)
     }
 
     @AfterTest
