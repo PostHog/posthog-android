@@ -190,3 +190,38 @@ Close the SDK
 ```kotlin
 PostHog.close()
 ```
+
+## Android Session Recording
+
+Enable `Record user sessions` on the [PostHog project settings](https://us.posthog.com/settings/project-replay#replay).
+
+[Authorized Domains for Replay](https://us.posthog.com/settings/project-replay#replay-authorized-domains) has to be disabled, for now.
+
+Enable the SDK to capture Session Recording.
+
+```kotlin
+val config = PostHogAndroidConfig(apiKey).apply {
+    // sessionReplay is disabled by default
+    sessionReplay = true
+    // sessionReplayConfig is optional, they are enabled by default
+    sessionReplayConfig.maskAllTextInputs = true
+    sessionReplayConfig.maskAllImages = true
+    sessionReplayConfig.captureLogcat = true
+}
+```
+
+Add the `PostHogOkHttpInterceptor` to your `OkHttpClient` to capture network requests.
+
+```kotlin
+private val client = OkHttpClient.Builder()
+    .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
+    .build()
+```
+
+### Limitations
+
+- Requires Android API >= 26, otherwise it's a NoOp.
+- Not compatible and/or tested with [Jetpack Compose](https://developer.android.com/jetpack/compose) yet.
+- It's a representation of the user's screen, not a video recording nor a screenshot.
+  - Custom views are not fully supported.
+- WebView is not supported, a placeholder will be shown.

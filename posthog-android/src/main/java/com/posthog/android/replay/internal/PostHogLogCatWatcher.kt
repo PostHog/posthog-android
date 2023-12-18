@@ -18,7 +18,6 @@ internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
         if (!config.sessionReplayConfig.captureLogcat) {
             return
         }
-        // TODO: check if its API 23 or higher
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
         val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
         cmd.add("-T")
