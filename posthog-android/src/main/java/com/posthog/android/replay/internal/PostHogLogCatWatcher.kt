@@ -1,5 +1,7 @@
 package com.posthog.android.replay.internal
 
+import android.annotation.SuppressLint
+import android.os.Build
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.interruptSafely
 import com.posthog.internal.replay.RRPluginEvent
@@ -15,7 +17,7 @@ internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
     private var logcatThread: Thread? = null
 
     fun init() {
-        if (!config.sessionReplayConfig.captureLogcat) {
+        if (!config.sessionReplayConfig.captureLogcat || !isSupported()) {
             return
         }
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
@@ -67,6 +69,11 @@ internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
             }
         }
         logcatThread?.start()
+    }
+
+    @SuppressLint("AnnotateVersionCheck")
+    private fun isSupported(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
     }
 
     fun stop() {

@@ -1,5 +1,6 @@
 package com.posthog.android.replay
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.Bitmap
@@ -171,6 +172,10 @@ public class PostHogReplayIntegration(
     }
 
     internal fun sessionActive(enabled: Boolean) {
+        if (!isSupported()) {
+            return
+        }
+
         isSessionActive = enabled
 
         if (isSessionReplayEnabled) {
@@ -196,6 +201,10 @@ public class PostHogReplayIntegration(
     }
 
     override fun install() {
+        if (!isSupported()) {
+            return
+        }
+
         Curtains.onRootViewsChangedListeners += onRootViewsChangedListener
     }
 
@@ -688,5 +697,10 @@ public class PostHogReplayIntegration(
 
     private fun String.mask(): String {
         return "*".repeat(this.length)
+    }
+
+    @SuppressLint("AnnotateVersionCheck")
+    private fun isSupported(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
     }
 }
