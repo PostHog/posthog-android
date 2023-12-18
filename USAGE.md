@@ -210,6 +210,18 @@ val config = PostHogAndroidConfig(apiKey).apply {
 }
 ```
 
+If you don't want to mask everything, you can disable the mask config above and mask specific views using the `ph-no-capture` tag.
+
+```xml
+<ImageView
+    android:id="@+id/imvAndroid"
+    android:layout_width="230dp"
+    android:layout_height="391dp"
+    android:src="@drawable/android_logo"
+    android:tag="ph-no-capture"
+/>
+```
+
 Add the `PostHogOkHttpInterceptor` to your `OkHttpClient` to capture network requests.
 
 ```kotlin
