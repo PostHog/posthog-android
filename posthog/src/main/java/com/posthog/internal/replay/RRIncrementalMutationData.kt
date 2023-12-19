@@ -6,6 +6,7 @@ import com.posthog.PostHogInternal
 public class RRIncrementalMutationData(
     public val adds: List<RRAddedNode>? = null,
     public val removes: List<RRRemovedNode>? = null,
+    // updates and adds share the same format
+    public val updates: List<RRAddedNode>? = null,
     public val source: RRIncrementalSource = RRIncrementalSource.Mutation,
-    // TODO: mutations/updates pending
 )

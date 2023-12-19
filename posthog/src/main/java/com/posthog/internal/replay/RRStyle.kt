@@ -3,7 +3,7 @@ package com.posthog.internal.replay
 import com.posthog.PostHogInternal
 
 @PostHogInternal
-public class RRStyle(
+public data class RRStyle(
     public var color: String? = null,
     public var backgroundColor: String? = null,
     public var borderWidth: Int? = null,

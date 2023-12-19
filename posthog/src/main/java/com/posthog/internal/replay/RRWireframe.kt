@@ -4,7 +4,7 @@ import com.posthog.PostHogInternal
 
 // TODO: create abstractions on top of RRWireframe, eg RRTextWireframe, etc
 @PostHogInternal
-public class RRWireframe(
+public data class RRWireframe(
     public val id: Int,
     public val x: Int,
     public val y: Int,
