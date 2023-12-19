@@ -33,6 +33,8 @@ import android.widget.RatingBar
 import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
@@ -43,6 +45,7 @@ import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.PostHogLogCatWatcher
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
 import com.posthog.internal.replay.RRFullSnapshotEvent
 import com.posthog.internal.replay.RRIncrementalMouseInteractionData
@@ -102,6 +105,34 @@ public class PostHogReplayIntegration(
                             executor.submit {
                                 generateSnapshot(WeakReference(decorView), timestamp)
                             }
+                        }
+
+                        // keyboard events
+                        var open = false
+                        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+                            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+                            if (open == imeVisible) {
+                                return@setOnApplyWindowInsetsListener insets
+                            }
+                            open = imeVisible
+
+                            val props = mutableMapOf<String, Any>()
+                            if (imeVisible) {
+                                val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+                                props["open"] = true
+                                props["height"] = imeHeight.densityValue(displayMetrics.density)
+                            } else {
+                                props["open"] = false
+                            }
+
+                            val event = RRCustomEvent(
+                                tag = "keyboard",
+                                payload = props,
+                                config.dateProvider.currentTimeMillis(),
+                            )
+                            listOf(event).capture()
+
+                            insets
                         }
 
                         val status = ViewTreeSnapshotStatus(listener)

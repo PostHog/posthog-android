@@ -50,11 +50,11 @@ object PosthogBuildConfig {
         val GSON = "2.10.1"
         val OKHTTP = "4.11.0"
         val CURTAINS = "1.2.4"
+        val ANDROIDX_CORE = "1.5.0"
 
         // tests
         val ANDROIDX_JUNIT = "1.1.5"
         val ANDROIDX_RUNNER = "1.5.2"
-        val ANDROIDX_CORE = "1.5.0"
         val MOCKITO = "4.1.0" // mockito 5x requires Java 11 bytecode
         val MOCKITO_INLINE = "4.11.0" // mockito-inline 5x requires Java 11 bytecode
         val ROBOLECTRIC = "4.10.3"
