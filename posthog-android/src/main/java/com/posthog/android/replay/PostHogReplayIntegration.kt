@@ -116,18 +116,18 @@ public class PostHogReplayIntegration(
                             }
                             open = imeVisible
 
-                            val props = mutableMapOf<String, Any>()
+                            val payload = mutableMapOf<String, Any>()
                             if (imeVisible) {
                                 val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-                                props["open"] = true
-                                props["height"] = imeHeight.densityValue(displayMetrics.density)
+                                payload["open"] = true
+                                payload["height"] = imeHeight.densityValue(displayMetrics.density)
                             } else {
-                                props["open"] = false
+                                payload["open"] = false
                             }
 
                             val event = RRCustomEvent(
                                 tag = "keyboard",
-                                payload = props,
+                                payload = payload,
                                 config.dateProvider.currentTimeMillis(),
                             )
                             listOf(event).capture()
