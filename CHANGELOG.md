@@ -1,5 +1,7 @@
 ## Next
 
+- chore: Add mutations ([#72](https://github.com/PostHog/posthog-android/pull/72))
+
 ## 3.1.0-alpha.1 - 2023-12-18
 
 - Android Session Recording - Alpha preview ([#69](https://github.com/PostHog/posthog-android/pull/69))
