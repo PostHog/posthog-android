@@ -1,5 +1,7 @@
 ## Next
 
+## 3.1.0-alpha.2 - 2024-01-02
+
 - Send custom keyboard event when keyboard is open or close ([#71](https://github.com/PostHog/posthog-android/pull/71))
 
 ## 3.1.0-alpha.1 - 2023-12-18
