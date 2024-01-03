@@ -86,7 +86,7 @@ internal class PostHogQueue(
                     }
                     config.logger.log("Queued event ${file.name}.")
 
-                    flushIfOverThreshold(true)
+                    flushIfOverThreshold()
                 } catch (e: Throwable) {
                     config.logger.log("Event ${event.event} failed to parse: $e.")
                 }
@@ -94,10 +94,14 @@ internal class PostHogQueue(
         }
     }
 
-    private fun flushIfOverThreshold(onExecutor: Boolean) {
-        if (deque.size >= config.flushAt) {
-            flushBatch(onExecutor)
+    private fun flushIfOverThreshold() {
+        if (isAboveThreshold(config.flushAt)) {
+            flushBatch()
         }
+    }
+
+    private fun isAboveThreshold(flushAt: Int): Boolean {
+        return deque.size >= flushAt
     }
 
     private fun canFlushBatch(): Boolean {
@@ -117,7 +121,7 @@ internal class PostHogQueue(
         return events
     }
 
-    private fun flushBatch(onExecutor: Boolean) {
+    private fun flushBatch() {
         if (!canFlushBatch()) {
             config.logger.log("Cannot flush the Queue.")
             return
@@ -128,14 +132,7 @@ internal class PostHogQueue(
             return
         }
 
-        // if its called from the executor already, no need to schedule another one
-        if (onExecutor) {
-            executeBatch()
-        } else {
-            executor.executeSafely {
-                executeBatch()
-            }
-        }
+        executeBatch()
     }
 
     private fun executeBatch() {
@@ -212,8 +209,8 @@ internal class PostHogQueue(
     }
 
     fun flush() {
-        if (!canFlushBatch()) {
-            config.logger.log("Cannot flush the Queue.")
+        // only flushes if the queue is above the threshold (not empty in this case)
+        if (!isAboveThreshold(1)) {
             return
         }
 
@@ -269,7 +266,8 @@ internal class PostHogQueue(
                     config.logger.log("Queue is flushing.")
                     return@schedule
                 }
-                flushIfOverThreshold(false)
+                // if the timer passes, send pending events, no need to wait for the flushAt threshold
+                flush()
             }
             this.timerTask = timerTask
             this.timer = timer
