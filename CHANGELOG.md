@@ -2,6 +2,14 @@
 
 - chore: Add mutations ([#72](https://github.com/PostHog/posthog-android/pull/72))
 
+## 3.0.1 - 2024-01-03
+
+- `flush` forcefully sends events regardless the delay ([#73](https://github.com/PostHog/posthog-android/pull/73))
+
+## 3.1.0-alpha.2 - 2024-01-02
+
+- Send custom keyboard event when keyboard is open or close ([#71](https://github.com/PostHog/posthog-android/pull/71))
+
 ## 3.1.0-alpha.1 - 2023-12-18
 
 - Android Session Recording - Alpha preview ([#69](https://github.com/PostHog/posthog-android/pull/69))

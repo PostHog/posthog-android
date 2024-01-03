@@ -362,11 +362,12 @@ public final class com/posthog/internal/replay/RRIncrementalMouseInteractionEven
 
 public final class com/posthog/internal/replay/RRIncrementalMutationData {
 	public fun <init> ()V
-	public fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;)V
-	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;Lcom/posthog/internal/replay/RRIncrementalSource;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAdds ()Ljava/util/List;
 	public final fun getRemoves ()Ljava/util/List;
 	public final fun getSource ()Lcom/posthog/internal/replay/RRIncrementalSource;
+	public final fun getUpdates ()Ljava/util/List;
 }
 
 public final class com/posthog/internal/replay/RRIncrementalSnapshotEvent : com/posthog/internal/replay/RREvent {
@@ -456,6 +457,23 @@ public final class com/posthog/internal/replay/RRStyle {
 	public fun <init> ()V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/Integer;
+	public final fun component11 ()Ljava/lang/Integer;
+	public final fun component12 ()Ljava/lang/Integer;
+	public final fun component13 ()Ljava/lang/Integer;
+	public final fun component14 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun component4 ()Ljava/lang/Integer;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/Integer;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lcom/posthog/internal/replay/RRStyle;
+	public static synthetic fun copy$default (Lcom/posthog/internal/replay/RRStyle;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/replay/RRStyle;
+	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBackgroundColor ()Ljava/lang/String;
 	public final fun getBar ()Ljava/lang/String;
 	public final fun getBorderColor ()Ljava/lang/String;
@@ -470,6 +488,7 @@ public final class com/posthog/internal/replay/RRStyle {
 	public final fun getPaddingRight ()Ljava/lang/Integer;
 	public final fun getPaddingTop ()Ljava/lang/Integer;
 	public final fun getVerticalAlign ()Ljava/lang/String;
+	public fun hashCode ()I
 	public final fun setBackgroundColor (Ljava/lang/String;)V
 	public final fun setBar (Ljava/lang/String;)V
 	public final fun setBorderColor (Ljava/lang/String;)V
@@ -484,6 +503,7 @@ public final class com/posthog/internal/replay/RRStyle {
 	public final fun setPaddingRight (Ljava/lang/Integer;)V
 	public final fun setPaddingTop (Ljava/lang/Integer;)V
 	public final fun setVerticalAlign (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/posthog/internal/replay/RRUtilsKt {
@@ -493,6 +513,27 @@ public final class com/posthog/internal/replay/RRUtilsKt {
 public final class com/posthog/internal/replay/RRWireframe {
 	public fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;)V
 	public synthetic fun <init> (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component10 ()Ljava/lang/String;
+	public final fun component11 ()Ljava/lang/Object;
+	public final fun component12 ()Ljava/lang/String;
+	public final fun component13 ()Lcom/posthog/internal/replay/RRStyle;
+	public final fun component14 ()Ljava/lang/Boolean;
+	public final fun component15 ()Ljava/lang/Boolean;
+	public final fun component16 ()Ljava/util/List;
+	public final fun component17 ()Ljava/lang/Integer;
+	public final fun component18 ()Ljava/lang/Integer;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;)Lcom/posthog/internal/replay/RRWireframe;
+	public static synthetic fun copy$default (Lcom/posthog/internal/replay/RRWireframe;IIIIILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Lcom/posthog/internal/replay/RRStyle;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/posthog/internal/replay/RRWireframe;
+	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBase64 ()Ljava/lang/String;
 	public final fun getChecked ()Ljava/lang/Boolean;
 	public final fun getChildWireframes ()Ljava/util/List;
@@ -511,5 +552,7 @@ public final class com/posthog/internal/replay/RRWireframe {
 	public final fun getWidth ()I
 	public final fun getX ()I
 	public final fun getY ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
