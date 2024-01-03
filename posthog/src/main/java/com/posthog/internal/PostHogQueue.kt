@@ -212,11 +212,6 @@ internal class PostHogQueue(
     }
 
     fun flush() {
-        if (!canFlushBatch()) {
-            config.logger.log("Cannot flush the Queue.")
-            return
-        }
-
         if (isFlushing.getAndSet(true)) {
             config.logger.log("Queue is flushing.")
             return

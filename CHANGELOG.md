@@ -1,5 +1,7 @@
 ## Next
 
+- `flush` forcefully sends events regardless the delay ([#66](https://github.com/PostHog/posthog-android/pull/66))
+
 ## 3.0.0 - 2023-12-06
 
 Check out the updated [docs](https://posthog.com/docs/libraries/android).

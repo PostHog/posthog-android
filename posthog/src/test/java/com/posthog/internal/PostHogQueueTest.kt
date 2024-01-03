@@ -271,10 +271,6 @@ internal class PostHogQueueTest {
         val path = tmpDir.newFolder().absolutePath
         val sut = getSut(host = url.toString(), flushAt = 1, storagePrefix = path, dateProvider = fakeCurrentTime)
 
-        // to be sure that the delay is before now
-        val date = ISO8601Utils.parse("1970-09-20T11:58:49.000Z", ParsePosition(0))
-        fakeCurrentTime.setAddSecondsToCurrentDate(date)
-
         sut.add(generateEvent())
 
         executor.awaitExecution()
