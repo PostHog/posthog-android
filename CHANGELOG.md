@@ -1,5 +1,7 @@
 ## Next
 
+## 3.0.1 - 2024-01-03
+
 - `flush` forcefully sends events regardless the delay ([#73](https://github.com/PostHog/posthog-android/pull/73))
 
 ## 3.0.0 - 2023-12-06
