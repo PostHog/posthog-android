@@ -294,13 +294,6 @@ public final class com/posthog/internal/PostHogUtilsKt {
 	public static final fun interruptSafely (Ljava/lang/Thread;)V
 }
 
-public final class com/posthog/internal/replay/RRAddedNode {
-	public fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;)V
-	public synthetic fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun getParentId ()Ljava/lang/Integer;
-	public final fun getWireframe ()Lcom/posthog/internal/replay/RRWireframe;
-}
-
 public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
 }
@@ -440,6 +433,13 @@ public final class com/posthog/internal/replay/RRMousePosition {
 	public final fun getTimeOffset ()Ljava/lang/Long;
 	public final fun getX ()I
 	public final fun getY ()I
+}
+
+public final class com/posthog/internal/replay/RRMutatedNode {
+	public fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Lcom/posthog/internal/replay/RRWireframe;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getParentId ()Ljava/lang/Integer;
+	public final fun getWireframe ()Lcom/posthog/internal/replay/RRWireframe;
 }
 
 public final class com/posthog/internal/replay/RRPluginEvent : com/posthog/internal/replay/RREvent {

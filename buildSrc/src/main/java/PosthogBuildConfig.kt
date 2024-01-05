@@ -36,6 +36,7 @@ object PosthogBuildConfig {
     object Plugins {
         val ANIMAL_SNIFFER = "1.7.1"
         val ANIMAL_SNIFFER_SDK_VERSION = "5.0.1_r2" // API 21
+        val ANIMAL_SNIFFER_SDK_ANNOTATION = "1.23"
         val SPOTLESS = "6.21.0"
         val DETEKT = "1.23.1"
         val API_VALIDATOR = "0.13.2"

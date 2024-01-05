@@ -45,7 +45,6 @@ import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.PostHogLogCatWatcher
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogThreadFactory
-import com.posthog.internal.replay.RRAddedNode
 import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
 import com.posthog.internal.replay.RRFullSnapshotEvent
@@ -55,6 +54,7 @@ import com.posthog.internal.replay.RRIncrementalMutationData
 import com.posthog.internal.replay.RRIncrementalSnapshotEvent
 import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRMouseInteraction
+import com.posthog.internal.replay.RRMutatedNode
 import com.posthog.internal.replay.RRRemovedNode
 import com.posthog.internal.replay.RRStyle
 import com.posthog.internal.replay.RRWireframe
@@ -308,9 +308,9 @@ public class PostHogReplayIntegration(
             val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
             val (addedItems, removedItems, updatedItems) = findAddedAndRemovedItems(lastSnapshots.flattenChildren(), listOf(wireframe).flattenChildren())
 
-            val addedNodes = mutableListOf<RRAddedNode>()
+            val addedNodes = mutableListOf<RRMutatedNode>()
             addedItems.forEach {
-                val item = RRAddedNode(it, parentId = it.parentId)
+                val item = RRMutatedNode(it, parentId = it.parentId)
                 addedNodes.add(item)
             }
 
@@ -320,9 +320,9 @@ public class PostHogReplayIntegration(
                 removedNodes.add(item)
             }
 
-            val updatedNodes = mutableListOf<RRAddedNode>()
+            val updatedNodes = mutableListOf<RRMutatedNode>()
             updatedItems.forEach {
-                val item = RRAddedNode(it, parentId = it.parentId)
+                val item = RRMutatedNode(it, parentId = it.parentId)
                 updatedNodes.add(item)
             }
 
