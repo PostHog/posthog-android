@@ -1,10 +1,12 @@
 package com.posthog.internal.replay
 
 import com.posthog.PostHogInternal
+import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
 // TODO: create abstractions on top of RRWireframe, eg RRTextWireframe, etc
+@IgnoreJRERequirement
 @PostHogInternal
-public class RRWireframe(
+public data class RRWireframe(
     public val id: Int,
     public val x: Int,
     public val y: Int,

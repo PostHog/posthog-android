@@ -98,6 +98,7 @@ public open class PostHogConfig(
      * Requires Record user sessions to be enabled in the PostHog Project Settings
      * Defaults to false
      */
+    @PostHogExperimental
     public var sessionReplay: Boolean = false,
 
     /**
