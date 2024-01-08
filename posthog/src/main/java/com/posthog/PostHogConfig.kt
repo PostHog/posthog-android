@@ -1,6 +1,8 @@
 package com.posthog
 
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
@@ -91,10 +93,20 @@ public open class PostHogConfig(
     public var onFeatureFlags: PostHogOnFeatureFlags? = null,
 
     /**
+     * Enable Recording of Session Replays for Android
+     * Requires Authorized Domains to be disabled in the PostHog Project Settings
+     * Requires Record user sessions to be enabled in the PostHog Project Settings
+     * Defaults to false
+     */
+    @PostHogExperimental
+    public var sessionReplay: Boolean = false,
+
+    /**
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire
      */
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal
@@ -123,10 +135,19 @@ public open class PostHogConfig(
     public var storagePrefix: String? = null
 
     @PostHogInternal
+    public var replayStoragePrefix: String? = null
+
+    @PostHogInternal
     public var cachePreferences: PostHogPreferences? = null
 
     @PostHogInternal
     public var networkStatus: PostHogNetworkStatus? = null
+
+    @PostHogInternal
+    public var snapshotEndpoint: String = "/s/"
+
+    @PostHogInternal
+    public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
 
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()

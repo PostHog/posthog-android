@@ -30,11 +30,13 @@ internal class PostHogSendCachedEventsIntegration(
             }
 
             flushLegacyEvents()
-            flushEvents()
+            flushEvents(config.storagePrefix, PostHogApiEndpoint.BATCH)
+            flushEvents(config.replayStoragePrefix, PostHogApiEndpoint.SNAPSHOT)
         }
         executor.shutdown()
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
     private fun flushLegacyEvents() {
         config.legacyStoragePrefix?.let {
             val legacyDir = File(it)
@@ -120,8 +122,9 @@ internal class PostHogSendCachedEventsIntegration(
         }
     }
 
-    private fun flushEvents() {
-        config.storagePrefix?.let {
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun flushEvents(storagePrefix: String?, endpoint: PostHogApiEndpoint) {
+        storagePrefix.let {
             val dir = File(it, config.apiKey)
 
             if (!dir.existsSafely(config)) {
@@ -173,7 +176,10 @@ internal class PostHogSendCachedEventsIntegration(
                     if (events.isNotEmpty()) {
                         var deleteFiles = true
                         try {
-                            api.batch(events)
+                            when (endpoint) {
+                                PostHogApiEndpoint.BATCH -> api.batch(events)
+                                PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
+                            }
                         } catch (e: PostHogApiError) {
                             if (e.statusCode < 400) {
                                 deleteFiles = false

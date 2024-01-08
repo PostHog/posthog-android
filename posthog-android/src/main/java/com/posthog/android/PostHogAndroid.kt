@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
@@ -12,6 +13,7 @@ import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
+import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.internal.PostHogPrintLogger
 import java.io.File
 
@@ -58,23 +60,28 @@ public class PostHogAndroid private constructor() {
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
             val path = File(context.cacheDir, "posthog-disk-queue")
+            val replayPath = File(context.cacheDir, "posthog-disk-replay-queue")
             config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
             config.storagePrefix = config.storagePrefix ?: path.absolutePath
+            config.replayStoragePrefix = config.replayStoragePrefix ?: replayPath.absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
             config.sdkVersion = BuildConfig.VERSION_NAME
             config.sdkName = "posthog-android"
 
+            val mainHandler = MainHandler()
+            val replayIntegration = PostHogReplayIntegration(context, config, mainHandler)
+            config.addIntegration(replayIntegration)
             if (context is Application) {
-                if (config.captureDeepLinks || config.captureScreenViews) {
+                if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
                     config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
                 }
             }
             if (config.captureApplicationLifecycleEvents) {
                 config.addIntegration(PostHogAppInstallIntegration(context, config))
-                config.addIntegration(PostHogLifecycleObserverIntegration(context, config))
             }
+            config.addIntegration(PostHogLifecycleObserverIntegration(context, config, replayIntegration, mainHandler))
         }
     }
 }

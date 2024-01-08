@@ -24,7 +24,8 @@ import kotlin.math.min
 internal class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,
-    private val dateProvider: PostHogDateProvider,
+    private val endpoint: PostHogApiEndpoint,
+    private val storagePrefix: String?,
     private val executor: ExecutorService,
 ) {
 
@@ -66,7 +67,7 @@ internal class PostHogQueue(
                 } catch (ignored: NoSuchElementException) {}
             }
 
-            config.storagePrefix?.let {
+            storagePrefix?.let {
                 val dir = File(it, config.apiKey)
 
                 if (!dirCreated) {
@@ -105,7 +106,7 @@ internal class PostHogQueue(
     }
 
     private fun canFlushBatch(): Boolean {
-        if (pausedUntil?.after(dateProvider.currentDate()) == true) {
+        if (pausedUntil?.after(config.dateProvider.currentDate()) == true) {
             config.logger.log("Queue is paused until $pausedUntil")
             return false
         }
@@ -157,6 +158,7 @@ internal class PostHogQueue(
         }
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
     private fun batchEvents() {
         val files = takeFiles()
 
@@ -179,30 +181,33 @@ internal class PostHogQueue(
             }
         }
 
-        if (events.isNotEmpty()) {
-            var deleteFiles = true
-            try {
-                api.batch(events)
-            } catch (e: PostHogApiError) {
-                if (e.statusCode < 400) {
-                    deleteFiles = false
+        var deleteFiles = true
+        try {
+            if (events.isNotEmpty()) {
+                when (endpoint) {
+                    PostHogApiEndpoint.BATCH -> api.batch(events)
+                    PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
                 }
-                throw e
-            } catch (e: IOException) {
-                // no connection should try again
-                if (e.isNetworkingError()) {
-                    deleteFiles = false
+            }
+        } catch (e: PostHogApiError) {
+            if (e.statusCode < 400) {
+                deleteFiles = false
+            }
+            throw e
+        } catch (e: IOException) {
+            // no connection should try again
+            if (e.isNetworkingError()) {
+                deleteFiles = false
+            }
+            throw e
+        } finally {
+            if (deleteFiles) {
+                synchronized(dequeLock) {
+                    deque.removeAll(files)
                 }
-                throw e
-            } finally {
-                if (deleteFiles) {
-                    synchronized(dequeLock) {
-                        deque.removeAll(files)
-                    }
 
-                    files.forEach {
-                        it.deleteSafely(config)
-                    }
+                files.forEach {
+                    it.deleteSafely(config)
                 }
             }
         }
@@ -253,7 +258,7 @@ internal class PostHogQueue(
 
     private fun calculateDelay(retry: Boolean) {
         val delay = if (retry) min(retryCount * retryDelaySeconds, maxRetryDelaySeconds) else config.flushIntervalSeconds
-        pausedUntil = dateProvider.addSecondsToCurrentDate(delay)
+        pausedUntil = config.dateProvider.addSecondsToCurrentDate(delay)
     }
 
     fun start() {

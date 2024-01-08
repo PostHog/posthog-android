@@ -18,8 +18,7 @@ internal class PostHogApiTest {
         host: String,
     ): PostHogApi {
         val config = PostHogConfig(apiKey, host)
-        val dateProvider = PostHogCalendarDateProvider()
-        return PostHogApi(config, dateProvider)
+        return PostHogApi(config)
     }
 
     @Test

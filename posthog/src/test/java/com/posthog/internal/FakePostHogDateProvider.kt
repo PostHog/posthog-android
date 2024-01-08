@@ -28,4 +28,12 @@ internal class FakePostHogDateProvider : PostHogDateProvider {
         cal.add(Calendar.SECOND, seconds)
         return cal.time
     }
+
+    override fun currentTimeMillis(): Long {
+        return System.currentTimeMillis()
+    }
+
+    override fun nanoTime(): Long {
+        return System.nanoTime()
+    }
 }

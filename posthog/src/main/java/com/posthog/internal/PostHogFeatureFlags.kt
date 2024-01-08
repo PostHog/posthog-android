@@ -65,6 +65,25 @@ internal class PostHogFeatureFlags(
                             val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
                             this.featureFlagPayloads = normalizedPayloads
                         }
+
+                        if (response.sessionRecording is Boolean) {
+                            // its only enabled if both are enabled, likely not in this case
+                            // because if sessionRecording is a Boolean, its always disabled
+                            config.sessionReplay = response.sessionRecording && config.sessionReplay
+                        } else if (response.sessionRecording is Map<*, *>) {
+                            @Suppress("UNCHECKED_CAST")
+                            (response.sessionRecording as? Map<String, Any?>).let { sessionRecording ->
+                                // keeps the value from config.sessionReplay since having sessionRecording
+                                // means its enabled on the project settings, but its only enabled
+                                // when local config.sessionReplay is also enabled
+                                config.snapshotEndpoint = sessionRecording?.get("endpoint") as? String ?: config.snapshotEndpoint
+
+                                // TODO:
+                                // consoleLogRecordingEnabled -> Boolean or null
+                                // networkPayloadCapture -> Boolean or null
+                                // sampleRate, etc
+                            }
+                        }
                     }
                     config.cachePreferences?.let { preferences ->
                         val flags = this.featureFlags ?: mapOf()

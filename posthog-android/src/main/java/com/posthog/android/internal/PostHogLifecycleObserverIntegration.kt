@@ -1,8 +1,6 @@
 package com.posthog.android.internal
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -10,6 +8,10 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.replay.PostHogReplayIntegration
+import java.util.Timer
+import java.util.TimerTask
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Captures app opened and backgrounded events
@@ -20,9 +22,15 @@ import com.posthog.android.PostHogAndroidConfig
 internal class PostHogLifecycleObserverIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
+    private val replayIntegration: PostHogReplayIntegration,
+    private val mainHandler: MainHandler,
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
 ) : DefaultLifecycleObserver, PostHogIntegration {
-    private val handler = Handler(Looper.getMainLooper())
+    private val timerLock = Any()
+    private var timer = Timer(true)
+    private var timerTask: TimerTask? = null
+    private val lastUpdatedSession = AtomicLong(0L)
+    private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
 
     companion object {
         // in case there are multiple instances or the SDK is closed/setup again
@@ -33,23 +41,68 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        val props = mutableMapOf<String, Any>()
-        props["from_background"] = fromBackground
+        startSession()
 
-        if (!fromBackground) {
-            getPackageInfo(context, config)?.let { packageInfo ->
-                props["version"] = packageInfo.versionName
-                props["build"] = packageInfo.versionCodeCompat()
+        if (config.captureApplicationLifecycleEvents) {
+            val props = mutableMapOf<String, Any>()
+            props["from_background"] = fromBackground
+
+            if (!fromBackground) {
+                getPackageInfo(context, config)?.let { packageInfo ->
+                    props["version"] = packageInfo.versionName
+                    props["build"] = packageInfo.versionCodeCompat()
+                }
+
+                fromBackground = true
             }
 
-            fromBackground = true
+            PostHog.capture("Application Opened", properties = props)
         }
+    }
 
-        PostHog.capture("Application Opened", properties = props)
+    private fun startSession() {
+        cancelTask()
+
+        val currentTimeMillis = config.dateProvider.currentTimeMillis()
+        val lastUpdatedSession = lastUpdatedSession.get()
+
+        if (lastUpdatedSession == 0L ||
+            (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
+        ) {
+            PostHog.startSession()
+            replayIntegration.sessionActive(true)
+        }
+        this.lastUpdatedSession.set(currentTimeMillis)
+    }
+
+    private fun cancelTask() {
+        synchronized(timerLock) {
+            timerTask?.cancel()
+            timerTask = null
+        }
+    }
+
+    private fun scheduleEndSession() {
+        synchronized(timerLock) {
+            cancelTask()
+            timerTask = object : TimerTask() {
+                override fun run() {
+                    PostHog.endSession()
+                    replayIntegration.sessionActive(false)
+                }
+            }
+            timer.schedule(timerTask, sessionMaxInterval)
+        }
     }
 
     override fun onStop(owner: LifecycleOwner) {
-        PostHog.capture("Application Backgrounded")
+        if (config.captureApplicationLifecycleEvents) {
+            PostHog.capture("Application Backgrounded")
+        }
+
+        val currentTimeMillis = config.dateProvider.currentTimeMillis()
+        lastUpdatedSession.set(currentTimeMillis)
+        scheduleEndSession()
     }
 
     private fun add() {
@@ -58,10 +111,10 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun install() {
         try {
-            if (isMainThread()) {
+            if (isMainThread(mainHandler)) {
                 add()
             } else {
-                handler.post {
+                mainHandler.handler.post {
                     add()
                 }
             }
@@ -76,10 +129,10 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun uninstall() {
         try {
-            if (isMainThread()) {
+            if (isMainThread(mainHandler)) {
                 remove()
             } else {
-                handler.post {
+                mainHandler.handler.post {
                     remove()
                 }
             }

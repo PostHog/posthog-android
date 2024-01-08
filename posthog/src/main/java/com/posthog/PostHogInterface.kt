@@ -150,4 +150,8 @@ public interface PostHogInterface {
      * Enables or disables the debug mode
      */
     public fun debug(enable: Boolean = true)
+
+    public fun startSession()
+
+    public fun endSession()
 }

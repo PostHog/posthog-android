@@ -13,16 +13,29 @@ class MyApp : Application() {
 
         enableStrictMode()
 
-        val config = PostHogAndroidConfig("_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI").apply {
+        // Demo:
+//        val apiKey = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+        // ManoelTesting:
+        val apiKey = "phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8"
+        // PaulKey
+//        val apiKey = "phc_GavhjwMwc75N4HsaLjMTEvH8Kpsz70rZ3N0E9ho89YJ"
+//        val config = PostHogAndroidConfig(apiKey, host = "https://3727-86-27-112-156.ngrok-free.app").apply {
+        val config = PostHogAndroidConfig(apiKey).apply {
             debug = true
-            flushAt = 5
-            maxBatchSize = 5
+            flushAt = 1
+            captureDeepLinks = false
+            captureApplicationLifecycleEvents = true
+            captureScreenViews = true
+            sessionReplay = true
+            preloadFeatureFlags = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
             propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
                 properties.apply {
-                    remove("\$device_name")
+//                    remove("\$device_name")
                 }
             }
+            sessionReplayConfig.maskAllTextInputs = true
+            sessionReplayConfig.captureLogcat = true
         }
         PostHogAndroid.setup(this, config)
     }

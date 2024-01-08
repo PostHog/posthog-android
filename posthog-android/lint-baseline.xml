@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 8.1.1" type="baseline" client="gradle" dependencies="true" name="AGP (8.1.1)" variant="all" version="8.1.1">
+<issues format="6" by="lint 8.1.3" type="baseline" client="gradle" dependencies="true" name="AGP (8.1.3)" variant="all" version="8.1.3">
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.core:core than 1.5.0 is available: 1.12.0"
+        errorLine1="    implementation(&quot;androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="85"
+            column="20"/>
+    </issue>
 
     <issue
         id="GradleDependency"
@@ -8,18 +19,29 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="86"
+            line="100"
             column="24"/>
     </issue>
 
     <issue
         id="GradleDependency"
-        message="A newer version of org.mockito:mockito-inline than 4.11.0 is available: 5.2.0"
+        message="A newer version of org.mockito:mockito-inline than 4.11.0 is available: 5.0.0"
         errorLine1="    testImplementation(&quot;org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}&quot;)"
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="87"
+            line="101"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.squareup.okhttp3:mockwebserver than 4.11.0 is available: 4.12.0"
+        errorLine1="    testImplementation(&quot;com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="103"
             column="24"/>
     </issue>
 

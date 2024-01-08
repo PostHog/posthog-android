@@ -138,28 +138,6 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `does not add captureApplicationLifecycleEvents integrations if disabled`() {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            captureApplicationLifecycleEvents = false
-        }
-
-        mockContextAppStart(context, tmpDir)
-
-        PostHogAndroid.setup(context, config)
-
-        assertNull(
-            config.integrations.find {
-                it is PostHogAppInstallIntegration
-            },
-        )
-        assertNull(
-            config.integrations.find {
-                it is PostHogLifecycleObserverIntegration
-            },
-        )
-    }
-
-    @Test
     fun `adds captureDeepLinks integration`() {
         val config = PostHogAndroidConfig(apiKey).apply {
             captureScreenViews = false
@@ -194,10 +172,11 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `does not add captureDeepLinks and captureScreenViews integration if disabled`() {
+    fun `does not add captureDeepLinks, captureScreenViews and sessionReplay integration if disabled`() {
         val config = PostHogAndroidConfig(apiKey).apply {
             captureDeepLinks = false
             captureScreenViews = false
+            sessionReplay = false
         }
 
         mockContextAppStart(context, tmpDir)
