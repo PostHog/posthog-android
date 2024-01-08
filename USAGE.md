@@ -239,3 +239,4 @@ private val client = OkHttpClient.Builder()
 - It's a representation of the user's screen, not a video recording nor a screenshot.
   - Custom views are not fully supported.
 - WebView is not supported, a placeholder will be shown.
+- React Native and Flutter for Android aren't supported.
