@@ -4,7 +4,7 @@
 
 - chore: Add mutations support to Session Recording ([#72](https://github.com/PostHog/posthog-android/pull/72)) 
 - chore: Session Recording as Experimental preview
-  - Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/chore/session-replay/USAGE.md#android-session-recording) guide.
+  - Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md#android-session-recording) guide.
 
 ## 3.0.1 - 2024-01-03
 
@@ -18,7 +18,7 @@
 
 - Android Session Recording - Alpha preview ([#69](https://github.com/PostHog/posthog-android/pull/69))
 
-Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/chore/session-replay/USAGE.md#android-session-recording) guide.
+Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md#android-session-recording) guide.
 
 ## 3.0.0 - 2023-12-06
 
