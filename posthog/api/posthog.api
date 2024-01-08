@@ -149,6 +149,9 @@ public final class com/posthog/PostHogEvent {
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface annotation class com/posthog/PostHogExperimental : java/lang/annotation/Annotation {
+}
+
 public abstract interface class com/posthog/PostHogIntegration {
 	public abstract fun install ()V
 	public abstract fun uninstall ()V
