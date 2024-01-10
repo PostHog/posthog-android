@@ -1,7 +1,7 @@
 ## Next
 
-- fix: Events Queue is only paused if there were errors ([#72](https://github.com/PostHog/posthog-android/pull/72))
-- fix: Do not report flag events if the flag has been reported with the same value ([#72](https://github.com/PostHog/posthog-android/pull/72))
+- fix: Events Queue is only paused if there were errors ([#78](https://github.com/PostHog/posthog-android/pull/78))
+- fix: Do not report flag events if the flag has been reported with the same value ([#78](https://github.com/PostHog/posthog-android/pull/78))
 
 ## 3.1.0 - 2024-01-08
 
