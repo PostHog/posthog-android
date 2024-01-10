@@ -131,11 +131,11 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun detectKeyboardOpen(view: View, open: Boolean): Pair<Boolean, RRCustomEvent?> {
-        val insets = ViewCompat.getRootWindowInsets(view) ?: return Pair(open, null)
+    private fun detectKeyboardVisibility(view: View, visible: Boolean): Pair<Boolean, RRCustomEvent?> {
+        val insets = ViewCompat.getRootWindowInsets(view) ?: return Pair(visible, null)
         val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-        if (open == imeVisible) {
-            return Pair(open, null)
+        if (visible == imeVisible) {
+            return Pair(visible, null)
         }
 
         val payload = mutableMapOf<String, Any>()
@@ -339,8 +339,8 @@ public class PostHogReplayIntegration(
         }
 
         // detect keyboard status
-        val (open, event) = detectKeyboardOpen(view, status.keyboardOpen)
-        status.keyboardOpen = open
+        val (visible, event) = detectKeyboardVisibility(view, status.keyboardVisible)
+        status.keyboardVisible = visible
         event?.let {
             events.add(it)
         }
