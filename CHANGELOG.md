@@ -1,5 +1,7 @@
 ## Next
 
+- fix: Check keyboard status during snapshot instead of using Window listener ([#72](https://github.com/PostHog/posthog-android/pull/72))
+
 ## 3.1.0 - 2024-01-08
 
 - chore: Add mutations support to Session Recording ([#72](https://github.com/PostHog/posthog-android/pull/72)) 
