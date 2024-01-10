@@ -338,7 +338,7 @@ public class PostHogReplayIntegration(
             }
         }
 
-        // detect keyboard status
+        // detect keyboard visibility
         val (visible, event) = detectKeyboardVisibility(view, status.keyboardVisible)
         status.keyboardVisible = visible
         event?.let {
