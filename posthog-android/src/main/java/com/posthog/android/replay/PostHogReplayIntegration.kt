@@ -111,34 +111,6 @@ public class PostHogReplayIntegration(
                             }
                         }
 
-                        // keyboard events
-                        var open = false
-                        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
-                            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-                            if (open == imeVisible) {
-                                return@setOnApplyWindowInsetsListener insets
-                            }
-                            open = imeVisible
-
-                            val payload = mutableMapOf<String, Any>()
-                            if (imeVisible) {
-                                val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-                                payload["open"] = true
-                                payload["height"] = imeHeight.densityValue(displayMetrics.density)
-                            } else {
-                                payload["open"] = false
-                            }
-
-                            val event = RRCustomEvent(
-                                tag = "keyboard",
-                                payload = payload,
-                                config.dateProvider.currentTimeMillis(),
-                            )
-                            listOf(event).capture()
-
-                            insets
-                        }
-
                         val status = ViewTreeSnapshotStatus(listener)
                         decorViews[decorView] = status
                     }
@@ -157,6 +129,31 @@ public class PostHogReplayIntegration(
                 }
             }
         }
+    }
+
+    private fun detectKeyboardOpen(view: View, open: Boolean): Pair<Boolean, RRCustomEvent?> {
+        val insets = ViewCompat.getRootWindowInsets(view) ?: return Pair(open, null)
+        val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+        if (open == imeVisible) {
+            return Pair(open, null)
+        }
+
+        val payload = mutableMapOf<String, Any>()
+        if (imeVisible) {
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            payload["open"] = true
+            payload["height"] = imeHeight.densityValue(displayMetrics.density)
+        } else {
+            payload["open"] = false
+        }
+
+        val event = RRCustomEvent(
+            tag = "keyboard",
+            payload = payload,
+            config.dateProvider.currentTimeMillis(),
+        )
+
+        return Pair(imeVisible, event)
     }
 
     private val onTouchEventListener = OnTouchEventListener { motionEvent ->
@@ -339,6 +336,13 @@ public class PostHogReplayIntegration(
                 )
                 events.add(incrementalSnapshotEvent)
             }
+        }
+
+        // detect keyboard status
+        val (open, event) = detectKeyboardOpen(view, status.keyboardOpen)
+        status.keyboardOpen = open
+        event?.let {
+            events.add(it)
         }
 
         if (events.isNotEmpty()) {
