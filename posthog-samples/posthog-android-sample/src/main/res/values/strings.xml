@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">PostHog Android Sample</string>
+    <string name="text">Text</string>
 
     <string-array name="array_name">
         <item>Array Item One</item>
