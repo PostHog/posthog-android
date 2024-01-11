@@ -2,6 +2,7 @@
 
 - fix: Events Queue is only paused if there were errors ([#78](https://github.com/PostHog/posthog-android/pull/78))
 - fix: Do not report flag events if the flag has been reported with the same value ([#78](https://github.com/PostHog/posthog-android/pull/78))
+- fix: Check keyboard status during snapshot instead of using WindowInsets listener ([#77](https://github.com/PostHog/posthog-android/pull/77))
 
 ## 3.1.0 - 2024-01-08
 
