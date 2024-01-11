@@ -257,8 +257,10 @@ internal class PostHogQueue(
     }
 
     private fun calculateDelay(retry: Boolean) {
-        val delay = if (retry) min(retryCount * retryDelaySeconds, maxRetryDelaySeconds) else config.flushIntervalSeconds
-        pausedUntil = config.dateProvider.addSecondsToCurrentDate(delay)
+        if (retry) {
+            val delay = min(retryCount * retryDelaySeconds, maxRetryDelaySeconds)
+            pausedUntil = config.dateProvider.addSecondsToCurrentDate(delay)
+        }
     }
 
     fun start() {

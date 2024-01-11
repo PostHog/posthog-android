@@ -497,7 +497,7 @@ public class PostHog private constructor(
             if (values.contains(value)) {
                 shouldSendFeatureFlagEvent = false
             } else {
-                values.add(key)
+                values.add(value)
                 featureFlagsCalled[key] = values
             }
         }
