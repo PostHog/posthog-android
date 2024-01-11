@@ -52,6 +52,17 @@ android {
     androidComponents.beforeVariants {
         it.enable = !PosthogBuildConfig.shouldSkipDebugVariant(it.name)
     }
+
+    lint {
+        warningsAsErrors = false
+        abortOnError = false
+        ignoreTestSources = true
+
+        // lint runs only for debug build
+        checkReleaseBuilds = false
+
+        baseline = File("lint-baseline.xml")
+    }
 }
 
 kotlin {
