@@ -1,5 +1,7 @@
 ## Next
 
+- Send wireframe children for updated wireframes - mutation ([#81](https://github.com/PostHog/posthog-android/pull/81))
+
 ## 3.1.1 - 2024-01-11
 
 - fix: Events Queue is only paused if there were errors ([#78](https://github.com/PostHog/posthog-android/pull/78))
