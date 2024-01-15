@@ -729,10 +729,11 @@ public class PostHogReplayIntegration(
             // we have to copy without the childWireframes, otherwise they all would be different
             // if one of the child is different, but we only wanna compare the parent
             val oldItem = oldMap[id]?.copy(childWireframes = null) ?: continue
-            val newItem = newMap[id]?.copy(childWireframes = null) ?: continue
+            val newItem = newMap[id] ?: continue
+            val newItemCopy = newItem.copy(childWireframes = null)
 
             // If the items are different (any property has a different value), add the new item to the updatedItems list
-            if (oldItem != newItem) {
+            if (oldItem != newItemCopy) {
                 updatedItems.add(newItem)
             }
         }
