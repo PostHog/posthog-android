@@ -197,6 +197,8 @@ Enable `Record user sessions` on the [PostHog project settings](https://us.posth
 
 [Authorized Domains for Replay](https://us.posthog.com/settings/project-replay#replay-authorized-domains) has to be disabled, for now, or create a new testing project to not disrupt your current project configuration.
 
+Let us know your `organization_id` so we can enable the `session-replay-mobile` feature flag for your organization.
+
 Requires the Android SDK version >= [3.1.0](https://github.com/PostHog/posthog-android/releases/tag/3.1.0).
 
 Enable the SDK to capture Session Recording.
