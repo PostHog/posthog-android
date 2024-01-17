@@ -35,6 +35,7 @@ import android.widget.Switch
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
@@ -42,7 +43,6 @@ import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
-import com.posthog.android.replay.internal.PostHogLogCatWatcher
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.RRCustomEvent
@@ -83,17 +83,12 @@ public class PostHogReplayIntegration(
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
 
-    private val logCatWatcher = PostHogLogCatWatcher(config)
-
-    @Volatile
-    private var isSessionActive = false
-
     private val displayMetrics by lazy {
         context.displayMetrics()
     }
 
     private val isSessionReplayEnabled: Boolean
-        get() = config.sessionReplay && isSessionActive
+        get() = config.sessionReplay && PostHog.isSessionActive()
 
     private val onRootViewsChangedListener = OnRootViewsChangedListener { view, added ->
         if (added) {
@@ -200,20 +195,6 @@ public class PostHogReplayIntegration(
             // also because if we send a mouse interaction later, it might be attached to the wrong
             // screen
             mouseInteractions.capture()
-        }
-    }
-
-    internal fun sessionActive(enabled: Boolean) {
-        if (!isSupported()) {
-            return
-        }
-
-        isSessionActive = enabled
-
-        if (isSessionReplayEnabled) {
-            logCatWatcher.init()
-        } else {
-            logCatWatcher.stop()
         }
     }
 

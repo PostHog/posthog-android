@@ -10,7 +10,6 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.apiKey
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockPackageInfo
-import com.posthog.android.replay.PostHogReplayIntegration
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
 import kotlin.test.BeforeTest
@@ -25,8 +24,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
     private fun getSut(): PostHogLifecycleObserverIntegration {
         val config = PostHogAndroidConfig(apiKey)
         val mainHandler = MainHandler()
-        val replay = PostHogReplayIntegration(context, config, mainHandler)
-        return PostHogLifecycleObserverIntegration(context, config, replay, mainHandler, lifecycle = fakeLifecycle)
+        return PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
     }
 
     @BeforeTest

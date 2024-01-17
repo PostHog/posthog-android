@@ -33,13 +33,13 @@
     <!--                />-->
     <!--            &lt;!&ndash;        android:tag="ph-no-capture"&ndash;&gt;-->
 
-    <!--            <Button-->
-    <!--                android:layout_width="wrap_content"-->
-    <!--                android:layout_height="wrap_content"-->
-    <!--                android:text="Button text"-->
-    <!--                android:textColor="#FF0000"-->
-    <!--                android:id="@+id/button"-->
-    <!--                />-->
+                <Button
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Button text"
+                    android:textColor="#FF0000"
+                    android:id="@+id/button"
+                    />
 
     <!--            &lt;!&ndash;    <View&ndash;&gt;-->
     <!--            &lt;!&ndash;        android:layout_width="match_parent"&ndash;&gt;-->
@@ -115,11 +115,11 @@
     <!--        android:id="@+id/webview"-->
     <!--        />-->
 
-    <RatingBar
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:numStars="4"
-        android:rating="3.5" />
+<!--    <RatingBar-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:numStars="4"-->
+<!--        android:rating="3.5" />-->
 
     <!--    <Spinner-->
     <!--        android:layout_width="wrap_content"-->
