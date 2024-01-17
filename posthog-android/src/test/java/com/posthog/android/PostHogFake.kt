@@ -95,4 +95,12 @@ public class PostHogFake : PostHogInterface {
 
     override fun endSession() {
     }
+
+    override fun isSessionActive(): Boolean {
+        return false
+    }
+
+    override fun <T : PostHogConfig> getConfig(): T? {
+        return null
+    }
 }

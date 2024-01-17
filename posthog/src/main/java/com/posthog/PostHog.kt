@@ -597,6 +597,19 @@ public class PostHog private constructor(
         }
     }
 
+    override fun isSessionActive(): Boolean {
+        var active: Boolean
+        synchronized(sessionLock) {
+            active = sessionId != sessionIdNone
+        }
+        return active
+    }
+
+    override fun <T : PostHogConfig> getConfig(): T? {
+        @Suppress("UNCHECKED_CAST")
+        return config as? T
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
@@ -744,6 +757,14 @@ public class PostHog private constructor(
 
         override fun endSession() {
             shared.endSession()
+        }
+
+        override fun isSessionActive(): Boolean {
+            return shared.isSessionActive()
+        }
+
+        override fun <T : PostHogConfig> getConfig(): T? {
+            return shared.getConfig()
         }
     }
 }

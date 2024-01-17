@@ -151,7 +151,26 @@ public interface PostHogInterface {
      */
     public fun debug(enable: Boolean = true)
 
+    /**
+     * Starts a session
+     * The SDK will automatically start a session when you call [setup]
+     * On Android, the SDK will automatically start a session when the app is in the foreground
+     */
     public fun startSession()
 
+    /**
+     * Ends a session
+     * The SDK will automatically end a session when you call [close]
+     * On Android, the SDK will automatically end a session when the app is in the background
+     * for at least 30 minutes
+     */
     public fun endSession()
+
+    /**
+     * Returns if a session is active
+     */
+    public fun isSessionActive(): Boolean
+
+    @PostHogInternal
+    public fun <T : PostHogConfig> getConfig(): T?
 }

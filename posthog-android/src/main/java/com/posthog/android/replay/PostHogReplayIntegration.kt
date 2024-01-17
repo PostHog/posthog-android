@@ -35,6 +35,7 @@ import android.widget.Switch
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
@@ -85,15 +86,12 @@ public class PostHogReplayIntegration(
 
     private val logCatWatcher = PostHogLogCatWatcher(config)
 
-    @Volatile
-    private var isSessionActive = false
-
     private val displayMetrics by lazy {
         context.displayMetrics()
     }
 
     private val isSessionReplayEnabled: Boolean
-        get() = config.sessionReplay && isSessionActive
+        get() = config.sessionReplay && PostHog.isSessionActive()
 
     private val onRootViewsChangedListener = OnRootViewsChangedListener { view, added ->
         if (added) {
@@ -203,20 +201,6 @@ public class PostHogReplayIntegration(
         }
     }
 
-    internal fun sessionActive(enabled: Boolean) {
-        if (!isSupported()) {
-            return
-        }
-
-        isSessionActive = enabled
-
-        if (isSessionReplayEnabled) {
-            logCatWatcher.init()
-        } else {
-            logCatWatcher.stop()
-        }
-    }
-
     private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
         view.viewTreeObserver?.let { viewTreeObserver ->
             if (viewTreeObserver.isAlive) {
@@ -238,6 +222,8 @@ public class PostHogReplayIntegration(
         }
 
         Curtains.onRootViewsChangedListeners += onRootViewsChangedListener
+
+        logCatWatcher.init()
     }
 
     override fun uninstall() {
@@ -246,6 +232,8 @@ public class PostHogReplayIntegration(
         decorViews.entries.forEach {
             cleanSessionState(it.key, it.value)
         }
+
+        logCatWatcher.stop()
     }
 
     private fun Resources.Theme.toRGBColor(): String? {

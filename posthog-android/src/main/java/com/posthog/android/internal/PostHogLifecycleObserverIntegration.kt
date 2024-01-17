@@ -8,7 +8,6 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.replay.PostHogReplayIntegration
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicLong
@@ -22,7 +21,6 @@ import java.util.concurrent.atomic.AtomicLong
 internal class PostHogLifecycleObserverIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
-    private val replayIntegration: PostHogReplayIntegration,
     private val mainHandler: MainHandler,
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
 ) : DefaultLifecycleObserver, PostHogIntegration {
@@ -70,7 +68,6 @@ internal class PostHogLifecycleObserverIntegration(
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
             PostHog.startSession()
-            replayIntegration.sessionActive(true)
         }
         this.lastUpdatedSession.set(currentTimeMillis)
     }
@@ -88,7 +85,6 @@ internal class PostHogLifecycleObserverIntegration(
             timerTask = object : TimerTask() {
                 override fun run() {
                     PostHog.endSession()
-                    replayIntegration.sessionActive(false)
                 }
             }
             timer.schedule(timerTask, sessionMaxInterval)

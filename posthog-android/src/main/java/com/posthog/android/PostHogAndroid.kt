@@ -81,7 +81,7 @@ public class PostHogAndroid private constructor() {
             if (config.captureApplicationLifecycleEvents) {
                 config.addIntegration(PostHogAppInstallIntegration(context, config))
             }
-            config.addIntegration(PostHogLifecycleObserverIntegration(context, config, replayIntegration, mainHandler))
+            config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
         }
     }
 }

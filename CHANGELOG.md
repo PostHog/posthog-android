@@ -1,5 +1,7 @@
 ## Next
 
+- Do not capture console logs and network requests if session replay and session are not active ([#81](https://github.com/PostHog/posthog-android/pull/81))
+
 ## 3.1.2 - 2024-01-15
 
 - Send wireframe children for updated wireframes - mutation ([#81](https://github.com/PostHog/posthog-android/pull/81))

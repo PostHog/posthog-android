@@ -2,6 +2,7 @@ package com.posthog.android.replay.internal
 
 import android.annotation.SuppressLint
 import android.os.Build
+import com.posthog.PostHog
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.interruptSafely
 import com.posthog.internal.replay.RRPluginEvent
@@ -15,6 +16,9 @@ internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
     private var logcatInProgress = false
 
     private var logcatThread: Thread? = null
+
+    private val isSessionReplayEnabled: Boolean
+        get() = config.sessionReplay && PostHog.isSessionActive()
 
     fun init() {
         if (!config.sessionReplayConfig.captureLogcat || !isSupported()) {
@@ -37,6 +41,11 @@ internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
                     do {
                         try {
                             line = it.readLine()
+
+                            // do not capture console logs if session replay is disabled
+                            if (!isSessionReplayEnabled) {
+                                continue
+                            }
 
                             if (line.isNullOrEmpty()) {
                                 continue
