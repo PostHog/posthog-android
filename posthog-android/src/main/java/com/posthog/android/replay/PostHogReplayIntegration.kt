@@ -43,7 +43,6 @@ import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
-import com.posthog.android.replay.internal.PostHogLogCatWatcher
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.RRCustomEvent
@@ -83,8 +82,6 @@ public class PostHogReplayIntegration(
     private val executor by lazy {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
-
-    private val logCatWatcher = PostHogLogCatWatcher(config)
 
     private val displayMetrics by lazy {
         context.displayMetrics()
@@ -222,8 +219,6 @@ public class PostHogReplayIntegration(
         }
 
         Curtains.onRootViewsChangedListeners += onRootViewsChangedListener
-
-        logCatWatcher.init()
     }
 
     override fun uninstall() {
@@ -232,8 +227,6 @@ public class PostHogReplayIntegration(
         decorViews.entries.forEach {
             cleanSessionState(it.key, it.value)
         }
-
-        logCatWatcher.stop()
     }
 
     private fun Resources.Theme.toRGBColor(): String? {

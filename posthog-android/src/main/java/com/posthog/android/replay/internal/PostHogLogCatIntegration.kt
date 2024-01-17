@@ -3,6 +3,7 @@ package com.posthog.android.replay.internal
 import android.annotation.SuppressLint
 import android.os.Build
 import com.posthog.PostHog
+import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.interruptSafely
 import com.posthog.internal.replay.RRPluginEvent
@@ -10,7 +11,7 @@ import com.posthog.internal.replay.capture
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
+internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig) : PostHogIntegration {
 
     @Volatile
     private var logcatInProgress = false
@@ -20,7 +21,7 @@ internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
     private val isSessionReplayEnabled: Boolean
         get() = config.sessionReplay && PostHog.isSessionActive()
 
-    fun init() {
+    override fun install() {
         if (!config.sessionReplayConfig.captureLogcat || !isSupported()) {
             return
         }
@@ -85,7 +86,7 @@ internal class PostHogLogCatWatcher(private val config: PostHogAndroidConfig) {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
     }
 
-    fun stop() {
+    override fun uninstall() {
         logcatInProgress = false
         logcatThread?.interruptSafely()
     }
