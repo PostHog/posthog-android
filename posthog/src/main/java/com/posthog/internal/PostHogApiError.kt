@@ -13,4 +13,8 @@ internal class PostHogApiError(
     val statusCode: Int,
     override val message: String,
     val body: ResponseBody?,
-) : RuntimeException(message)
+) : RuntimeException(message) {
+    override fun toString(): String {
+        return "PostHogApiError(statusCode=$statusCode, message='$message', body='${body?.string()}')"
+    }
+}
