@@ -1,5 +1,7 @@
 ## Next
 
+- Set `Content-Length` header for gzip bodies because of more strict proxies ([#86](https://github.com/PostHog/posthog-android/pull/86))
+
 ## 3.1.3 - 2024-01-17
 
 - Do not capture console logs and network requests if session replay and session are not active ([#83](https://github.com/PostHog/posthog-android/pull/83))
