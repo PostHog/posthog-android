@@ -49,7 +49,7 @@ object PosthogBuildConfig {
         // runtime
         val LIFECYCLE = "2.6.2"
         val GSON = "2.10.1"
-        val OKHTTP = "4.11.0"
+        val OKHTTP = "4.12.0"
         val CURTAINS = "1.2.4"
         val ANDROIDX_CORE = "1.5.0"
 
