@@ -1,6 +1,6 @@
 ## Next
 
-- Set `Content-Length` header for gzip bodies because of more strict proxies ([#83](https://github.com/PostHog/posthog-android/pull/83))
+- Set `Content-Length` header for gzip bodies because of more strict proxies ([#86](https://github.com/PostHog/posthog-android/pull/86))
 
 ## 3.1.3 - 2024-01-17
 
