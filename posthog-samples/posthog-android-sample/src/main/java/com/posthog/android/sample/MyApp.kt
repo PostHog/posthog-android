@@ -24,8 +24,8 @@ class MyApp : Application() {
             debug = true
             flushAt = 1
             captureDeepLinks = false
-            captureApplicationLifecycleEvents = true
-            captureScreenViews = true
+            captureApplicationLifecycleEvents = false
+            captureScreenViews = false
             sessionReplay = true
             preloadFeatureFlags = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
@@ -34,7 +34,8 @@ class MyApp : Application() {
 //                    remove("\$device_name")
                 }
             }
-            sessionReplayConfig.maskAllTextInputs = true
+            sessionReplayConfig.maskAllTextInputs = false
+            sessionReplayConfig.maskAllImages = false
             sessionReplayConfig.captureLogcat = true
         }
         PostHogAndroid.setup(this, config)

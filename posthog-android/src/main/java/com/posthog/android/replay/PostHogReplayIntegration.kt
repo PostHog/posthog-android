@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.PorterDuff
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
@@ -248,7 +250,7 @@ public class PostHogReplayIntegration(
         val wireframe = view.toWireframe() ?: return
 
         // if the decorView has no backgroundColor, we use the theme color
-        if (wireframe.style?.backgroundColor == null || wireframe.style?.backgroundColor == "#ffffff") {
+        if (wireframe.style?.backgroundColor == null) {
             context.theme?.toRGBColor()?.let {
                 wireframe.style?.backgroundColor = it
             }
@@ -341,8 +343,13 @@ public class PostHogReplayIntegration(
         if (view is ViewStub) {
             return null
         }
-        if (view.id == android.R.id.statusBarBackground || view.id == android.R.id.navigationBarBackground) {
-            return null
+
+        var type: String? = null
+        if (view.id == android.R.id.statusBarBackground) {
+            type = "status_bar"
+        }
+        if (view.id == android.R.id.navigationBarBackground) {
+            type = "navigation_bar"
         }
 
         val coordinates = IntArray(2)
@@ -359,14 +366,13 @@ public class PostHogReplayIntegration(
             background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             } ?: run {
-                style.backgroundColor = "#ffffff"
+                style.backgroundImage = background.base64(view.width, view.height)
             }
         }
 
         var checked: Boolean? = null
 
         var text: String? = null
-        var type: String? = null
         var inputType: String? = null
         var value: Any? = null
         // button inherits from textview
@@ -514,7 +520,7 @@ public class PostHogReplayIntegration(
             type = "image"
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here for already captured images
-                base64 = view.drawable?.base64()
+                base64 = view.drawable?.base64(view.width, view.height)
             }
         }
 
@@ -616,7 +622,9 @@ public class PostHogReplayIntegration(
                 }
             }
             color?.let {
-                return it.defaultColor.toRGBColor()
+                if (it.defaultColor != -1) {
+                    return it.defaultColor.toRGBColor()
+                }
             }
         }
         return null
@@ -628,31 +636,44 @@ public class PostHogReplayIntegration(
             this.height > 0
     }
 
-    private fun Drawable.base64(): String? {
+    private fun Bitmap.base64(): String? {
+        if (!isValid()) {
+            return null
+        }
+
+        ByteArrayOutputStream(allocationByteCount).use {
+            compress(Bitmap.CompressFormat.PNG, 30, it)
+            val byteArray = it.toByteArray()
+            return Base64.encodeToString(byteArray, Base64.DEFAULT)
+        }
+    }
+
+    private fun Drawable.base64(width: Int, height: Int): String? {
         when (this) {
             is BitmapDrawable -> {
-                if (!bitmap.isValid()) {
-                    return null
-                }
-
-                ByteArrayOutputStream(bitmap.allocationByteCount).use {
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 30, it)
-                    val byteArray = it.toByteArray()
-                    return Base64.encodeToString(byteArray, Base64.DEFAULT)
+                try {
+                    return bitmap.base64()
+                } catch (_: Throwable) {
+                    // ignore
                 }
             }
 
             is LayerDrawable -> {
-                return getFirstDrawable()?.base64()
+                return getFirstDrawable()?.base64(width, height)
             }
 
             is InsetDrawable -> {
                 drawable?.let {
-                    return it.base64()
+                    return it.base64(width, height)
                 }
             }
         }
-        // TODO: vector, gradient drawables
+
+        try {
+            return toBitmap(width, height).base64()
+        } catch (_: Throwable) {
+            // ignore
+        }
         return null
     }
 
@@ -720,6 +741,15 @@ public class PostHogReplayIntegration(
         }
 
         return Triple(addedItems, removedItems, updatedItems)
+    }
+
+    private fun Drawable.toBitmap(width: Int, height: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(displayMetrics, width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.MULTIPLY)
+        setBounds(0, 0, canvas.width, canvas.height)
+        draw(canvas)
+        return bitmap
     }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {

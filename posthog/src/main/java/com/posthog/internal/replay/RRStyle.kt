@@ -6,6 +6,7 @@ import com.posthog.PostHogInternal
 public data class RRStyle(
     public var color: String? = null,
     public var backgroundColor: String? = null,
+    public var backgroundImage: String? = null,
     public var borderWidth: Int? = null,
     public var borderRadius: Int? = null,
     public var borderColor: String? = null,
