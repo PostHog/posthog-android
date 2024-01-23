@@ -24,8 +24,8 @@ class MyApp : Application() {
             debug = true
             flushAt = 1
             captureDeepLinks = false
-            captureApplicationLifecycleEvents = false
-            captureScreenViews = false
+            captureApplicationLifecycleEvents = true
+            captureScreenViews = true
             sessionReplay = true
             preloadFeatureFlags = true
             onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
