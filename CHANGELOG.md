@@ -1,5 +1,7 @@
 ## Next
 
+## 3.1.5 - 2024-01-24
+
 - recording: gradient background support ([#88](https://github.com/PostHog/posthog-android/pull/88))
 
 ## 3.1.4 - 2024-01-19
