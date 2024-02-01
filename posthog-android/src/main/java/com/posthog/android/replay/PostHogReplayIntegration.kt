@@ -520,7 +520,7 @@ public class PostHogReplayIntegration(
             type = "image"
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here for already captured images
-                base64 = view.drawable?.base64(view.width, view.height)
+                base64 = view.drawable?.copy(view.resources)?.base64(view.width, view.height)
             }
         }
 
@@ -770,6 +770,10 @@ public class PostHogReplayIntegration(
 
     private fun View.isNoCapture(maskInput: Boolean): Boolean {
         return (this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
+    }
+
+    private fun Drawable.copy(resources: Resources): Drawable? {
+        return constantState?.newDrawable(resources)
     }
 
     private fun String.mask(): String {

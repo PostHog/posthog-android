@@ -1,5 +1,7 @@
 ## Next
 
+- recording: clone drawable before using ([#91](https://github.com/PostHog/posthog-android/pull/91))
+
 ## 3.1.5 - 2024-01-24
 
 - recording: gradient background support ([#88](https://github.com/PostHog/posthog-android/pull/88))
