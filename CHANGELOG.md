@@ -1,5 +1,7 @@
 ## Next
 
+## 3.1.6 - 2024-02-01
+
 - recording: clone drawable before using ([#91](https://github.com/PostHog/posthog-android/pull/91))
 
 ## 3.1.5 - 2024-01-24
