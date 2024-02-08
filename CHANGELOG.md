@@ -1,6 +1,6 @@
 ## Next
 
-- set `device_type` accordingly to Mobile, TV, or Tablet ([#91](https://github.com/PostHog/posthog-android/pull/91))
+- set `device_type` accordingly to Mobile, TV, or Tablet ([#93](https://github.com/PostHog/posthog-android/pull/93))
 
 ## 3.1.6 - 2024-02-01
 
