@@ -49,9 +49,7 @@ internal class PostHogAndroidContext(
         staticContext["\$device_model"] = Build.MODEL // returns eg Pixel 7a
         staticContext["\$device_name"] = Build.DEVICE // returns eg lynx
         // Check https://github.com/PostHog/posthog-flutter/issues/49 and change if needed
-        getDeviceType(context)?.let {
-            staticContext["\$device_type"] = it
-        }
+        staticContext["\$device_type"] = getDeviceType(context, displayMetrics) ?: "Mobile"
         staticContext["\$os_name"] = "Android"
         staticContext["\$os_version"] = Build.VERSION.RELEASE
 
@@ -63,7 +61,7 @@ internal class PostHogAndroidContext(
 
     // Inspired from https://github.com/expo/expo/blob/86bafbaa0b8b9fff5b11f0e5bcf9097bb5ac8878/packages/expo-device/android/src/main/java/expo/modules/device/DeviceModule.kt#L52
     // missing auto, watch, embedded, desktop, etc
-    private fun getDeviceType(context: Context): String? {
+    private fun getDeviceType(context: Context, displayMetrics: DisplayMetrics): String? {
         // Detect TVs via UI mode (Android TVs) or system features (Fire TV).
         if (context.packageManager.hasSystemFeature("amazon.hardware.fire_tv")) {
             return "TV"
@@ -77,11 +75,10 @@ internal class PostHogAndroidContext(
         }
 
         val deviceTypeFromResourceConfiguration = getDeviceTypeFromResourceConfiguration(context)
-        return deviceTypeFromResourceConfiguration ?: getDeviceTypeFromPhysicalSize(context)
+        return deviceTypeFromResourceConfiguration ?: getDeviceTypeFromPhysicalSize(context, displayMetrics)
     }
 
-    @Suppress("DEPRECATION")
-    private fun getDeviceTypeFromPhysicalSize(context: Context): String? {
+    private fun getDeviceTypeFromPhysicalSize(context: Context, displayMetrics: DisplayMetrics): String? {
         // Find the current window manager, if none is found we can't measure the device physical size.
         val windowManager = context.windowManager()
             ?: return null
@@ -97,10 +94,8 @@ internal class PostHogAndroidContext(
             widthInches = windowBounds.width() / densityDpi.toDouble()
             heightInches = windowBounds.height() / densityDpi.toDouble()
         } else {
-            val metrics = DisplayMetrics()
-            windowManager.defaultDisplay.getRealMetrics(metrics)
-            widthInches = metrics.widthPixels / metrics.xdpi.toDouble()
-            heightInches = metrics.heightPixels / metrics.ydpi.toDouble()
+            widthInches = displayMetrics.widthPixels / displayMetrics.xdpi.toDouble()
+            heightInches = displayMetrics.heightPixels / displayMetrics.ydpi.toDouble()
         }
 
         // Calculate physical size.
