@@ -1,6 +1,6 @@
 ## Next
 
-- fix: `device_model` and `device_name` properties were inverted ([#91](https://github.com/PostHog/posthog-android/pull/91))
+- fix: `device_model` and `device_name` properties were inverted ([#94](https://github.com/PostHog/posthog-android/pull/94))
 
 ## 3.1.6 - 2024-02-01
 
