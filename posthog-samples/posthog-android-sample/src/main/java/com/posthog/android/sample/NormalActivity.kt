@@ -33,6 +33,7 @@ class NormalActivity : ComponentActivity() {
 //            }
 //            startActivity(Intent(this, NothingActivity::class.java))
 //            finish()
+
             Thread {
                 client.newCall(
                     okhttp3.Request.Builder()
