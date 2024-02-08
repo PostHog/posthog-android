@@ -46,8 +46,8 @@ internal class PostHogAndroidContext(
         staticContext["\$app_name"] = context.applicationInfo.loadLabel(context.packageManager)
 
         staticContext["\$device_manufacturer"] = Build.MANUFACTURER
-        staticContext["\$device_model"] = Build.MODEL // returns Pixel 7a
-        staticContext["\$device_name"] = Build.DEVICE // returns lynx
+        staticContext["\$device_model"] = Build.MODEL // returns eg Pixel 7a
+        staticContext["\$device_name"] = Build.DEVICE // returns eg lynx
         // Check https://github.com/PostHog/posthog-flutter/issues/49 and change if needed
         getDeviceType(context)?.let {
             staticContext["\$device_type"] = it
