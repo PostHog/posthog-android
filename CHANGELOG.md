@@ -1,5 +1,7 @@
 ## Next
 
+## 3.1.7 - 2024-02-14
+
 - recording: fix missing windowAttachCount method after minification ([#96](https://github.com/PostHog/posthog-android/pull/96))
 
 ## 3.1.6 - 2024-02-01
