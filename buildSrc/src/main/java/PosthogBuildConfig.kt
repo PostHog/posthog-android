@@ -47,10 +47,10 @@ object PosthogBuildConfig {
 
     object Dependencies {
         // runtime
-        val LIFECYCLE = "2.6.2"
+        val LIFECYCLE = "2.7.0"
         val GSON = "2.10.1"
         val OKHTTP = "4.12.0"
-        val CURTAINS = "1.2.4"
+        val CURTAINS = "1.2.5"
         val ANDROIDX_CORE = "1.5.0"
 
         // tests
