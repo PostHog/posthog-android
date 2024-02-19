@@ -1,5 +1,7 @@
 ## Next
 
+## 3.1.8 - 2024-02-19
+
 - fix reset session when reset or close are called ([#97](https://github.com/PostHog/posthog-android/pull/97))
 
 ## 3.1.7 - 2024-02-14
