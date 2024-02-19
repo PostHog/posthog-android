@@ -858,7 +858,6 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-
         sut.capture(
             event,
             distinctId,
