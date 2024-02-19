@@ -1,6 +1,6 @@
 ## Next
 
-- fix reset session when reset or close are called ([#96](https://github.com/PostHog/posthog-android/pull/96))
+- fix reset session when reset or close are called ([#97](https://github.com/PostHog/posthog-android/pull/97))
 
 ## 3.1.7 - 2024-02-14
 
