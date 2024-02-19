@@ -172,7 +172,7 @@ public class PostHog private constructor(
 
                 featureFlagsCalled.clear()
 
-                sessionId = sessionIdNone
+                endSession()
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
@@ -542,6 +542,7 @@ public class PostHog private constructor(
         queue?.clear()
         replayQueue?.clear()
         featureFlagsCalled.clear()
+        endSession()
     }
 
     private fun isEnabled(): Boolean {
