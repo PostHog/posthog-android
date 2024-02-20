@@ -1,5 +1,7 @@
 ## Next
 
+- set `device_type` accordingly to Mobile, TV, or Tablet ([#93](https://github.com/PostHog/posthog-android/pull/93))
+
 ## 3.1.8 - 2024-02-19
 
 - fix reset session when reset or close are called ([#97](https://github.com/PostHog/posthog-android/pull/97))

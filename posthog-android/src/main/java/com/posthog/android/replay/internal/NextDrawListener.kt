@@ -27,7 +27,7 @@ internal class NextDrawListener(
         // the real ViewTreeObserver.
         // https://android.googlesource.com/platform/frameworks/base/+/9f8ec54244a5e0343b9748db3329733f259604f3
         view.viewTreeObserver?.let { viewTreeObserver ->
-            if (Build.VERSION.SDK_INT >= 26 || (viewTreeObserver.isAlive && view.isAttachedToWindow)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O || (viewTreeObserver.isAlive && view.isAttachedToWindow)) {
                 viewTreeObserver.addOnDrawListener(this)
             }
         }

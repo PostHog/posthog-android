@@ -12,6 +12,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.NetworkInfo
@@ -77,6 +78,8 @@ public fun Context.mockDisplayMetrics() {
         heightPixels = 100
         widthPixels = 150
     }
+    val configuration = mock<Configuration>()
+    whenever(resources.configuration).thenReturn(configuration)
     whenever(res.displayMetrics).thenReturn(dm)
 }
 
