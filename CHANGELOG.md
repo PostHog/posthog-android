@@ -2,6 +2,14 @@
 
 - set `device_type` accordingly to Mobile, TV, or Tablet ([#93](https://github.com/PostHog/posthog-android/pull/93))
 
+## 3.1.8 - 2024-02-19
+
+- fix reset session when reset or close are called ([#97](https://github.com/PostHog/posthog-android/pull/97))
+
+## 3.1.7 - 2024-02-14
+
+- recording: fix missing windowAttachCount method after minification ([#96](https://github.com/PostHog/posthog-android/pull/96))
+
 ## 3.1.6 - 2024-02-01
 
 - recording: clone drawable before using ([#91](https://github.com/PostHog/posthog-android/pull/91))

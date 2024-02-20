@@ -93,38 +93,50 @@ public class PostHogReplayIntegration(
         get() = config.sessionReplay && PostHog.isSessionActive()
 
     private val onRootViewsChangedListener = OnRootViewsChangedListener { view, added ->
-        if (added) {
-            view.phoneWindow?.let { window ->
-                if (view.windowAttachCount == 0) {
-                    window.onDecorViewReady { decorView ->
-                        val listener = decorView.onNextDraw(mainHandler, config.dateProvider) {
-                            if (!isSessionReplayEnabled) {
-                                return@onNextDraw
-                            }
-                            val timestamp = config.dateProvider.currentTimeMillis()
+        try {
+            if (added) {
+                view.phoneWindow?.let { window ->
+                    if (view.windowAttachCount == 0) {
+                        window.onDecorViewReady { decorView ->
+                            try {
+                                val listener = decorView.onNextDraw(mainHandler, config.dateProvider) {
+                                    if (!isSessionReplayEnabled) {
+                                        return@onNextDraw
+                                    }
+                                    val timestamp = config.dateProvider.currentTimeMillis()
 
-                            executor.submit {
-                                generateSnapshot(WeakReference(decorView), timestamp)
+                                    executor.submit {
+                                        try {
+                                            generateSnapshot(WeakReference(decorView), timestamp)
+                                        } catch (e: Throwable) {
+                                            config.logger.log("Session Replay generateSnapshot failed: $e.")
+                                        }
+                                    }
+                                }
+
+                                val status = ViewTreeSnapshotStatus(listener)
+                                decorViews[decorView] = status
+                            } catch (e: Throwable) {
+                                config.logger.log("Session Replay onDecorViewReady failed: $e.")
                             }
                         }
 
-                        val status = ViewTreeSnapshotStatus(listener)
-                        decorViews[decorView] = status
+                        window.touchEventInterceptors += onTouchEventListener
+                        // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
+                        // window.keyEventInterceptors
                     }
-
-                    window.touchEventInterceptors += onTouchEventListener
-                    // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
-                    // window.keyEventInterceptors
                 }
-            }
-        } else {
-            view.phoneWindow?.let { window ->
-                window.peekDecorView()?.let { decorView ->
-                    decorViews[decorView]?.let { status ->
-                        cleanSessionState(decorView, status)
+            } else {
+                view.phoneWindow?.let { window ->
+                    window.peekDecorView()?.let { decorView ->
+                        decorViews[decorView]?.let { status ->
+                            cleanSessionState(decorView, status)
+                        }
                     }
                 }
             }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
         }
     }
 
@@ -220,14 +232,22 @@ public class PostHogReplayIntegration(
             return
         }
 
-        Curtains.onRootViewsChangedListeners += onRootViewsChangedListener
+        try {
+            Curtains.onRootViewsChangedListeners += onRootViewsChangedListener
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay setup failed: $e.")
+        }
     }
 
     override fun uninstall() {
-        Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
+        try {
+            Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
-        decorViews.entries.forEach {
-            cleanSessionState(it.key, it.value)
+            decorViews.entries.forEach {
+                cleanSessionState(it.key, it.value)
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay uninstall failed: $e.")
         }
     }
 
