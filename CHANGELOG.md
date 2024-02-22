@@ -1,6 +1,6 @@
 ## Next
 
-- roll back compile API to 33 to keep back compatibility ([#97](https://github.com/PostHog/posthog-android/pull/97))
+- roll back compile API to 33 to keep back compatibility ([#98](https://github.com/PostHog/posthog-android/pull/98))
 
 ## 3.1.8 - 2024-02-19
 
