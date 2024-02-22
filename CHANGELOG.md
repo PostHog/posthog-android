@@ -1,5 +1,7 @@
 ## Next
 
+- roll back compile API to 33 to keep back compatibility ([#97](https://github.com/PostHog/posthog-android/pull/97))
+
 ## 3.1.8 - 2024-02-19
 
 - fix reset session when reset or close are called ([#97](https://github.com/PostHog/posthog-android/pull/97))

@@ -422,18 +422,19 @@ public class PostHogReplayIntegration(
                 value = text
                 text = null
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                style.fontFamily = view.typeface?.systemFontFamilyName
-            } else {
-                view.typeface?.let {
-                    when (it) {
-                        Typeface.DEFAULT -> style.fontFamily = "sans-serif"
-                        Typeface.DEFAULT_BOLD -> style.fontFamily = "sans-serif-bold"
-                        Typeface.MONOSPACE -> style.fontFamily = "monospace"
-                        Typeface.SERIF -> style.fontFamily = "serif"
-                    }
+//            TODO: do this when we upgrade API to 34
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+//                style.fontFamily = view.typeface?.systemFontFamilyName
+//            } else {
+            view.typeface?.let {
+                when (it) {
+                    Typeface.DEFAULT -> style.fontFamily = "sans-serif"
+                    Typeface.DEFAULT_BOLD -> style.fontFamily = "sans-serif-bold"
+                    Typeface.MONOSPACE -> style.fontFamily = "monospace"
+                    Typeface.SERIF -> style.fontFamily = "serif"
                 }
             }
+//            }
             style.fontSize = view.textSize.toInt().densityValue(displayMetrics.density)
             when (view.textAlignment) {
                 View.TEXT_ALIGNMENT_CENTER -> {

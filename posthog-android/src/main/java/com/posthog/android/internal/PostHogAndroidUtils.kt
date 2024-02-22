@@ -16,6 +16,7 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import com.posthog.android.PostHogAndroidConfig
 
+@Suppress("DEPRECATION")
 internal fun getPackageInfo(
     context: Context,
     config: PostHogAndroidConfig,
@@ -69,11 +70,13 @@ internal fun Context.screenSize(): PostHogScreenSizeInfo? {
         val currentWindowMetrics = windowManager.currentWindowMetrics
         val screenBounds = currentWindowMetrics.bounds
 
-        density = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            currentWindowMetrics.density
-        } else {
-            displayMetrics.density
-        }
+//        TODO: do this when we upgrade API to 34
+//        density = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+//            currentWindowMetrics.density
+//        } else {
+//            displayMetrics.density
+//        }
+        density = displayMetrics.density
 
         screenHeight = (screenBounds.bottom - screenBounds.top).densityValue(density)
         screenWidth = (screenBounds.right - screenBounds.left).densityValue(density)
@@ -119,6 +122,7 @@ internal fun Context.telephonyManager(): TelephonyManager? {
     return getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
 }
 
+@Suppress("DEPRECATION")
 internal fun Activity.activityLabel(config: PostHogAndroidConfig): String? {
     return try {
         val info = packageManager.getActivityInfo(componentName, GET_META_DATA)
