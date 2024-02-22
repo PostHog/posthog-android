@@ -25,12 +25,12 @@ object PosthogBuildConfig {
     object Kotlin {
         // compiler has to match kotlin version
         // https://developer.android.com/jetpack/androidx/releases/compose-kotlin
-        val COMPILER_EXTENSION_VERSION = "1.4.8" // kotlin 1.8.22
+        val COMPILER_EXTENSION_VERSION = "1.5.10" // kotlin 1.9.22
 
         val KOTLIN_COMPATIBILITY = "1.6"
 
         // also update buildSrc/gradle.kts - kotlinVersion
-        val KOTLIN = "1.8.22"
+        val KOTLIN = "1.9.22"
     }
 
     object Plugins {
