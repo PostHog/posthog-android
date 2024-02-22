@@ -1,6 +1,7 @@
 ## Next
 
 - roll back compile API to 33 to keep back compatibility ([#98](https://github.com/PostHog/posthog-android/pull/98))
+- set `device_type` accordingly to Mobile, TV, or Tablet ([#93](https://github.com/PostHog/posthog-android/pull/93))
 
 ## 3.1.8 - 2024-02-19
 
