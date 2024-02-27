@@ -55,7 +55,7 @@ internal class PostHogFeatureFlagsTest {
             false
         })
 
-        sut.loadFeatureFlags("distinctId", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("distinctId", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -74,7 +74,7 @@ internal class PostHogFeatureFlagsTest {
         val sut = getSut(host = url.toString())
 
         var callback = false
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap()) {
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap()) {
             callback = true
         }
 
@@ -96,7 +96,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -122,7 +122,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -141,7 +141,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -159,7 +159,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.awaitExecution()
 
@@ -169,7 +169,7 @@ internal class PostHogFeatureFlagsTest {
             .setBody(file.readText())
         http.enqueue(response)
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -193,7 +193,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -216,7 +216,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -267,7 +267,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 

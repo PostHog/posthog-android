@@ -92,10 +92,10 @@ internal class PostHogApi(
     @Throws(PostHogApiError::class, IOException::class)
     fun decide(
         distinctId: String,
-        anonymousId: String,
+        anonymousId: String?,
         groups: Map<String, Any>?,
     ): PostHogDecideResponse? {
-        val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId, groups)
+        val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
         val request = makeRequest("$theHost/decide/?v=3") {
             config.serializer.serialize(decideRequest, it.bufferedWriter())

@@ -501,12 +501,12 @@ public class PostHog private constructor(
         val distinctId = this.distinctId
         val anonymousId = this.anonymousId
 
-        if (distinctId.isBlank() || anonymousId.isBlank()) {
-            config?.logger?.log("Feature flags not loaded, distinctId: $distinctId or anonymousId: $anonymousId are invalid.")
+        if (distinctId.isBlank()) {
+            config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
             return
         }
 
-        featureFlags?.loadFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags)
+        featureFlags?.loadFeatureFlags(distinctId, anonymousId = anonymousId, groups, onFeatureFlags)
     }
 
     public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
