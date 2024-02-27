@@ -134,11 +134,11 @@ public class PostHog private constructor(
                     val anonymousId = props["anonymousId"] as? String
                     val distinctId = props["distinctId"] as? String
 
-                    anonymousId?.let { anon ->
-                        this.anonymousId = anon
+                    if (!anonymousId.isNullOrBlank()) {
+                        this.anonymousId = anonymousId
                     }
-                    distinctId?.let { distId ->
-                        this.distinctId = distId
+                    if (!distinctId.isNullOrBlank()) {
+                        this.distinctId = distinctId
                     }
 
                     getPreferences().remove(config.apiKey)
@@ -184,7 +184,7 @@ public class PostHog private constructor(
             var anonymousId: String?
             synchronized(anonymousLock) {
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
-                if (anonymousId == null) {
+                if (anonymousId.isNullOrBlank()) {
                     anonymousId = UUID.randomUUID().toString()
                     this.anonymousId = anonymousId ?: ""
                 }
@@ -276,8 +276,12 @@ public class PostHog private constructor(
 
         // Replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
-        if (props["distinct_id"] == null && !appendSharedProps) {
-            props["distinct_id"] = distinctId
+        val propDistinctId = props["distinct_id"] as? String
+        if (propDistinctId.isNullOrBlank() && !appendSharedProps) {
+            val distinctId = this.distinctId
+            if (distinctId.isNotBlank()) {
+                props["distinct_id"] = distinctId
+            }
         }
 
         return props
@@ -300,6 +304,11 @@ public class PostHog private constructor(
         }
 
         val newDistinctId = distinctId ?: this.distinctId
+
+        if (newDistinctId.isBlank()) {
+            config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
+            return
+        }
 
         var snapshotEvent = false
         if (event == "\$snapshot") {
@@ -400,10 +409,18 @@ public class PostHog private constructor(
             return
         }
 
+        if (distinctId.isBlank()) {
+            config?.logger?.log("identify call not allowed, distinctId is invalid: $distinctId.")
+            return
+        }
+
         val previousDistinctId = this.distinctId
 
         val props = mutableMapOf<String, Any>()
-        props["\$anon_distinct_id"] = anonymousId
+        val anonymousId = this.anonymousId
+        if (anonymousId.isNotBlank()) {
+            props["\$anon_distinct_id"] = anonymousId
+        }
 
         capture(
             "\$identify",
@@ -415,7 +432,9 @@ public class PostHog private constructor(
 
         if (previousDistinctId != distinctId) {
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
-            this.anonymousId = previousDistinctId
+            if (previousDistinctId.isNotBlank()) {
+                this.anonymousId = previousDistinctId
+            }
             this.distinctId = distinctId
 
             // only because of testing in isolation, this flag is always enabled
@@ -474,6 +493,14 @@ public class PostHog private constructor(
     private fun loadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, Any>
+
+        val distinctId = this.distinctId
+        val anonymousId = this.anonymousId
+
+        if (distinctId.isBlank() || anonymousId.isBlank()) {
+            config?.logger?.log("Feature flags not loaded, distinctId: $distinctId or anonymousId: $anonymousId are invalid.")
+            return
+        }
 
         featureFlags?.loadFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags)
     }
