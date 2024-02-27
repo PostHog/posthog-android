@@ -472,6 +472,26 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `does not capture an identify event with invalid distinct id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(
+            "   ",
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `captures an alias event`() {
         val http = mockHttp()
         val url = http.url("/")
