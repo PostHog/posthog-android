@@ -420,6 +420,8 @@ public class PostHog private constructor(
         val anonymousId = this.anonymousId
         if (anonymousId.isNotBlank()) {
             props["\$anon_distinct_id"] = anonymousId
+        } else {
+            config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
         capture(
@@ -434,6 +436,8 @@ public class PostHog private constructor(
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
             if (previousDistinctId.isNotBlank()) {
                 this.anonymousId = previousDistinctId
+            } else {
+                config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
             }
             this.distinctId = distinctId
 
