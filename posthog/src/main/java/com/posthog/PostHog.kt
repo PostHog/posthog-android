@@ -134,11 +134,11 @@ public class PostHog private constructor(
                     val anonymousId = props["anonymousId"] as? String
                     val distinctId = props["distinctId"] as? String
 
-                    anonymousId?.let { anon ->
-                        this.anonymousId = anon
+                    if (!anonymousId.isNullOrBlank()) {
+                        this.anonymousId = anonymousId
                     }
-                    distinctId?.let { distId ->
-                        this.distinctId = distId
+                    if (!distinctId.isNullOrBlank()) {
+                        this.distinctId = distinctId
                     }
 
                     getPreferences().remove(config.apiKey)
@@ -184,7 +184,7 @@ public class PostHog private constructor(
             var anonymousId: String?
             synchronized(anonymousLock) {
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
-                if (anonymousId == null) {
+                if (anonymousId.isNullOrBlank()) {
                     anonymousId = UUID.randomUUID().toString()
                     this.anonymousId = anonymousId ?: ""
                 }
@@ -207,6 +207,7 @@ public class PostHog private constructor(
         }
 
     private fun buildProperties(
+        distinctId: String,
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
@@ -276,7 +277,9 @@ public class PostHog private constructor(
 
         // Replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
-        if (props["distinct_id"] == null && !appendSharedProps) {
+        val propDistinctId = props["distinct_id"] as? String
+        if (propDistinctId.isNullOrBlank() && !appendSharedProps) {
+            // distinctId is already validated hence not empty or blank
             props["distinct_id"] = distinctId
         }
 
@@ -301,12 +304,18 @@ public class PostHog private constructor(
 
         val newDistinctId = distinctId ?: this.distinctId
 
+        if (newDistinctId.isBlank()) {
+            config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
+            return
+        }
+
         var snapshotEvent = false
         if (event == "\$snapshot") {
             snapshotEvent = true
         }
 
         val mergedProperties = buildProperties(
+            newDistinctId,
             properties = properties,
             userProperties = userProperties,
             userPropertiesSetOnce = userPropertiesSetOnce,
@@ -400,10 +409,20 @@ public class PostHog private constructor(
             return
         }
 
+        if (distinctId.isBlank()) {
+            config?.logger?.log("identify call not allowed, distinctId is invalid: $distinctId.")
+            return
+        }
+
         val previousDistinctId = this.distinctId
 
         val props = mutableMapOf<String, Any>()
-        props["\$anon_distinct_id"] = anonymousId
+        val anonymousId = this.anonymousId
+        if (anonymousId.isNotBlank()) {
+            props["\$anon_distinct_id"] = anonymousId
+        } else {
+            config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
+        }
 
         capture(
             "\$identify",
@@ -415,7 +434,11 @@ public class PostHog private constructor(
 
         if (previousDistinctId != distinctId) {
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
-            this.anonymousId = previousDistinctId
+            if (previousDistinctId.isNotBlank()) {
+                this.anonymousId = previousDistinctId
+            } else {
+                config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
+            }
             this.distinctId = distinctId
 
             // only because of testing in isolation, this flag is always enabled
@@ -475,7 +498,15 @@ public class PostHog private constructor(
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, Any>
 
-        featureFlags?.loadFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags)
+        val distinctId = this.distinctId
+        val anonymousId = this.anonymousId
+
+        if (distinctId.isBlank()) {
+            config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+            return
+        }
+
+        featureFlags?.loadFeatureFlags(distinctId, anonymousId = anonymousId, groups, onFeatureFlags)
     }
 
     public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {

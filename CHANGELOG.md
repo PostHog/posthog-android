@@ -1,5 +1,7 @@
 ## Next
 
+- do not allow empty or blank `distinct_id` or `anon_distinct_id` ([#101](https://github.com/PostHog/posthog-android/pull/101))
+
 ## 3.1.9 - 2024-02-22
 
 - roll back compile API to 33 to keep back compatibility ([#98](https://github.com/PostHog/posthog-android/pull/98))

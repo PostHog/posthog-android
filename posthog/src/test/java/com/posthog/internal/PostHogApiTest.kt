@@ -75,7 +75,7 @@ internal class PostHogApiTest {
 
         val sut = getSut(host = url.toString())
 
-        val response = sut.decide("distinctId", "anonId", emptyMap())
+        val response = sut.decide("distinctId", anonymousId = "anonId", emptyMap())
 
         val request = http.takeRequest()
 
@@ -96,7 +96,7 @@ internal class PostHogApiTest {
         val sut = getSut(host = url.toString())
 
         val exc = assertThrows(PostHogApiError::class.java) {
-            sut.decide("distinctId", "anonId", emptyMap())
+            sut.decide("distinctId", anonymousId = "anonId", emptyMap())
         }
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)
