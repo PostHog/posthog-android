@@ -207,6 +207,7 @@ public class PostHog private constructor(
         }
 
     private fun buildProperties(
+        distinctId: String,
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
@@ -278,10 +279,8 @@ public class PostHog private constructor(
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
         if (propDistinctId.isNullOrBlank() && !appendSharedProps) {
-            val distinctId = this.distinctId
-            if (distinctId.isNotBlank()) {
-                props["distinct_id"] = distinctId
-            }
+            // distinctId is already validated hence not empty or blank
+            props["distinct_id"] = distinctId
         }
 
         return props
@@ -316,6 +315,7 @@ public class PostHog private constructor(
         }
 
         val mergedProperties = buildProperties(
+            newDistinctId,
             properties = properties,
             userProperties = userProperties,
             userPropertiesSetOnce = userPropertiesSetOnce,
