@@ -38,11 +38,11 @@ public class PostHog private constructor(
     @Volatile
     private var enabled = false
 
-    private val lockSetup = Any()
-    private val lockOptOut = Any()
+    private val setupLock = Any()
+    private val optOutLock = Any()
     private val anonymousLock = Any()
     private val sessionLock = Any()
-    private val sessionIdNone = UUID(0, 0)
+    private val groupsLock = Any()
     private var sessionId = sessionIdNone
     private val featureFlagsCalledLock = Any()
 
@@ -55,7 +55,7 @@ public class PostHog private constructor(
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     public override fun <T : PostHogConfig> setup(config: T) {
-        synchronized(lockSetup) {
+        synchronized(setupLock) {
             try {
                 if (enabled) {
                     config.logger.log("Setup called despite already being setup!")
@@ -150,7 +150,7 @@ public class PostHog private constructor(
     }
 
     public override fun close() {
-        synchronized(lockSetup) {
+        synchronized(setupLock) {
             try {
                 enabled = false
 
@@ -213,6 +213,7 @@ public class PostHog private constructor(
         userPropertiesSetOnce: Map<String, Any>?,
         groupProperties: Map<String, Any>?,
         appendSharedProps: Boolean = true,
+        appendGroups: Boolean = true,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -271,9 +272,11 @@ public class PostHog private constructor(
             props["\$set_once"] = it
         }
 
-        // merge groups
-        mergeGroups(groupProperties)?.let {
-            props["\$groups"] = it
+        if (appendGroups) {
+            // merge groups
+            mergeGroups(groupProperties)?.let {
+                props["\$groups"] = it
+            }
         }
 
         // Replay needs distinct_id also in the props
@@ -333,6 +336,11 @@ public class PostHog private constructor(
             snapshotEvent = true
         }
 
+        var groupIdentify = false
+        if (event == GROUP_IDENTIFY) {
+            groupIdentify = true
+        }
+
         val mergedProperties = buildProperties(
             newDistinctId,
             properties = properties,
@@ -341,6 +349,8 @@ public class PostHog private constructor(
             groupProperties = groupProperties,
             // only append shared props if not a snapshot event
             appendSharedProps = !snapshotEvent,
+            // only append groups if not a group identify event
+            appendGroups = !groupIdentify,
         )
 
         // sanitize the properties or fallback to the original properties
@@ -366,7 +376,7 @@ public class PostHog private constructor(
             return
         }
 
-        synchronized(lockOptOut) {
+        synchronized(optOutLock) {
             config?.optOut = false
             getPreferences().setValue(OPT_OUT, false)
         }
@@ -377,7 +387,7 @@ public class PostHog private constructor(
             return
         }
 
-        synchronized(lockOptOut) {
+        synchronized(optOutLock) {
             config?.optOut = true
             getPreferences().setValue(OPT_OUT, true)
         }
@@ -480,26 +490,28 @@ public class PostHog private constructor(
         }
 
         val preferences = getPreferences()
-
-        @Suppress("UNCHECKED_CAST")
-        val groups = preferences.getValue(GROUPS) as? Map<String, Any>
-        val newGroups = mutableMapOf<String, Any>()
         var reloadFeatureFlags = false
 
-        groups?.let {
-            val currentKey = it[type]
+        synchronized(groupsLock) {
+            @Suppress("UNCHECKED_CAST")
+            val groups = preferences.getValue(GROUPS) as? Map<String, Any>
+            val newGroups = mutableMapOf<String, Any>()
 
-            if (key != currentKey) {
-                reloadFeatureFlags = true
+            groups?.let {
+                val currentKey = it[type]
+
+                if (key != currentKey) {
+                    reloadFeatureFlags = true
+                }
+
+                newGroups.putAll(it)
             }
+            newGroups[type] = key
 
-            newGroups.putAll(it)
+            preferences.setValue(GROUPS, newGroups)
         }
-        newGroups[type] = key
 
-        capture("\$groupidentify", properties = props)
-
-        preferences.setValue(GROUPS, newGroups)
+        capture(GROUP_IDENTIFY, properties = props)
 
         if (reloadFeatureFlags) {
             loadFeatureFlagsRequest(null)
@@ -664,6 +676,10 @@ public class PostHog private constructor(
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
+
+        private val sessionIdNone = UUID(0, 0)
+
+        private const val GROUP_IDENTIFY = "\$groupidentify"
 
         private val apiKeys = mutableSetOf<String>()
 
