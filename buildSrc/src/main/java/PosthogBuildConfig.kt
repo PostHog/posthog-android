@@ -50,6 +50,7 @@ object PosthogBuildConfig {
         // runtime
         val LIFECYCLE = "2.6.2"
         val GSON = "2.10.1"
+
         // do not upgrade to >= 4.12 otherwise it does not work with Kotlin 1.7
         val OKHTTP = "4.11.0"
         val CURTAINS = "1.2.5"
