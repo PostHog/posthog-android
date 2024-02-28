@@ -2,6 +2,7 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
@@ -541,6 +542,32 @@ internal class PostHogTest {
         assertEquals(groupProps, theEvent.properties!!["\$group_set"])
         // since theres no cached groups yet
         assertNull(theEvent.properties!!["\$groups"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `merges group`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val myPrefs = PostHogMemoryPreferences()
+        val groups = mutableMapOf("theOtherType" to "theOtherKey")
+        myPrefs.setValue(GROUPS, groups)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = myPrefs)
+
+        sut.group("theType", "theKey", groupProps)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals(groups, theEvent.properties!!["\$groups"])
 
         sut.close()
     }

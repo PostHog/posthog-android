@@ -271,7 +271,8 @@ public class PostHog private constructor(
             props["\$set_once"] = it
         }
 
-        groupProperties?.let {
+        // merge groups
+        mergeGroups(groupProperties)?.let {
             props["\$groups"] = it
         }
 
@@ -284,6 +285,24 @@ public class PostHog private constructor(
         }
 
         return props
+    }
+
+    private fun mergeGroups(groupProperties: Map<String, Any>?): Map<String, Any>? {
+        val preferences = getPreferences()
+
+        @Suppress("UNCHECKED_CAST")
+        val groups = preferences.getValue(GROUPS) as? Map<String, Any>
+        val newGroups = mutableMapOf<String, Any>()
+
+        groups?.let {
+            newGroups.putAll(it)
+        }
+
+        groupProperties?.let {
+            newGroups.putAll(it)
+        }
+
+        return newGroups.ifEmpty { null }
     }
 
     public override fun capture(
