@@ -25,12 +25,13 @@ object PosthogBuildConfig {
     object Kotlin {
         // compiler has to match kotlin version
         // https://developer.android.com/jetpack/androidx/releases/compose-kotlin
-        val COMPILER_EXTENSION_VERSION = "1.5.10" // kotlin 1.9.22
+        val COMPILER_EXTENSION_VERSION = "1.4.8" // kotlin 1.8.22
 
         val KOTLIN_COMPATIBILITY = "1.6"
 
+        // do not upgrade to >= 1.9 otherwise it does not work with Kotlin 1.7
         // also update buildSrc/gradle.kts - kotlinVersion
-        val KOTLIN = "1.9.22"
+        val KOTLIN = "1.8.22"
     }
 
     object Plugins {
@@ -49,7 +50,9 @@ object PosthogBuildConfig {
         // runtime
         val LIFECYCLE = "2.6.2"
         val GSON = "2.10.1"
-        val OKHTTP = "4.12.0"
+
+        // do not upgrade to >= 4.12 otherwise it does not work with Kotlin 1.7
+        val OKHTTP = "4.11.0"
         val CURTAINS = "1.2.5"
         val ANDROIDX_CORE = "1.5.0"
 
