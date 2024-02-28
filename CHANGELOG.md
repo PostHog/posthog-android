@@ -1,5 +1,7 @@
 ## Next
 
+- fix back compatibility with Kotlin 1.7 ([#101](https://github.com/PostHog/posthog-android/pull/101))
+
 ## 3.1.10 - 2024-02-27
 
 - do not allow empty or blank `distinct_id` or `anon_distinct_id` ([#101](https://github.com/PostHog/posthog-android/pull/101))

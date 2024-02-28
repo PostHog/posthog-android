@@ -13,10 +13,11 @@ kotlin {
 }
 
 dependencies {
+    // do not upgrade to >= 1.9 otherwise it does not work with Kotlin 1.7
     // also update PosthogBuildConfig.Kotlin.KOTLIN
-    val kotlinVersion = "1.9.22"
-    // there's no 1.9.22 for dokka yet
-    val dokkaVersion = "1.9.10"
+    val kotlinVersion = "1.8.22"
+    // there's no 1.8.22 for dokka yet
+    val dokkaVersion = "1.8.20"
     implementation("com.android.tools.build:gradle:8.2.2")
     // kotlin version has to match kotlinCompilerExtensionVersion
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
