@@ -1,6 +1,6 @@
 ## Next
 
-- fix back compatibility with Kotlin 1.7 ([#101](https://github.com/PostHog/posthog-android/pull/101))
+- fix back compatibility with Kotlin 1.7 ([#104](https://github.com/PostHog/posthog-android/pull/104))
 
 ## 3.1.10 - 2024-02-27
 
