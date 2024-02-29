@@ -2,6 +2,7 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
@@ -35,6 +36,7 @@ internal class PostHogTest {
 
     fun getSut(
         host: String,
+        flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         optOut: Boolean = false,
         preloadFeatureFlags: Boolean = true,
@@ -46,7 +48,7 @@ internal class PostHogTest {
     ): PostHogInterface {
         config = PostHogConfig(apiKey, host).apply {
             // for testing
-            flushAt = 1
+            this.flushAt = flushAt
             this.storagePrefix = storagePrefix
             this.optOut = optOut
             this.preloadFeatureFlags = preloadFeatureFlags
@@ -539,8 +541,38 @@ internal class PostHogTest {
         assertEquals("theType", theEvent.properties!!["\$group_type"] as String)
         assertEquals("theKey", theEvent.properties!!["\$group_key"] as String)
         assertEquals(groupProps, theEvent.properties!!["\$group_set"])
-        // since theres no cached groups yet
-        assertNull(theEvent.properties!!["\$groups"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `merges group`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val myPrefs = PostHogMemoryPreferences()
+        val groups = mutableMapOf("theType2" to "theKey2")
+        myPrefs.setValue(GROUPS, groups)
+        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, cachePreferences = myPrefs)
+
+        sut.group("theType", "theKey", groupProps)
+
+        sut.capture("test", groupProperties = mutableMapOf("theType3" to "theKey3"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.last()
+
+        val allGroups = mutableMapOf<String, Any>()
+        allGroups.putAll(groups)
+        allGroups["theType"] = "theKey"
+        allGroups["theType3"] = "theKey3"
+        assertEquals(allGroups, theEvent.properties!!["\$groups"])
 
         sut.close()
     }
