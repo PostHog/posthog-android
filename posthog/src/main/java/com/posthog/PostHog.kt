@@ -515,7 +515,7 @@ public class PostHog private constructor(
         capture(GROUP_IDENTIFY, properties = props)
 
         // only because of testing in isolation, this flag is always enabled
-        if (this.reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
+        if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
             loadFeatureFlagsRequest(null)
         }
     }
