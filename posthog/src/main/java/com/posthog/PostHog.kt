@@ -113,7 +113,8 @@ public class PostHog private constructor(
                     }
                 }
 
-                if (config.preloadFeatureFlags) {
+                // only because of testing in isolation, this flag is always enabled
+                if (reloadFeatureFlags && config.preloadFeatureFlags) {
                     loadFeatureFlagsRequest(config.onFeatureFlags)
                 }
             } catch (e: Throwable) {
@@ -490,7 +491,7 @@ public class PostHog private constructor(
         }
 
         val preferences = getPreferences()
-        var reloadFeatureFlags = false
+        var reloadFeatureFlagsIfNewGroup = false
 
         synchronized(groupsLock) {
             @Suppress("UNCHECKED_CAST")
@@ -501,7 +502,7 @@ public class PostHog private constructor(
                 val currentKey = it[type]
 
                 if (key != currentKey) {
-                    reloadFeatureFlags = true
+                    reloadFeatureFlagsIfNewGroup = true
                 }
 
                 newGroups.putAll(it)
@@ -513,7 +514,8 @@ public class PostHog private constructor(
 
         capture(GROUP_IDENTIFY, properties = props)
 
-        if (reloadFeatureFlags) {
+        // only because of testing in isolation, this flag is always enabled
+        if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
             loadFeatureFlagsRequest(null)
         }
     }
