@@ -553,7 +553,7 @@ internal class PostHogTest {
         val myPrefs = PostHogMemoryPreferences()
         val groups = mutableMapOf("theType2" to "theKey2")
         myPrefs.setValue(GROUPS, groups)
-        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, cachePreferences = myPrefs)
+        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, cachePreferences = myPrefs, reloadFeatureFlags = false)
 
         sut.group("theType", "theKey", groupProps)
 
