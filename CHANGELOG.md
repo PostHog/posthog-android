@@ -1,5 +1,9 @@
 ## Next
 
+## 3.1.13 - 2024-03-01
+
+- fix do not allow nullable `sessionId` ([#105](https://github.com/PostHog/posthog-android/pull/105))
+
 ## 3.1.12 - 2024-02-29
 
 - fix merge groups for events ([#105](https://github.com/PostHog/posthog-android/pull/105))
