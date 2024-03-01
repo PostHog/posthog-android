@@ -45,7 +45,7 @@ public class PostHog private constructor(
     private val groupsLock = Any()
 
     // do not move to companion object, otherwise sessionId will be null
-    private val sessionIdNone = UUID(0, 0)
+//    private val sessionIdNone = UUID(0, 0)
 
     private var sessionId = sessionIdNone
     private val featureFlagsCalledLock = Any()
@@ -321,59 +321,63 @@ public class PostHog private constructor(
         userPropertiesSetOnce: Map<String, Any>?,
         groupProperties: Map<String, Any>?,
     ) {
-        if (!isEnabled()) {
-            return
+        try {
+            if (!isEnabled()) {
+                return
+            }
+            if (config?.optOut == true) {
+                config?.logger?.log("PostHog is in OptOut state.")
+                return
+            }
+
+            val newDistinctId = distinctId ?: this.distinctId
+
+            if (newDistinctId.isBlank()) {
+                config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
+                return
+            }
+
+            var snapshotEvent = false
+            if (event == "\$snapshot") {
+                snapshotEvent = true
+            }
+
+            var groupIdentify = false
+            if (event == GROUP_IDENTIFY) {
+                groupIdentify = true
+            }
+
+            val mergedProperties = buildProperties(
+                newDistinctId,
+                properties = properties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groupProperties = groupProperties,
+                // only append shared props if not a snapshot event
+                appendSharedProps = !snapshotEvent,
+                // only append groups if not a group identify event
+                appendGroups = !groupIdentify,
+            )
+
+            // sanitize the properties or fallback to the original properties
+            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
+
+            val postHogEvent = PostHogEvent(
+                event,
+                newDistinctId,
+                properties = sanitizedProperties,
+            )
+
+            // Replay has its own queue
+            if (snapshotEvent) {
+                replayQueue?.add(postHogEvent)
+                return
+            }
+
+            queue?.add(postHogEvent)
+        } catch (e: Throwable) {
+            config?.logger?.log("Capture failed: $e.")
         }
-        if (config?.optOut == true) {
-            config?.logger?.log("PostHog is in OptOut state.")
-            return
-        }
-
-        val newDistinctId = distinctId ?: this.distinctId
-
-        if (newDistinctId.isBlank()) {
-            config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
-            return
-        }
-
-        var snapshotEvent = false
-        if (event == "\$snapshot") {
-            snapshotEvent = true
-        }
-
-        var groupIdentify = false
-        if (event == GROUP_IDENTIFY) {
-            groupIdentify = true
-        }
-
-        val mergedProperties = buildProperties(
-            newDistinctId,
-            properties = properties,
-            userProperties = userProperties,
-            userPropertiesSetOnce = userPropertiesSetOnce,
-            groupProperties = groupProperties,
-            // only append shared props if not a snapshot event
-            appendSharedProps = !snapshotEvent,
-            // only append groups if not a group identify event
-            appendGroups = !groupIdentify,
-        )
-
-        // sanitize the properties or fallback to the original properties
-        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
-
-        val postHogEvent = PostHogEvent(
-            event,
-            newDistinctId,
-            properties = sanitizedProperties,
-        )
-
-        // Replay has its own queue
-        if (snapshotEvent) {
-            replayQueue?.add(postHogEvent)
-            return
-        }
-
-        queue?.add(postHogEvent)
     }
 
     public override fun optIn() {
@@ -682,6 +686,7 @@ public class PostHog private constructor(
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
+        private val sessionIdNone = UUID(0, 0)
 
         private const val GROUP_IDENTIFY = "\$groupidentify"
 
