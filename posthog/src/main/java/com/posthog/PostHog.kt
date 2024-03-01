@@ -45,7 +45,7 @@ public class PostHog private constructor(
     private val groupsLock = Any()
 
     // do not move to companion object, otherwise sessionId will be null
-//    private val sessionIdNone = UUID(0, 0)
+    private val sessionIdNone = UUID(0, 0)
 
     private var sessionId = sessionIdNone
     private val featureFlagsCalledLock = Any()
@@ -686,7 +686,6 @@ public class PostHog private constructor(
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
-        private val sessionIdNone = UUID(0, 0)
 
         private const val GROUP_IDENTIFY = "\$groupidentify"
 
