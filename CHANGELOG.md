@@ -2,7 +2,7 @@
 
 ## 3.1.13 - 2024-03-01
 
-- fix do not allow nullable `sessionId` ([#105](https://github.com/PostHog/posthog-android/pull/105))
+- fix do not allow nullable `sessionId` ([#107](https://github.com/PostHog/posthog-android/pull/107))
 
 ## 3.1.12 - 2024-02-29
 
