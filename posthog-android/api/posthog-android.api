@@ -36,6 +36,10 @@ public final class com/posthog/android/internal/MainHandler {
 	public final fun getMainLooper ()Landroid/os/Looper;
 }
 
+public abstract interface class com/posthog/android/replay/PostHogDrawableConverter {
+	public abstract fun convert (Landroid/graphics/drawable/Drawable;)Landroid/graphics/Bitmap;
+}
+
 public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration {
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
 	public fun install ()V
@@ -44,12 +48,14 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 
 public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public fun <init> ()V
-	public fun <init> (ZZZ)V
-	public synthetic fun <init> (ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;)V
+	public synthetic fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureLogcat ()Z
+	public final fun getDrawableConverter ()Lcom/posthog/android/replay/PostHogDrawableConverter;
 	public final fun getMaskAllImages ()Z
 	public final fun getMaskAllTextInputs ()Z
 	public final fun setCaptureLogcat (Z)V
+	public final fun setDrawableConverter (Lcom/posthog/android/replay/PostHogDrawableConverter;)V
 	public final fun setMaskAllImages (Z)V
 	public final fun setMaskAllTextInputs (Z)V
 }
