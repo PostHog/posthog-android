@@ -545,7 +545,16 @@ public class PostHogReplayIntegration(
             type = "image"
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here for already captured images
-                base64 = view.drawable?.copy(view.resources)?.base64(view.width, view.height)
+                view.drawable?.let { drawable ->
+                    // IconicsDrawable always return null to copy so we fallback to the original one
+                    val drawableCopy = drawable.copy(view.resources) ?: drawable
+                    val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(drawableCopy)
+                    base64 = if (convertedBitmap != null) {
+                        convertedBitmap.base64()
+                    } else {
+                        drawableCopy.base64(view.width, view.height)
+                    }
+                }
             }
         }
 
@@ -674,6 +683,11 @@ public class PostHogReplayIntegration(
     }
 
     private fun Drawable.base64(width: Int, height: Int): String? {
+//        val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(this)
+//        if (convertedBitmap != null) {
+//            return convertedBitmap.base64()
+//        }
+
         when (this) {
             is BitmapDrawable -> {
                 try {

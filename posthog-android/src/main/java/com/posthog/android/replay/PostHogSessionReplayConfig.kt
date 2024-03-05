@@ -24,4 +24,12 @@ public class PostHogSessionReplayConfig(
      */
     @PostHogExperimental
     public var captureLogcat: Boolean = true,
+
+    /**
+     * Converts custom Drawable to Bitmap
+     * By default PostHog tries to convert the Drawable to Bitmap, the supported types are
+     * BitmapDrawable, ColorDrawable, GradientDrawable, InsetDrawable, LayerDrawable, RippleDrawable
+     */
+    @PostHogExperimental
+    public var drawableConverter: PostHogDrawableConverter? = null,
 )
