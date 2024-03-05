@@ -1,6 +1,7 @@
 ## Next
 
 - recording: fix issue with nullable hint ([#109](https://github.com/PostHog/posthog-android/pull/109))
+- recording: adds `drawableConverter` option to convert custom Drawable to Bitmap ([#110](https://github.com/PostHog/posthog-android/pull/110))
 
 ## 3.1.13 - 2024-03-01
 
