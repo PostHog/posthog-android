@@ -1,5 +1,7 @@
 ## Next
 
+- recording: fix issue with nullable hint ([#96](https://github.com/PostHog/posthog-android/pull/96))
+
 ## 3.1.13 - 2024-03-01
 
 - fix do not allow nullable `sessionId` ([#107](https://github.com/PostHog/posthog-android/pull/107))
