@@ -1,6 +1,6 @@
 ## Next
 
-- recording: fix issue with nullable hint ([#96](https://github.com/PostHog/posthog-android/pull/96))
+- recording: fix issue with nullable hint ([#109](https://github.com/PostHog/posthog-android/pull/109))
 
 ## 3.1.13 - 2024-03-01
 
