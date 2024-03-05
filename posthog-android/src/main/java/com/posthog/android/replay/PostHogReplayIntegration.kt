@@ -683,11 +683,6 @@ public class PostHogReplayIntegration(
     }
 
     private fun Drawable.base64(width: Int, height: Int): String? {
-//        val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(this)
-//        if (convertedBitmap != null) {
-//            return convertedBitmap.base64()
-//        }
-
         when (this) {
             is BitmapDrawable -> {
                 try {
