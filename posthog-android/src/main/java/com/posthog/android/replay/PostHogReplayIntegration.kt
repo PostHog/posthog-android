@@ -397,21 +397,21 @@ public class PostHogReplayIntegration(
         var value: Any? = null
         // button inherits from textview
         if (view is TextView) {
-            val viewText = view.text
+            val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
                 text = if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
-                    view.text.toString()
+                    viewText
                 } else {
-                    view.text.toString().mask()
+                    viewText.mask()
                 }
             }
 
-            val hint = view.hint
+            val hint = view.hint?.toString()
             if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
                 text = if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
-                    view.hint.toString()
+                    hint
                 } else {
-                    view.hint.toString().mask()
+                    hint.mask()
                 }
             }
 
