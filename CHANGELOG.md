@@ -1,6 +1,6 @@
 ## Next
 
-- recording: do not capture password content even if mask is off ([#109](https://github.com/PostHog/posthog-android/pull/109))
+- recording: do not capture password content even if mask is off ([#111](https://github.com/PostHog/posthog-android/pull/111))
 
 ## 3.1.14 - 2024-03-05
 
