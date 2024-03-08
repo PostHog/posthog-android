@@ -514,9 +514,9 @@ public class PostHogReplayIntegration(
         }
 
         if (view is EditText) {
-            value = text
             type = "input"
             inputType = "text_area"
+            value = text
             text = null
         }
         var options: List<String>? = null
