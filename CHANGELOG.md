@@ -1,5 +1,7 @@
 ## Next
 
+- recording: do not capture password content even if mask is off ([#109](https://github.com/PostHog/posthog-android/pull/109))
+
 ## 3.1.14 - 2024-03-05
 
 - recording: fix issue with nullable hint ([#109](https://github.com/PostHog/posthog-android/pull/109))

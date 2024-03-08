@@ -16,6 +16,7 @@ import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
+import android.text.InputType
 import android.util.Base64
 import android.util.TypedValue
 import android.view.Gravity
@@ -80,6 +81,13 @@ public class PostHogReplayIntegration(
 ) : PostHogIntegration {
 
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
+
+    private val passwordInputTypes = listOf(
+        InputType.TYPE_TEXT_VARIATION_PASSWORD,
+        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+        InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+        InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+    )
 
     private val executor by lazy {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
@@ -399,7 +407,9 @@ public class PostHogReplayIntegration(
         if (view is TextView) {
             val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
-                text = if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                // inputType is 0-based
+                val passType = passwordInputTypes.contains(view.inputType - 1)
+                text = if (!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
                     viewText
                 } else {
                     viewText.mask()
@@ -504,9 +514,9 @@ public class PostHogReplayIntegration(
         }
 
         if (view is EditText) {
+            value = text
             type = "input"
             inputType = "text_area"
-            value = text
             text = null
         }
         var options: List<String>? = null
