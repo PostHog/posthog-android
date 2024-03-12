@@ -1,5 +1,7 @@
 ## Next
 
+fix: add replay props only if replay is enabled ([#112](https://github.com/PostHog/posthog-android/pull/112))
+
 ## 3.1.15 - 2024-03-08
 
 - recording: do not capture password text even if masking is off ([#111](https://github.com/PostHog/posthog-android/pull/111))

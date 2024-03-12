@@ -258,10 +258,13 @@ public class PostHog private constructor(
 
         synchronized(sessionLock) {
             if (sessionId != sessionIdNone) {
-                props["\$session_id"] = sessionId.toString()
-                // Session replay requires $window_id, so we set as the same as $session_id.
-                // the backend might fallback to $session_id if $window_id is not present next.
-                props["\$window_id"] = sessionId.toString()
+                val sessionId = sessionId.toString()
+                props["\$session_id"] = sessionId
+                if (config?.sessionReplay == true) {
+                    // Session replay requires $window_id, so we set as the same as $session_id.
+                    // the backend might fallback to $session_id if $window_id is not present next.
+                    props["\$window_id"] = sessionId
+                }
             }
         }
 
@@ -287,7 +290,7 @@ public class PostHog private constructor(
         // Replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
-        if (propDistinctId.isNullOrBlank() && !appendSharedProps) {
+        if (!appendSharedProps && config?.sessionReplay == true && propDistinctId.isNullOrBlank()) {
             // distinctId is already validated hence not empty or blank
             props["distinct_id"] = distinctId
         }
