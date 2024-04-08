@@ -488,7 +488,20 @@ public class PostHogReplayIntegration(
                 }
             }
 
-            // TODO: the 4 possible drawables (view.compoundDrawables)
+            // left, top, right, bottom
+            view.compoundDrawables.forEachIndexed { index, drawable ->
+                drawable?.let {
+                    val base64 = it.cloneAndToBase64(view)
+                    // TODO: the 2 other possible drawables (top and bottom are not common)
+                    when (index) {
+                        0 -> style.iconLeft = base64
+//                        1 -> style.iconTop = base64
+                        2 -> style.iconRight = base64
+//                        3 -> style.iconBottom = base64
+                    }
+                }
+            }
+
             // Do not set padding if the text is centered, otherwise the padding will be off
             if (style.verticalAlign != "center") {
                 style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
@@ -562,14 +575,7 @@ public class PostHogReplayIntegration(
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
-                    // IconicsDrawable always return null to copy so we fallback to the original one
-                    val drawableCopy = drawable.copy(view.resources) ?: drawable
-                    val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(drawableCopy)
-                    base64 = if (convertedBitmap != null) {
-                        convertedBitmap.base64()
-                    } else {
-                        drawableCopy.base64(view.width, view.height)
-                    }
+                    base64 = drawable.cloneAndToBase64(view)
                     style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
                     style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
                     style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
@@ -645,6 +651,18 @@ public class PostHogReplayIntegration(
             options = options,
             max = max,
         )
+    }
+
+    private fun Drawable.cloneAndToBase64(view: View): String? {
+        // IconicsDrawable always return null to copy so we fallback to the original one
+        val drawableCopy = copy(view.resources) ?: this
+        val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(drawableCopy)
+        val base64 = if (convertedBitmap != null) {
+            convertedBitmap.base64()
+        } else {
+            drawableCopy.base64(view.width, view.height)
+        }
+        return base64
     }
 
     private fun Drawable.toRGBColor(): String? {
