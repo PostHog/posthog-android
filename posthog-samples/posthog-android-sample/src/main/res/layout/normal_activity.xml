@@ -46,13 +46,13 @@
     <!--            &lt;!&ndash;        android:layout_height="5dp"&ndash;&gt;-->
     <!--            &lt;!&ndash;        android:background="#4E4B4F" />&ndash;&gt;-->
 
-                <EditText
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="EditText text"
-                    android:inputType="textVisiblePassword"
-                    android:textColor="#FF0000"
-                    />
+<!--                <EditText-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="EditText text"-->
+<!--                    android:inputType="textVisiblePassword"-->
+<!--                    android:textColor="#FF0000"-->
+<!--                    />-->
 
 <!--                <Spinner-->
 <!--                    android:layout_width="wrap_content"-->
@@ -73,22 +73,22 @@
     <!--                android:text="CheckBox false"-->
     <!--                />-->
 
-    <!--            <RadioGroup-->
-    <!--                android:layout_width="wrap_content"-->
-    <!--                android:layout_height="wrap_content"-->
-    <!--                android:orientation="vertical"-->
-    <!--                >-->
-    <!--                <RadioButton-->
-    <!--                    android:layout_width="wrap_content"-->
-    <!--                    android:layout_height="wrap_content"-->
-    <!--                    android:checked="true"-->
-    <!--                    android:text="Yes" />-->
+                <RadioGroup
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    >
+                    <RadioButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="Yes" />
 
-    <!--                <RadioButton-->
-    <!--                    android:layout_width="wrap_content"-->
-    <!--                    android:layout_height="wrap_content"-->
-    <!--                    android:text="No" />-->
-    <!--            </RadioGroup>-->
+                    <RadioButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="No" />
+                </RadioGroup>
     <!--        </LinearLayout>-->
     <!--    </ScrollView>-->
 

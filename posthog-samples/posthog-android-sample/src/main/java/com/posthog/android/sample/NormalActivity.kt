@@ -21,9 +21,9 @@ class NormalActivity : ComponentActivity() {
 //        val webview = findViewById<WebView>(R.id.webview)
 //        webview.loadUrl("https://www.google.com")
 
-        val button = findViewById<Button>(R.id.button)
+//        val button = findViewById<Button>(R.id.button)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)
-        button.setOnClickListener {
+//        button.setOnClickListener {
 //            Log.e("MyApp", "Clicked on button ${button.text}")
 //            button.text = "Test: ${(0..10).random()}"
 //            if (imvAndroid.visibility == View.VISIBLE) {
@@ -33,13 +33,13 @@ class NormalActivity : ComponentActivity() {
 //            }
 //            startActivity(Intent(this, NothingActivity::class.java))
 //            finish()
-            Thread {
-                client.newCall(
-                    okhttp3.Request.Builder()
-                        .url("https://google.com")
-                        .build(),
-                ).execute().closeQuietly()
-            }.start()
-        }
+//            Thread {
+//                client.newCall(
+//                    okhttp3.Request.Builder()
+//                        .url("https://google.com")
+//                        .build(),
+//                ).execute().closeQuietly()
+//            }.start()
+//        }
     }
 }

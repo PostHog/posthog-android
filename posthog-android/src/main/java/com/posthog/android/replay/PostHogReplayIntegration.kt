@@ -392,10 +392,11 @@ public class PostHogReplayIntegration(
             // TODO: if its not a solid color, we need to do something else
             // probably a gradient, which is a new Drawable and we'd
             // need to handle it as a new wireframe (image most likely)
-            background.toRGBColor()?.let { color ->
+            val cloneBackground = background.copy(view.resources) ?: background
+            cloneBackground.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             } ?: run {
-                style.backgroundImage = background.base64(view.width, view.height)
+                style.backgroundImage = cloneBackground.base64(view.width, view.height)
             }
         }
 
