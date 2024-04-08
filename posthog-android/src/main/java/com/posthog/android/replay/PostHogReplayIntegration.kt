@@ -27,6 +27,7 @@ import android.view.ViewStub
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ProgressBar
@@ -428,7 +429,8 @@ public class PostHogReplayIntegration(
             type = "text"
             style.color = view.currentTextColor.toRGBColor()
 
-            if (view is Button && view !is CheckBox && view !is RadioButton && view !is Switch) {
+            // CompoundButton is a subclass of CheckBox, RadioButton, Switch, etc
+            if (view is Button && view !is CompoundButton) {
                 style.borderWidth = 1
                 style.borderColor = "#000000"
                 type = "input"
@@ -486,12 +488,16 @@ public class PostHogReplayIntegration(
                 }
             }
 
-            // TODO: the 4 possible drawables
-            // view.compoundDrawables
-            style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
-            style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
-            style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
-            style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
+            // TODO: the 4 possible drawables (view.compoundDrawables)
+            // Do not set padding if the text is centered, otherwise the padding will be off
+            if (style.verticalAlign != "center") {
+                style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
+                style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
+            }
+            if (style.horizontalAlign != "center") {
+                style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
+                style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
+            }
         }
 
         var label: String? = null
@@ -564,6 +570,10 @@ public class PostHogReplayIntegration(
                     } else {
                         drawableCopy.base64(view.width, view.height)
                     }
+                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
+                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
+                    style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
+                    style.paddingRight = view.paddingRight.densityValue(displayMetrics.density)
                 }
             }
         }
