@@ -13,7 +13,6 @@ import java.io.OutputStream
 /**
  * The class that calls the PostHog API
  * @property config the Config
- * @property dateProvider the Date provider
  */
 internal class PostHogApi(
     private val config: PostHogConfig,

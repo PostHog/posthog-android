@@ -18,7 +18,6 @@ import kotlin.math.min
  * The class that manages the events Queue
  * @property config the Config
  * @property api the API
- * @property dateProvider the Date provider
  * @property executor the Executor
  */
 internal class PostHogQueue(
