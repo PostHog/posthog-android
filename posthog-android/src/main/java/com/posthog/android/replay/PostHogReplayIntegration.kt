@@ -389,14 +389,10 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(displayMetrics.density)
         val style = RRStyle()
         view.background?.let { background ->
-            // TODO: if its not a solid color, we need to do something else
-            // probably a gradient, which is a new Drawable and we'd
-            // need to handle it as a new wireframe (image most likely)
-            val cloneBackground = background.copy(view.resources) ?: background
-            cloneBackground.toRGBColor()?.let { color ->
+            background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             } ?: run {
-                style.backgroundImage = cloneBackground.base64(view.width, view.height)
+                style.backgroundImage = background.base64(view.width, view.height)
             }
         }
 
@@ -492,7 +488,7 @@ public class PostHogReplayIntegration(
             // left, top, right, bottom
             view.compoundDrawables.forEachIndexed { index, drawable ->
                 drawable?.let {
-                    val base64 = it.cloneAndToBase64(view)
+                    val base64 = it.base64(view.width, view.height)
                     // TODO: the 2 other possible drawables (top and bottom are not common)
                     when (index) {
                         0 -> style.iconLeft = base64
@@ -577,10 +573,10 @@ public class PostHogReplayIntegration(
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
                     base64 = drawable.cloneAndToBase64(view)
-                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
-                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
-                    style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
-                    style.paddingRight = view.paddingRight.densityValue(displayMetrics.density)
+//                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
+//                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
+//                    style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
+//                    style.paddingRight = view.paddingRight.densityValue(displayMetrics.density)
                 }
             }
         }
@@ -656,47 +652,54 @@ public class PostHogReplayIntegration(
 
     private fun Drawable.cloneAndToBase64(view: View): String? {
         // IconicsDrawable always return null to copy so we fallback to the original one
-        val drawableCopy = copy(view.resources) ?: this
+        val drawableCopy = copy() ?: this
         val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(drawableCopy)
         val base64 = if (convertedBitmap != null) {
             convertedBitmap.base64()
         } else {
-            drawableCopy.base64(view.width, view.height)
+            drawableCopy.base64(view.width, view.height, cloned = true)
         }
         return base64
     }
 
     private fun Drawable.toRGBColor(): String? {
-        if (this is ColorDrawable) {
-            return this.color.toRGBColor()
-        } else if (this is RippleDrawable && numberOfLayers >= 1) {
-            try {
-                val drawable = getDrawable(0)
-                return drawable?.toRGBColor()
-            } catch (e: Throwable) {
-                // ignore
+        when (this) {
+            is ColorDrawable -> {
+                return color.toRGBColor()
             }
-        } else if (this is InsetDrawable) {
-            return drawable?.toRGBColor()
-        } else if (this is GradientDrawable) {
-            colors?.let { rgcColors ->
-                if (rgcColors.isNotEmpty()) {
-                    // Get the first color from the array
-                    val color = rgcColors[0]
 
-                    // Extract RGB values
-                    val red = Color.red(color)
-                    val green = Color.green(color)
-                    val blue = Color.blue(color)
-
-                    // Construct the RGB color
-                    val rgb = Color.rgb(red, green, blue)
-                    return rgb.toRGBColor()
+            is RippleDrawable -> {
+                try {
+                    return getFirstDrawable()?.toRGBColor()
+                } catch (e: Throwable) {
+                    // ignore
                 }
             }
-            color?.let {
-                if (it.defaultColor != -1) {
-                    return it.defaultColor.toRGBColor()
+
+            is InsetDrawable -> {
+                return drawable?.toRGBColor()
+            }
+
+            is GradientDrawable -> {
+                colors?.let { rgcColors ->
+                    if (rgcColors.isNotEmpty()) {
+                        // Get the first color from the array
+                        val color = rgcColors[0]
+
+                        // Extract RGB values
+                        val red = Color.red(color)
+                        val green = Color.green(color)
+                        val blue = Color.blue(color)
+
+                        // Construct the RGB color
+                        val rgb = Color.rgb(red, green, blue)
+                        return rgb.toRGBColor()
+                    }
+                }
+                color?.let {
+                    if (it.defaultColor != -1) {
+                        return it.defaultColor.toRGBColor()
+                    }
                 }
             }
         }
@@ -704,9 +707,9 @@ public class PostHogReplayIntegration(
     }
 
     private fun Bitmap.isValid(): Boolean {
-        return !this.isRecycled &&
-            this.width > 0 &&
-            this.height > 0
+        return !isRecycled &&
+            width > 0 &&
+            height > 0
     }
 
     private fun Bitmap.base64(): String? {
@@ -721,29 +724,36 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun Drawable.base64(width: Int, height: Int): String? {
-        when (this) {
+    private fun Drawable.base64(width: Int, height: Int, cloned: Boolean = false): String? {
+        var clonedDrawable = this
+        if (!cloned) {
+            clonedDrawable = copy() ?: this
+        }
+
+        when (clonedDrawable) {
             is BitmapDrawable -> {
                 try {
-                    return bitmap.base64()
+                    return clonedDrawable.bitmap.base64()
                 } catch (_: Throwable) {
                     // ignore
                 }
             }
 
             is LayerDrawable -> {
-                return getFirstDrawable()?.base64(width, height)
+                clonedDrawable.getFirstDrawable()?.let {
+                    return it.base64(width, height)
+                }
             }
 
             is InsetDrawable -> {
-                drawable?.let {
+                clonedDrawable.drawable?.let {
                     return it.base64(width, height)
                 }
             }
         }
 
         try {
-            return toBitmap(width, height).base64()
+            return clonedDrawable.toBitmap(width, height).base64()
         } catch (_: Throwable) {
             // ignore
         }
@@ -751,9 +761,12 @@ public class PostHogReplayIntegration(
     }
 
     private fun LayerDrawable.getFirstDrawable(): Drawable? {
-        if (numberOfLayers > 0) {
-            return getDrawable(0)
+        for(i in 0 until numberOfLayers) {
+            getDrawable(i)?.let {
+                return it
+            }
         }
+
         return null
     }
 
@@ -842,15 +855,15 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isNoCapture(maskInput: Boolean): Boolean {
-        return (this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
+        return (tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
     }
 
-    private fun Drawable.copy(resources: Resources): Drawable? {
-        return constantState?.newDrawable(resources)
+    private fun Drawable.copy(): Drawable? {
+        return constantState?.newDrawable()
     }
 
     private fun String.mask(): String {
-        return "*".repeat(this.length)
+        return "*".repeat(length)
     }
 
     @SuppressLint("AnnotateVersionCheck")
