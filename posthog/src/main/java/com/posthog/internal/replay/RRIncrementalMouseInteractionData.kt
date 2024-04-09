@@ -9,6 +9,7 @@ public class RRIncrementalMouseInteractionData(
     public val x: Int,
     public val y: Int,
     public val source: RRIncrementalSource = RRIncrementalSource.MouseInteraction,
-    public val pointerType: Int = 2, // always Touch
+    // always Touch
+    public val pointerType: Int = 2,
     public val positions: List<RRMousePosition>? = null,
 )
