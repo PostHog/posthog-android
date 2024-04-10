@@ -60,7 +60,7 @@ internal class PostHogSerializerTest {
               "timestamp": "2023-09-20T11:58:49.000Z",
               "uuid": "8c04e5c1-8f6e-4002-96fd-1804799b6ffe"
             }
-            """.trimIndent()
+            """.replace(" ", "").replace("\n", "")
 
         assertEquals(expectedJson, file.readText())
     }
@@ -106,7 +106,7 @@ internal class PostHogSerializerTest {
               ],
               "sent_at": "2023-09-20T11:58:49.000Z"
             }
-            """.trimIndent()
+            """.replace(" ", "").replace("\n", "")
 
         assertEquals(expectedJson, file.readText())
     }

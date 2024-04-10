@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogConfigTest {
-    private val config = PostHogConfig(apiKey)
+    private val config = PostHogConfig(API_KEY)
 
     @Test
     fun `host is set app posthog com by default`() {
