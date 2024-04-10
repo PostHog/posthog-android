@@ -761,7 +761,7 @@ public class PostHogReplayIntegration(
     }
 
     private fun LayerDrawable.getFirstDrawable(): Drawable? {
-        for(i in 0 until numberOfLayers) {
+        for (i in 0 until numberOfLayers) {
             getDrawable(i)?.let {
                 return it
             }
