@@ -572,7 +572,7 @@ public class PostHogReplayIntegration(
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
-                    base64 = drawable.cloneAndToBase64(view)
+                    base64 = drawable.base64(view.width, view.height)
 //                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
 //                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
 //                    style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
@@ -650,16 +650,8 @@ public class PostHogReplayIntegration(
         )
     }
 
-    private fun Drawable.cloneAndToBase64(view: View): String? {
-        // IconicsDrawable always return null to copy so we fallback to the original one
-        val drawableCopy = copy() ?: this
-        val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(drawableCopy)
-        val base64 = if (convertedBitmap != null) {
-            convertedBitmap.base64()
-        } else {
-            drawableCopy.base64(view.width, view.height, cloned = true)
-        }
-        return base64
+    private fun runDrawableConverter(drawable: Drawable): Bitmap? {
+        return config.sessionReplayConfig.drawableConverter?.convert(drawable)
     }
 
     private fun Drawable.toRGBColor(): String? {
@@ -725,9 +717,14 @@ public class PostHogReplayIntegration(
     }
 
     private fun Drawable.base64(width: Int, height: Int, cloned: Boolean = false): String? {
+        val convertedBitmap = runDrawableConverter(this)
+        if (convertedBitmap != null) {
+            return convertedBitmap.base64()
+        }
+
         var clonedDrawable = this
         if (!cloned) {
-            clonedDrawable = copy() ?: this
+            clonedDrawable = copy() ?: return null
         }
 
         when (clonedDrawable) {
