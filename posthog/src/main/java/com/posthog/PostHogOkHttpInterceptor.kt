@@ -7,7 +7,6 @@ import okhttp3.Request
 import okhttp3.Response
 
 public class PostHogOkHttpInterceptor(private val captureNetworkTelemetry: Boolean = true) : Interceptor {
-
     private val isSessionReplayEnabled: Boolean
         get() = PostHog.getConfig<PostHogConfig>()?.sessionReplay == true && PostHog.isSessionActive()
 
@@ -25,7 +24,10 @@ public class PostHogOkHttpInterceptor(private val captureNetworkTelemetry: Boole
         }
     }
 
-    private fun captureNetworkEvent(request: Request, response: Response) {
+    private fun captureNetworkEvent(
+        request: Request,
+        response: Response,
+    ) {
         // do not capture network logs if session replay is disabled
         if (!captureNetworkTelemetry || !isSessionReplayEnabled) {
             return

@@ -18,7 +18,6 @@ internal class PostHogFeatureFlags(
     private val api: PostHogApi,
     private val executor: ExecutorService,
 ) {
-
     private var isLoadingFeatureFlags = AtomicBoolean(false)
 
     private val featureFlagsLock = Any()
@@ -111,16 +110,18 @@ internal class PostHogFeatureFlags(
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
             @Suppress("UNCHECKED_CAST")
-            val flags = preferences.getValue(
-                FEATURE_FLAGS,
-                mapOf<String, Any>(),
-            ) as? Map<String, Any> ?: mapOf()
+            val flags =
+                preferences.getValue(
+                    FEATURE_FLAGS,
+                    mapOf<String, Any>(),
+                ) as? Map<String, Any> ?: mapOf()
 
             @Suppress("UNCHECKED_CAST")
-            val payloads = preferences.getValue(
-                FEATURE_FLAGS_PAYLOAD,
-                mapOf<String, Any?>(),
-            ) as? Map<String, Any?> ?: mapOf()
+            val payloads =
+                preferences.getValue(
+                    FEATURE_FLAGS_PAYLOAD,
+                    mapOf<String, Any?>(),
+                ) as? Map<String, Any?> ?: mapOf()
 
             synchronized(featureFlagsLock) {
                 this.featureFlags = flags
@@ -152,7 +153,10 @@ internal class PostHogFeatureFlags(
         return parsedPayloads
     }
 
-    fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
+    fun isFeatureEnabled(
+        key: String,
+        defaultValue: Boolean,
+    ): Boolean {
         if (!isFeatureFlagsLoaded) {
             loadFeatureFlagsFromCache()
         }
@@ -174,7 +178,11 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun readFeatureFlag(key: String, defaultValue: Any?, flags: Map<String, Any?>?): Any? {
+    private fun readFeatureFlag(
+        key: String,
+        defaultValue: Any?,
+        flags: Map<String, Any?>?,
+    ): Any? {
         if (!isFeatureFlagsLoaded) {
             loadFeatureFlagsFromCache()
         }
@@ -187,11 +195,17 @@ internal class PostHogFeatureFlags(
         return value ?: defaultValue
     }
 
-    fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
+    fun getFeatureFlag(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         return readFeatureFlag(key, defaultValue, featureFlags)
     }
 
-    fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
+    fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
 

@@ -80,15 +80,15 @@ public class PostHogReplayIntegration(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
 ) : PostHogIntegration {
-
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
-    private val passwordInputTypes = listOf(
-        InputType.TYPE_TEXT_VARIATION_PASSWORD,
-        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
-        InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
-        InputType.TYPE_NUMBER_VARIATION_PASSWORD,
-    )
+    private val passwordInputTypes =
+        listOf(
+            InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+            InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+        )
 
     private val executor by lazy {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
@@ -101,55 +101,60 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = config.sessionReplay && PostHog.isSessionActive()
 
-    private val onRootViewsChangedListener = OnRootViewsChangedListener { view, added ->
-        try {
-            if (added) {
-                view.phoneWindow?.let { window ->
-                    if (view.windowAttachCount == 0) {
-                        window.onDecorViewReady { decorView ->
-                            try {
-                                val listener = decorView.onNextDraw(mainHandler, config.dateProvider) {
-                                    if (!isSessionReplayEnabled) {
-                                        return@onNextDraw
-                                    }
-                                    val timestamp = config.dateProvider.currentTimeMillis()
+    private val onRootViewsChangedListener =
+        OnRootViewsChangedListener { view, added ->
+            try {
+                if (added) {
+                    view.phoneWindow?.let { window ->
+                        if (view.windowAttachCount == 0) {
+                            window.onDecorViewReady { decorView ->
+                                try {
+                                    val listener =
+                                        decorView.onNextDraw(mainHandler, config.dateProvider) {
+                                            if (!isSessionReplayEnabled) {
+                                                return@onNextDraw
+                                            }
+                                            val timestamp = config.dateProvider.currentTimeMillis()
 
-                                    executor.submit {
-                                        try {
-                                            generateSnapshot(WeakReference(decorView), timestamp)
-                                        } catch (e: Throwable) {
-                                            config.logger.log("Session Replay generateSnapshot failed: $e.")
+                                            executor.submit {
+                                                try {
+                                                    generateSnapshot(WeakReference(decorView), timestamp)
+                                                } catch (e: Throwable) {
+                                                    config.logger.log("Session Replay generateSnapshot failed: $e.")
+                                                }
+                                            }
                                         }
-                                    }
-                                }
 
-                                val status = ViewTreeSnapshotStatus(listener)
-                                decorViews[decorView] = status
-                            } catch (e: Throwable) {
-                                config.logger.log("Session Replay onDecorViewReady failed: $e.")
+                                    val status = ViewTreeSnapshotStatus(listener)
+                                    decorViews[decorView] = status
+                                } catch (e: Throwable) {
+                                    config.logger.log("Session Replay onDecorViewReady failed: $e.")
+                                }
+                            }
+
+                            window.touchEventInterceptors += onTouchEventListener
+                            // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
+                            // window.keyEventInterceptors
+                        }
+                    }
+                } else {
+                    view.phoneWindow?.let { window ->
+                        window.peekDecorView()?.let { decorView ->
+                            decorViews[decorView]?.let { status ->
+                                cleanSessionState(decorView, status)
                             }
                         }
-
-                        window.touchEventInterceptors += onTouchEventListener
-                        // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
-                        // window.keyEventInterceptors
                     }
                 }
-            } else {
-                view.phoneWindow?.let { window ->
-                    window.peekDecorView()?.let { decorView ->
-                        decorViews[decorView]?.let { status ->
-                            cleanSessionState(decorView, status)
-                        }
-                    }
-                }
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
             }
-        } catch (e: Throwable) {
-            config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
         }
-    }
 
-    private fun detectKeyboardVisibility(view: View, visible: Boolean): Pair<Boolean, RRCustomEvent?> {
+    private fun detectKeyboardVisibility(
+        view: View,
+        visible: Boolean,
+    ): Pair<Boolean, RRCustomEvent?> {
         val insets = ViewCompat.getRootWindowInsets(view) ?: return Pair(visible, null)
         val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
         if (visible == imeVisible) {
@@ -165,36 +170,42 @@ public class PostHogReplayIntegration(
             payload["open"] = false
         }
 
-        val event = RRCustomEvent(
-            tag = "keyboard",
-            payload = payload,
-            config.dateProvider.currentTimeMillis(),
-        )
+        val event =
+            RRCustomEvent(
+                tag = "keyboard",
+                payload = payload,
+                config.dateProvider.currentTimeMillis(),
+            )
 
         return Pair(imeVisible, event)
     }
 
-    private val onTouchEventListener = OnTouchEventListener { motionEvent ->
-        if (!isSessionReplayEnabled) {
-            return@OnTouchEventListener
-        }
-        motionEvent.eventTime
-        val timestamp = config.dateProvider.currentTimeMillis()
-        when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
-            MotionEvent.ACTION_DOWN -> {
-                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+    private val onTouchEventListener =
+        OnTouchEventListener { motionEvent ->
+            if (!isSessionReplayEnabled) {
+                return@OnTouchEventListener
             }
-            MotionEvent.ACTION_UP -> {
-                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
-            }
-            // TODO: ACTION_MOVE requires the positions arrays caching since it triggers multiple times
+            motionEvent.eventTime
+            val timestamp = config.dateProvider.currentTimeMillis()
+            when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
+                MotionEvent.ACTION_DOWN -> {
+                    generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+                }
+                MotionEvent.ACTION_UP -> {
+                    generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                }
+                // TODO: ACTION_MOVE requires the positions arrays caching since it triggers multiple times
 //            MotionEvent.ACTION_MOVE -> {
 //                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchMoveDeparted)
 //            }
+            }
         }
-    }
 
-    private fun generateMouseInteractions(timestamp: Long, motionEvent: MotionEvent, type: RRMouseInteraction) {
+    private fun generateMouseInteractions(
+        timestamp: Long,
+        motionEvent: MotionEvent,
+        type: RRMouseInteraction,
+    ) {
         val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
         for (index in 0 until motionEvent.pointerCount) {
             // if the id is 0, BE transformer will set it to the virtual bodyId
@@ -202,12 +213,13 @@ public class PostHogReplayIntegration(
             val absX = motionEvent.getRawXCompat(index).toInt().densityValue(displayMetrics.density)
             val absY = motionEvent.getRawYCompat(index).toInt().densityValue(displayMetrics.density)
 
-            val mouseInteractionData = RRIncrementalMouseInteractionData(
-                id = id,
-                type = type,
-                x = absX,
-                y = absY,
-            )
+            val mouseInteractionData =
+                RRIncrementalMouseInteractionData(
+                    id = id,
+                    type = type,
+                    x = absX,
+                    y = absY,
+                )
             val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
             mouseInteractions.add(mouseInteraction)
         }
@@ -221,7 +233,10 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
+    private fun cleanSessionState(
+        view: View,
+        status: ViewTreeSnapshotStatus,
+    ) {
         view.viewTreeObserver?.let { viewTreeObserver ->
             if (viewTreeObserver.isAlive) {
                 mainHandler.handler.post {
@@ -272,7 +287,10 @@ public class PostHogReplayIntegration(
         }?.toRGBColor()
     }
 
-    private fun generateSnapshot(viewRef: WeakReference<View>, timestamp: Long) {
+    private fun generateSnapshot(
+        viewRef: WeakReference<View>,
+        timestamp: Long,
+    ) {
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
 
@@ -293,29 +311,35 @@ public class PostHogReplayIntegration(
 
             val screenSizeInfo = view.context.screenSize() ?: return
 
-            val metaEvent = RRMetaEvent(
-                href = title,
-                width = screenSizeInfo.width,
-                height = screenSizeInfo.height,
-                timestamp = timestamp,
-            )
+            val metaEvent =
+                RRMetaEvent(
+                    href = title,
+                    width = screenSizeInfo.width,
+                    height = screenSizeInfo.height,
+                    timestamp = timestamp,
+                )
             events.add(metaEvent)
             status.sentMetaEvent = true
         }
 
         if (!status.sentFullSnapshot) {
-            val event = RRFullSnapshotEvent(
-                listOf(wireframe),
-                initialOffsetTop = 0,
-                initialOffsetLeft = 0,
-                timestamp = timestamp,
-            )
+            val event =
+                RRFullSnapshotEvent(
+                    listOf(wireframe),
+                    initialOffsetTop = 0,
+                    initialOffsetLeft = 0,
+                    timestamp = timestamp,
+                )
             events.add(event)
             status.sentFullSnapshot = true
         } else {
             val lastSnapshot = status.lastSnapshot
             val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
-            val (addedItems, removedItems, updatedItems) = findAddedAndRemovedItems(lastSnapshots.flattenChildren(), listOf(wireframe).flattenChildren())
+            val (addedItems, removedItems, updatedItems) =
+                findAddedAndRemovedItems(
+                    lastSnapshots.flattenChildren(),
+                    listOf(wireframe).flattenChildren(),
+                )
 
             val addedNodes = mutableListOf<RRMutatedNode>()
             addedItems.forEach {
@@ -336,16 +360,18 @@ public class PostHogReplayIntegration(
             }
 
             if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty() || updatedNodes.isNotEmpty()) {
-                val incrementalMutationData = RRIncrementalMutationData(
-                    adds = addedNodes.ifEmpty { null },
-                    removes = removedNodes.ifEmpty { null },
-                    updates = updatedNodes.ifEmpty { null },
-                )
+                val incrementalMutationData =
+                    RRIncrementalMutationData(
+                        adds = addedNodes.ifEmpty { null },
+                        removes = removedNodes.ifEmpty { null },
+                        updates = updatedNodes.ifEmpty { null },
+                    )
 
-                val incrementalSnapshotEvent = RRIncrementalSnapshotEvent(
-                    mutationData = incrementalMutationData,
-                    timestamp = timestamp,
-                )
+                val incrementalSnapshotEvent =
+                    RRIncrementalSnapshotEvent(
+                        mutationData = incrementalMutationData,
+                        timestamp = timestamp,
+                    )
                 events.add(incrementalSnapshotEvent)
             }
         }
@@ -407,20 +433,22 @@ public class PostHogReplayIntegration(
             if (!viewText.isNullOrEmpty()) {
                 // inputType is 0-based
                 val passType = passwordInputTypes.contains(view.inputType - 1)
-                text = if (!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
-                    viewText
-                } else {
-                    viewText.mask()
-                }
+                text =
+                    if (!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                        viewText
+                    } else {
+                        viewText.mask()
+                    }
             }
 
             val hint = view.hint?.toString()
             if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
-                text = if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
-                    hint
-                } else {
-                    hint.mask()
-                }
+                text =
+                    if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                        hint
+                    } else {
+                        hint.mask()
+                    }
             }
 
             type = "text"
@@ -463,20 +491,22 @@ public class PostHogReplayIntegration(
                     style.horizontalAlign = "left"
                 }
                 View.TEXT_ALIGNMENT_GRAVITY -> {
-                    val horizontalAlignment = when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
-                        Gravity.START, Gravity.LEFT -> "left"
-                        Gravity.END, Gravity.RIGHT -> "right"
-                        Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
-                        else -> "left"
-                    }
+                    val horizontalAlignment =
+                        when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
+                            Gravity.START, Gravity.LEFT -> "left"
+                            Gravity.END, Gravity.RIGHT -> "right"
+                            Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
+                            else -> "left"
+                        }
                     style.horizontalAlign = horizontalAlignment
 
-                    val verticalAlignment = when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
-                        Gravity.TOP -> "top"
-                        Gravity.BOTTOM -> "bottom"
-                        Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
-                        else -> "center"
-                    }
+                    val verticalAlignment =
+                        when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
+                            Gravity.TOP -> "top"
+                            Gravity.BOTTOM -> "bottom"
+                            Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
+                            else -> "center"
+                        }
                     style.verticalAlign = verticalAlignment
                 }
                 else -> {
@@ -541,11 +571,12 @@ public class PostHogReplayIntegration(
             inputType = "select"
             val mask = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
             view.selectedItem?.let {
-                val theValue = if (!mask) {
-                    it.toString()
-                } else {
-                    it.toString().mask()
-                }
+                val theValue =
+                    if (!mask) {
+                        it.toString()
+                    } else {
+                        it.toString().mask()
+                    }
                 value = theValue
             }
 
@@ -554,11 +585,12 @@ public class PostHogReplayIntegration(
                 for (i in 0 until it.count) {
                     val item = it.getItem(i)?.toString() ?: continue
 
-                    val theItem = if (!mask) {
-                        item
-                    } else {
-                        item.mask()
-                    }
+                    val theItem =
+                        if (!mask) {
+                            item
+                        } else {
+                            item.mask()
+                        }
 
                     items.add(theItem)
                 }
@@ -585,13 +617,14 @@ public class PostHogReplayIntegration(
         if (view is ProgressBar) {
             inputType = "progress"
             type = "input"
-            val bar = if (view.isIndeterminate) {
-                "circular"
-            } else {
-                max = view.max
-                value = view.progress
-                "horizontal"
-            }
+            val bar =
+                if (view.isIndeterminate) {
+                    "circular"
+                } else {
+                    max = view.max
+                    value = view.progress
+                    "horizontal"
+                }
             style.bar = bar
         }
         if (view is RatingBar) {
@@ -716,7 +749,11 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun Drawable.base64(width: Int, height: Int, cloned: Boolean = false): String? {
+    private fun Drawable.base64(
+        width: Int,
+        height: Int,
+        cloned: Boolean = false,
+    ): String? {
         val convertedBitmap = runDrawableConverter(this)
         if (convertedBitmap != null) {
             return convertedBitmap.base64()
@@ -826,7 +863,10 @@ public class PostHogReplayIntegration(
         return Triple(addedItems, removedItems, updatedItems)
     }
 
-    private fun Drawable.toBitmap(width: Int, height: Int): Bitmap {
+    private fun Drawable.toBitmap(
+        width: Int,
+        height: Int,
+    ): Bitmap {
         val bitmap = Bitmap.createBitmap(displayMetrics, width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.MULTIPLY)

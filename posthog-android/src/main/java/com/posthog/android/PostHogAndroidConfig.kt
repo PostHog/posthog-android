@@ -13,7 +13,7 @@ import com.posthog.android.replay.PostHogSessionReplayConfig
  */
 public open class PostHogAndroidConfig(
     apiKey: String,
-    host: String = defaultHost,
+    host: String = DEFAULT_HOST,
     public var captureApplicationLifecycleEvents: Boolean = true,
     public var captureDeepLinks: Boolean = true,
     public var captureScreenViews: Boolean = true,

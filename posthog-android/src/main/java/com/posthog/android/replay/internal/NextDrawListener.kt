@@ -14,8 +14,8 @@ internal class NextDrawListener(
     dateProvider: PostHogDateProvider,
     private val onDrawCallback: () -> Unit,
 ) : ViewTreeObserver.OnDrawListener {
-
     private val debounce = Debouncer(mainHandler, dateProvider)
+
     override fun onDraw() {
         debounce.debounce {
             onDrawCallback()
@@ -35,7 +35,11 @@ internal class NextDrawListener(
 
     companion object {
         // only call if onDecorViewReady
-        internal fun View.onNextDraw(mainHandler: MainHandler, dateProvider: PostHogDateProvider, onDrawCallback: () -> Unit): NextDrawListener {
+        internal fun View.onNextDraw(
+            mainHandler: MainHandler,
+            dateProvider: PostHogDateProvider,
+            onDrawCallback: () -> Unit,
+        ): NextDrawListener {
             val nextDrawListener = NextDrawListener(this, mainHandler, dateProvider, onDrawCallback)
             nextDrawListener.safelyRegisterForNextDraw()
             return nextDrawListener

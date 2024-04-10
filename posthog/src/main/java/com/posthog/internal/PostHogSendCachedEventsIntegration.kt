@@ -48,9 +48,10 @@ internal class PostHogSendCachedEventsIntegration(
 
             var legacy: QueueFile? = null
             try {
-                legacy = QueueFile.Builder(legacyFile)
-                    .forceLegacy(true)
-                    .build()
+                legacy =
+                    QueueFile.Builder(legacyFile)
+                        .forceLegacy(true)
+                        .build()
 
                 while (!legacy.isEmpty) {
                     val events = mutableListOf<PostHogEvent>()
@@ -117,13 +118,17 @@ internal class PostHogSendCachedEventsIntegration(
             } finally {
                 try {
                     legacy?.close()
-                } catch (ignored: Throwable) {}
+                } catch (ignored: Throwable) {
+                }
             }
         }
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    private fun flushEvents(storagePrefix: String?, endpoint: PostHogApiEndpoint) {
+    private fun flushEvents(
+        storagePrefix: String?,
+        endpoint: PostHogApiEndpoint,
+    ) {
         storagePrefix.let {
             val dir = File(it, config.apiKey)
 

@@ -21,17 +21,21 @@ import java.util.Date
  */
 @PostHogInternal
 public class PostHogSerializer(private val config: PostHogConfig) {
-    public val gson: Gson = GsonBuilder().apply {
-        setObjectToNumberStrategy(GsonNumberPolicy())
-        registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
-            .setLenient()
-        registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer(config))
-        registerTypeAdapter(RRIncrementalSource::class.java, GsonRRIncrementalSourceSerializer(config))
-        registerTypeAdapter(RRMouseInteraction::class.java, GsonRRMouseInteractionsSerializer(config))
-    }.create()
+    public val gson: Gson =
+        GsonBuilder().apply {
+            setObjectToNumberStrategy(GsonNumberPolicy())
+            registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
+                .setLenient()
+            registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer(config))
+            registerTypeAdapter(RRIncrementalSource::class.java, GsonRRIncrementalSourceSerializer(config))
+            registerTypeAdapter(RRMouseInteraction::class.java, GsonRRMouseInteractionsSerializer(config))
+        }.create()
 
     @Throws(JsonIOException::class, IOException::class)
-    public inline fun <reified T> serialize(value: T, writer: Writer) {
+    public inline fun <reified T> serialize(
+        value: T,
+        writer: Writer,
+    ) {
         gson.toJson(value, object : TypeToken<T>() {}.type, writer)
         writer.flush()
     }

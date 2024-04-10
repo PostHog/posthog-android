@@ -13,24 +13,20 @@ import com.posthog.internal.PostHogSerializer
  * The SDK Config
  */
 public open class PostHogConfig(
-
     /**
      * The PostHog API Key
      */
     public val apiKey: String,
-
     /**
      * The PostHog Host
      * Defaults to https://app.posthog.com
      */
-    public val host: String = defaultHost,
-
+    public val host: String = DEFAULT_HOST,
     /**
      * Logs the debug logs to the [logger] if enabled
      * Defaults to false
      */
     public var debug: Boolean = false,
-
     /**
      * This flag prevents capturing any data if enabled
      * You can overwrite this value at runtime by calling [PostHog.optIn()]] or PostHog.optOut()
@@ -38,7 +34,6 @@ public open class PostHogConfig(
      */
     @Volatile
     public var optOut: Boolean = false,
-
     /**
      * Send a $feature_flag_called event when a feature flag is used automatically
      * Used by experiments
@@ -46,20 +41,17 @@ public open class PostHogConfig(
      * Defaults to true
      */
     public var sendFeatureFlagEvent: Boolean = true,
-
     /**
      * Preload feature flags automatically
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * Defaults to true
      */
     public var preloadFeatureFlags: Boolean = true,
-
     /**
      * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */
     public var flushAt: Int = 20,
-
     /**
      * Number of maximum events in memory and disk, when the maximum is exceed, the oldest
      * event is deleted and the new one takes place
@@ -71,27 +63,25 @@ public open class PostHogConfig(
      * Defaults to 50
      */
     public var maxBatchSize: Int = 50,
-//    (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
+    // (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     /**
      * Interval in seconds for sending events over the wire
      * The lower the number, most likely more battery is used
      * Defaults to 30s
      */
+    @Suppress("ktlint:standard:no-consecutive-comments")
     public var flushIntervalSeconds: Int = 30,
-
     /**
      * Hook for encrypt and decrypt events
      * Devices are sandbox so likely not needed
      * Defaults to no encryption
      */
     public var encryption: PostHogEncryption? = null,
-
     /**
      * Hook that is called when feature flags are loaded
      * Defaults to no callback
      */
     public var onFeatureFlags: PostHogOnFeatureFlags? = null,
-
     /**
      * Enable Recording of Session Replays for Android
      * Requires Authorized Domains to be disabled in the PostHog Project Settings
@@ -100,13 +90,11 @@ public open class PostHogConfig(
      */
     @PostHogExperimental
     public var sessionReplay: Boolean = false,
-
     /**
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire
      */
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
-
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal
@@ -185,6 +173,6 @@ public open class PostHogConfig(
     }
 
     public companion object {
-        public const val defaultHost: String = "https://app.posthog.com"
+        public const val DEFAULT_HOST: String = "https://app.posthog.com"
     }
 }

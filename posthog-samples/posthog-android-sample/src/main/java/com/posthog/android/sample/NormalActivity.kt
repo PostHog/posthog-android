@@ -8,10 +8,10 @@ import okhttp3.OkHttpClient
 import okhttp3.internal.closeQuietly
 
 class NormalActivity : ComponentActivity() {
-
-    private val client = OkHttpClient.Builder()
-        .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
-        .build()
+    private val client =
+        OkHttpClient.Builder()
+            .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
+            .build()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

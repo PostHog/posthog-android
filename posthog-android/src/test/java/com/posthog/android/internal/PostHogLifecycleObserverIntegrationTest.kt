@@ -5,9 +5,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.android.API_KEY
 import com.posthog.android.FakeLifecycle
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.apiKey
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockPackageInfo
 import org.junit.runner.RunWith
@@ -22,7 +22,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
     private val fakeLifecycle = FakeLifecycle(Lifecycle.State.CREATED)
 
     private fun getSut(): PostHogLifecycleObserverIntegration {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
         val mainHandler = MainHandler()
         return PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
     }

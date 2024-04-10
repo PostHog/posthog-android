@@ -7,7 +7,7 @@ public class RRIncrementalSnapshotEvent(
     mutationData: RRIncrementalMutationData? = null,
     timestamp: Long,
 ) : RREvent(
-    type = RREventType.IncrementalSnapshot,
-    data = mutationData,
-    timestamp = timestamp,
-)
+        type = RREventType.IncrementalSnapshot,
+        data = mutationData,
+        timestamp = timestamp,
+    )

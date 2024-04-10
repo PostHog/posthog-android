@@ -3,8 +3,8 @@ package com.posthog.android.internal
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.apiKey
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockPackageInfo
 import com.posthog.internal.PostHogMemoryPreferences
@@ -16,13 +16,13 @@ import kotlin.test.assertEquals
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogAppInstallIntegrationTest {
-
     private val context = mock<Context>()
 
     private fun getSut(): PostHogAppInstallIntegration {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            cachePreferences = PostHogMemoryPreferences()
-        }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                cachePreferences = PostHogMemoryPreferences()
+            }
         return PostHogAppInstallIntegration(context, config)
     }
 

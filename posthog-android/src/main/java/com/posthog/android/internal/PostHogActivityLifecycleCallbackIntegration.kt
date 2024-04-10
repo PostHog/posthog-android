@@ -17,8 +17,10 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     private val application: Application,
     private val config: PostHogAndroidConfig,
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
-
-    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+    override fun onActivityCreated(
+        activity: Activity,
+        savedInstanceState: Bundle?,
+    ) {
         if (config.captureDeepLinks) {
             activity.intent.data?.let {
                 val props = mutableMapOf<String, Any>()
@@ -57,7 +59,10 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     override fun onActivityStopped(activity: Activity) {
     }
 
-    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
+    override fun onActivitySaveInstanceState(
+        activity: Activity,
+        outState: Bundle,
+    ) {
     }
 
     override fun onActivityDestroyed(activity: Activity) {

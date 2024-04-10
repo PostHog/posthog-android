@@ -1,8 +1,8 @@
 package com.posthog.internal
 
 import com.google.gson.internal.bind.util.ISO8601Utils
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.awaitExecution
 import com.posthog.generateEvent
 import com.posthog.mockHttp
@@ -19,7 +19,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 internal class PostHogQueueTest {
-
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     @get:Rule
@@ -33,16 +32,16 @@ internal class PostHogQueueTest {
         dateProvider: PostHogDateProvider = PostHogDeviceDateProvider(),
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
-
     ): PostHogQueue {
-        val config = PostHogConfig(apiKey, host).apply {
-            this.maxQueueSize = maxQueueSize
-            this.storagePrefix = storagePrefix
-            this.flushAt = flushAt
-            this.networkStatus = networkStatus
-            this.maxBatchSize = maxBatchSize
-            this.dateProvider = dateProvider
-        }
+        val config =
+            PostHogConfig(API_KEY, host).apply {
+                this.maxQueueSize = maxQueueSize
+                this.storagePrefix = storagePrefix
+                this.flushAt = flushAt
+                this.networkStatus = networkStatus
+                this.maxBatchSize = maxBatchSize
+                this.dateProvider = dateProvider
+            }
         val api = PostHogApi(config)
         return PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, executor = executor)
     }
@@ -79,7 +78,7 @@ internal class PostHogQueueTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(path, apiKey).exists())
+        assertTrue(File(path, API_KEY).exists())
     }
 
     @Test
@@ -94,7 +93,7 @@ internal class PostHogQueueTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -157,9 +156,10 @@ internal class PostHogQueueTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(host = url.toString(), flushAt = 1, networkStatus = {
-            false
-        })
+        val sut =
+            getSut(host = url.toString(), flushAt = 1, networkStatus = {
+                false
+            })
 
         sut.add(generateEvent())
 
@@ -174,9 +174,10 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         var connected = false
-        val sut = getSut(host = url.toString(), flushAt = 1, networkStatus = {
-            connected
-        })
+        val sut =
+            getSut(host = url.toString(), flushAt = 1, networkStatus = {
+                connected
+            })
 
         sut.add(generateEvent())
 
@@ -204,7 +205,7 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -220,7 +221,7 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -237,7 +238,7 @@ internal class PostHogQueueTest {
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -253,14 +254,14 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
 
         sut.clear()
 
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -277,7 +278,7 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
 
         http.enqueue(MockResponse().setBody(""))
 
@@ -286,7 +287,7 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -307,7 +308,7 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
 
         http.enqueue(MockResponse().setResponseCode(300).setBody("error"))
 
@@ -316,7 +317,7 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(2, sut.dequeList.size)
-        assertEquals(2, File(path, apiKey).listFiles()!!.size)
+        assertEquals(2, File(path, API_KEY).listFiles()!!.size)
 
         http.enqueue(MockResponse().setBody(""))
         http.enqueue(MockResponse().setBody(""))
@@ -326,7 +327,7 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
         assertEquals(4, http.requestCount)
     }
 }
