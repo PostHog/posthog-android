@@ -29,6 +29,8 @@ spotless {
     lineEndings = LineEnding.UNIX
     kotlin {
         target("**/*.kt")
+        targetExclude("**/bin/**")
+
         ktlint()
     }
     kotlinGradle {

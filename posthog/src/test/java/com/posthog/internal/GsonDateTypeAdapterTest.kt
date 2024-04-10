@@ -4,8 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.internal.bind.util.ISO8601Utils
 import com.google.gson.reflect.TypeToken
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import java.io.File
 import java.text.ParsePosition
 import java.util.Date
@@ -15,7 +15,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class GsonDateTypeAdapterTest {
-    private val config = PostHogConfig(apiKey)
+    private val config = PostHogConfig(API_KEY)
     private val gsonFakeDateType = object : TypeToken<FakeDate>() {}.type
 
     private fun getSut(): Gson {

@@ -24,7 +24,6 @@ import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogAndroidTest {
-
     private val context = mock<Context>()
 
     @get:Rule
@@ -42,7 +41,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android Logger if System logger`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -53,7 +52,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android context`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -64,7 +63,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets legacy storage path`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -75,7 +74,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets storage path`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -86,7 +85,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android cache preferences`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -97,7 +96,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android network checker`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -108,7 +107,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android SDK version`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -119,7 +118,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `adds captureApplicationLifecycleEvents integrations`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 
@@ -139,9 +138,10 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `adds captureDeepLinks integration`() {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            captureScreenViews = false
-        }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                captureScreenViews = false
+            }
 
         mockContextAppStart(context, tmpDir)
 
@@ -156,9 +156,10 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `adds captureScreenViews integration`() {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            captureDeepLinks = false
-        }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                captureDeepLinks = false
+            }
 
         mockContextAppStart(context, tmpDir)
 
@@ -173,11 +174,12 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `does not add captureDeepLinks, captureScreenViews and sessionReplay integration if disabled`() {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            captureDeepLinks = false
-            captureScreenViews = false
-            sessionReplay = false
-        }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                captureDeepLinks = false
+                captureScreenViews = false
+                sessionReplay = false
+            }
 
         mockContextAppStart(context, tmpDir)
 
@@ -192,7 +194,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `with creates new single instance`() {
-        val config = PostHogAndroidConfig(apiKey)
+        val config = PostHogAndroidConfig(API_KEY)
 
         mockContextAppStart(context, tmpDir)
 

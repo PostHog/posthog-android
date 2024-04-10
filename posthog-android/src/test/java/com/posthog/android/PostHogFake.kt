@@ -39,15 +39,24 @@ public class PostHogFake : PostHogInterface {
     override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
     }
 
-    override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
+    override fun isFeatureEnabled(
+        key: String,
+        defaultValue: Boolean,
+    ): Boolean {
         return false
     }
 
-    override fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
+    override fun getFeatureFlag(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         return null
     }
 
-    override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
+    override fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         return null
     }
 
@@ -63,10 +72,17 @@ public class PostHogFake : PostHogInterface {
     override fun optOut() {
     }
 
-    override fun group(type: String, key: String, groupProperties: Map<String, Any>?) {
+    override fun group(
+        type: String,
+        key: String,
+        groupProperties: Map<String, Any>?,
+    ) {
     }
 
-    override fun screen(screenTitle: String, properties: Map<String, Any>?) {
+    override fun screen(
+        screenTitle: String,
+        properties: Map<String, Any>?,
+    ) {
         this.screenTitle = screenTitle
     }
 
@@ -77,7 +93,10 @@ public class PostHogFake : PostHogInterface {
         return false
     }
 
-    override fun register(key: String, value: Any) {
+    override fun register(
+        key: String,
+        value: Any,
+    ) {
     }
 
     override fun unregister(key: String) {

@@ -1,8 +1,8 @@
 package com.posthog.internal
 
 import com.google.gson.internal.bind.util.ISO8601Utils
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
@@ -37,11 +37,12 @@ internal class PostHogSendCachedEventsIntegrationTest {
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
-        val config = PostHogConfig(apiKey, host = host).apply {
-            this.storagePrefix = storagePrefix
-            this.networkStatus = networkStatus
-            this.maxBatchSize = maxBatchSize
-        }
+        val config =
+            PostHogConfig(API_KEY, host = host).apply {
+                this.storagePrefix = storagePrefix
+                this.networkStatus = networkStatus
+                this.maxBatchSize = maxBatchSize
+            }
         val api = PostHogApi(config)
         return PostHogSendCachedEventsIntegration(config, api, date, executor = executor)
     }
@@ -51,9 +52,12 @@ internal class PostHogSendCachedEventsIntegrationTest {
         tmpDir.root.deleteRecursively()
     }
 
-    private fun writeFile(content: List<String> = emptyList(), date: Date? = null): String {
+    private fun writeFile(
+        content: List<String> = emptyList(),
+        date: Date? = null,
+    ): String {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        val fullFile = File(storagePrefix, apiKey)
+        val fullFile = File(storagePrefix, API_KEY)
         fullFile.mkdirs()
 
         content.forEach {
@@ -75,15 +79,16 @@ internal class PostHogSendCachedEventsIntegrationTest {
     fun `install bails out if not connected`() {
         val storagePrefix = writeFile(listOf(event))
 
-        val sut = getSut(storagePrefix = storagePrefix, host = "host", networkStatus = {
-            false
-        })
+        val sut =
+            getSut(storagePrefix = storagePrefix, host = "host", networkStatus = {
+                false
+            })
 
         sut.install()
 
         executor.shutdownAndAwaitTermination()
 
-        assertFalse(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertFalse(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
     }
 
     @Test
@@ -96,7 +101,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
     }
 
     @Test
@@ -111,7 +116,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
     }
 
     @Test
@@ -126,7 +131,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(2, http.requestCount)
     }
 
@@ -142,7 +147,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(1, http.requestCount)
     }
 
@@ -159,7 +164,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(1, http.requestCount)
     }
 
@@ -176,7 +181,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(2, File(storagePrefix, apiKey).listFiles()!!.size)
+        assertEquals(2, File(storagePrefix, API_KEY).listFiles()!!.size)
         assertEquals(1, http.requestCount)
     }
 
@@ -193,7 +198,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(2, File(storagePrefix, apiKey).listFiles()!!.size)
+        assertEquals(2, File(storagePrefix, API_KEY).listFiles()!!.size)
         assertEquals(1, http.requestCount)
     }
 
@@ -207,7 +212,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         val sut = getSut(date, storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
 
         // write a new file
-        val folder = File(storagePrefix, apiKey)
+        val folder = File(storagePrefix, API_KEY)
         val file = File(folder, "${UUID.randomUUID()}.event")
 
         val tempEvent = File("src/test/resources/json/other-event.json").readText()
@@ -224,7 +229,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, http.requestCount)
-        val files = File(storagePrefix, apiKey).listFiles()!!
+        val files = File(storagePrefix, API_KEY).listFiles()!!
         assertEquals(1, files.size)
         assertEquals(tempEvent, files[0].readText())
     }

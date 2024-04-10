@@ -4,7 +4,6 @@ package com.posthog
  * The PostHog SDK entry point
  */
 public interface PostHogInterface {
-
     /**
      * Setup the SDK
      * @param config the SDK configuration
@@ -58,7 +57,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
      */
-    public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean
+    public fun isFeatureEnabled(
+        key: String,
+        defaultValue: Boolean = false,
+    ): Boolean
 
     /**
      * Returns the feature flag
@@ -66,7 +68,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
-    public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any?
+    public fun getFeatureFlag(
+        key: String,
+        defaultValue: Any? = null,
+    ): Any?
 
     /**
      * Returns the feature flag payload
@@ -74,7 +79,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
-    public fun getFeatureFlagPayload(key: String, defaultValue: Any? = null): Any?
+    public fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any? = null,
+    ): Any?
 
     /**
      * Flushes all the events in the Queue right away
@@ -104,14 +112,21 @@ public interface PostHogInterface {
      * @param key the Group key
      * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
-    public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null)
+    public fun group(
+        type: String,
+        key: String,
+        groupProperties: Map<String, Any>? = null,
+    )
 
     /**
      * Captures a screen view event
      * @param screenTitle the screen title
      * @param properties the custom properties
      */
-    public fun screen(screenTitle: String, properties: Map<String, Any>? = null)
+    public fun screen(
+        screenTitle: String,
+        properties: Map<String, Any>? = null,
+    )
 
     /**
      * Creates an alias for the user
@@ -133,7 +148,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param value the Value
      */
-    public fun register(key: String, value: Any)
+    public fun register(
+        key: String,
+        value: Any,
+    )
 
     /**
      * Unregisters the previously set property to be sent with all the following events

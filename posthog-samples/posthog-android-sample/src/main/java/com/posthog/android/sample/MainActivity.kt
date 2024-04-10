@@ -16,20 +16,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.tooling.preview.Preview
-import com.posthog.android.sample.ui.theme.PostHogAndroidSampleTheme
+import com.posthog.android.sample.ui.theme.postHogAndroidSampleTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            PostHogAndroidSampleTheme {
+            postHogAndroidSampleTheme {
                 // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    Greeting("Android")
+                    greeting("Android")
                 }
             }
         }
@@ -38,7 +38,10 @@ class MainActivity : ComponentActivity() {
 
 @SuppressLint("UnrememberedMutableState")
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
+fun greeting(
+    name: String,
+    modifier: Modifier = Modifier,
+) {
     var text by remember { mutableStateOf("Hello $name!") }
 
     ClickableText(
@@ -52,8 +55,8 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
-    PostHogAndroidSampleTheme {
-        Greeting("Android")
+fun greetingPreview() {
+    postHogAndroidSampleTheme {
+        greeting("Android")
     }
 }

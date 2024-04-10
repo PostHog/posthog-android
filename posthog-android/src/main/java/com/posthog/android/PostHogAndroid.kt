@@ -50,12 +50,18 @@ public class PostHogAndroid private constructor() {
          * @property context the Context
          * @property config the Config
          */
-        public fun <T : PostHogAndroidConfig> with(context: Context, config: T): PostHogInterface {
+        public fun <T : PostHogAndroidConfig> with(
+            context: Context,
+            config: T,
+        ): PostHogInterface {
             setAndroidConfig(context.appContext(), config)
             return PostHog.with(config)
         }
 
-        private fun <T : PostHogAndroidConfig> setAndroidConfig(context: Context, config: T) {
+        private fun <T : PostHogAndroidConfig> setAndroidConfig(
+            context: Context,
+            config: T,
+        ) {
             config.logger = if (config.logger is PostHogPrintLogger) PostHogAndroidLogger(config) else config.logger
             config.context = config.context ?: PostHogAndroidContext(context, config)
 

@@ -26,9 +26,10 @@ internal class PostHogApi(
         }
     }
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(GzipRequestInterceptor(config))
-        .build()
+    private val client: OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(GzipRequestInterceptor(config))
+            .build()
 
     private val theHost: String
         get() {
@@ -39,10 +40,11 @@ internal class PostHogApi(
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
 
-        val request = makeRequest("$theHost/batch") {
-            batch.sentAt = config.dateProvider.currentDate()
-            config.serializer.serialize(batch, it.bufferedWriter())
-        }
+        val request =
+            makeRequest("$theHost/batch") {
+                batch.sentAt = config.dateProvider.currentDate()
+                config.serializer.serialize(batch, it.bufferedWriter())
+            }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
@@ -61,25 +63,30 @@ internal class PostHogApi(
 //        }
 
         // sent_at isn't supported by the snapshot endpoint
-        val request = makeRequest("$theHost${config.snapshotEndpoint}") {
-            config.serializer.serialize(events, it.bufferedWriter())
-        }
+        val request =
+            makeRequest("$theHost${config.snapshotEndpoint}") {
+                config.serializer.serialize(events, it.bufferedWriter())
+            }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
         }
     }
 
-    private fun makeRequest(url: String, serializer: (outputStream: OutputStream) -> Unit): Request {
-        val requestBody = object : RequestBody() {
-            override fun contentType() = mediaType
+    private fun makeRequest(
+        url: String,
+        serializer: (outputStream: OutputStream) -> Unit,
+    ): Request {
+        val requestBody =
+            object : RequestBody() {
+                override fun contentType() = mediaType
 
-            override fun writeTo(sink: BufferedSink) {
-                sink.outputStream().use {
-                    serializer(it)
+                override fun writeTo(sink: BufferedSink) {
+                    sink.outputStream().use {
+                        serializer(it)
+                    }
                 }
             }
-        }
 
         return Request.Builder()
             .url(url)
@@ -96,9 +103,10 @@ internal class PostHogApi(
     ): PostHogDecideResponse? {
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
-        val request = makeRequest("$theHost/decide/?v=3") {
-            config.serializer.serialize(decideRequest, it.bufferedWriter())
-        }
+        val request =
+            makeRequest("$theHost/decide/?v=3") {
+                config.serializer.serialize(decideRequest, it.bufferedWriter())
+            }
 
         client.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)

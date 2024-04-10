@@ -4,7 +4,6 @@ import java.util.Calendar
 import java.util.Date
 
 internal class FakePostHogDateProvider : PostHogDateProvider {
-
     private var currentDate: Date? = null
     private var addSecondsToCurrentDate: Date? = null
 

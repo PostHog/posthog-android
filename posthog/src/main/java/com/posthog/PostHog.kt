@@ -21,18 +21,22 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 public class PostHog private constructor(
-    private val queueExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("PostHogQueueThread"),
-    ),
-    private val replayExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("PostHogReplayQueueThread"),
-    ),
-    private val featureFlagsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("PostHogFeatureFlagsThread"),
-    ),
-    private val cachedEventsExecutor: ExecutorService = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("PostHogSendCachedEventsThread"),
-    ),
+    private val queueExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogQueueThread"),
+        ),
+    private val replayExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogReplayQueueThread"),
+        ),
+    private val featureFlagsExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogFeatureFlagsThread"),
+        ),
+    private val cachedEventsExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogSendCachedEventsThread"),
+        ),
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface {
     @Volatile
@@ -78,21 +82,23 @@ public class PostHog private constructor(
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
-                val optOut = getPreferences().getValue(
-                    OPT_OUT,
-                    defaultValue = config.optOut,
-                ) as? Boolean
+                val optOut =
+                    getPreferences().getValue(
+                        OPT_OUT,
+                        defaultValue = config.optOut,
+                    ) as? Boolean
                 optOut?.let {
                     config.optOut = optOut
                 }
 
                 val startDate = config.dateProvider.currentDate()
-                val sendCachedEventsIntegration = PostHogSendCachedEventsIntegration(
-                    config,
-                    api,
-                    startDate,
-                    cachedEventsExecutor,
-                )
+                val sendCachedEventsIntegration =
+                    PostHogSendCachedEventsIntegration(
+                        config,
+                        api,
+                        startDate,
+                        cachedEventsExecutor,
+                    )
 
                 this.config = config
                 this.queue = queue
@@ -131,7 +137,10 @@ public class PostHog private constructor(
         return config?.cachePreferences ?: memoryPreferences
     }
 
-    private fun legacyPreferences(config: PostHogConfig, serializer: PostHogSerializer) {
+    private fun legacyPreferences(
+        config: PostHogConfig,
+        serializer: PostHogSerializer,
+    ) {
         val cachedPrefs = getPreferences().getValue(config.apiKey) as? String
         cachedPrefs?.let {
             try {
@@ -350,26 +359,28 @@ public class PostHog private constructor(
                 groupIdentify = true
             }
 
-            val mergedProperties = buildProperties(
-                newDistinctId,
-                properties = properties,
-                userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce,
-                groupProperties = groupProperties,
-                // only append shared props if not a snapshot event
-                appendSharedProps = !snapshotEvent,
-                // only append groups if not a group identify event
-                appendGroups = !groupIdentify,
-            )
+            val mergedProperties =
+                buildProperties(
+                    newDistinctId,
+                    properties = properties,
+                    userProperties = userProperties,
+                    userPropertiesSetOnce = userPropertiesSetOnce,
+                    groupProperties = groupProperties,
+                    // only append shared props if not a snapshot event
+                    appendSharedProps = !snapshotEvent,
+                    // only append groups if not a group identify event
+                    appendGroups = !groupIdentify,
+                )
 
             // sanitize the properties or fallback to the original properties
             val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
 
-            val postHogEvent = PostHogEvent(
-                event,
-                newDistinctId,
-                properties = sanitizedProperties,
-            )
+            val postHogEvent =
+                PostHogEvent(
+                    event,
+                    newDistinctId,
+                    properties = sanitizedProperties,
+                )
 
             // Replay has its own queue
             if (snapshotEvent) {
@@ -415,7 +426,10 @@ public class PostHog private constructor(
         return config?.optOut ?: true
     }
 
-    public override fun screen(screenTitle: String, properties: Map<String, Any>?) {
+    public override fun screen(
+        screenTitle: String,
+        properties: Map<String, Any>?,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -489,7 +503,11 @@ public class PostHog private constructor(
         }
     }
 
-    public override fun group(type: String, key: String, groupProperties: Map<String, Any>?) {
+    public override fun group(
+        type: String,
+        key: String,
+        groupProperties: Map<String, Any>?,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -553,14 +571,20 @@ public class PostHog private constructor(
         featureFlags?.loadFeatureFlags(distinctId, anonymousId = anonymousId, groups, onFeatureFlags)
     }
 
-    public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
+    public override fun isFeatureEnabled(
+        key: String,
+        defaultValue: Boolean,
+    ): Boolean {
         if (!isEnabled()) {
             return defaultValue
         }
         return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
     }
 
-    public override fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
+    public override fun getFeatureFlag(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
@@ -589,7 +613,10 @@ public class PostHog private constructor(
         return value
     }
 
-    public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
+    public override fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
@@ -627,7 +654,10 @@ public class PostHog private constructor(
         return enabled
     }
 
-    public override fun register(key: String, value: Any) {
+    public override fun register(
+        key: String,
+        value: Any,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -724,13 +754,14 @@ public class PostHog private constructor(
             cachedEventsExecutor: ExecutorService,
             reloadFeatureFlags: Boolean,
         ): PostHogInterface {
-            val instance = PostHog(
-                queueExecutor,
-                replayExecutor,
-                featureFlagsExecutor,
-                cachedEventsExecutor,
-                reloadFeatureFlags = reloadFeatureFlags,
-            )
+            val instance =
+                PostHog(
+                    queueExecutor,
+                    replayExecutor,
+                    featureFlagsExecutor,
+                    cachedEventsExecutor,
+                    reloadFeatureFlags = reloadFeatureFlags,
+                )
             instance.setup(config)
             return instance
         }
@@ -777,14 +808,20 @@ public class PostHog private constructor(
             shared.reloadFeatureFlags(onFeatureFlags)
         }
 
-        public override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean =
-            shared.isFeatureEnabled(key, defaultValue = defaultValue)
+        public override fun isFeatureEnabled(
+            key: String,
+            defaultValue: Boolean,
+        ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue)
 
-        public override fun getFeatureFlag(key: String, defaultValue: Any?): Any? =
-            shared.getFeatureFlag(key, defaultValue = defaultValue)
+        public override fun getFeatureFlag(
+            key: String,
+            defaultValue: Any?,
+        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue)
 
-        public override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? =
-            shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
+        public override fun getFeatureFlagPayload(
+            key: String,
+            defaultValue: Any?,
+        ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
 
         public override fun flush() {
             shared.flush()
@@ -802,11 +839,18 @@ public class PostHog private constructor(
             shared.optOut()
         }
 
-        public override fun group(type: String, key: String, groupProperties: Map<String, Any>?) {
+        public override fun group(
+            type: String,
+            key: String,
+            groupProperties: Map<String, Any>?,
+        ) {
             shared.group(type, key, groupProperties = groupProperties)
         }
 
-        public override fun screen(screenTitle: String, properties: Map<String, Any>?) {
+        public override fun screen(
+            screenTitle: String,
+            properties: Map<String, Any>?,
+        ) {
             shared.screen(screenTitle, properties = properties)
         }
 
@@ -816,7 +860,10 @@ public class PostHog private constructor(
 
         public override fun isOptOut(): Boolean = shared.isOptOut()
 
-        public override fun register(key: String, value: Any) {
+        public override fun register(
+            key: String,
+            value: Any,
+        ) {
             shared.register(key, value)
         }
 
@@ -825,6 +872,7 @@ public class PostHog private constructor(
         }
 
         override fun distinctId(): String = shared.distinctId()
+
         override fun debug(enable: Boolean) {
             shared.debug(enable)
         }
