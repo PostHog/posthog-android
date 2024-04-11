@@ -1,5 +1,7 @@
 ## Next
 
+## 3.1.17 - 2024-04-11
+
 recording: multiple fixes for better frame rate, padding, drawables ([#118](https://github.com/PostHog/posthog-android/pull/118))
 
 ## 3.1.16 - 2024-03-27
