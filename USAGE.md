@@ -119,6 +119,8 @@ PostHog.unregister("team_id")
 Load feature flags automatically
 
 ```kotlin
+import com.posthog.PostHogOnFeatureFlags
+
 val config = PostHogAndroidConfig(apiKey).apply {
     preloadFeatureFlags = true
     // get notified when feature flags are loaded
@@ -162,6 +164,8 @@ val distinctId = PostHog.distinctId()
 Sanitize event properties
 
 ```kotlin
+import com.posthog.PostHogPropertiesSanitizer
+
 val config = PostHogAndroidConfig(apiKey).apply {
     propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
         properties.apply {
@@ -225,9 +229,29 @@ If you don't want to mask everything, you can disable the mask config above and 
 Add the `PostHogOkHttpInterceptor` to your `OkHttpClient` to capture network requests.
 
 ```kotlin
+import com.posthog.PostHogOkHttpInterceptor
+import okhttp3.OkHttpClient
+
 private val client = OkHttpClient.Builder()
     .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
     .build()
+```
+
+If there are missing images (Drawables) in the session recording, most likely is because the Drawable could not be transformed to a Bitmap. You can transform the Drawable to a Bitmap programmatically using the `drawableConverter`.
+
+```kotlin
+import com.posthog.android.replay.PostHogDrawableConverter
+
+val config = PostHogAndroidConfig(apiKey).apply {
+  sessionReplayConfig.drawableConverter = PostHogDrawableConverter { drawable ->
+    // your custom Drawables
+    if (drawable is IconicsDrawable) {
+      drawable.toBitmap()
+    } else {
+      null
+    }
+  }
+}
 ```
 
 ### Limitations
