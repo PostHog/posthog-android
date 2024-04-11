@@ -1,7 +1,7 @@
 package com.posthog.internal
 
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.awaitExecution
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
@@ -29,10 +29,11 @@ internal class PostHogFeatureFlagsTest {
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogFeatureFlags {
-        val config = PostHogConfig(apiKey, host).apply {
-            this.networkStatus = networkStatus
-            cachePreferences = preferences
-        }
+        val config =
+            PostHogConfig(API_KEY, host).apply {
+                this.networkStatus = networkStatus
+                cachePreferences = preferences
+            }
         val api = PostHogApi(config)
         return PostHogFeatureFlags(config, api, executor = executor)
     }
@@ -44,16 +45,18 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `load flags bails out if not connected`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
-        val sut = getSut(host = url.toString(), networkStatus = {
-            false
-        })
+        val sut =
+            getSut(host = url.toString(), networkStatus = {
+                false
+            })
 
         sut.loadFeatureFlags("distinctId", anonymousId = "anonId", emptyMap(), null)
 
@@ -64,11 +67,12 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `load flags from decide api and call the onFeatureFlags callback`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -87,11 +91,12 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `clear the loaded feature flags`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -113,11 +118,12 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `returns all feature flags`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -132,11 +138,12 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `returns default value if given`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -150,11 +157,12 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `merge feature flags if there are errors`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -165,8 +173,9 @@ internal class PostHogFeatureFlagsTest {
 
         val file = File("src/test/resources/json/basic-decide-with-errors.json")
 
-        val response = MockResponse()
-            .setBody(file.readText())
+        val response =
+            MockResponse()
+                .setBody(file.readText())
         http.enqueue(response)
 
         sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
@@ -184,11 +193,12 @@ internal class PostHogFeatureFlagsTest {
     fun `returns flag enabled if multivariant`() {
         val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(file.readText()),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -207,11 +217,12 @@ internal class PostHogFeatureFlagsTest {
     fun `getFeatureFlagPayload returns non strigified JSON`() {
         val file = File("src/test/resources/json/decide-with-stringfied-flags.json")
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(file.readText()),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -243,11 +254,12 @@ internal class PostHogFeatureFlagsTest {
         preferences.setValue(FEATURE_FLAGS, mapOf("foo" to true))
         preferences.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("foo" to true))
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(file.readText()),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -258,11 +270,12 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `load feature flags from cache if not loaded from the network yet`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())

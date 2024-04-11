@@ -1,5 +1,7 @@
 ## Next
 
+recording: multiple fixes for better frame rate, padding, drawables ([#118](https://github.com/PostHog/posthog-android/pull/118))
+
 ## 3.1.16 - 2024-03-27
 
 fix: add replay props only if replay is enabled ([#112](https://github.com/PostHog/posthog-android/pull/112))

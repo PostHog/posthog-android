@@ -12,7 +12,6 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig) : PostHogIntegration {
-
     @Volatile
     private var logcatInProgress = false
 
@@ -32,52 +31,53 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
         logcatInProgress = false
         logcatThread?.interruptSafely()
-        logcatThread = Thread {
-            var process: Process? = null
-            try {
-                process = Runtime.getRuntime().exec(cmd.toTypedArray())
-                process.inputStream.bufferedReader().use {
-                    var line: String? = null
-                    logcatInProgress = true
-                    do {
-                        try {
-                            line = it.readLine()
+        logcatThread =
+            Thread {
+                var process: Process? = null
+                try {
+                    process = Runtime.getRuntime().exec(cmd.toTypedArray())
+                    process.inputStream.bufferedReader().use {
+                        var line: String? = null
+                        logcatInProgress = true
+                        do {
+                            try {
+                                line = it.readLine()
 
-                            // do not capture console logs if session replay is disabled
-                            if (!isSessionReplayEnabled) {
-                                continue
-                            }
+                                // do not capture console logs if session replay is disabled
+                                if (!isSessionReplayEnabled) {
+                                    continue
+                                }
 
-                            if (line.isNullOrEmpty()) {
-                                continue
-                            }
-                            // TODO: filter out all non useful stuff
-                            if (line.contains("PostHog") || line.contains("StrictMode")) {
-                                continue
-                            } else {
-                                val log = LogcatParser().parse(line) ?: continue
+                                if (line.isNullOrEmpty()) {
+                                    continue
+                                }
+                                // TODO: filter out all non useful stuff
+                                if (line.contains("PostHog") || line.contains("StrictMode")) {
+                                    continue
+                                } else {
+                                    val log = LogcatParser().parse(line) ?: continue
 
-                                val props = mutableMapOf<String, Any>()
-                                props["level"] = log.level.toString()
-                                val tag = log.tag?.trim() ?: ""
-                                val content = log.text?.trim() ?: ""
-                                props["payload"] = listOf("$tag: $content")
-                                val time = log.time?.time?.time ?: config.dateProvider.currentTimeMillis()
-                                val event = RRPluginEvent("rrweb/console@1", props, time)
-                                // TODO: batch events
-                                listOf(event).capture()
+                                    val props = mutableMapOf<String, Any>()
+                                    props["level"] = log.level.toString()
+                                    val tag = log.tag?.trim() ?: ""
+                                    val content = log.text?.trim() ?: ""
+                                    props["payload"] = listOf("$tag: $content")
+                                    val time = log.time?.time?.time ?: config.dateProvider.currentTimeMillis()
+                                    val event = RRPluginEvent("rrweb/console@1", props, time)
+                                    // TODO: batch events
+                                    listOf(event).capture()
+                                }
+                            } catch (e: Throwable) {
+                                // ignore
                             }
-                        } catch (e: Throwable) {
-                            // ignore
-                        }
-                    } while (line != null && logcatInProgress)
+                        } while (line != null && logcatInProgress)
+                    }
+                } catch (e: Throwable) {
+                    // ignore
+                } finally {
+                    process?.destroy()
                 }
-            } catch (e: Throwable) {
-                // ignore
-            } finally {
-                process?.destroy()
             }
-        }
         logcatThread?.start()
     }
 

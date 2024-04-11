@@ -8,9 +8,15 @@ import com.posthog.PostHogInternal
  */
 @PostHogInternal
 public interface PostHogPreferences {
-    public fun getValue(key: String, defaultValue: Any? = null): Any?
+    public fun getValue(
+        key: String,
+        defaultValue: Any? = null,
+    ): Any?
 
-    public fun setValue(key: String, value: Any)
+    public fun setValue(
+        key: String,
+        value: Any,
+    )
 
     public fun clear(except: List<String> = emptyList())
 
@@ -29,16 +35,17 @@ public interface PostHogPreferences {
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
 
-        public val ALL_INTERNAL_KEYS: Set<String> = setOf(
-            GROUPS,
-            ANONYMOUS_ID,
-            DISTINCT_ID,
-            OPT_OUT,
-            FEATURE_FLAGS,
-            FEATURE_FLAGS_PAYLOAD,
-            VERSION,
-            BUILD,
-            STRINGIFIED_KEYS,
-        )
+        public val ALL_INTERNAL_KEYS: Set<String> =
+            setOf(
+                GROUPS,
+                ANONYMOUS_ID,
+                DISTINCT_ID,
+                OPT_OUT,
+                FEATURE_FLAGS,
+                FEATURE_FLAGS_PAYLOAD,
+                VERSION,
+                BUILD,
+                STRINGIFIED_KEYS,
+            )
     }
 }

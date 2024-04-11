@@ -25,7 +25,6 @@ internal class PostHogAndroidContext(
     private val context: Context,
     private val config: PostHogAndroidConfig,
 ) : PostHogContext {
-
     private val cacheStaticContext by lazy {
         val staticContext = mutableMapOf<String, Any>()
 
@@ -61,7 +60,10 @@ internal class PostHogAndroidContext(
 
     // Inspired from https://github.com/expo/expo/blob/86bafbaa0b8b9fff5b11f0e5bcf9097bb5ac8878/packages/expo-device/android/src/main/java/expo/modules/device/DeviceModule.kt#L52
     // missing auto, watch, embedded, desktop, etc
-    private fun getDeviceType(context: Context, displayMetrics: DisplayMetrics): String? {
+    private fun getDeviceType(
+        context: Context,
+        displayMetrics: DisplayMetrics,
+    ): String? {
         // Detect TVs via UI mode (Android TVs) or system features (Fire TV).
         if (context.packageManager.hasSystemFeature("amazon.hardware.fire_tv")) {
             return "TV"
@@ -78,10 +80,14 @@ internal class PostHogAndroidContext(
         return deviceTypeFromResourceConfiguration ?: getDeviceTypeFromPhysicalSize(context, displayMetrics)
     }
 
-    private fun getDeviceTypeFromPhysicalSize(context: Context, displayMetrics: DisplayMetrics): String? {
+    private fun getDeviceTypeFromPhysicalSize(
+        context: Context,
+        displayMetrics: DisplayMetrics,
+    ): String? {
         // Find the current window manager, if none is found we can't measure the device physical size.
-        val windowManager = context.windowManager()
-            ?: return null
+        val windowManager =
+            context.windowManager()
+                ?: return null
 
         // Get display metrics to see if we can differentiate phones and tablets.
         val widthInches: Double

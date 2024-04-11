@@ -5,6 +5,7 @@ import androidx.lifecycle.LifecycleObserver
 
 internal class FakeLifecycle(override val currentState: State) : Lifecycle() {
     var observers = 0
+
     override fun addObserver(observer: LifecycleObserver) {
         observers++
     }

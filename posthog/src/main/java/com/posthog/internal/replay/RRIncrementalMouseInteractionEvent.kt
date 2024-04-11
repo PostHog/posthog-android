@@ -7,7 +7,7 @@ public class RRIncrementalMouseInteractionEvent(
     mouseInteractionData: RRIncrementalMouseInteractionData? = null,
     timestamp: Long,
 ) : RREvent(
-    type = RREventType.IncrementalSnapshot,
-    data = mouseInteractionData,
-    timestamp = timestamp,
-)
+        type = RREventType.IncrementalSnapshot,
+        data = mouseInteractionData,
+        timestamp = timestamp,
+    )

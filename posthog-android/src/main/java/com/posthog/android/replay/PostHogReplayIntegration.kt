@@ -27,6 +27,7 @@ import android.view.ViewStub
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ProgressBar
@@ -79,15 +80,15 @@ public class PostHogReplayIntegration(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
 ) : PostHogIntegration {
-
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
-    private val passwordInputTypes = listOf(
-        InputType.TYPE_TEXT_VARIATION_PASSWORD,
-        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
-        InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
-        InputType.TYPE_NUMBER_VARIATION_PASSWORD,
-    )
+    private val passwordInputTypes =
+        listOf(
+            InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+            InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+        )
 
     private val executor by lazy {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
@@ -100,55 +101,60 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = config.sessionReplay && PostHog.isSessionActive()
 
-    private val onRootViewsChangedListener = OnRootViewsChangedListener { view, added ->
-        try {
-            if (added) {
-                view.phoneWindow?.let { window ->
-                    if (view.windowAttachCount == 0) {
-                        window.onDecorViewReady { decorView ->
-                            try {
-                                val listener = decorView.onNextDraw(mainHandler, config.dateProvider) {
-                                    if (!isSessionReplayEnabled) {
-                                        return@onNextDraw
-                                    }
-                                    val timestamp = config.dateProvider.currentTimeMillis()
+    private val onRootViewsChangedListener =
+        OnRootViewsChangedListener { view, added ->
+            try {
+                if (added) {
+                    view.phoneWindow?.let { window ->
+                        if (view.windowAttachCount == 0) {
+                            window.onDecorViewReady { decorView ->
+                                try {
+                                    val listener =
+                                        decorView.onNextDraw(mainHandler, config.dateProvider) {
+                                            if (!isSessionReplayEnabled) {
+                                                return@onNextDraw
+                                            }
+                                            val timestamp = config.dateProvider.currentTimeMillis()
 
-                                    executor.submit {
-                                        try {
-                                            generateSnapshot(WeakReference(decorView), timestamp)
-                                        } catch (e: Throwable) {
-                                            config.logger.log("Session Replay generateSnapshot failed: $e.")
+                                            executor.submit {
+                                                try {
+                                                    generateSnapshot(WeakReference(decorView), timestamp)
+                                                } catch (e: Throwable) {
+                                                    config.logger.log("Session Replay generateSnapshot failed: $e.")
+                                                }
+                                            }
                                         }
-                                    }
-                                }
 
-                                val status = ViewTreeSnapshotStatus(listener)
-                                decorViews[decorView] = status
-                            } catch (e: Throwable) {
-                                config.logger.log("Session Replay onDecorViewReady failed: $e.")
+                                    val status = ViewTreeSnapshotStatus(listener)
+                                    decorViews[decorView] = status
+                                } catch (e: Throwable) {
+                                    config.logger.log("Session Replay onDecorViewReady failed: $e.")
+                                }
+                            }
+
+                            window.touchEventInterceptors += onTouchEventListener
+                            // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
+                            // window.keyEventInterceptors
+                        }
+                    }
+                } else {
+                    view.phoneWindow?.let { window ->
+                        window.peekDecorView()?.let { decorView ->
+                            decorViews[decorView]?.let { status ->
+                                cleanSessionState(decorView, status)
                             }
                         }
-
-                        window.touchEventInterceptors += onTouchEventListener
-                        // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
-                        // window.keyEventInterceptors
                     }
                 }
-            } else {
-                view.phoneWindow?.let { window ->
-                    window.peekDecorView()?.let { decorView ->
-                        decorViews[decorView]?.let { status ->
-                            cleanSessionState(decorView, status)
-                        }
-                    }
-                }
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
             }
-        } catch (e: Throwable) {
-            config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
         }
-    }
 
-    private fun detectKeyboardVisibility(view: View, visible: Boolean): Pair<Boolean, RRCustomEvent?> {
+    private fun detectKeyboardVisibility(
+        view: View,
+        visible: Boolean,
+    ): Pair<Boolean, RRCustomEvent?> {
         val insets = ViewCompat.getRootWindowInsets(view) ?: return Pair(visible, null)
         val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
         if (visible == imeVisible) {
@@ -164,36 +170,42 @@ public class PostHogReplayIntegration(
             payload["open"] = false
         }
 
-        val event = RRCustomEvent(
-            tag = "keyboard",
-            payload = payload,
-            config.dateProvider.currentTimeMillis(),
-        )
+        val event =
+            RRCustomEvent(
+                tag = "keyboard",
+                payload = payload,
+                config.dateProvider.currentTimeMillis(),
+            )
 
         return Pair(imeVisible, event)
     }
 
-    private val onTouchEventListener = OnTouchEventListener { motionEvent ->
-        if (!isSessionReplayEnabled) {
-            return@OnTouchEventListener
-        }
-        motionEvent.eventTime
-        val timestamp = config.dateProvider.currentTimeMillis()
-        when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
-            MotionEvent.ACTION_DOWN -> {
-                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+    private val onTouchEventListener =
+        OnTouchEventListener { motionEvent ->
+            if (!isSessionReplayEnabled) {
+                return@OnTouchEventListener
             }
-            MotionEvent.ACTION_UP -> {
-                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
-            }
-            // TODO: ACTION_MOVE requires the positions arrays caching since it triggers multiple times
+            motionEvent.eventTime
+            val timestamp = config.dateProvider.currentTimeMillis()
+            when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
+                MotionEvent.ACTION_DOWN -> {
+                    generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+                }
+                MotionEvent.ACTION_UP -> {
+                    generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                }
+                // TODO: ACTION_MOVE requires the positions arrays caching since it triggers multiple times
 //            MotionEvent.ACTION_MOVE -> {
 //                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchMoveDeparted)
 //            }
+            }
         }
-    }
 
-    private fun generateMouseInteractions(timestamp: Long, motionEvent: MotionEvent, type: RRMouseInteraction) {
+    private fun generateMouseInteractions(
+        timestamp: Long,
+        motionEvent: MotionEvent,
+        type: RRMouseInteraction,
+    ) {
         val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
         for (index in 0 until motionEvent.pointerCount) {
             // if the id is 0, BE transformer will set it to the virtual bodyId
@@ -201,12 +213,13 @@ public class PostHogReplayIntegration(
             val absX = motionEvent.getRawXCompat(index).toInt().densityValue(displayMetrics.density)
             val absY = motionEvent.getRawYCompat(index).toInt().densityValue(displayMetrics.density)
 
-            val mouseInteractionData = RRIncrementalMouseInteractionData(
-                id = id,
-                type = type,
-                x = absX,
-                y = absY,
-            )
+            val mouseInteractionData =
+                RRIncrementalMouseInteractionData(
+                    id = id,
+                    type = type,
+                    x = absX,
+                    y = absY,
+                )
             val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
             mouseInteractions.add(mouseInteraction)
         }
@@ -220,7 +233,10 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun cleanSessionState(view: View, status: ViewTreeSnapshotStatus) {
+    private fun cleanSessionState(
+        view: View,
+        status: ViewTreeSnapshotStatus,
+    ) {
         view.viewTreeObserver?.let { viewTreeObserver ->
             if (viewTreeObserver.isAlive) {
                 mainHandler.handler.post {
@@ -271,7 +287,10 @@ public class PostHogReplayIntegration(
         }?.toRGBColor()
     }
 
-    private fun generateSnapshot(viewRef: WeakReference<View>, timestamp: Long) {
+    private fun generateSnapshot(
+        viewRef: WeakReference<View>,
+        timestamp: Long,
+    ) {
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
 
@@ -292,29 +311,35 @@ public class PostHogReplayIntegration(
 
             val screenSizeInfo = view.context.screenSize() ?: return
 
-            val metaEvent = RRMetaEvent(
-                href = title,
-                width = screenSizeInfo.width,
-                height = screenSizeInfo.height,
-                timestamp = timestamp,
-            )
+            val metaEvent =
+                RRMetaEvent(
+                    href = title,
+                    width = screenSizeInfo.width,
+                    height = screenSizeInfo.height,
+                    timestamp = timestamp,
+                )
             events.add(metaEvent)
             status.sentMetaEvent = true
         }
 
         if (!status.sentFullSnapshot) {
-            val event = RRFullSnapshotEvent(
-                listOf(wireframe),
-                initialOffsetTop = 0,
-                initialOffsetLeft = 0,
-                timestamp = timestamp,
-            )
+            val event =
+                RRFullSnapshotEvent(
+                    listOf(wireframe),
+                    initialOffsetTop = 0,
+                    initialOffsetLeft = 0,
+                    timestamp = timestamp,
+                )
             events.add(event)
             status.sentFullSnapshot = true
         } else {
             val lastSnapshot = status.lastSnapshot
             val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
-            val (addedItems, removedItems, updatedItems) = findAddedAndRemovedItems(lastSnapshots.flattenChildren(), listOf(wireframe).flattenChildren())
+            val (addedItems, removedItems, updatedItems) =
+                findAddedAndRemovedItems(
+                    lastSnapshots.flattenChildren(),
+                    listOf(wireframe).flattenChildren(),
+                )
 
             val addedNodes = mutableListOf<RRMutatedNode>()
             addedItems.forEach {
@@ -335,16 +360,18 @@ public class PostHogReplayIntegration(
             }
 
             if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty() || updatedNodes.isNotEmpty()) {
-                val incrementalMutationData = RRIncrementalMutationData(
-                    adds = addedNodes.ifEmpty { null },
-                    removes = removedNodes.ifEmpty { null },
-                    updates = updatedNodes.ifEmpty { null },
-                )
+                val incrementalMutationData =
+                    RRIncrementalMutationData(
+                        adds = addedNodes.ifEmpty { null },
+                        removes = removedNodes.ifEmpty { null },
+                        updates = updatedNodes.ifEmpty { null },
+                    )
 
-                val incrementalSnapshotEvent = RRIncrementalSnapshotEvent(
-                    mutationData = incrementalMutationData,
-                    timestamp = timestamp,
-                )
+                val incrementalSnapshotEvent =
+                    RRIncrementalSnapshotEvent(
+                        mutationData = incrementalMutationData,
+                        timestamp = timestamp,
+                    )
                 events.add(incrementalSnapshotEvent)
             }
         }
@@ -388,9 +415,6 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(displayMetrics.density)
         val style = RRStyle()
         view.background?.let { background ->
-            // TODO: if its not a solid color, we need to do something else
-            // probably a gradient, which is a new Drawable and we'd
-            // need to handle it as a new wireframe (image most likely)
             background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             } ?: run {
@@ -409,26 +433,29 @@ public class PostHogReplayIntegration(
             if (!viewText.isNullOrEmpty()) {
                 // inputType is 0-based
                 val passType = passwordInputTypes.contains(view.inputType - 1)
-                text = if (!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
-                    viewText
-                } else {
-                    viewText.mask()
-                }
+                text =
+                    if (!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                        viewText
+                    } else {
+                        viewText.mask()
+                    }
             }
 
             val hint = view.hint?.toString()
             if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
-                text = if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
-                    hint
-                } else {
-                    hint.mask()
-                }
+                text =
+                    if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                        hint
+                    } else {
+                        hint.mask()
+                    }
             }
 
             type = "text"
             style.color = view.currentTextColor.toRGBColor()
 
-            if (view is Button && view !is CheckBox && view !is RadioButton && view !is Switch) {
+            // CompoundButton is a subclass of CheckBox, RadioButton, Switch, etc
+            if (view is Button && view !is CompoundButton) {
                 style.borderWidth = 1
                 style.borderColor = "#000000"
                 type = "input"
@@ -464,20 +491,22 @@ public class PostHogReplayIntegration(
                     style.horizontalAlign = "left"
                 }
                 View.TEXT_ALIGNMENT_GRAVITY -> {
-                    val horizontalAlignment = when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
-                        Gravity.START, Gravity.LEFT -> "left"
-                        Gravity.END, Gravity.RIGHT -> "right"
-                        Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
-                        else -> "left"
-                    }
+                    val horizontalAlignment =
+                        when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
+                            Gravity.START, Gravity.LEFT -> "left"
+                            Gravity.END, Gravity.RIGHT -> "right"
+                            Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
+                            else -> "left"
+                        }
                     style.horizontalAlign = horizontalAlignment
 
-                    val verticalAlignment = when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
-                        Gravity.TOP -> "top"
-                        Gravity.BOTTOM -> "bottom"
-                        Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
-                        else -> "center"
-                    }
+                    val verticalAlignment =
+                        when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
+                            Gravity.TOP -> "top"
+                            Gravity.BOTTOM -> "bottom"
+                            Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
+                            else -> "center"
+                        }
                     style.verticalAlign = verticalAlignment
                 }
                 else -> {
@@ -486,12 +515,29 @@ public class PostHogReplayIntegration(
                 }
             }
 
-            // TODO: the 4 possible drawables
-            // view.compoundDrawables
-            style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
-            style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
-            style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
-            style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
+            // left, top, right, bottom
+            view.compoundDrawables.forEachIndexed { index, drawable ->
+                drawable?.let {
+                    val base64 = it.base64(view.width, view.height)
+                    // TODO: the 2 other possible drawables (top and bottom are not common)
+                    when (index) {
+                        0 -> style.iconLeft = base64
+//                        1 -> style.iconTop = base64
+                        2 -> style.iconRight = base64
+//                        3 -> style.iconBottom = base64
+                    }
+                }
+            }
+
+            // Do not set padding if the text is centered, otherwise the padding will be off
+            if (style.verticalAlign != "center") {
+                style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
+                style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
+            }
+            if (style.horizontalAlign != "center") {
+                style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
+                style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
+            }
         }
 
         var label: String? = null
@@ -525,11 +571,12 @@ public class PostHogReplayIntegration(
             inputType = "select"
             val mask = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
             view.selectedItem?.let {
-                val theValue = if (!mask) {
-                    it.toString()
-                } else {
-                    it.toString().mask()
-                }
+                val theValue =
+                    if (!mask) {
+                        it.toString()
+                    } else {
+                        it.toString().mask()
+                    }
                 value = theValue
             }
 
@@ -538,11 +585,12 @@ public class PostHogReplayIntegration(
                 for (i in 0 until it.count) {
                     val item = it.getItem(i)?.toString() ?: continue
 
-                    val theItem = if (!mask) {
-                        item
-                    } else {
-                        item.mask()
-                    }
+                    val theItem =
+                        if (!mask) {
+                            item
+                        } else {
+                            item.mask()
+                        }
 
                     items.add(theItem)
                 }
@@ -556,14 +604,11 @@ public class PostHogReplayIntegration(
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
-                    // IconicsDrawable always return null to copy so we fallback to the original one
-                    val drawableCopy = drawable.copy(view.resources) ?: drawable
-                    val convertedBitmap = config.sessionReplayConfig.drawableConverter?.convert(drawableCopy)
-                    base64 = if (convertedBitmap != null) {
-                        convertedBitmap.base64()
-                    } else {
-                        drawableCopy.base64(view.width, view.height)
-                    }
+                    base64 = drawable.base64(view.width, view.height)
+//                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
+//                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
+//                    style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
+//                    style.paddingRight = view.paddingRight.densityValue(displayMetrics.density)
                 }
             }
         }
@@ -572,13 +617,14 @@ public class PostHogReplayIntegration(
         if (view is ProgressBar) {
             inputType = "progress"
             type = "input"
-            val bar = if (view.isIndeterminate) {
-                "circular"
-            } else {
-                max = view.max
-                value = view.progress
-                "horizontal"
-            }
+            val bar =
+                if (view.isIndeterminate) {
+                    "circular"
+                } else {
+                    max = view.max
+                    value = view.progress
+                    "horizontal"
+                }
             style.bar = bar
         }
         if (view is RatingBar) {
@@ -637,37 +683,48 @@ public class PostHogReplayIntegration(
         )
     }
 
+    private fun runDrawableConverter(drawable: Drawable): Bitmap? {
+        return config.sessionReplayConfig.drawableConverter?.convert(drawable)
+    }
+
     private fun Drawable.toRGBColor(): String? {
-        if (this is ColorDrawable) {
-            return this.color.toRGBColor()
-        } else if (this is RippleDrawable && numberOfLayers >= 1) {
-            try {
-                val drawable = getDrawable(0)
-                return drawable?.toRGBColor()
-            } catch (e: Throwable) {
-                // ignore
+        when (this) {
+            is ColorDrawable -> {
+                return color.toRGBColor()
             }
-        } else if (this is InsetDrawable) {
-            return drawable?.toRGBColor()
-        } else if (this is GradientDrawable) {
-            colors?.let { rgcColors ->
-                if (rgcColors.isNotEmpty()) {
-                    // Get the first color from the array
-                    val color = rgcColors[0]
 
-                    // Extract RGB values
-                    val red = Color.red(color)
-                    val green = Color.green(color)
-                    val blue = Color.blue(color)
-
-                    // Construct the RGB color
-                    val rgb = Color.rgb(red, green, blue)
-                    return rgb.toRGBColor()
+            is RippleDrawable -> {
+                try {
+                    return getFirstDrawable()?.toRGBColor()
+                } catch (e: Throwable) {
+                    // ignore
                 }
             }
-            color?.let {
-                if (it.defaultColor != -1) {
-                    return it.defaultColor.toRGBColor()
+
+            is InsetDrawable -> {
+                return drawable?.toRGBColor()
+            }
+
+            is GradientDrawable -> {
+                colors?.let { rgcColors ->
+                    if (rgcColors.isNotEmpty()) {
+                        // Get the first color from the array
+                        val color = rgcColors[0]
+
+                        // Extract RGB values
+                        val red = Color.red(color)
+                        val green = Color.green(color)
+                        val blue = Color.blue(color)
+
+                        // Construct the RGB color
+                        val rgb = Color.rgb(red, green, blue)
+                        return rgb.toRGBColor()
+                    }
+                }
+                color?.let {
+                    if (it.defaultColor != -1) {
+                        return it.defaultColor.toRGBColor()
+                    }
                 }
             }
         }
@@ -675,9 +732,9 @@ public class PostHogReplayIntegration(
     }
 
     private fun Bitmap.isValid(): Boolean {
-        return !this.isRecycled &&
-            this.width > 0 &&
-            this.height > 0
+        return !isRecycled &&
+            width > 0 &&
+            height > 0
     }
 
     private fun Bitmap.base64(): String? {
@@ -692,29 +749,45 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun Drawable.base64(width: Int, height: Int): String? {
-        when (this) {
+    private fun Drawable.base64(
+        width: Int,
+        height: Int,
+        cloned: Boolean = false,
+    ): String? {
+        val convertedBitmap = runDrawableConverter(this)
+        if (convertedBitmap != null) {
+            return convertedBitmap.base64()
+        }
+
+        var clonedDrawable = this
+        if (!cloned) {
+            clonedDrawable = copy() ?: return null
+        }
+
+        when (clonedDrawable) {
             is BitmapDrawable -> {
                 try {
-                    return bitmap.base64()
+                    return clonedDrawable.bitmap.base64()
                 } catch (_: Throwable) {
                     // ignore
                 }
             }
 
             is LayerDrawable -> {
-                return getFirstDrawable()?.base64(width, height)
+                clonedDrawable.getFirstDrawable()?.let {
+                    return it.base64(width, height)
+                }
             }
 
             is InsetDrawable -> {
-                drawable?.let {
+                clonedDrawable.drawable?.let {
                     return it.base64(width, height)
                 }
             }
         }
 
         try {
-            return toBitmap(width, height).base64()
+            return clonedDrawable.toBitmap(width, height).base64()
         } catch (_: Throwable) {
             // ignore
         }
@@ -722,9 +795,12 @@ public class PostHogReplayIntegration(
     }
 
     private fun LayerDrawable.getFirstDrawable(): Drawable? {
-        if (numberOfLayers > 0) {
-            return getDrawable(0)
+        for (i in 0 until numberOfLayers) {
+            getDrawable(i)?.let {
+                return it
+            }
         }
+
         return null
     }
 
@@ -787,7 +863,10 @@ public class PostHogReplayIntegration(
         return Triple(addedItems, removedItems, updatedItems)
     }
 
-    private fun Drawable.toBitmap(width: Int, height: Int): Bitmap {
+    private fun Drawable.toBitmap(
+        width: Int,
+        height: Int,
+    ): Bitmap {
         val bitmap = Bitmap.createBitmap(displayMetrics, width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.MULTIPLY)
@@ -813,15 +892,15 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isNoCapture(maskInput: Boolean): Boolean {
-        return (this.tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
+        return (tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
     }
 
-    private fun Drawable.copy(resources: Resources): Drawable? {
-        return constantState?.newDrawable(resources)
+    private fun Drawable.copy(): Drawable? {
+        return constantState?.newDrawable()
     }
 
     private fun String.mask(): String {
-        return "*".repeat(this.length)
+        return "*".repeat(length)
     }
 
     @SuppressLint("AnnotateVersionCheck")

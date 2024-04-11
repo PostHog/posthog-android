@@ -82,11 +82,12 @@ internal class PostHogLifecycleObserverIntegration(
     private fun scheduleEndSession() {
         synchronized(timerLock) {
             cancelTask()
-            timerTask = object : TimerTask() {
-                override fun run() {
-                    PostHog.endSession()
+            timerTask =
+                object : TimerTask() {
+                    override fun run() {
+                        PostHog.endSession()
+                    }
                 }
-            }
             timer.schedule(timerTask, sessionMaxInterval)
         }
     }

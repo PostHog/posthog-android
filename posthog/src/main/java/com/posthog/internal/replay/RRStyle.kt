@@ -19,4 +19,6 @@ public data class RRStyle(
     public var paddingLeft: Int? = null,
     public var paddingRight: Int? = null,
     public var bar: String? = null,
+    public var iconLeft: String? = null,
+    public var iconRight: String? = null,
 )

@@ -9,13 +9,15 @@ public class RRFullSnapshotEvent(
     initialOffsetLeft: Int,
     timestamp: Long,
 ) : RREvent(
-    type = RREventType.FullSnapshot,
-    data = mapOf(
-        "wireframes" to wireframes,
-        "initialOffset" to mapOf(
-            "top" to initialOffsetTop,
-            "left" to initialOffsetLeft,
-        ),
-    ),
-    timestamp = timestamp,
-)
+        type = RREventType.FullSnapshot,
+        data =
+            mapOf(
+                "wireframes" to wireframes,
+                "initialOffset" to
+                    mapOf(
+                        "top" to initialOffsetTop,
+                        "left" to initialOffsetLeft,
+                    ),
+            ),
+        timestamp = timestamp,
+    )

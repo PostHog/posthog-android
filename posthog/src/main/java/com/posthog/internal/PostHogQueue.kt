@@ -18,7 +18,6 @@ import kotlin.math.min
  * The class that manages the events Queue
  * @property config the Config
  * @property api the API
- * @property dateProvider the Date provider
  * @property executor the Executor
  */
 internal class PostHogQueue(
@@ -28,7 +27,6 @@ internal class PostHogQueue(
     private val storagePrefix: String?,
     private val executor: ExecutorService,
 ) {
-
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()
     private val timerLock = Any()
@@ -64,7 +62,8 @@ internal class PostHogQueue(
                     }
                     first.deleteSafely(config)
                     config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
-                } catch (ignored: NoSuchElementException) {}
+                } catch (ignored: NoSuchElementException) {
+                }
             }
 
             storagePrefix?.let {
@@ -267,15 +266,16 @@ internal class PostHogQueue(
         synchronized(timerLock) {
             stopTimer()
             val timer = Timer(true)
-            val timerTask = timer.schedule(delay, delay) {
-                // early check to avoid more checks when its already flushing
-                if (isFlushing.get()) {
-                    config.logger.log("Queue is flushing.")
-                    return@schedule
+            val timerTask =
+                timer.schedule(delay, delay) {
+                    // early check to avoid more checks when its already flushing
+                    if (isFlushing.get()) {
+                        config.logger.log("Queue is flushing.")
+                        return@schedule
+                    }
+                    // if the timer passes, send pending events, no need to wait for the flushAt threshold
+                    flush()
                 }
-                // if the timer passes, send pending events, no need to wait for the flushAt threshold
-                flush()
-            }
             this.timerTask = timerTask
             this.timer = timer
         }

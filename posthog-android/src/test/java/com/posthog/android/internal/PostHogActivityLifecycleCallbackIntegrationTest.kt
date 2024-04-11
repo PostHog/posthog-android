@@ -3,9 +3,9 @@ package com.posthog.android.internal
 import android.app.Application
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.PostHogFake
-import com.posthog.android.apiKey
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockActivityUri
 import com.posthog.android.mockScreenTitle
@@ -20,17 +20,17 @@ import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogActivityLifecycleCallbackIntegrationTest {
-
     private val application = mock<Application>()
 
     private fun getSut(
         captureDeepLinks: Boolean = true,
         captureScreenViews: Boolean = true,
     ): PostHogActivityLifecycleCallbackIntegration {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            this.captureDeepLinks = captureDeepLinks
-            this.captureScreenViews = captureScreenViews
-        }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                this.captureDeepLinks = captureDeepLinks
+                this.captureScreenViews = captureScreenViews
+            }
         return PostHogActivityLifecycleCallbackIntegration(application, config)
     }
 
@@ -57,7 +57,10 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         verify(application).unregisterActivityLifecycleCallbacks(any())
     }
 
-    private fun executeDeepLinkTest(url: String, captureDeepLinks: Boolean = true): PostHogFake {
+    private fun executeDeepLinkTest(
+        url: String,
+        captureDeepLinks: Boolean = true,
+    ): PostHogFake {
         val sut = getSut(captureDeepLinks = captureDeepLinks)
         val activity = mockActivityUri(url)
 

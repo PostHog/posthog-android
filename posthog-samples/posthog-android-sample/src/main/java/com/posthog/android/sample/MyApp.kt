@@ -20,24 +20,26 @@ class MyApp : Application() {
         // PaulKey
 //        val apiKey = "phc_GavhjwMwc75N4HsaLjMTEvH8Kpsz70rZ3N0E9ho89YJ"
 //        val config = PostHogAndroidConfig(apiKey, host = "https://3727-86-27-112-156.ngrok-free.app").apply {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            debug = true
-            flushAt = 1
-            captureDeepLinks = false
-            captureApplicationLifecycleEvents = true
-            captureScreenViews = true
-            sessionReplay = true
-            preloadFeatureFlags = true
-            onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
-            propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
-                properties.apply {
+        val config =
+            PostHogAndroidConfig(apiKey).apply {
+                debug = true
+                flushAt = 1
+                captureDeepLinks = false
+                captureApplicationLifecycleEvents = true
+                captureScreenViews = true
+                sessionReplay = true
+                preloadFeatureFlags = true
+                onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
+                propertiesSanitizer =
+                    PostHogPropertiesSanitizer { properties ->
+                        properties.apply {
 //                    remove("\$device_name")
-                }
+                        }
+                    }
+                sessionReplayConfig.maskAllTextInputs = false
+                sessionReplayConfig.maskAllImages = false
+                sessionReplayConfig.captureLogcat = true
             }
-            sessionReplayConfig.maskAllTextInputs = false
-            sessionReplayConfig.maskAllImages = false
-            sessionReplayConfig.captureLogcat = true
-        }
         PostHogAndroid.setup(this, config)
     }
 

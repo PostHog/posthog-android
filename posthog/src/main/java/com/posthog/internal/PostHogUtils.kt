@@ -49,7 +49,8 @@ internal fun Executor.executeSafely(run: Runnable) {
     try {
         // can throw RejectedExecutionException
         execute(run)
-    } catch (ignored: Throwable) {}
+    } catch (ignored: Throwable) {
+    }
 }
 
 @PostHogInternal

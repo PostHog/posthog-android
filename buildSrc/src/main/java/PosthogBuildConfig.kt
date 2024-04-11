@@ -38,11 +38,11 @@ object PosthogBuildConfig {
         val ANIMAL_SNIFFER = "1.7.1"
         val ANIMAL_SNIFFER_SDK_VERSION = "5.0.1_r2" // API 21
         val ANIMAL_SNIFFER_SDK_ANNOTATION = "1.23"
-        val SPOTLESS = "6.21.0"
-        val DETEKT = "1.23.1"
-        val API_VALIDATOR = "0.13.2"
-        val BUILD_CONFIG = "4.1.2"
-        val GUMMY_BEARS_API = "0.6.1"
+        val SPOTLESS = "6.25.0"
+        val DETEKT = "1.23.6"
+        val API_VALIDATOR = "0.14.0"
+        val BUILD_CONFIG = "4.2.0"
+        val GUMMY_BEARS_API = "0.8.0"
         val SIGNATURE_JAVA18 = "1.0"
     }
 

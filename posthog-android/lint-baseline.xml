@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 8.2.2" type="baseline" client="gradle" dependencies="true" name="AGP (8.2.2)" variant="all" version="8.2.2">
+<issues format="6" by="lint 8.3.0" type="baseline" client="gradle" dependencies="true" name="AGP (8.3.0)" variant="all" version="8.3.0">
 
     <issue
         id="GradleDependency"
@@ -8,7 +8,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="86"
+            line="88"
             column="20"/>
     </issue>
 
@@ -19,7 +19,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="87"
+            line="89"
             column="20"/>
     </issue>
 
@@ -30,41 +30,8 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="88"
+            line="90"
             column="20"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of org.mockito.kotlin:mockito-kotlin than 4.1.0 is available: 5.0.0"
-        errorLine1="    testImplementation(&quot;org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="100"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of org.jetbrains.kotlin:kotlin-test-junit than 1.8.22 is available: 1.9.22"
-        errorLine1="    testImplementation(&quot;org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="102"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of com.squareup.okhttp3:mockwebserver than 4.11.0 is available: 4.12.0"
-        errorLine1="    testImplementation(&quot;com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="103"
-            column="24"/>
     </issue>
 
 </issues>
