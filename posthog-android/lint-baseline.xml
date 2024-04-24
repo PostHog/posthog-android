@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 8.3.0" type="baseline" client="gradle" dependencies="true" name="AGP (8.3.0)" variant="all" version="8.3.0">
+<issues format="6" by="lint 8.2.2" type="baseline" client="gradle" dependencies="true" name="AGP (8.2.2)" variant="all" version="8.2.2">
 
     <issue
         id="GradleDependency"
@@ -25,7 +25,7 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.core:core than 1.5.0 is available: 1.12.0"
+        message="A newer version of androidx.core:core than 1.5.0 is available: 1.13.0"
         errorLine1="    implementation(&quot;androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
