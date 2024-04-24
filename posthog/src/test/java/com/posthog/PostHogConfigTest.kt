@@ -81,6 +81,12 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `user agent is returned correctly if changed`() {
+        config.sdkName = "posthog-android"
+        assertEquals("posthog-android/${BuildConfig.VERSION_NAME}", config.userAgent)
+    }
+
+    @Test
     fun `user agent is set the java sdk by default`() {
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", config.userAgent)
     }

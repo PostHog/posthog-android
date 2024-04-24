@@ -2,7 +2,7 @@
 
 ## 3.1.18 - 2024-04-24
 
-- fix: set correct `User-Agent` for Android and returns session recording even if authorized domains is enabled  ([#118](https://github.com/PostHog/posthog-android/pull/118))
+- fix: set correct `User-Agent` for Android and returns session recording even if authorized domains is enabled  ([#125](https://github.com/PostHog/posthog-android/pull/125))
 
 ## 3.1.17 - 2024-04-11
 
