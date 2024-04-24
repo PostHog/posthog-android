@@ -84,7 +84,6 @@ public open class PostHogConfig(
     public var onFeatureFlags: PostHogOnFeatureFlags? = null,
     /**
      * Enable Recording of Session Replays for Android
-     * Requires Authorized Domains to be disabled in the PostHog Project Settings
      * Requires Record user sessions to be enabled in the PostHog Project Settings
      * Defaults to false
      */
