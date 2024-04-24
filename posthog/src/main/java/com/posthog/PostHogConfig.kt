@@ -113,7 +113,10 @@ public open class PostHogConfig(
     @PostHogInternal
     public var sdkVersion: String = BuildConfig.VERSION_NAME
 
-    internal val userAgent: String = "$sdkName/$sdkVersion"
+    internal val userAgent: String
+        get() {
+            return "$sdkName/$sdkVersion"
+        }
 
     @PostHogInternal
     public var legacyStoragePrefix: String? = null
