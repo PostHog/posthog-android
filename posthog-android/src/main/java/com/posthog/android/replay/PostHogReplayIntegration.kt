@@ -430,6 +430,7 @@ public class PostHogReplayIntegration(
             val thread = HandlerThread("PostHogReplayScreenshot")
             thread.start()
 
+            // unfortunately we cannot use the Looper.myLooper() because it will be null
             val handler = Handler(thread.looper)
 
             try {
