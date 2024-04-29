@@ -29,6 +29,11 @@ public class PostHogSessionReplayConfig(
      */
     @PostHogExperimental
     public var drawableConverter: PostHogDrawableConverter? = null,
+    /**
+     * By default Session replay will capture all the views on the screen as a wireframe,
+     * By enabling this option, PostHog will capture the screenshot of the screen.
+     * The screenshot may contain sensitive information, use with caution.
+     */
     @PostHogExperimental
     public var screenshot: Boolean = false,
 )

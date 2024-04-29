@@ -305,7 +305,7 @@ public class PostHogReplayIntegration(
         val wireframe = view.toWireframe(window) ?: return
 
         // if the decorView has no backgroundColor, we use the theme color
-        if (wireframe.style?.backgroundColor == null) {
+        if (wireframe.style?.backgroundColor == null && !config.sessionReplayConfig.screenshot) {
             context.theme?.toRGBColor()?.let {
                 wireframe.style?.backgroundColor = it
             }
@@ -398,6 +398,7 @@ public class PostHogReplayIntegration(
         status.lastSnapshot = wireframe
     }
 
+    // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
     private fun View.toWireframe(
         window: Window,
