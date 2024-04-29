@@ -305,6 +305,7 @@ public class PostHogReplayIntegration(
         val wireframe = view.toWireframe(window) ?: return
 
         // if the decorView has no backgroundColor, we use the theme color
+        // no need to do this if we are capturing a screenshot
         if (wireframe.style?.backgroundColor == null && !config.sessionReplayConfig.screenshot) {
             context.theme?.toRGBColor()?.let {
                 wireframe.style?.backgroundColor = it
