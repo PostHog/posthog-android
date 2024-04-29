@@ -16,14 +16,18 @@ import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.text.InputType
 import android.util.Base64
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
+import android.view.Window
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
@@ -73,7 +77,9 @@ import curtains.windowAttachCount
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -118,7 +124,7 @@ public class PostHogReplayIntegration(
 
                                             executor.submit {
                                                 try {
-                                                    generateSnapshot(WeakReference(decorView), timestamp)
+                                                    generateSnapshot(WeakReference(decorView), WeakReference(window), timestamp)
                                                 } catch (e: Throwable) {
                                                     config.logger.log("Session Replay generateSnapshot failed: $e.")
                                                 }
@@ -289,12 +295,14 @@ public class PostHogReplayIntegration(
 
     private fun generateSnapshot(
         viewRef: WeakReference<View>,
+        windowRef: WeakReference<Window>,
         timestamp: Long,
     ) {
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
+        val window = windowRef.get() ?: return
 
-        val wireframe = view.toWireframe() ?: return
+        val wireframe = view.toWireframe(window) ?: return
 
         // if the decorView has no backgroundColor, we use the theme color
         if (wireframe.style?.backgroundColor == null) {
@@ -390,13 +398,64 @@ public class PostHogReplayIntegration(
         status.lastSnapshot = wireframe
     }
 
-    private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
+    @SuppressLint("NewApi")
+    private fun View.toWireframe(
+        window: Window,
+        parentId: Int? = null,
+    ): RRWireframe? {
         val view = this
         if (!view.isShown || view.width <= 0 || view.height <= 0) {
             return null
         }
         if (view is ViewStub) {
             return null
+        }
+
+        val viewId = System.identityHashCode(view)
+
+        val coordinates = IntArray(2)
+        view.getLocationOnScreen(coordinates)
+        val x = coordinates[0].densityValue(displayMetrics.density)
+        val y = coordinates[1].densityValue(displayMetrics.density)
+        val width = view.width.densityValue(displayMetrics.density)
+        val height = view.height.densityValue(displayMetrics.density)
+        var base64: String? = null
+
+        // no parent id means its the root
+        if (parentId == null && config.sessionReplayConfig.screenshot) {
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            val latch = CountDownLatch(1)
+            val thread = HandlerThread("PostHogReplayScreenshot")
+            thread.start()
+
+            val handler = Handler(thread.looper)
+
+            try {
+                PixelCopy.request(window, bitmap, { copyResult ->
+                    if (copyResult == PixelCopy.SUCCESS) {
+                        base64 = bitmap.base64()
+                    }
+                    latch.countDown()
+                }, handler)
+
+                // await for 1s max
+                latch.await(1000, TimeUnit.MILLISECONDS)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay PixelCopy failed: $e.")
+            } finally {
+                thread.quit()
+            }
+
+            return RRWireframe(
+                id = viewId,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                type = "image",
+                base64 = base64,
+                style = RRStyle(),
+            )
         }
 
         var type: String? = null
@@ -407,12 +466,6 @@ public class PostHogReplayIntegration(
             type = "navigation_bar"
         }
 
-        val coordinates = IntArray(2)
-        view.getLocationOnScreen(coordinates)
-        val x = coordinates[0].densityValue(displayMetrics.density)
-        val y = coordinates[1].densityValue(displayMetrics.density)
-        val width = view.width.densityValue(displayMetrics.density)
-        val height = view.height.densityValue(displayMetrics.density)
         val style = RRStyle()
         view.background?.let { background ->
             background.toRGBColor()?.let { color ->
@@ -518,13 +571,13 @@ public class PostHogReplayIntegration(
             // left, top, right, bottom
             view.compoundDrawables.forEachIndexed { index, drawable ->
                 drawable?.let {
-                    val base64 = it.base64(view.width, view.height)
+                    val drawableBase64 = it.base64(view.width, view.height)
                     // TODO: the 2 other possible drawables (top and bottom are not common)
                     when (index) {
-                        0 -> style.iconLeft = base64
-//                        1 -> style.iconTop = base64
-                        2 -> style.iconRight = base64
-//                        3 -> style.iconBottom = base64
+                        0 -> style.iconLeft = drawableBase64
+//                        1 -> style.iconTop = drawableBase64
+                        2 -> style.iconRight = drawableBase64
+//                        3 -> style.iconBottom = drawableBase64
                     }
                 }
             }
@@ -598,7 +651,6 @@ public class PostHogReplayIntegration(
             }
         }
 
-        var base64: String? = null
         if (view is ImageView) {
             type = "image"
             if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
@@ -649,13 +701,11 @@ public class PostHogReplayIntegration(
             type = "web_view"
         }
 
-        val viewId = System.identityHashCode(view)
-
         val children = mutableListOf<RRWireframe>()
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(parentId = viewId)?.let {
+                viewChild.toWireframe(window, parentId = viewId)?.let {
                     children.add(it)
                 }
             }

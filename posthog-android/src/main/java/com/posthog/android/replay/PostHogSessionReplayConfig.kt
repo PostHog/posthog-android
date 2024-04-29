@@ -29,4 +29,6 @@ public class PostHogSessionReplayConfig(
      */
     @PostHogExperimental
     public var drawableConverter: PostHogDrawableConverter? = null,
+    @PostHogExperimental
+    public var screenshot: Boolean = false,
 )
