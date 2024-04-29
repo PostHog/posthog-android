@@ -431,15 +431,20 @@ public class PostHogReplayIntegration(
             val handler = Handler(thread.looper)
 
             try {
+                var success = false
                 PixelCopy.request(window, bitmap, { copyResult ->
                     if (copyResult == PixelCopy.SUCCESS) {
-                        base64 = bitmap.base64()
+                        success = true
                     }
                     latch.countDown()
                 }, handler)
 
                 // await for 1s max
                 latch.await(1000, TimeUnit.MILLISECONDS)
+
+                if (success) {
+                    base64 = bitmap.base64()
+                }
             } catch (e: Throwable) {
                 config.logger.log("Session Replay PixelCopy failed: $e.")
             } finally {
