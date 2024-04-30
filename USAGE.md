@@ -199,7 +199,7 @@ PostHog.close()
 
 Enable `Record user sessions` on the [PostHog project settings](https://us.posthog.com/settings/project-replay#replay).
 
-Requires the Android SDK version >= [3.1.0](https://github.com/PostHog/posthog-android/releases/tag/3.1.0).
+Requires the Android SDK version >= [3.2.0](https://github.com/PostHog/posthog-android/releases/tag/3.2.0).
 
 Enable the SDK to capture Session Recording.
 
@@ -211,7 +211,8 @@ val config = PostHogAndroidConfig(apiKey).apply {
     sessionReplayConfig.maskAllTextInputs = true
     sessionReplayConfig.maskAllImages = true
     sessionReplayConfig.captureLogcat = true
-    // screenshot is disabled by default 
+    // screenshot is disabled by default
+    // The screenshot may contain sensitive information, use with caution
     sessionReplayConfig.screenshot = false
     // debouncerDelayMs is 500ms by default
     sessionReplayConfig.debouncerDelayMs = 1000
@@ -261,8 +262,9 @@ val config = PostHogAndroidConfig(apiKey).apply {
 ### Limitations
 
 - Requires Android API >= 26, otherwise it's a NoOp.
-- Not compatible and/or tested with [Jetpack Compose](https://developer.android.com/jetpack/compose) yet.
-- It's a representation of the user's screen, not a video recording nor a screenshot.
+- [Jetpack Compose](https://developer.android.com/jetpack/compose) is only supported if the `screenshot` option is enabled.
+- It's a representation of the user's screen, not a video recording.
   - Custom views are not fully supported.
+  - If the option `screenshot` is enabled, the SDK will take a screenshot of the screen instead of making a representation of the user's screen.
 - WebView is not supported, a placeholder will be shown.
 - React Native and Flutter for Android aren't supported.
