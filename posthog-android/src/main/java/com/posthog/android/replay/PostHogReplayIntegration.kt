@@ -460,7 +460,7 @@ public class PostHogReplayIntegration(
                 y = y,
                 width = width,
                 height = height,
-                type = "image",
+                type = "screenshot",
                 base64 = base64,
                 style = RRStyle(),
             )
