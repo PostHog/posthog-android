@@ -1,6 +1,6 @@
 ## Next
 
-## 3.2.0 - 2024-04-29
+## 3.2.0 - 2024-04-30
 
 - recording: add `screenshot` option for session replay instead of wireframe ([#127](https://github.com/PostHog/posthog-android/pull/127))
 
