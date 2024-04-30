@@ -8,9 +8,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class Debouncer(
     private val mainHandler: MainHandler,
     private val dateProvider: PostHogDateProvider,
+    private val debouncerDelayMs: Long,
 ) {
     private var lastCall = 0L
-    private val delayNs = TimeUnit.MILLISECONDS.toNanos(DELAY_MS)
+    private val delayNs = TimeUnit.MILLISECONDS.toNanos(debouncerDelayMs)
     private val hasPendingRunnable = AtomicBoolean(false)
 
     /**
@@ -34,7 +35,7 @@ internal class Debouncer(
                     } finally {
                         hasPendingRunnable.set(false)
                     }
-                }, DELAY_MS)
+                }, debouncerDelayMs)
             }
         }
     }
@@ -42,9 +43,5 @@ internal class Debouncer(
     private fun execute(runnable: Runnable) {
         runnable.run()
         lastCall = dateProvider.nanoTime()
-    }
-
-    companion object {
-        private const val DELAY_MS = 500L
     }
 }

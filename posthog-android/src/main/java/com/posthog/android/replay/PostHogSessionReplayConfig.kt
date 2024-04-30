@@ -6,12 +6,14 @@ import com.posthog.PostHogExperimental
 public class PostHogSessionReplayConfig(
     /**
      * Enable masking of all text input fields
+     * This is ignored if the [screenshot] option is enabled
      * Defaults to true
      */
     @PostHogExperimental
     public var maskAllTextInputs: Boolean = true,
     /**
      * Enable masking of all images to a placeholder
+     * This is ignored if the [screenshot] option is enabled
      * Defaults to true
      */
     @PostHogExperimental
@@ -36,4 +38,12 @@ public class PostHogSessionReplayConfig(
      */
     @PostHogExperimental
     public var screenshot: Boolean = false,
+    /**
+     * Deboucer delay used to reduce the number of snapshots captured and reduce performance impact
+     * This is used for capturing the view as a wireframe or screenshot
+     * The lower the number more snapshots will be captured but higher the performance impact
+     * Defaults to 500ms
+     */
+    @PostHogExperimental
+    public var debouncerDelayMs: Long = 500,
 )

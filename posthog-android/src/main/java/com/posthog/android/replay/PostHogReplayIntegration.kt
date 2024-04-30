@@ -116,7 +116,11 @@ public class PostHogReplayIntegration(
                             window.onDecorViewReady { decorView ->
                                 try {
                                     val listener =
-                                        decorView.onNextDraw(mainHandler, config.dateProvider) {
+                                        decorView.onNextDraw(
+                                            mainHandler,
+                                            config.dateProvider,
+                                            config.sessionReplayConfig.debouncerDelayMs,
+                                        ) {
                                             if (!isSessionReplayEnabled) {
                                                 return@onNextDraw
                                             }
