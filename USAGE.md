@@ -211,6 +211,10 @@ val config = PostHogAndroidConfig(apiKey).apply {
     sessionReplayConfig.maskAllTextInputs = true
     sessionReplayConfig.maskAllImages = true
     sessionReplayConfig.captureLogcat = true
+    // screenshot is disabled by default 
+    sessionReplayConfig.screenshot = false
+    // debouncerDelayMs is 500ms by default
+    sessionReplayConfig.debouncerDelayMs = 1000
 }
 ```
 

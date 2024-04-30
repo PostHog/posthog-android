@@ -1,8 +1,12 @@
 ## Next
 
+## 3.2.0 - 2024-04-29
+
+- recording: add `screenshot` option for session replay instead of wireframe ([#127](https://github.com/PostHog/posthog-android/pull/127))
+
 ## 3.1.18 - 2024-04-24
 
-- fix: set correct `User-Agent` for Android and returns session recording even if authorized domains is enabled  ([#125](https://github.com/PostHog/posthog-android/pull/125))
+- fix: set correct `User-Agent` for Android and returns session recording even if authorized domains is enabled ([#125](https://github.com/PostHog/posthog-android/pull/125))
 
 ## 3.1.17 - 2024-04-11
 
@@ -191,7 +195,7 @@ Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE
 
 ## 2.0.0 - 2022-08-29
 
-- Add support for groups, simplefeature flags, and  multivariate feature flags
+- Add support for groups, simplefeature flags, and multivariate feature flags
 
 ## 1.1.2 - 2021-03-11
 

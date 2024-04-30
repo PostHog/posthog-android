@@ -13,7 +13,7 @@ public data class RRWireframe(
     public val width: Int,
     public val height: Int,
     public val childWireframes: List<RRWireframe>? = null,
-    // text|image|rectangle|input|div
+    // text|image|rectangle|input|div|screenshot
     public val type: String? = null,
     // checkbox|radio|text|password|email|number|search|tel|url|select|textarea|button
     public val inputType: String? = null,
