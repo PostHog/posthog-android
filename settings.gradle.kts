@@ -23,5 +23,5 @@ include(":posthog-android")
 
 // samples
 include(":posthog-samples:posthog-android-sample")
-include("posthog-samples:posthog-console-sample")
+include(":posthog-samples:posthog-console-sample")
 findProject(":posthog-samples:posthog-console-sample")?.name = "posthog-console-sample"

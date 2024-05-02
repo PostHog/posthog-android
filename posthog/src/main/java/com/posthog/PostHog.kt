@@ -98,12 +98,7 @@ public class PostHog private constructor(
                 this.replayQueue = replayQueue
                 this.featureFlags = featureFlags
 
-                if (config.isAndroid && (
-                        !config.legacyStoragePrefix.isNullOrBlank() ||
-                            !config.storagePrefix.isNullOrBlank() ||
-                            !config.replayStoragePrefix.isNullOrBlank()
-                    )
-                ) {
+                if (config.isAndroid) {
                     val startDate = config.dateProvider.currentDate()
                     val sendCachedEventsIntegration =
                         PostHogSendCachedEventsIntegration(
@@ -512,7 +507,7 @@ public class PostHog private constructor(
 
         val previousDistinctId = this.distinctId
 
-        // TODO: anonymousId and previous distinct id are needed for java be?
+        // TODO: anonymousId and previous distinct id are needed for java BE?
         val props = mutableMapOf<String, Any>()
         val anonymousId = this.anonymousId
         if (anonymousId.isNotBlank()) {
