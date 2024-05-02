@@ -19,4 +19,8 @@ public open class PostHogAndroidConfig(
     public var captureScreenViews: Boolean = true,
     @PostHogExperimental
     public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
-) : PostHogConfig(apiKey, host)
+) : PostHogConfig(apiKey, host) {
+    init {
+        isAndroid = true
+    }
+}

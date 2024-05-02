@@ -42,6 +42,7 @@ public class PostHogFake : PostHogInterface {
     override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
+        distinctId: String?,
     ): Boolean {
         return false
     }
@@ -49,6 +50,7 @@ public class PostHogFake : PostHogInterface {
     override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
+        distinctId: String?,
     ): Any? {
         return null
     }
@@ -56,6 +58,7 @@ public class PostHogFake : PostHogInterface {
     override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
+        distinctId: String?,
     ): Any? {
         return null
     }
@@ -76,17 +79,22 @@ public class PostHogFake : PostHogInterface {
         type: String,
         key: String,
         groupProperties: Map<String, Any>?,
+        distinctId: String?,
     ) {
     }
 
     override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
+        distinctId: String?,
     ) {
         this.screenTitle = screenTitle
     }
 
-    override fun alias(alias: String) {
+    override fun alias(
+        alias: String,
+        distinctId: String?,
+    ) {
     }
 
     override fun isOptOut(): Boolean {

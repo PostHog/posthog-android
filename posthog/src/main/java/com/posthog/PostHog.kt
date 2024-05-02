@@ -16,6 +16,8 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -91,29 +93,40 @@ public class PostHog private constructor(
                     config.optOut = optOut
                 }
 
-                val startDate = config.dateProvider.currentDate()
-                val sendCachedEventsIntegration =
-                    PostHogSendCachedEventsIntegration(
-                        config,
-                        api,
-                        startDate,
-                        cachedEventsExecutor,
-                    )
-
                 this.config = config
                 this.queue = queue
                 this.replayQueue = replayQueue
                 this.featureFlags = featureFlags
 
-                config.addIntegration(sendCachedEventsIntegration)
+                if (config.isAndroid && (
+                        !config.legacyStoragePrefix.isNullOrBlank() ||
+                            !config.storagePrefix.isNullOrBlank() ||
+                            !config.replayStoragePrefix.isNullOrBlank()
+                    )
+                ) {
+                    val startDate = config.dateProvider.currentDate()
+                    val sendCachedEventsIntegration =
+                        PostHogSendCachedEventsIntegration(
+                            config,
+                            api,
+                            startDate,
+                            cachedEventsExecutor,
+                        )
 
-                legacyPreferences(config, config.serializer)
+                    config.addIntegration(sendCachedEventsIntegration)
+                }
+
+                if (config.isAndroid) {
+                    legacyPreferences(config, config.serializer)
+                }
 
                 enabled = true
 
                 queue.start()
 
-                startSession()
+                if (config.isAndroid) {
+                    startSession()
+                }
 
                 config.integrations.forEach {
                     try {
@@ -220,6 +233,16 @@ public class PostHog private constructor(
             getPreferences().setValue(DISTINCT_ID, value)
         }
 
+    private fun getDynamicContext(): Map<String, Any> {
+        val dynamicContext = mutableMapOf<String, Any>()
+        dynamicContext["\$locale"] = "${Locale.getDefault().language}-${Locale.getDefault().country}"
+        System.getProperty("http.agent")?.let {
+            dynamicContext["\$user_agent"] = it
+        }
+        dynamicContext["\$timezone"] = TimeZone.getDefault().id
+        return dynamicContext
+    }
+
     private fun buildProperties(
         distinctId: String,
         properties: Map<String, Any>?,
@@ -228,6 +251,7 @@ public class PostHog private constructor(
         groupProperties: Map<String, Any>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
+        isAndroid: Boolean = false,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -241,6 +265,8 @@ public class PostHog private constructor(
                 props.putAll(it)
             }
 
+            // dynamic context
+            props.putAll(getDynamicContext())
             config?.context?.getDynamicContext()?.let {
                 props.putAll(it)
             }
@@ -265,14 +291,16 @@ public class PostHog private constructor(
             }
         }
 
-        synchronized(sessionLock) {
-            if (sessionId != sessionIdNone) {
-                val sessionId = sessionId.toString()
-                props["\$session_id"] = sessionId
-                if (config?.sessionReplay == true) {
-                    // Session replay requires $window_id, so we set as the same as $session_id.
-                    // the backend might fallback to $session_id if $window_id is not present next.
-                    props["\$window_id"] = sessionId
+        if (isAndroid) {
+            synchronized(sessionLock) {
+                if (sessionId != sessionIdNone) {
+                    val sessionId = sessionId.toString()
+                    props["\$session_id"] = sessionId
+                    if (config?.sessionReplay == true) {
+                        // Session replay requires $window_id, so we set as the same as $session_id.
+                        // the backend might fallback to $session_id if $window_id is not present next.
+                        props["\$window_id"] = sessionId
+                    }
                 }
             }
         }
@@ -296,12 +324,14 @@ public class PostHog private constructor(
             }
         }
 
-        // Replay needs distinct_id also in the props
-        // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
-        val propDistinctId = props["distinct_id"] as? String
-        if (!appendSharedProps && config?.sessionReplay == true && propDistinctId.isNullOrBlank()) {
-            // distinctId is already validated hence not empty or blank
-            props["distinct_id"] = distinctId
+        if (isAndroid) {
+            // Replay needs distinct_id also in the props
+            // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
+            val propDistinctId = props["distinct_id"] as? String
+            if (!appendSharedProps && config?.sessionReplay == true && propDistinctId.isNullOrBlank()) {
+                // distinctId is already validated hence not empty or blank
+                props["distinct_id"] = distinctId
+            }
         }
 
         return props
@@ -349,8 +379,10 @@ public class PostHog private constructor(
                 return
             }
 
+            val isAndroid = config?.isAndroid == true
+
             var snapshotEvent = false
-            if (event == "\$snapshot") {
+            if (isAndroid && event == "\$snapshot") {
                 snapshotEvent = true
             }
 
@@ -370,6 +402,7 @@ public class PostHog private constructor(
                     appendSharedProps = !snapshotEvent,
                     // only append groups if not a group identify event
                     appendGroups = !groupIdentify,
+                    isAndroid = isAndroid,
                 )
 
             // sanitize the properties or fallback to the original properties
@@ -429,10 +462,13 @@ public class PostHog private constructor(
     public override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
+        distinctId: String?,
     ) {
         if (!isEnabled()) {
             return
         }
+
+        val newDistinctId = distinctId ?: this.distinctId
 
         val props = mutableMapOf<String, Any>()
         props["\$screen_name"] = screenTitle
@@ -441,18 +477,23 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        capture("\$screen", properties = props)
+        capture("\$screen", distinctId = newDistinctId, properties = props)
     }
 
-    public override fun alias(alias: String) {
+    public override fun alias(
+        alias: String,
+        distinctId: String?,
+    ) {
         if (!isEnabled()) {
             return
         }
 
+        val newDistinctId = distinctId ?: this.distinctId
+
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
 
-        capture("\$create_alias", properties = props)
+        capture("\$create_alias", distinctId = newDistinctId, properties = props)
     }
 
     public override fun identify(
@@ -471,6 +512,7 @@ public class PostHog private constructor(
 
         val previousDistinctId = this.distinctId
 
+        // TODO: anonymousId and previous distinct id are needed for java be?
         val props = mutableMapOf<String, Any>()
         val anonymousId = this.anonymousId
         if (anonymousId.isNotBlank()) {
@@ -507,10 +549,13 @@ public class PostHog private constructor(
         type: String,
         key: String,
         groupProperties: Map<String, Any>?,
+        distinctId: String?,
     ) {
         if (!isEnabled()) {
             return
         }
+
+        val newDistinctId = distinctId ?: this.distinctId
 
         val props = mutableMapOf<String, Any>()
         props["\$group_type"] = type
@@ -541,7 +586,7 @@ public class PostHog private constructor(
             preferences.setValue(GROUPS, newGroups)
         }
 
-        capture(GROUP_IDENTIFY, properties = props)
+        capture(GROUP_IDENTIFY, distinctId = newDistinctId, properties = props)
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
@@ -574,6 +619,7 @@ public class PostHog private constructor(
     public override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
+        distinctId: String?,
     ): Boolean {
         if (!isEnabled()) {
             return defaultValue
@@ -584,6 +630,7 @@ public class PostHog private constructor(
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
+        distinctId: String?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
@@ -616,6 +663,7 @@ public class PostHog private constructor(
     public override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
+        distinctId: String?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
@@ -811,17 +859,20 @@ public class PostHog private constructor(
         public override fun isFeatureEnabled(
             key: String,
             defaultValue: Boolean,
-        ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue)
+            distinctId: String?,
+        ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue, distinctId = distinctId)
 
         public override fun getFeatureFlag(
             key: String,
             defaultValue: Any?,
-        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue)
+            distinctId: String?,
+        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, distinctId = distinctId)
 
         public override fun getFeatureFlagPayload(
             key: String,
             defaultValue: Any?,
-        ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
+            distinctId: String?,
+        ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue, distinctId = distinctId)
 
         public override fun flush() {
             shared.flush()
@@ -843,19 +894,24 @@ public class PostHog private constructor(
             type: String,
             key: String,
             groupProperties: Map<String, Any>?,
+            distinctId: String?,
         ) {
-            shared.group(type, key, groupProperties = groupProperties)
+            shared.group(type, key, groupProperties = groupProperties, distinctId = distinctId)
         }
 
         public override fun screen(
             screenTitle: String,
             properties: Map<String, Any>?,
+            distinctId: String?,
         ) {
-            shared.screen(screenTitle, properties = properties)
+            shared.screen(screenTitle, properties = properties, distinctId = distinctId)
         }
 
-        public override fun alias(alias: String) {
-            shared.alias(alias)
+        public override fun alias(
+            alias: String,
+            distinctId: String?,
+        ) {
+            shared.alias(alias, distinctId = distinctId)
         }
 
         public override fun isOptOut(): Boolean = shared.isOptOut()

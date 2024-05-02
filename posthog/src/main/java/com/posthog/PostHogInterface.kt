@@ -60,6 +60,7 @@ public interface PostHogInterface {
     public fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean = false,
+        distinctId: String? = null,
     ): Boolean
 
     /**
@@ -71,6 +72,7 @@ public interface PostHogInterface {
     public fun getFeatureFlag(
         key: String,
         defaultValue: Any? = null,
+        distinctId: String? = null,
     ): Any?
 
     /**
@@ -82,6 +84,7 @@ public interface PostHogInterface {
     public fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any? = null,
+        distinctId: String? = null,
     ): Any?
 
     /**
@@ -116,6 +119,7 @@ public interface PostHogInterface {
         type: String,
         key: String,
         groupProperties: Map<String, Any>? = null,
+        distinctId: String? = null,
     )
 
     /**
@@ -126,6 +130,7 @@ public interface PostHogInterface {
     public fun screen(
         screenTitle: String,
         properties: Map<String, Any>? = null,
+        distinctId: String? = null,
     )
 
     /**
@@ -133,7 +138,10 @@ public interface PostHogInterface {
      * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
      * @param alias the alias
      */
-    public fun alias(alias: String)
+    public fun alias(
+        alias: String,
+        distinctId: String? = null,
+    )
 
     /**
      * Checks if the [optOut] mode is enabled or disabled
@@ -171,8 +179,8 @@ public interface PostHogInterface {
 
     /**
      * Starts a session
-     * The SDK will automatically start a session when you call [setup]
-     * On Android, the SDK will automatically start a session when the app is in the foreground
+     * The SDK will automatically start a session when you call [setup] on Android
+     * On Android, the SDK will also automatically start a session when the app is in the foreground
      */
     public fun startSession()
 

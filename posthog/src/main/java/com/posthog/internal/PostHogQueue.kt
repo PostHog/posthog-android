@@ -27,7 +27,7 @@ internal class PostHogQueue(
     private val storagePrefix: String?,
     private val executor: ExecutorService,
 ) {
-    private val deque: ArrayDeque<File> = ArrayDeque()
+    private val deque: ArrayDeque<PostHogFileInterface> = ArrayDeque()
     private val dequeLock = Any()
     private val timerLock = Any()
     private var pausedUntil: Date? = null
@@ -56,41 +56,52 @@ internal class PostHogQueue(
 
             if (removeFirst) {
                 try {
-                    val first: File
+                    val first: PostHogFileInterface
                     synchronized(dequeLock) {
                         first = deque.removeFirst()
                     }
                     first.deleteSafely(config)
-                    config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
+                    config.logger.log("Queue is full, the oldest event ${first.name()} is dropped.")
                 } catch (ignored: NoSuchElementException) {
                 }
             }
 
-            storagePrefix?.let {
-                val dir = File(it, config.apiKey)
+            val file: PostHogFileInterface
+            if (!storagePrefix.isNullOrEmpty()) {
+                val dir = File(storagePrefix, config.apiKey)
 
                 if (!dirCreated) {
                     dir.mkdirs()
                     dirCreated = true
                 }
 
-                val file = File(dir, "${UUID.randomUUID()}.event")
-                synchronized(dequeLock) {
-                    deque.add(file)
-                }
+                val theFile = File(dir, "${UUID.randomUUID()}.event")
+                file = PostHogFile(theFile)
+                addFile(file)
 
                 try {
                     val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
                     os.use { theOutputStream ->
                         config.serializer.serialize(event, theOutputStream.writer().buffered())
                     }
-                    config.logger.log("Queued event ${file.name}.")
-
-                    flushIfOverThreshold()
+                    config.logger.log("Queued event ${file.name()}.")
                 } catch (e: Throwable) {
                     config.logger.log("Event ${event.event} failed to parse: $e.")
                 }
+            } else {
+                file = PostHogMemoryFile(event)
+                addFile(file)
+
+                config.logger.log("Queued event ${file.name()}.")
             }
+
+            flushIfOverThreshold()
+        }
+    }
+
+    private fun addFile(file: PostHogFileInterface) {
+        synchronized(dequeLock) {
+            deque.add(file)
         }
     }
 
@@ -113,8 +124,8 @@ internal class PostHogQueue(
         return true
     }
 
-    private fun takeFiles(): List<File> {
-        val events: List<File>
+    private fun takeFiles(): List<PostHogFileInterface> {
+        val events: List<PostHogFileInterface>
         synchronized(dequeLock) {
             events = deque.take(config.maxBatchSize)
         }
@@ -163,20 +174,18 @@ internal class PostHogQueue(
 
         val events = mutableListOf<PostHogEvent>()
         for (file in files) {
-            try {
-                val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
-                inputStream.use {
-                    val event = config.serializer.deserialize<PostHogEvent?>(it.reader().buffered())
-                    event?.let { theEvent ->
-                        events.add(theEvent)
+            if (file.isStreamable()) {
+                try {
+                    events.add(file.event(config))
+                } catch (e: Throwable) {
+                    synchronized(dequeLock) {
+                        deque.remove(file)
                     }
+                    file.deleteSafely(config)
+                    config.logger.log("File: ${file.name()} failed to parse: $e.")
                 }
-            } catch (e: Throwable) {
-                synchronized(dequeLock) {
-                    deque.remove(file)
-                }
-                file.deleteSafely(config)
-                config.logger.log("File: ${file.name} failed to parse: $e.")
+            } else {
+                events.add(file.event(config))
             }
         }
 
@@ -294,7 +303,7 @@ internal class PostHogQueue(
 
     fun clear() {
         executor.executeSafely {
-            val tempFiles: List<File>
+            val tempFiles: List<PostHogFileInterface>
             synchronized(dequeLock) {
                 tempFiles = deque.toList()
                 deque.clear()
@@ -305,10 +314,10 @@ internal class PostHogQueue(
         }
     }
 
-    val dequeList: List<File>
+    val dequeList: List<PostHogFileInterface>
         @PostHogVisibleForTesting
         get() {
-            val tempFiles: List<File>
+            val tempFiles: List<PostHogFileInterface>
             synchronized(dequeLock) {
                 tempFiles = deque.toList()
             }
