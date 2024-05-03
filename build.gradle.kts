@@ -54,7 +54,7 @@ tasks.withType<DetektCreateBaselineTask>().configureEach {
 }
 
 apiValidation {
-    ignoredProjects.add("posthog-android-sample")
+    ignoredProjects.addAll(listOf("posthog-android-sample", "posthog-console-sample"))
 }
 
 nexusPublishing.postHogConfig()
