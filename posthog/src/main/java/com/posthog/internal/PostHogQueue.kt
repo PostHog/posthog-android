@@ -191,6 +191,7 @@ internal class PostHogQueue(
 
         var deleteFiles = true
         try {
+            // TODO: python checks if the payload isnt bigger than 900kb
             if (events.isNotEmpty()) {
                 when (endpoint) {
                     PostHogApiEndpoint.BATCH -> api.batch(events)

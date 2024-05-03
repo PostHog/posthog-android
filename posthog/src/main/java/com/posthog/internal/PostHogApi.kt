@@ -9,6 +9,7 @@ import okhttp3.RequestBody
 import okio.BufferedSink
 import java.io.IOException
 import java.io.OutputStream
+import java.util.concurrent.TimeUnit
 
 /**
  * The class that calls the PostHog API
@@ -29,7 +30,10 @@ internal class PostHogApi(
     private val client: OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(GzipRequestInterceptor(config))
+            .callTimeout(config.featureFlagsRequestTimeoutSeconds.toLong(), TimeUnit.SECONDS)
             .build()
+
+    private val decideClient = client.newBuilder().callTimeout(config.featureFlagsRequestTimeoutSeconds.toLong(), TimeUnit.SECONDS).build()
 
     private val theHost: String
         get() {
@@ -56,11 +60,6 @@ internal class PostHogApi(
         events.forEach {
             it.apiKey = config.apiKey
         }
-
-//        // for easy debugging
-//        config.serializer.serializeObject(events)?.let {
-//            print("rrweb events: $it")
-//        }
 
         // sent_at isn't supported by the snapshot endpoint
         val request =
@@ -101,14 +100,15 @@ internal class PostHogApi(
         anonymousId: String?,
         groups: Map<String, Any>?,
     ): PostHogDecideResponse? {
-        val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
+        val decideRequest =
+            PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups = groups, disableGeoIP = config.disableGeoIP)
 
         val request =
             makeRequest("$theHost/decide/?v=3") {
                 config.serializer.serialize(decideRequest, it.bufferedWriter())
             }
 
-        client.newCall(request).execute().use {
+        decideClient.newCall(request).execute().use {
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
 
             it.body?.let { body ->

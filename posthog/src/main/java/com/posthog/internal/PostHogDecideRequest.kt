@@ -8,6 +8,7 @@ internal class PostHogDecideRequest(
     distinctId: String,
     anonymousId: String?,
     groups: Map<String, Any>?,
+    disableGeoIP: Boolean?,
     // add person_properties, group_properties
 ) : HashMap<String, Any>() {
     init {
@@ -18,6 +19,9 @@ internal class PostHogDecideRequest(
         }
         if (groups?.isNotEmpty() == true) {
             this["\$groups"] = groups
+        }
+        if (disableGeoIP == true) {
+            this["disable_geoip"] = disableGeoIP
         }
     }
 }

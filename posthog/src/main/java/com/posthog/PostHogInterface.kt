@@ -199,4 +199,9 @@ public interface PostHogInterface {
 
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
+
+    // TODO: get_all_flags, get_all_flags_and_payloads
+    // This is useful when you need to fetch multiple flag values and don't want to make multiple requests.
+
+    // TODO: local evaluation
 }

@@ -51,18 +51,18 @@ public open class PostHogConfig(
      * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */
-    public var flushAt: Int = 20,
+    public var flushAt: Int = 100,
     /**
      * Number of maximum events in memory and disk, when the maximum is exceed, the oldest
      * event is deleted and the new one takes place
      * Defaults to 1000
      */
-    public var maxQueueSize: Int = 1000,
+    public var maxQueueSize: Int = 10000,
     /**
      * Number of maximum events in a batch call
      * Defaults to 50
      */
-    public var maxBatchSize: Int = 50,
+    public var maxBatchSize: Int = 100,
     // (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     /**
      * Interval in seconds for sending events over the wire
@@ -94,6 +94,9 @@ public open class PostHogConfig(
      * The hook is called before the event is cached or sent over the wire
      */
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+    public var featureFlagsRequestTimeoutSeconds: Int = 3,
+    public var batchRequestTimeoutSeconds: Int = 15,
+    public var disableGeoIP: Boolean = true,
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal
@@ -144,6 +147,9 @@ public open class PostHogConfig(
 
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()
+
+    // TODO:
+    // disable_geoip
 
     /**
      * The integrations list

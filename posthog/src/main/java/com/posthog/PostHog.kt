@@ -201,6 +201,7 @@ public class PostHog private constructor(
         }
     }
 
+    // TODO: python does not have anonymousId
     private var anonymousId: String
         get() {
             var anonymousId: String?
@@ -622,6 +623,7 @@ public class PostHog private constructor(
         return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
     }
 
+    // TODO: only_evaluate_locally
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,

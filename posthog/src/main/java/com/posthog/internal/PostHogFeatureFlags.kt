@@ -46,7 +46,7 @@ internal class PostHogFeatureFlags(
             }
 
             try {
-                val response = api.decide(distinctId, anonymousId = anonymousId, groups)
+                val response = api.decide(distinctId, anonymousId = anonymousId, groups = groups)
 
                 response?.let {
                     synchronized(featureFlagsLock) {

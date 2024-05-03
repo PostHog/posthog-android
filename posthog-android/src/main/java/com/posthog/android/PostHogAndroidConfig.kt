@@ -22,5 +22,10 @@ public open class PostHogAndroidConfig(
 ) : PostHogConfig(apiKey, host) {
     init {
         isAndroid = true
+        featureFlagsRequestTimeoutSeconds = 10
+        flushAt = 20
+        maxQueueSize = 1000
+        maxBatchSize = 50
+        disableGeoIP = false
     }
 }
