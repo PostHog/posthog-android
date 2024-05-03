@@ -101,7 +101,7 @@ internal class PostHogApi(
         groups: Map<String, Any>?,
     ): PostHogDecideResponse? {
         val decideRequest =
-            PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups = groups, disableGeoIP = config.disableGeoIP)
+            PostHogDecideRequest(config.apiKey, distinctId, config.disableGeoIP, anonymousId = anonymousId, groups = groups)
 
         val request =
             makeRequest("$theHost/decide/?v=3") {

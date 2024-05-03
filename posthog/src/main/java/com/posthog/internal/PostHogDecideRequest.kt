@@ -6,22 +6,20 @@ package com.posthog.internal
 internal class PostHogDecideRequest(
     apiKey: String,
     distinctId: String,
+    disableGeoIP: Boolean,
     anonymousId: String?,
     groups: Map<String, Any>?,
-    disableGeoIP: Boolean?,
     // add person_properties, group_properties
 ) : HashMap<String, Any>() {
     init {
         this["api_key"] = apiKey
         this["distinct_id"] = distinctId
+        this["disable_geoip"] = disableGeoIP
         if (!anonymousId.isNullOrBlank()) {
             this["\$anon_distinct_id"] = anonymousId
         }
         if (groups?.isNotEmpty() == true) {
             this["\$groups"] = groups
-        }
-        if (disableGeoIP == true) {
-            this["disable_geoip"] = disableGeoIP
         }
     }
 }
