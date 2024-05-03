@@ -8,6 +8,7 @@ import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
 
 private fun isRequestCanceled(throwable: Throwable): Boolean {
     return throwable is IOException &&
@@ -42,6 +43,14 @@ internal fun File.existsSafely(config: PostHogConfig): Boolean {
     } catch (e: Throwable) {
         config.logger.log("Error deleting the file $name: $e.")
         false
+    }
+}
+
+internal fun ExecutorService.shutdownSafely() {
+    try {
+        // can throw SecurityException
+        shutdown()
+    } catch (ignored: Throwable) {
     }
 }
 

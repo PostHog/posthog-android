@@ -7,7 +7,6 @@ public fun main() {
         PostHogConfig("phc_pQ70jJhZKHRvDIL5ruOErnPy6xiAiWCqlL4ayELj4X8").apply {
             debug = true
             flushAt = 1
-            preloadFeatureFlags = false
         }
     PostHog.setup(config)
 

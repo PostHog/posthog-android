@@ -46,7 +46,7 @@ public open class PostHogConfig(
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * Defaults to true
      */
-    public var preloadFeatureFlags: Boolean = true,
+    public var preloadFeatureFlags: Boolean = false,
     /**
      * Number of minimum events before they are sent over the wire
      * Defaults to 20

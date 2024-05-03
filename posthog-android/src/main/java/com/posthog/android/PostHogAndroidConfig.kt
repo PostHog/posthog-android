@@ -27,5 +27,6 @@ public open class PostHogAndroidConfig(
         maxQueueSize = 1000
         maxBatchSize = 50
         disableGeoIP = false
+        preloadFeatureFlags = true
     }
 }

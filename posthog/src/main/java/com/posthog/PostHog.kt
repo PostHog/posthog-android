@@ -16,6 +16,7 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.shutdownSafely
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
@@ -62,6 +63,9 @@ public class PostHog private constructor(
     private var queue: PostHogQueue? = null
     private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
+
+    // TODO: the control here is now distinctId: key-values?
+    // it'd need to be a circular buffer otherwise i will explode memory
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     public override fun <T : PostHogConfig> setup(config: T) {
@@ -76,11 +80,20 @@ public class PostHog private constructor(
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
                 }
 
-                val cachePreferences = config.cachePreferences ?: memoryPreferences
+                val isClientSDK = config.isClientSDK
+                val cachePreferences = (if (isClientSDK) config.cachePreferences else null) ?: memoryPreferences
                 config.cachePreferences = cachePreferences
                 val api = PostHogApi(config)
                 val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
+
+                if (isClientSDK) {
+                    val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
+                    this.replayQueue = replayQueue
+                } else {
+                    replayExecutor.shutdownSafely()
+                    cachedEventsExecutor.shutdownSafely()
+                }
+
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -95,10 +108,9 @@ public class PostHog private constructor(
 
                 this.config = config
                 this.queue = queue
-                this.replayQueue = replayQueue
                 this.featureFlags = featureFlags
 
-                if (config.isClientSDK) {
+                if (isClientSDK) {
                     val startDate = config.dateProvider.currentDate()
                     val sendCachedEventsIntegration =
                         PostHogSendCachedEventsIntegration(
@@ -109,9 +121,7 @@ public class PostHog private constructor(
                         )
 
                     config.addIntegration(sendCachedEventsIntegration)
-                }
 
-                if (config.isClientSDK) {
                     legacyPreferences(config, config.serializer)
                 }
 
@@ -119,7 +129,7 @@ public class PostHog private constructor(
 
                 queue.start()
 
-                if (config.isClientSDK) {
+                if (isClientSDK) {
                     startSession()
                 }
 
@@ -132,7 +142,7 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
-                if (reloadFeatureFlags && config.preloadFeatureFlags) {
+                if (reloadFeatureFlags && config.preloadFeatureFlags && isClientSDK) {
                     loadFeatureFlagsRequest(config.onFeatureFlags)
                 }
             } catch (e: Throwable) {
