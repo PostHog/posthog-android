@@ -95,7 +95,7 @@ public open class PostHogConfig(
      */
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     public var featureFlagsRequestTimeoutSeconds: Int = 3,
-    public var batchRequestTimeoutSeconds: Int = 15,
+    public var requestTimeoutSeconds: Int = 15,
     public var disableGeoIP: Boolean = true,
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
@@ -140,16 +140,13 @@ public open class PostHogConfig(
     public var snapshotEndpoint: String = "/s/"
 
     @PostHogInternal
-    public var isAndroid: Boolean = false
+    public var isClientSDK: Boolean = false
 
     @PostHogInternal
     public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
 
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()
-
-    // TODO:
-    // disable_geoip
 
     /**
      * The integrations list

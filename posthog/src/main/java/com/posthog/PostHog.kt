@@ -98,7 +98,7 @@ public class PostHog private constructor(
                 this.replayQueue = replayQueue
                 this.featureFlags = featureFlags
 
-                if (config.isAndroid) {
+                if (config.isClientSDK) {
                     val startDate = config.dateProvider.currentDate()
                     val sendCachedEventsIntegration =
                         PostHogSendCachedEventsIntegration(
@@ -111,7 +111,7 @@ public class PostHog private constructor(
                     config.addIntegration(sendCachedEventsIntegration)
                 }
 
-                if (config.isAndroid) {
+                if (config.isClientSDK) {
                     legacyPreferences(config, config.serializer)
                 }
 
@@ -119,7 +119,7 @@ public class PostHog private constructor(
 
                 queue.start()
 
-                if (config.isAndroid) {
+                if (config.isClientSDK) {
                     startSession()
                 }
 
@@ -201,32 +201,43 @@ public class PostHog private constructor(
         }
     }
 
-    // TODO: python does not have anonymousId
     private var anonymousId: String
         get() {
-            var anonymousId: String?
-            synchronized(anonymousLock) {
-                anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
-                if (anonymousId.isNullOrBlank()) {
-                    anonymousId = UUID.randomUUID().toString()
-                    this.anonymousId = anonymousId ?: ""
+            if (isClientSDK()) {
+                var anonymousId: String?
+                synchronized(anonymousLock) {
+                    anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
+                    if (anonymousId.isNullOrBlank()) {
+                        anonymousId = UUID.randomUUID().toString()
+                        this.anonymousId = anonymousId ?: ""
+                    }
                 }
+                return anonymousId ?: ""
+            } else {
+                return ""
             }
-            return anonymousId ?: ""
         }
         set(value) {
-            getPreferences().setValue(ANONYMOUS_ID, value)
+            if (isClientSDK()) {
+                getPreferences().setValue(ANONYMOUS_ID, value)
+            }
         }
 
     private var distinctId: String
         get() {
-            return getPreferences().getValue(
-                DISTINCT_ID,
-                defaultValue = anonymousId,
-            ) as? String ?: ""
+            return if (isClientSDK()) {
+                getPreferences().getValue(
+                    DISTINCT_ID,
+                    defaultValue = anonymousId,
+                ) as? String ?: ""
+            } else {
+                ""
+            }
         }
         set(value) {
-            getPreferences().setValue(DISTINCT_ID, value)
+            if (isClientSDK()) {
+                getPreferences().setValue(DISTINCT_ID, value)
+            }
         }
 
     private fun getDynamicContext(): Map<String, Any> {
@@ -247,7 +258,7 @@ public class PostHog private constructor(
         groupProperties: Map<String, Any>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
-        isAndroid: Boolean = false,
+        isClientSDK: Boolean = false,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -287,7 +298,7 @@ public class PostHog private constructor(
             }
         }
 
-        if (isAndroid) {
+        if (isClientSDK) {
             synchronized(sessionLock) {
                 if (sessionId != sessionIdNone) {
                     val sessionId = sessionId.toString()
@@ -320,7 +331,7 @@ public class PostHog private constructor(
             }
         }
 
-        if (isAndroid) {
+        if (isClientSDK) {
             // Replay needs distinct_id also in the props
             // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
             val propDistinctId = props["distinct_id"] as? String
@@ -375,10 +386,10 @@ public class PostHog private constructor(
                 return
             }
 
-            val isAndroid = config?.isAndroid == true
+            val isClientSDK = isClientSDK()
 
             var snapshotEvent = false
-            if (isAndroid && event == "\$snapshot") {
+            if (isClientSDK && event == "\$snapshot") {
                 snapshotEvent = true
             }
 
@@ -398,7 +409,7 @@ public class PostHog private constructor(
                     appendSharedProps = !snapshotEvent,
                     // only append groups if not a group identify event
                     appendGroups = !groupIdentify,
-                    isAndroid = isAndroid,
+                    isClientSDK = isClientSDK,
                 )
 
             // sanitize the properties or fallback to the original properties
@@ -492,6 +503,10 @@ public class PostHog private constructor(
         capture("\$create_alias", distinctId = newDistinctId, properties = props)
     }
 
+    private fun isClientSDK(): Boolean {
+        return config?.isClientSDK == true
+    }
+
     public override fun identify(
         distinctId: String,
         userProperties: Map<String, Any>?,
@@ -508,13 +523,16 @@ public class PostHog private constructor(
 
         val previousDistinctId = this.distinctId
 
-        // TODO: anonymousId and previous distinct id are needed for java BE?
         val props = mutableMapOf<String, Any>()
-        val anonymousId = this.anonymousId
-        if (anonymousId.isNotBlank()) {
-            props["\$anon_distinct_id"] = anonymousId
-        } else {
-            config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
+
+        val isClientSDK = isClientSDK()
+        if (isClientSDK) {
+            val anonymousId = this.anonymousId
+            if (anonymousId.isNotBlank()) {
+                props["\$anon_distinct_id"] = anonymousId
+            } else {
+                config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
+            }
         }
 
         capture(
@@ -525,18 +543,20 @@ public class PostHog private constructor(
             userPropertiesSetOnce = userPropertiesSetOnce,
         )
 
-        if (previousDistinctId != distinctId) {
-            // We keep the AnonymousId to be used by decide calls and identify to link the previousId
-            if (previousDistinctId.isNotBlank()) {
-                this.anonymousId = previousDistinctId
-            } else {
-                config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
-            }
-            this.distinctId = distinctId
+        if (isClientSDK) {
+            if (previousDistinctId != distinctId) {
+                // We keep the AnonymousId to be used by decide calls and identify to link the previousId
+                if (previousDistinctId.isNotBlank()) {
+                    this.anonymousId = previousDistinctId
+                } else {
+                    config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
+                }
+                this.distinctId = distinctId
 
-            // only because of testing in isolation, this flag is always enabled
-            if (reloadFeatureFlags) {
-                reloadFeatureFlags()
+                // only because of testing in isolation, this flag is always enabled
+                if (reloadFeatureFlags) {
+                    reloadFeatureFlags()
+                }
             }
         }
     }

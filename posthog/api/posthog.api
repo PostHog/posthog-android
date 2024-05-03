@@ -64,7 +64,6 @@ public class com/posthog/PostHogConfig {
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;IIZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
-	public final fun getBatchRequestTimeoutSeconds ()I
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
@@ -86,6 +85,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getPropertiesSanitizer ()Lcom/posthog/PostHogPropertiesSanitizer;
 	public final fun getReplayStoragePrefix ()Ljava/lang/String;
+	public final fun getRequestTimeoutSeconds ()I
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
@@ -93,11 +93,10 @@ public class com/posthog/PostHogConfig {
 	public final fun getSessionReplay ()Z
 	public final fun getSnapshotEndpoint ()Ljava/lang/String;
 	public final fun getStoragePrefix ()Ljava/lang/String;
-	public final fun isAndroid ()Z
+	public final fun isClientSDK ()Z
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
-	public final fun setAndroid (Z)V
-	public final fun setBatchRequestTimeoutSeconds (I)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
+	public final fun setClientSDK (Z)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V
@@ -116,6 +115,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setPropertiesSanitizer (Lcom/posthog/PostHogPropertiesSanitizer;)V
 	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
+	public final fun setRequestTimeoutSeconds (I)V
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V

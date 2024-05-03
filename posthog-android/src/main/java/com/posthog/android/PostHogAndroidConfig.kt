@@ -21,7 +21,7 @@ public open class PostHogAndroidConfig(
     public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
 ) : PostHogConfig(apiKey, host) {
     init {
-        isAndroid = true
+        isClientSDK = true
         featureFlagsRequestTimeoutSeconds = 10
         flushAt = 20
         maxQueueSize = 1000
