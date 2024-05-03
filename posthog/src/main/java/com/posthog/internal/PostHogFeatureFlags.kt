@@ -17,7 +17,7 @@ internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
-) {
+) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
 
     private val featureFlagsLock = Any()
@@ -28,7 +28,7 @@ internal class PostHogFeatureFlags(
     @Volatile
     private var isFeatureFlagsLoaded = false
 
-    fun loadFeatureFlags(
+    override fun loadFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, Any>?,
@@ -55,13 +55,13 @@ internal class PostHogFeatureFlags(
                             this.featureFlags =
                                 (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
 
-                            val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
+                            val normalizedPayloads = normalizePayloads(config.serializer, response.featureFlagPayloads)
 
                             this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
                         } else {
                             this.featureFlags = response.featureFlags
 
-                            val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
+                            val normalizedPayloads = normalizePayloads(config.serializer, response.featureFlagPayloads)
                             this.featureFlagPayloads = normalizedPayloads
                         }
 
@@ -107,6 +107,26 @@ internal class PostHogFeatureFlags(
         }
     }
 
+    private fun loadFeatureFlagsFromNetwork(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
+    ): Pair<Map<String, Any>, Map<String, Any?>>? {
+        try {
+            val response = api.decide(distinctId, anonymousId = anonymousId, groups = groups)
+
+            response?.let {
+                val featureFlags = response.featureFlags ?: mapOf()
+                val normalizedPayloads = normalizePayloads(config.serializer, response.featureFlagPayloads)
+
+                return Pair(featureFlags, normalizedPayloads)
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Loading feature flags from network failed: $e")
+        }
+        return null
+    }
+
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
             @Suppress("UNCHECKED_CAST")
@@ -132,32 +152,14 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun normalizePayloads(featureFlagPayloads: Map<String, Any?>?): Map<String, Any?> {
-        val parsedPayloads = (featureFlagPayloads ?: mapOf()).toMutableMap()
-
-        for (item in parsedPayloads) {
-            val value = item.value
-
-            try {
-                // only try to parse if its a String, since the JSON values are stringified
-                if (value is String) {
-                    // try to deserialize as Any?
-                    config.serializer.deserializeString(value)?.let {
-                        parsedPayloads[item.key] = it
-                    }
-                }
-            } catch (ignored: Throwable) {
-                // if it fails, we keep the original value
-            }
-        }
-        return parsedPayloads
-    }
-
-    fun isFeatureEnabled(
+    override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
     ): Boolean {
-        if (!isFeatureFlagsLoaded) {
+        if (!isFeatureFlagsLoaded && config.isClientSDK) {
             loadFeatureFlagsFromCache()
         }
         val value: Any?
@@ -166,16 +168,7 @@ internal class PostHogFeatureFlags(
             value = featureFlags?.get(key)
         }
 
-        return if (value != null) {
-            if (value is Boolean) {
-                value
-            } else {
-                // if its multivariant flag, its enabled by default
-                true
-            }
-        } else {
-            defaultValue
-        }
+        return normalizeBoolean(value, defaultValue)
     }
 
     private fun readFeatureFlag(
@@ -195,21 +188,31 @@ internal class PostHogFeatureFlags(
         return value ?: defaultValue
     }
 
-    fun getFeatureFlag(
+    override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         return readFeatureFlag(key, defaultValue, featureFlags)
     }
 
-    fun getFeatureFlagPayload(
+    override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
 
-    fun getFeatureFlags(): Map<String, Any>? {
+    override fun getFeatureFlags(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
+    ): Map<String, Any>? {
         val flags: Map<String, Any>?
         synchronized(featureFlagsLock) {
             flags = featureFlags?.toMap()
@@ -217,7 +220,7 @@ internal class PostHogFeatureFlags(
         return flags
     }
 
-    fun clear() {
+    override fun clear() {
         synchronized(featureFlagsLock) {
             featureFlags = null
             featureFlagPayloads = null

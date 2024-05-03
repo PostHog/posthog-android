@@ -29,6 +29,7 @@ public interface PostHogInterface {
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
+        groups: Map<String, Any>? = null,
         groupProperties: Map<String, Any>? = null,
     )
 
@@ -61,6 +62,7 @@ public interface PostHogInterface {
         key: String,
         defaultValue: Boolean = false,
         distinctId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Boolean
 
     /**
@@ -73,6 +75,7 @@ public interface PostHogInterface {
         key: String,
         defaultValue: Any? = null,
         distinctId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Any?
 
     /**
@@ -85,6 +88,7 @@ public interface PostHogInterface {
         key: String,
         defaultValue: Any? = null,
         distinctId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Any?
 
     /**

@@ -22,6 +22,7 @@ public class PostHogFake : PostHogInterface {
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, Any>?,
         groupProperties: Map<String, Any>?,
     ) {
         this.event = event
@@ -43,6 +44,7 @@ public class PostHogFake : PostHogInterface {
         key: String,
         defaultValue: Boolean,
         distinctId: String?,
+        groups: Map<String, Any>?,
     ): Boolean {
         return false
     }
@@ -51,6 +53,7 @@ public class PostHogFake : PostHogInterface {
         key: String,
         defaultValue: Any?,
         distinctId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         return null
     }
@@ -59,6 +62,7 @@ public class PostHogFake : PostHogInterface {
         key: String,
         defaultValue: Any?,
         distinctId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         return null
     }

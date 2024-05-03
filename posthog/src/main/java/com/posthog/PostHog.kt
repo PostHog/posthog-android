@@ -3,6 +3,8 @@ package com.posthog
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
+import com.posthog.internal.PostHogFeatureFlagsInterface
+import com.posthog.internal.PostHogFeatureFlagsSync
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
@@ -59,7 +61,7 @@ public class PostHog private constructor(
 
     private var config: PostHogConfig? = null
 
-    private var featureFlags: PostHogFeatureFlags? = null
+    private var featureFlags: PostHogFeatureFlagsInterface? = null
     private var queue: PostHogQueue? = null
     private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
@@ -92,9 +94,14 @@ public class PostHog private constructor(
                 } else {
                     replayExecutor.shutdownSafely()
                     cachedEventsExecutor.shutdownSafely()
+                    featureFlagsExecutor.shutdownSafely()
                 }
-
-                val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
+                val featureFlags: PostHogFeatureFlagsInterface =
+                    if (isClientSDK) {
+                        PostHogFeatureFlags(config, api, featureFlagsExecutor)
+                    } else {
+                        PostHogFeatureFlagsSync(config, api)
+                    }
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -262,9 +269,11 @@ public class PostHog private constructor(
 
     private fun buildProperties(
         distinctId: String,
+        anonymousId: String?,
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, Any>?,
         groupProperties: Map<String, Any>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
@@ -289,7 +298,7 @@ public class PostHog private constructor(
             }
 
             if (config?.sendFeatureFlagEvent == true) {
-                featureFlags?.getFeatureFlags()?.let {
+                featureFlags?.getFeatureFlags(distinctId, anonymousId = anonymousId, groups = groups)?.let {
                     if (it.isNotEmpty()) {
                         val keys = mutableListOf<String>()
                         for (entry in it.entries) {
@@ -378,6 +387,7 @@ public class PostHog private constructor(
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, Any>?,
         groupProperties: Map<String, Any>?,
     ) {
         try {
@@ -411,9 +421,11 @@ public class PostHog private constructor(
             val mergedProperties =
                 buildProperties(
                     newDistinctId,
+                    anonymousId = this.anonymousId,
                     properties = properties,
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
+                    groups = groups,
                     groupProperties = groupProperties,
                     // only append shared props if not a snapshot event
                     appendSharedProps = !snapshotEvent,
@@ -615,7 +627,7 @@ public class PostHog private constructor(
         capture(GROUP_IDENTIFY, distinctId = newDistinctId, properties = props)
 
         // only because of testing in isolation, this flag is always enabled
-        if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
+        if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup && isClientSDK()) {
             loadFeatureFlagsRequest(null)
         }
     }
@@ -646,11 +658,26 @@ public class PostHog private constructor(
         key: String,
         defaultValue: Boolean,
         distinctId: String?,
+        groups: Map<String, Any>?,
     ): Boolean {
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
+
+        val newDistinctId = distinctId ?: this.distinctId
+
+        if (newDistinctId.isBlank()) {
+            config?.logger?.log("isFeatureEnabled call not allowed, distinctId is invalid: $newDistinctId.")
+            return defaultValue
+        }
+
+        return featureFlags?.isFeatureEnabled(
+            key,
+            defaultValue,
+            distinctId = newDistinctId,
+            anonymousId = this.anonymousId,
+            groups = groups,
+        ) ?: defaultValue
     }
 
     // TODO: only_evaluate_locally
@@ -658,11 +685,27 @@ public class PostHog private constructor(
         key: String,
         defaultValue: Any?,
         distinctId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
-        val value = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+
+        val newDistinctId = distinctId ?: this.distinctId
+
+        if (newDistinctId.isBlank()) {
+            config?.logger?.log("getFeatureFlag call not allowed, distinctId is invalid: $newDistinctId.")
+            return defaultValue
+        }
+
+        val value =
+            featureFlags?.getFeatureFlag(
+                key,
+                defaultValue,
+                distinctId = newDistinctId,
+                anonymousId = this.anonymousId,
+                groups = groups,
+            ) ?: defaultValue
 
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
@@ -691,11 +734,26 @@ public class PostHog private constructor(
         key: String,
         defaultValue: Any?,
         distinctId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
+
+        val newDistinctId = distinctId ?: this.distinctId
+
+        if (newDistinctId.isBlank()) {
+            config?.logger?.log("getFeatureFlagPayload call not allowed, distinctId is invalid: $newDistinctId.")
+            return defaultValue
+        }
+
+        return featureFlags?.getFeatureFlagPayload(
+            key,
+            defaultValue,
+            distinctId = newDistinctId,
+            anonymousId = this.anonymousId,
+            groups = groups,
+        ) ?: defaultValue
     }
 
     public override fun flush() {
@@ -855,6 +913,7 @@ public class PostHog private constructor(
             properties: Map<String, Any>?,
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
+            groups: Map<String, Any>?,
             groupProperties: Map<String, Any>?,
         ) {
             shared.capture(
@@ -863,6 +922,7 @@ public class PostHog private constructor(
                 properties = properties,
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
+                groups = groups,
                 groupProperties = groupProperties,
             )
         }
@@ -887,19 +947,22 @@ public class PostHog private constructor(
             key: String,
             defaultValue: Boolean,
             distinctId: String?,
-        ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue, distinctId = distinctId)
+            groups: Map<String, Any>?,
+        ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue, distinctId = distinctId, groups = groups)
 
         public override fun getFeatureFlag(
             key: String,
             defaultValue: Any?,
             distinctId: String?,
-        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, distinctId = distinctId)
+            groups: Map<String, Any>?,
+        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, distinctId = distinctId, groups = groups)
 
         public override fun getFeatureFlagPayload(
             key: String,
             defaultValue: Any?,
             distinctId: String?,
-        ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue, distinctId = distinctId)
+            groups: Map<String, Any>?,
+        ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue, distinctId = distinctId, groups = groups)
 
         public override fun flush() {
             shared.flush()

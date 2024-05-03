@@ -10,11 +10,12 @@ public fun main() {
         }
     PostHog.setup(config)
 
-    PostHog.capture("Hello World!", distinctId = "123")
+//    PostHog.capture("Hello World!", distinctId = "123")
+    PostHog.isFeatureEnabled("myFlag", defaultValue = false, distinctId = "123")
 
-//    PostHog.flush()
+    PostHog.flush()
 //
-//    PostHog.close()
+    PostHog.close()
 
     while (Thread.activeCount() > 1) {
         println("threads still active")
