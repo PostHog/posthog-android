@@ -199,6 +199,8 @@ internal class PostHogQueue(
                 }
             }
         } catch (e: PostHogApiError) {
+            // TODO: python retries up to 3 times with a 500ms interval
+            // if the API returns between 400 and 500
             if (e.statusCode < 400) {
                 deleteFiles = false
             }
