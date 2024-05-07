@@ -19,4 +19,14 @@ public open class PostHogAndroidConfig(
     public var captureScreenViews: Boolean = true,
     @PostHogExperimental
     public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
-) : PostHogConfig(apiKey, host)
+) : PostHogConfig(apiKey, host) {
+    init {
+        isClientSDK = true
+        featureFlagsRequestTimeoutSeconds = 10
+        flushAt = 20
+        maxQueueSize = 1000
+        maxBatchSize = 50
+        disableGeoIP = false
+        preloadFeatureFlags = true
+    }
+}

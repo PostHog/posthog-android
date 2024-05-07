@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 internal class PostHogDecideRequestTest {
     @Test
     fun `sets the decide request content`() {
-        val request = PostHogDecideRequest(API_KEY, DISTINCT_ID, anonymousId = ANON_ID, groups)
+        val request = PostHogDecideRequest(API_KEY, DISTINCT_ID, disableGeoIP = true, anonymousId = ANON_ID, groups)
 
         assertEquals(API_KEY, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])

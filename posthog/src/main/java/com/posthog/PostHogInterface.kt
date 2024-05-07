@@ -21,7 +21,7 @@ public interface PostHogInterface {
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
-     * @param groupProperties the group properties, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param groups the group properties, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
     public fun capture(
         event: String,
@@ -29,7 +29,7 @@ public interface PostHogInterface {
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
-        groupProperties: Map<String, Any>? = null,
+        groups: Map<String, Any>? = null,
     )
 
     /**
@@ -60,6 +60,8 @@ public interface PostHogInterface {
     public fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean = false,
+        distinctId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Boolean
 
     /**
@@ -71,6 +73,8 @@ public interface PostHogInterface {
     public fun getFeatureFlag(
         key: String,
         defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Any?
 
     /**
@@ -82,7 +86,19 @@ public interface PostHogInterface {
     public fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Any?
+
+    public fun getAllFeatureFlags(
+        distinctId: String? = null,
+        groups: Map<String, Any>? = null,
+    ): Map<String, Any>?
+
+    public fun getAllFeatureFlagsAndPayloads(
+        distinctId: String? = null,
+        groups: Map<String, Any>? = null,
+    ): Pair<Map<String, Any>?, Map<String, Any?>?>
 
     /**
      * Flushes all the events in the Queue right away
@@ -116,6 +132,7 @@ public interface PostHogInterface {
         type: String,
         key: String,
         groupProperties: Map<String, Any>? = null,
+        distinctId: String? = null,
     )
 
     /**
@@ -126,6 +143,7 @@ public interface PostHogInterface {
     public fun screen(
         screenTitle: String,
         properties: Map<String, Any>? = null,
+        distinctId: String? = null,
     )
 
     /**
@@ -133,7 +151,10 @@ public interface PostHogInterface {
      * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
      * @param alias the alias
      */
-    public fun alias(alias: String)
+    public fun alias(
+        alias: String,
+        distinctId: String? = null,
+    )
 
     /**
      * Checks if the [optOut] mode is enabled or disabled
@@ -171,8 +192,8 @@ public interface PostHogInterface {
 
     /**
      * Starts a session
-     * The SDK will automatically start a session when you call [setup]
-     * On Android, the SDK will automatically start a session when the app is in the foreground
+     * The SDK will automatically start a session when you call [setup] on Android
+     * On Android, the SDK will also automatically start a session when the app is in the foreground
      */
     public fun startSession()
 
@@ -191,4 +212,6 @@ public interface PostHogInterface {
 
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
+
+    // TODO: local evaluation
 }

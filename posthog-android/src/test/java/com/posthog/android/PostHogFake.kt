@@ -22,7 +22,7 @@ public class PostHogFake : PostHogInterface {
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
+        groups: Map<String, Any>?,
     ) {
         this.event = event
         this.properties = properties
@@ -42,6 +42,8 @@ public class PostHogFake : PostHogInterface {
     override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
+        distinctId: String?,
+        groups: Map<String, Any>?,
     ): Boolean {
         return false
     }
@@ -49,6 +51,8 @@ public class PostHogFake : PostHogInterface {
     override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
+        distinctId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         return null
     }
@@ -56,8 +60,24 @@ public class PostHogFake : PostHogInterface {
     override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
+        distinctId: String?,
+        groups: Map<String, Any>?,
     ): Any? {
         return null
+    }
+
+    override fun getAllFeatureFlags(
+        distinctId: String?,
+        groups: Map<String, Any>?,
+    ): Map<String, Any>? {
+        return null
+    }
+
+    override fun getAllFeatureFlagsAndPayloads(
+        distinctId: String?,
+        groups: Map<String, Any>?,
+    ): Pair<Map<String, Any>?, Map<String, Any?>?> {
+        return Pair(null, null)
     }
 
     override fun flush() {
@@ -76,17 +96,22 @@ public class PostHogFake : PostHogInterface {
         type: String,
         key: String,
         groupProperties: Map<String, Any>?,
+        distinctId: String?,
     ) {
     }
 
     override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
+        distinctId: String?,
     ) {
         this.screenTitle = screenTitle
     }
 
-    override fun alias(alias: String) {
+    override fun alias(
+        alias: String,
+        distinctId: String?,
+    ) {
     }
 
     override fun isOptOut(): Boolean {

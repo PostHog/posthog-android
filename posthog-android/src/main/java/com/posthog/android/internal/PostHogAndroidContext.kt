@@ -10,8 +10,6 @@ import android.os.Build
 import android.util.DisplayMetrics
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogContext
-import java.util.Locale
-import java.util.TimeZone
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -141,11 +139,6 @@ internal class PostHogAndroidContext(
     @SuppressLint("MissingPermission")
     override fun getDynamicContext(): Map<String, Any> {
         val dynamicContext = mutableMapOf<String, Any>()
-        dynamicContext["\$locale"] = "${Locale.getDefault().language}-${Locale.getDefault().country}"
-        System.getProperty("http.agent")?.let {
-            dynamicContext["\$user_agent"] = it
-        }
-        dynamicContext["\$timezone"] = TimeZone.getDefault().id
 
         context.connectivityManager()?.let { connectivityManager ->
             if (context.hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
