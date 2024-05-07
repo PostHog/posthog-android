@@ -20,12 +20,12 @@ internal class PostHogFeatureFlagsSync(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, Any>?,
-    ): Pair<Map<String, Any>, Map<String, Any?>> {
+    ): Pair<Map<String, Any>?, Map<String, Any?>?> {
         try {
             val response = api.decide(distinctId, anonymousId = anonymousId, groups = groups)
 
             response?.let {
-                val featureFlags = response.featureFlags ?: mapOf()
+                val featureFlags = response.featureFlags
                 val normalizedPayloads = normalizePayloads(config.serializer, response.featureFlagPayloads)
 
                 return Pair(featureFlags, normalizedPayloads)
@@ -33,7 +33,7 @@ internal class PostHogFeatureFlagsSync(
         } catch (e: Throwable) {
             config.logger.log("Loading feature flags from network failed: $e")
         }
-        return Pair(mapOf(), mapOf())
+        return Pair(null, null)
     }
 
     override fun isFeatureEnabled(
@@ -45,7 +45,7 @@ internal class PostHogFeatureFlagsSync(
     ): Boolean {
         val (flags, _) = loadFeatureFlagsFromNetwork(distinctId, anonymousId = anonymousId, groups = groups)
 
-        val value = flags[key]
+        val value = flags?.get(key)
 
         return normalizeBoolean(value, defaultValue)
     }
@@ -59,7 +59,7 @@ internal class PostHogFeatureFlagsSync(
     ): Any? {
         val (_, payloads) = loadFeatureFlagsFromNetwork(distinctId, anonymousId = anonymousId, groups = groups)
 
-        return payloads[key] ?: defaultValue
+        return payloads?.get(key) ?: defaultValue
     }
 
     override fun getFeatureFlag(
@@ -71,7 +71,7 @@ internal class PostHogFeatureFlagsSync(
     ): Any? {
         val (flags, _) = loadFeatureFlagsFromNetwork(distinctId, anonymousId = anonymousId, groups = groups)
 
-        return flags[key] ?: defaultValue
+        return flags?.get(key) ?: defaultValue
     }
 
     override fun getFeatureFlags(
@@ -81,7 +81,7 @@ internal class PostHogFeatureFlagsSync(
     ): Map<String, Any>? {
         val (flags, _) = loadFeatureFlagsFromNetwork(distinctId, anonymousId = anonymousId, groups = groups)
 
-        return flags.ifEmpty { null }
+        return flags?.ifEmpty { null }
     }
 
     override fun clear() {

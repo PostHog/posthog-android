@@ -55,7 +55,7 @@ internal class PostHogFeatureFlags(
                             this.featureFlags =
                                 (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
 
-                            val normalizedPayloads = normalizePayloads(config.serializer, response.featureFlagPayloads)
+                            val normalizedPayloads = normalizePayloads(config.serializer, response.featureFlagPayloads) ?: mapOf()
 
                             this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
                         } else {
@@ -107,26 +107,6 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun loadFeatureFlagsFromNetwork(
-        distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, Any>?,
-    ): Pair<Map<String, Any>, Map<String, Any?>>? {
-        try {
-            val response = api.decide(distinctId, anonymousId = anonymousId, groups = groups)
-
-            response?.let {
-                val featureFlags = response.featureFlags ?: mapOf()
-                val normalizedPayloads = normalizePayloads(config.serializer, response.featureFlagPayloads)
-
-                return Pair(featureFlags, normalizedPayloads)
-            }
-        } catch (e: Throwable) {
-            config.logger.log("Loading feature flags from network failed: $e")
-        }
-        return null
-    }
-
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
             @Suppress("UNCHECKED_CAST")
@@ -159,7 +139,7 @@ internal class PostHogFeatureFlags(
         anonymousId: String?,
         groups: Map<String, Any>?,
     ): Boolean {
-        if (!isFeatureFlagsLoaded && config.isClientSDK) {
+        if (!isFeatureFlagsLoaded) {
             loadFeatureFlagsFromCache()
         }
         val value: Any?

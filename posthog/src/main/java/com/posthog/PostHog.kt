@@ -66,8 +66,6 @@ public class PostHog private constructor(
     private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
 
-    // TODO: the control here is now distinctId: key-values?
-    // it'd need to be a circular buffer otherwise i will explode memory
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     public override fun <T : PostHogConfig> setup(config: T) {
@@ -93,15 +91,16 @@ public class PostHog private constructor(
                     this.replayQueue = replayQueue
                 } else {
                     replayExecutor.shutdownSafely()
-                    cachedEventsExecutor.shutdownSafely()
+                }
+
+                val featureFlags: PostHogFeatureFlagsInterface
+
+                if (isClientSDK) {
+                    featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
+                } else {
+                    featureFlags = PostHogFeatureFlagsSync(config, api)
                     featureFlagsExecutor.shutdownSafely()
                 }
-                val featureFlags: PostHogFeatureFlagsInterface =
-                    if (isClientSDK) {
-                        PostHogFeatureFlags(config, api, featureFlagsExecutor)
-                    } else {
-                        PostHogFeatureFlagsSync(config, api)
-                    }
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -130,6 +129,8 @@ public class PostHog private constructor(
                     config.addIntegration(sendCachedEventsIntegration)
 
                     legacyPreferences(config, config.serializer)
+                } else {
+                    cachedEventsExecutor.shutdownSafely()
                 }
 
                 enabled = true
@@ -274,7 +275,6 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
         isClientSDK: Boolean = false,
@@ -345,7 +345,7 @@ public class PostHog private constructor(
 
         if (appendGroups) {
             // merge groups
-            mergeGroups(groupProperties)?.let {
+            mergeGroups(groups)?.let {
                 props["\$groups"] = it
             }
         }
@@ -363,7 +363,7 @@ public class PostHog private constructor(
         return props
     }
 
-    private fun mergeGroups(groupProperties: Map<String, Any>?): Map<String, Any>? {
+    private fun mergeGroups(givenGroups: Map<String, Any>?): Map<String, Any>? {
         val preferences = getPreferences()
 
         @Suppress("UNCHECKED_CAST")
@@ -374,7 +374,7 @@ public class PostHog private constructor(
             newGroups.putAll(it)
         }
 
-        groupProperties?.let {
+        givenGroups?.let {
             newGroups.putAll(it)
         }
 
@@ -388,7 +388,6 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
     ) {
         try {
             if (!isEnabled()) {
@@ -426,7 +425,6 @@ public class PostHog private constructor(
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
                     groups = groups,
-                    groupProperties = groupProperties,
                     // only append shared props if not a snapshot event
                     appendSharedProps = !snapshotEvent,
                     // only append groups if not a group identify event
@@ -605,29 +603,32 @@ public class PostHog private constructor(
         val preferences = getPreferences()
         var reloadFeatureFlagsIfNewGroup = false
 
-        synchronized(groupsLock) {
-            @Suppress("UNCHECKED_CAST")
-            val groups = preferences.getValue(GROUPS) as? Map<String, Any>
-            val newGroups = mutableMapOf<String, Any>()
+        val isClientSDK = isClientSDK()
+        if (isClientSDK) {
+            synchronized(groupsLock) {
+                @Suppress("UNCHECKED_CAST")
+                val groups = preferences.getValue(GROUPS) as? Map<String, Any>
+                val newGroups = mutableMapOf<String, Any>()
 
-            groups?.let {
-                val currentKey = it[type]
+                groups?.let {
+                    val currentKey = it[type]
 
-                if (key != currentKey) {
-                    reloadFeatureFlagsIfNewGroup = true
+                    if (key != currentKey) {
+                        reloadFeatureFlagsIfNewGroup = true
+                    }
+
+                    newGroups.putAll(it)
                 }
+                newGroups[type] = key
 
-                newGroups.putAll(it)
+                preferences.setValue(GROUPS, newGroups)
             }
-            newGroups[type] = key
-
-            preferences.setValue(GROUPS, newGroups)
         }
 
         capture(GROUP_IDENTIFY, distinctId = newDistinctId, properties = props)
 
         // only because of testing in isolation, this flag is always enabled
-        if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup && isClientSDK()) {
+        if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
             loadFeatureFlagsRequest(null)
         }
     }
@@ -708,13 +709,16 @@ public class PostHog private constructor(
             ) ?: defaultValue
 
         var shouldSendFeatureFlagEvent = true
-        synchronized(featureFlagsCalledLock) {
-            val values = featureFlagsCalled[key] ?: mutableListOf()
-            if (values.contains(value)) {
-                shouldSendFeatureFlagEvent = false
-            } else {
-                values.add(value)
-                featureFlagsCalled[key] = values
+
+        if (isClientSDK()) {
+            synchronized(featureFlagsCalledLock) {
+                val values = featureFlagsCalled[key] ?: mutableListOf()
+                if (values.contains(value)) {
+                    shouldSendFeatureFlagEvent = false
+                } else {
+                    values.add(value)
+                    featureFlagsCalled[key] = values
+                }
             }
         }
 
@@ -914,7 +918,6 @@ public class PostHog private constructor(
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
             groups: Map<String, Any>?,
-            groupProperties: Map<String, Any>?,
         ) {
             shared.capture(
                 event,
@@ -923,7 +926,6 @@ public class PostHog private constructor(
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
                 groups = groups,
-                groupProperties = groupProperties,
             )
         }
 

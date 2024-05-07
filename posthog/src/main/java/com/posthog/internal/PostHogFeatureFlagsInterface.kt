@@ -45,8 +45,8 @@ internal interface PostHogFeatureFlagsInterface {
     fun normalizePayloads(
         serializer: PostHogSerializer,
         featureFlagPayloads: Map<String, Any?>?,
-    ): Map<String, Any?> {
-        val parsedPayloads = (featureFlagPayloads ?: mapOf()).toMutableMap()
+    ): Map<String, Any?>? {
+        val parsedPayloads = featureFlagPayloads?.toMutableMap() ?: return null
 
         for (item in parsedPayloads) {
             val value = item.value

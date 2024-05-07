@@ -21,7 +21,7 @@ public interface PostHogInterface {
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
-     * @param groupProperties the group properties, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param groups the group properties, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
     public fun capture(
         event: String,
@@ -30,7 +30,6 @@ public interface PostHogInterface {
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, Any>? = null,
-        groupProperties: Map<String, Any>? = null,
     )
 
     /**
