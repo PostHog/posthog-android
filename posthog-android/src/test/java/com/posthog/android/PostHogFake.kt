@@ -23,7 +23,6 @@ public class PostHogFake : PostHogInterface {
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
     ) {
         this.event = event
         this.properties = properties
@@ -65,6 +64,20 @@ public class PostHogFake : PostHogInterface {
         groups: Map<String, Any>?,
     ): Any? {
         return null
+    }
+
+    override fun getAllFeatureFlags(
+        distinctId: String?,
+        groups: Map<String, Any>?,
+    ): Map<String, Any>? {
+        return null
+    }
+
+    override fun getAllFeatureFlagsAndPayloads(
+        distinctId: String?,
+        groups: Map<String, Any>?,
+    ): Pair<Map<String, Any>?, Map<String, Any?>?> {
+        return Pair(null, null)
     }
 
     override fun flush() {
