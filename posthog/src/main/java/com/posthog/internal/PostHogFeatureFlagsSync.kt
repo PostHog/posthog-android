@@ -74,7 +74,7 @@ internal class PostHogFeatureFlagsSync(
         return flags?.get(key) ?: defaultValue
     }
 
-    override fun getFeatureFlags(
+    override fun getAllFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, Any>?,
@@ -82,6 +82,16 @@ internal class PostHogFeatureFlagsSync(
         val (flags, _) = loadFeatureFlagsFromNetwork(distinctId, anonymousId = anonymousId, groups = groups)
 
         return flags?.ifEmpty { null }
+    }
+
+    override fun getAllFeatureFlagsAndPayloads(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
+    ): Pair<Map<String, Any>?, Map<String, Any?>?> {
+        val (flags, payloads) = loadFeatureFlagsFromNetwork(distinctId, anonymousId = anonymousId, groups = groups)
+
+        return Pair(flags, payloads)
     }
 
     override fun clear() {

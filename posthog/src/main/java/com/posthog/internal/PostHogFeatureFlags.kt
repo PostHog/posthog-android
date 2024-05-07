@@ -188,16 +188,35 @@ internal class PostHogFeatureFlags(
         return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
 
-    override fun getFeatureFlags(
+    override fun getAllFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, Any>?,
     ): Map<String, Any>? {
+        if (!isFeatureFlagsLoaded) {
+            loadFeatureFlagsFromCache()
+        }
+
         val flags: Map<String, Any>?
         synchronized(featureFlagsLock) {
             flags = featureFlags?.toMap()
         }
         return flags
+    }
+
+    override fun getAllFeatureFlagsAndPayloads(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
+    ): Pair<Map<String, Any>?, Map<String, Any?>?> {
+        val flags = getAllFeatureFlags(distinctId, anonymousId = anonymousId, groups = groups)
+
+        val payloads: Map<String, Any?>?
+        synchronized(featureFlagsLock) {
+            payloads = featureFlagPayloads?.toMap()
+        }
+
+        return Pair(flags, payloads)
     }
 
     override fun clear() {

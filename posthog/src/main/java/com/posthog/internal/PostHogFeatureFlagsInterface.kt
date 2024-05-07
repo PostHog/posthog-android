@@ -34,11 +34,17 @@ internal interface PostHogFeatureFlagsInterface {
         groups: Map<String, Any>?,
     ): Any?
 
-    fun getFeatureFlags(
+    fun getAllFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, Any>?,
     ): Map<String, Any>?
+
+    fun getAllFeatureFlagsAndPayloads(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, Any>?,
+    ): Pair<Map<String, Any>?, Map<String, Any?>?>
 
     fun clear()
 

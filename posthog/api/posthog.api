@@ -8,6 +8,8 @@ public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public fun distinctId ()Ljava/lang/String;
 	public fun endSession ()V
 	public fun flush ()V
+	public fun getAllFeatureFlags (Ljava/lang/String;Ljava/util/Map;)Ljava/util/Map;
+	public fun getAllFeatureFlagsAndPayloads (Ljava/lang/String;Ljava/util/Map;)Lkotlin/Pair;
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/Object;
@@ -35,6 +37,8 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun distinctId ()Ljava/lang/String;
 	public fun endSession ()V
 	public fun flush ()V
+	public fun getAllFeatureFlags (Ljava/lang/String;Ljava/util/Map;)Ljava/util/Map;
+	public fun getAllFeatureFlagsAndPayloads (Ljava/lang/String;Ljava/util/Map;)Lkotlin/Pair;
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/Object;
@@ -181,6 +185,8 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun distinctId ()Ljava/lang/String;
 	public abstract fun endSession ()V
 	public abstract fun flush ()V
+	public abstract fun getAllFeatureFlags (Ljava/lang/String;Ljava/util/Map;)Ljava/util/Map;
+	public abstract fun getAllFeatureFlagsAndPayloads (Ljava/lang/String;Ljava/util/Map;)Lkotlin/Pair;
 	public abstract fun getConfig ()Lcom/posthog/PostHogConfig;
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/Object;
@@ -204,6 +210,8 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun alias$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun capture$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun debug$default (Lcom/posthog/PostHogInterface;ZILjava/lang/Object;)V
+	public static synthetic fun getAllFeatureFlags$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/Map;
+	public static synthetic fun getAllFeatureFlagsAndPayloads$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lkotlin/Pair;
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun group$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;ILjava/lang/Object;)V

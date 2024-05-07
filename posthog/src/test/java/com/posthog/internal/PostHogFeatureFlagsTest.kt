@@ -62,7 +62,7 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertNull(sut.getFeatureFlags())
+        assertNull(sut.getAllFeatureFlags())
     }
 
     @Test
@@ -111,7 +111,7 @@ internal class PostHogFeatureFlagsTest {
 
         sut.clear()
 
-        assertNull(sut.getFeatureFlags())
+        assertNull(sut.getAllFeatureFlags())
         assertNull(preferences.getValue(FEATURE_FLAGS))
         assertNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
     }
@@ -132,7 +132,7 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        val flags = sut.getFeatureFlags()
+        val flags = sut.getAllFeatureFlags()
         assertEquals(1, flags!!.size)
     }
 
