@@ -5,8 +5,8 @@ import com.posthog.PostHogOnFeatureFlags
 internal interface PostHogFeatureFlagsInterface {
     fun loadFeatureFlags(
         distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, Any>?,
+        anonymousId: String? = null,
+        groups: Map<String, Any>? = null,
         onFeatureFlags: PostHogOnFeatureFlags?,
     )
 
@@ -14,36 +14,36 @@ internal interface PostHogFeatureFlagsInterface {
         key: String,
         defaultValue: Boolean,
         distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, Any>?,
+        anonymousId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Boolean
 
     fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
         distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, Any>?,
+        anonymousId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Any?
 
     fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
         distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, Any>?,
+        anonymousId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Any?
 
     fun getAllFeatureFlags(
         distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, Any>?,
+        anonymousId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Map<String, Any>?
 
     fun getAllFeatureFlagsAndPayloads(
         distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, Any>?,
+        anonymousId: String? = null,
+        groups: Map<String, Any>? = null,
     ): Pair<Map<String, Any>?, Map<String, Any?>?>
 
     fun clear()

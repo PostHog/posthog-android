@@ -28,7 +28,7 @@ internal class PostHogFeatureFlagsTest {
     private fun getSut(
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
-    ): PostHogFeatureFlags {
+    ): PostHogFeatureFlagsInterface {
         val config =
             PostHogConfig(API_KEY, host).apply {
                 this.networkStatus = networkStatus
@@ -62,7 +62,7 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertNull(sut.getAllFeatureFlags())
+        assertNull(sut.getAllFeatureFlags(distinctId = "distinctId"))
     }
 
     @Test
@@ -84,8 +84,8 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
-        assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false, distinctId = "distinctId") as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false, distinctId = "distinctId") as Boolean)
         assertTrue(callback)
     }
 
@@ -105,13 +105,13 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false, distinctId = "distinctId") as Boolean)
         assertNotNull(preferences.getValue(FEATURE_FLAGS))
         assertNotNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
 
         sut.clear()
 
-        assertNull(sut.getAllFeatureFlags())
+        assertNull(sut.getAllFeatureFlags(distinctId = "distinctId"))
         assertNull(preferences.getValue(FEATURE_FLAGS))
         assertNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
     }
@@ -132,7 +132,7 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        val flags = sut.getAllFeatureFlags()
+        val flags = sut.getAllFeatureFlags(distinctId = "distinctId")
         assertEquals(1, flags!!.size)
     }
 
@@ -152,7 +152,7 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlag("notFound", defaultValue = true) as Boolean)
+        assertTrue(sut.getFeatureFlag("notFound", defaultValue = true, distinctId = "distinctId") as Boolean)
     }
 
     @Test
@@ -182,11 +182,11 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
-        assertTrue(sut.getFeatureFlag("foo", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false, distinctId = "distinctId") as Boolean)
+        assertTrue(sut.getFeatureFlag("foo", defaultValue = false, distinctId = "distinctId") as Boolean)
 
-        assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
-        assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false, distinctId = "distinctId") as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false, distinctId = "distinctId") as Boolean)
     }
 
     @Test
@@ -207,10 +207,10 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz", defaultValue = false))
-        assertFalse(sut.isFeatureEnabled("IAmInactive", defaultValue = true))
-        assertTrue(sut.isFeatureEnabled("splashScreenName", defaultValue = false))
-        assertTrue(sut.isFeatureEnabled("IDontExist", defaultValue = true))
+        assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz", defaultValue = false, distinctId = "distinctId"))
+        assertFalse(sut.isFeatureEnabled("IAmInactive", defaultValue = true, distinctId = "distinctId"))
+        assertTrue(sut.isFeatureEnabled("splashScreenName", defaultValue = false, distinctId = "distinctId"))
+        assertTrue(sut.isFeatureEnabled("IDontExist", defaultValue = true, distinctId = "distinctId"))
     }
 
     @Test
@@ -231,21 +231,21 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals("theString", sut.getFeatureFlagPayload("theString", defaultValue = null) as String)
-        assertEquals(123, sut.getFeatureFlagPayload("theInteger", defaultValue = null) as Int)
-        assertEquals(123.5, sut.getFeatureFlagPayload("theDouble", defaultValue = null) as Double)
+        assertEquals("theString", sut.getFeatureFlagPayload("theString", defaultValue = null, distinctId = "distinctId") as String)
+        assertEquals(123, sut.getFeatureFlagPayload("theInteger", defaultValue = null, distinctId = "distinctId") as Int)
+        assertEquals(123.5, sut.getFeatureFlagPayload("theDouble", defaultValue = null, distinctId = "distinctId") as Double)
 
         val theObject = mapOf<String, Any>("key" to "value")
         @Suppress("UNCHECKED_CAST")
-        assertEquals(theObject, sut.getFeatureFlagPayload("theObject", defaultValue = null) as Map<String, Any>)
+        assertEquals(theObject, sut.getFeatureFlagPayload("theObject", defaultValue = null, distinctId = "distinctId") as Map<String, Any>)
 
         val theArray = listOf(1, "2", 3.5)
         @Suppress("UNCHECKED_CAST")
-        assertEquals(theArray, sut.getFeatureFlagPayload("theArray", defaultValue = null) as List<Any>)
+        assertEquals(theArray, sut.getFeatureFlagPayload("theArray", defaultValue = null, distinctId = "distinctId") as List<Any>)
 
-        assertTrue(sut.getFeatureFlagPayload("theBoolean", defaultValue = null) as Boolean)
-        assertNull(sut.getFeatureFlagPayload("theNull", defaultValue = null))
-        assertEquals("[1, 2", sut.getFeatureFlagPayload("theBroken", defaultValue = null) as String)
+        assertTrue(sut.getFeatureFlagPayload("theBoolean", defaultValue = null, distinctId = "distinctId") as Boolean)
+        assertNull(sut.getFeatureFlagPayload("theNull", defaultValue = null, distinctId = "distinctId"))
+        assertEquals("[1, 2", sut.getFeatureFlagPayload("theBroken", defaultValue = null, distinctId = "distinctId") as String)
     }
 
     @Test
@@ -264,8 +264,8 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isFeatureEnabled("foo", defaultValue = false))
-        assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false) as Boolean)
+        assertTrue(sut.isFeatureEnabled("foo", defaultValue = false, distinctId = "distinctId"))
+        assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false, distinctId = "distinctId") as Boolean)
     }
 
     @Test
