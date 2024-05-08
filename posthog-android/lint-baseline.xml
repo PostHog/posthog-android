@@ -25,7 +25,7 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.core:core than 1.5.0 is available: 1.13.0"
+        message="A newer version of androidx.core:core than 1.5.0 is available: 1.13.1"
         errorLine1="    implementation(&quot;androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
