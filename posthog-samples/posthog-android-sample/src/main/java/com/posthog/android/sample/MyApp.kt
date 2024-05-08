@@ -23,7 +23,7 @@ class MyApp : Application() {
         val config =
             PostHogAndroidConfig(apiKey).apply {
                 debug = true
-                flushAt = 1
+//                flushAt = 1
                 captureDeepLinks = false
                 captureApplicationLifecycleEvents = false
                 captureScreenViews = false

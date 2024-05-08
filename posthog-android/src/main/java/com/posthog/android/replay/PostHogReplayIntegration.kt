@@ -805,9 +805,11 @@ public class PostHogReplayIntegration(
         }
 
         ByteArrayOutputStream(allocationByteCount).use {
-            compress(Bitmap.CompressFormat.PNG, 30, it)
+            // we can make format and type configurable
+            compress(Bitmap.CompressFormat.JPEG, 30, it)
             val byteArray = it.toByteArray()
-            return Base64.encodeToString(byteArray, Base64.DEFAULT)
+            val encoded = Base64.encodeToString(byteArray, Base64.DEFAULT) ?: return null
+            return "data:image/jpeg;base64,$encoded"
         }
     }
 

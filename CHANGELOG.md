@@ -1,5 +1,10 @@
 ## Next
 
+## 3.2.1 - 2024-05-08
+
+- fix: reduce batch size if API returns 413 ([#127](https://github.com/PostHog/posthog-android/pull/127))
+  - `screenshot` image is now a JPEG at 30% quality to reduce size
+
 ## 3.2.0 - 2024-04-30
 
 - recording: add `screenshot` option for session replay instead of wireframe ([#127](https://github.com/PostHog/posthog-android/pull/127))
