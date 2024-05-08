@@ -186,9 +186,8 @@ internal class PostHogSendCachedEventsIntegration(
                                 PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
                             }
                         } catch (e: PostHogApiError) {
-                            if (e.statusCode < 400) {
-                                deleteFiles = false
-                            }
+                            deleteFiles = deleteFilesIfAPIError(e, config)
+
                             throw e
                         } catch (e: IOException) {
                             // no connection should try again

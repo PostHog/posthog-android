@@ -12,6 +12,7 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
+import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -189,9 +190,8 @@ internal class PostHogQueue(
                 }
             }
         } catch (e: PostHogApiError) {
-            if (e.statusCode < 400) {
-                deleteFiles = false
-            }
+            deleteFiles = deleteFilesIfAPIError(e, config)
+
             throw e
         } catch (e: IOException) {
             // no connection should try again
@@ -314,4 +314,27 @@ internal class PostHogQueue(
             }
             return tempFiles
         }
+}
+
+private fun calcFloor(currentValue: Int): Int {
+    return max(currentValue.floorDiv(2), 1)
+}
+
+internal fun deleteFilesIfAPIError(
+    e: PostHogApiError,
+    config: PostHogConfig,
+): Boolean {
+    if (e.statusCode < 400) {
+        return false
+    }
+    // workaround due to png images exceed our max. limit in kafka
+    if (e.statusCode == 413 && config.maxBatchSize > 1) {
+        // try to reduce the batch size and flushAt until its 1
+        // and if it still throws 413 in the next retry, delete the files since we cannot handle anyway
+        config.maxBatchSize = calcFloor(config.maxBatchSize)
+        config.flushAt = calcFloor(config.flushAt)
+
+        return false
+    }
+    return true
 }

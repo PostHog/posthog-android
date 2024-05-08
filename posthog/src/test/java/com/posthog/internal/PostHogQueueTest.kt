@@ -9,6 +9,7 @@ import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
@@ -329,5 +330,37 @@ internal class PostHogQueueTest {
         assertEquals(0, sut.dequeList.size)
         assertEquals(0, File(path, API_KEY).listFiles()!!.size)
         assertEquals(4, http.requestCount)
+    }
+
+    @Test
+    fun `reduces batch size if 413`() {
+        val e = PostHogApiError(413, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+        assertEquals(config.maxBatchSize, 25) // default 50
+        assertEquals(config.flushAt, 10) // default 20
+    }
+
+    @Test
+    fun `delete files if batch is min already`() {
+        val e = PostHogApiError(413, "", null)
+        val config =
+            PostHogConfig(API_KEY).apply {
+                maxBatchSize = 1
+                flushAt = 1
+            }
+
+        assertTrue(deleteFilesIfAPIError(e, config))
+        assertEquals(config.maxBatchSize, 1)
+        assertEquals(config.flushAt, 1)
+    }
+
+    @Test
+    fun `delete files if errored`() {
+        val e = PostHogApiError(400, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertTrue(deleteFilesIfAPIError(e, config))
     }
 }
