@@ -213,10 +213,6 @@ internal class PostHogQueue(
         }
     }
 
-    private fun calcFloor(currentValue: Int): Int {
-        return max(floorDiv(currentValue, 2), 1)
-    }
-
     fun flush() {
         // only flushes if the queue is above the threshold (not empty in this case)
         if (!isAboveThreshold(1)) {
