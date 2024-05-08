@@ -5,7 +5,6 @@ import com.posthog.PostHogEvent
 import com.posthog.PostHogVisibleForTesting
 import java.io.File
 import java.io.IOException
-import java.lang.Math.floorDiv
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
@@ -318,7 +317,7 @@ internal class PostHogQueue(
 }
 
 private fun calcFloor(currentValue: Int): Int {
-    return max(floorDiv(currentValue, 2), 1)
+    return max(currentValue.floorDiv(2), 1)
 }
 
 internal fun deleteFilesIfAPIError(
