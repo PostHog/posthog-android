@@ -99,7 +99,7 @@ public open class PostHogConfig(
      * Hook that allows for modification of the default mechanism for
      * generating anonymous device id (which as of now is just random UUID v4)
      */
-    public var getDeviceId: ((UUID) -> UUID) = { it },
+    public var getAnonymousId: ((UUID) -> UUID) = { it },
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal

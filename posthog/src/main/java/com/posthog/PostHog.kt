@@ -200,8 +200,8 @@ public class PostHog private constructor(
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
                 if (anonymousId.isNullOrBlank()) {
                     var uuid = UUID.randomUUID()
-                    // when getDeviceId method is available, pass-through the value
-                    config?.getDeviceId?.let { uuid = it(uuid) }
+                    // when getAnonymousId method is available, pass-through the value for modification
+                    config?.getAnonymousId?.let { uuid = it(uuid) }
                     anonymousId = uuid.toString()
                     this.anonymousId = anonymousId ?: ""
                 }
