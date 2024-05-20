@@ -10,11 +10,13 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -850,6 +852,18 @@ internal class PostHogTest {
         assertEquals(2, http.requestCount)
 
         sut.close()
+    }
+
+    @Test
+    fun `allows for modification of the uuid generation mechanism`() {
+        val expected = UUID.randomUUID()
+        val config = PostHogConfig(API_KEY, getDeviceId = {
+            assertNotEquals(it, expected, "Expect two unique UUIDs")
+            expected
+        })
+        // now generate an event
+        val sut = PostHog.with(config)
+        assertEquals(expected.toString(), sut.distinctId(), "It should use the injected uuid instead")
     }
 
     @Test

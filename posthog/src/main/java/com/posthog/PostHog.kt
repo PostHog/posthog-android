@@ -199,7 +199,10 @@ public class PostHog private constructor(
             synchronized(anonymousLock) {
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
                 if (anonymousId.isNullOrBlank()) {
-                    anonymousId = UUID.randomUUID().toString()
+                    var uuid = UUID.randomUUID()
+                    // when getDeviceId method is available, pass-through the value
+                    config?.getDeviceId?.let { uuid = it(uuid) }
+                    anonymousId = uuid.toString()
                     this.anonymousId = anonymousId ?: ""
                 }
             }

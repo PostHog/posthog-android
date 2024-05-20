@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSerializer
+import java.util.UUID
 
 /**
  * The SDK Config
@@ -94,6 +95,11 @@ public open class PostHogConfig(
      * The hook is called before the event is cached or sent over the wire
      */
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+    /**
+     * Hook that allows for modification of the default mechanism for
+     * generating anonymous device id (which as of now is just random UUID v4)
+     */
+    public var getDeviceId: ((UUID) -> UUID) = { it },
 ) {
     // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal
