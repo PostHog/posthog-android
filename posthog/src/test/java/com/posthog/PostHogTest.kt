@@ -858,7 +858,7 @@ internal class PostHogTest {
     fun `allows for modification of the uuid generation mechanism`() {
         val expected = UUID.randomUUID()
         val config =
-            PostHogConfig(API_KEY, getDeviceId = {
+            PostHogConfig(API_KEY, getAnonymousId = {
                 assertNotEquals(it, expected, "Expect two unique UUIDs")
                 expected
             })

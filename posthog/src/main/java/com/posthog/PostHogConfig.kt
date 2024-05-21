@@ -97,7 +97,7 @@ public open class PostHogConfig(
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     /**
      * Hook that allows for modification of the default mechanism for
-     * generating anonymous device id (which as of now is just random UUID v4)
+     * generating anonymous id (which as of now is just random UUID v4)
      */
     public var getAnonymousId: ((UUID) -> UUID) = { it },
 ) {
