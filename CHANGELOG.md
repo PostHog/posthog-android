@@ -1,5 +1,7 @@
 ## Next
 
+- allow anonymous uuid generation to be customizable ([#132](https://github.com/PostHog/posthog-android/pull/132))
+
 ## 3.2.1 - 2024-05-08
 
 - fix: reduce batch size if API returns 413 ([#130](https://github.com/PostHog/posthog-android/pull/130))
@@ -87,7 +89,7 @@
 
 ## 3.1.0 - 2024-01-08
 
-- chore: Add mutations support to Session Recording ([#72](https://github.com/PostHog/posthog-android/pull/72)) 
+- chore: Add mutations support to Session Recording ([#72](https://github.com/PostHog/posthog-android/pull/72))
 - chore: Session Recording as Experimental preview
   - Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md#android-session-recording) guide.
 
@@ -188,15 +190,15 @@ Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE
 
 ## 2.0.3 - 2023-01-30
 
-- Feature flags will be sent with payloads by default for capture and screen events. 
+- Feature flags will be sent with payloads by default for capture and screen events.
 
 ## 2.0.2 - 2023-02-21
 
-- Revert: Feature flags will be sent with payloads by default. Default Options will be properly applied 
+- Revert: Feature flags will be sent with payloads by default. Default Options will be properly applied
 
 ## 2.0.1 - 2023-01-30
 
-- Feature flags will be sent with payloads by default. Default Options will be properly applied 
+- Feature flags will be sent with payloads by default. Default Options will be properly applied
 
 ## 2.0.0 - 2022-08-29
 
