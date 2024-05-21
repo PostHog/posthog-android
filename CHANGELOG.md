@@ -2,6 +2,10 @@
 
 - allow anonymous uuid generation to be customizable ([#132](https://github.com/PostHog/posthog-android/pull/132))
 
+## 3.2.2 - 2024-05-21
+
+- chore: register to sdk console ([#131](https://github.com/PostHog/posthog-android/pull/131)) 
+
 ## 3.2.1 - 2024-05-08
 
 - fix: reduce batch size if API returns 413 ([#130](https://github.com/PostHog/posthog-android/pull/130))
