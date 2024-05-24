@@ -52,6 +52,7 @@ import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
+import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
@@ -247,12 +248,12 @@ public class PostHogReplayIntegration(
         view: View,
         status: ViewTreeSnapshotStatus,
     ) {
-        if (isAliveAndAttached(view)) {
+        if (view.isAliveAndAttachedToWindow()) {
             mainHandler.handler.post {
                 // 2nd check to avoid:
                 // Exception java.lang.IllegalStateException: This ViewTreeObserver is not alive
                 // Since the post might be executed a bit later if the thread is busy
-                if (isAliveAndAttached(view)) {
+                if (view.isAliveAndAttachedToWindow()) {
                     try {
                         // swallow the exception because we still wanna remove it from the decorViews
                         view.viewTreeObserver?.removeOnDrawListener(status.listener)
@@ -268,10 +269,6 @@ public class PostHogReplayIntegration(
         }
 
         decorViews.remove(view)
-    }
-
-    private fun isAliveAndAttached(view: View): Boolean {
-        return view.viewTreeObserver?.isAlive == true && view.isAttachedToWindow
     }
 
     override fun install() {

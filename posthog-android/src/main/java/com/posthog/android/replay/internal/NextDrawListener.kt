@@ -2,7 +2,6 @@
 
 package com.posthog.android.replay.internal
 
-import android.os.Build
 import android.view.View
 import android.view.ViewTreeObserver
 import com.posthog.android.internal.MainHandler
@@ -24,13 +23,8 @@ internal class NextDrawListener(
     }
 
     private fun safelyRegisterForNextDraw() {
-        // Prior to API 26, OnDrawListener wasn't merged back from the floating ViewTreeObserver into
-        // the real ViewTreeObserver.
-        // https://android.googlesource.com/platform/frameworks/base/+/9f8ec54244a5e0343b9748db3329733f259604f3
-        view.viewTreeObserver?.let { viewTreeObserver ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O || (viewTreeObserver.isAlive && view.isAttachedToWindow)) {
-                viewTreeObserver.addOnDrawListener(this)
-            }
+        if (view.isAliveAndAttachedToWindow()) {
+            view.viewTreeObserver?.addOnDrawListener(this)
         }
     }
 
@@ -47,4 +41,11 @@ internal class NextDrawListener(
             return nextDrawListener
         }
     }
+}
+
+internal fun View.isAliveAndAttachedToWindow(): Boolean {
+    // Prior to API 26, OnDrawListener wasn't merged back from the floating ViewTreeObserver into
+    // the real ViewTreeObserver.
+    // https://android.googlesource.com/platform/frameworks/base/+/9f8ec54244a5e0343b9748db3329733f259604f3
+    return viewTreeObserver?.isAlive == true && isAttachedToWindow
 }
