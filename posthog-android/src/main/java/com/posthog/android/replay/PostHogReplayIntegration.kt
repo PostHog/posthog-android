@@ -247,18 +247,30 @@ public class PostHogReplayIntegration(
         view: View,
         status: ViewTreeSnapshotStatus,
     ) {
-        view.viewTreeObserver?.let { viewTreeObserver ->
-            if (viewTreeObserver.isAlive) {
-                mainHandler.handler.post {
-                    viewTreeObserver.removeOnDrawListener(status.listener)
+        if (isAliveAndAttached(view)) {
+            mainHandler.handler.post {
+                // 2nd check to avoid:
+                // Exception java.lang.IllegalStateException: This ViewTreeObserver is not alive
+                // Since the post might be executed a bit later if the thread is busy
+                if (isAliveAndAttached(view)) {
+                    try {
+                        view.viewTreeObserver?.removeOnDrawListener(status.listener)
+                    } catch (e: Throwable) {
+                        config.logger.log("Removing the viewTreeObserver failed: $e.")
+                    }
                 }
             }
         }
+
         view.phoneWindow?.let { window ->
             window.touchEventInterceptors -= onTouchEventListener
         }
 
         decorViews.remove(view)
+    }
+
+    private fun isAliveAndAttached(view: View): Boolean {
+        return view.viewTreeObserver?.isAlive == true && view.isAttachedToWindow
     }
 
     override fun install() {
