@@ -254,6 +254,7 @@ public class PostHogReplayIntegration(
                 // Since the post might be executed a bit later if the thread is busy
                 if (isAliveAndAttached(view)) {
                     try {
+                        // swallow the exception because we still wanna remove it from the decorViews
                         view.viewTreeObserver?.removeOnDrawListener(status.listener)
                     } catch (e: Throwable) {
                         config.logger.log("Removing the viewTreeObserver failed: $e.")

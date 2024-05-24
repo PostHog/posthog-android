@@ -1,7 +1,7 @@
 ## Next
 
 - feat: allow anonymous uuid generation to be customizable ([#132](https://github.com/PostHog/posthog-android/pull/132))
-- recording: fix removing the ViewTreeObserver when its not alive ([#132](https://github.com/PostHog/posthog-android/pull/132))
+- recording: fix removing the ViewTreeObserver when its not alive ([#134](https://github.com/PostHog/posthog-android/pull/134))
 
 ## 3.2.2 - 2024-05-21
 
