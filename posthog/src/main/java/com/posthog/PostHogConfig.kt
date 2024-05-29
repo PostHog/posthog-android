@@ -20,7 +20,9 @@ public open class PostHogConfig(
     public val apiKey: String,
     /**
      * The PostHog Host
-     * Defaults to https://app.posthog.com
+     * Defaults to https://us.i.posthog.com
+     * EU Host: https://eu.i.posthog.com
+     *
      */
     public val host: String = DEFAULT_HOST,
     /**
@@ -181,6 +183,6 @@ public open class PostHogConfig(
     }
 
     public companion object {
-        public const val DEFAULT_HOST: String = "https://app.posthog.com"
+        public const val DEFAULT_HOST: String = "https://us.i.posthog.com"
     }
 }
