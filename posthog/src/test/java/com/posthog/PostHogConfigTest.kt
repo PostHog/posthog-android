@@ -12,7 +12,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `host is set app posthog com by default`() {
-        assertEquals("https://app.posthog.com", config.host)
+        assertEquals("https://us.i.posthog.com", config.host)
     }
 
     @Test
