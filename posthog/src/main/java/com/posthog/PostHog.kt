@@ -228,7 +228,7 @@ public class PostHog private constructor(
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
+        groups: Map<String, String>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
     ): Map<String, Any> {
@@ -294,7 +294,7 @@ public class PostHog private constructor(
 
         if (appendGroups) {
             // merge groups
-            mergeGroups(groupProperties)?.let {
+            mergeGroups(groups)?.let {
                 props["\$groups"] = it
             }
         }
@@ -334,7 +334,7 @@ public class PostHog private constructor(
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
+        groups: Map<String, String>?,
     ) {
         try {
             if (!isEnabled()) {
@@ -368,7 +368,7 @@ public class PostHog private constructor(
                     properties = properties,
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
-                    groupProperties = groupProperties,
+                    groups = groups,
                     // only append shared props if not a snapshot event
                     appendSharedProps = !snapshotEvent,
                     // only append groups if not a group identify event
@@ -561,7 +561,7 @@ public class PostHog private constructor(
 
     private fun loadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
         @Suppress("UNCHECKED_CAST")
-        val groups = getPreferences().getValue(GROUPS) as? Map<String, Any>
+        val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
 
         val distinctId = this.distinctId
         val anonymousId = this.anonymousId
@@ -783,7 +783,7 @@ public class PostHog private constructor(
             properties: Map<String, Any>?,
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
-            groupProperties: Map<String, Any>?,
+            groups: Map<String, String>?,
         ) {
             shared.capture(
                 event,
@@ -791,7 +791,7 @@ public class PostHog private constructor(
                 properties = properties,
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
-                groupProperties = groupProperties,
+                groups = groups,
             )
         }
 

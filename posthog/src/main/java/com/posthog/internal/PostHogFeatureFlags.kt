@@ -31,7 +31,7 @@ internal class PostHogFeatureFlags(
     fun loadFeatureFlags(
         distinctId: String,
         anonymousId: String?,
-        groups: Map<String, Any>?,
+        groups: Map<String, String>?,
         onFeatureFlags: PostHogOnFeatureFlags?,
     ) {
         executor.executeSafely {

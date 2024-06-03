@@ -22,7 +22,7 @@ public class PostHogFake : PostHogInterface {
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
+        groups: Map<String, String>?,
     ) {
         this.event = event
         this.properties = properties
