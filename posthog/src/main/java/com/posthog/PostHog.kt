@@ -310,18 +310,18 @@ public class PostHog private constructor(
         return props
     }
 
-    private fun mergeGroups(groupProperties: Map<String, Any>?): Map<String, Any>? {
+    private fun mergeGroups(givenGroups: Map<String, String>?): Map<String, String>? {
         val preferences = getPreferences()
 
         @Suppress("UNCHECKED_CAST")
-        val groups = preferences.getValue(GROUPS) as? Map<String, Any>
-        val newGroups = mutableMapOf<String, Any>()
+        val groups = preferences.getValue(GROUPS) as? Map<String, String>
+        val newGroups = mutableMapOf<String, String>()
 
         groups?.let {
             newGroups.putAll(it)
         }
 
-        groupProperties?.let {
+        givenGroups?.let {
             newGroups.putAll(it)
         }
 
@@ -527,8 +527,8 @@ public class PostHog private constructor(
 
         synchronized(groupsLock) {
             @Suppress("UNCHECKED_CAST")
-            val groups = preferences.getValue(GROUPS) as? Map<String, Any>
-            val newGroups = mutableMapOf<String, Any>()
+            val groups = preferences.getValue(GROUPS) as? Map<String, String>
+            val newGroups = mutableMapOf<String, String>()
 
             groups?.let {
                 val currentKey = it[type]
