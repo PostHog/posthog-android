@@ -338,7 +338,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -363,7 +363,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.awaitExecution()
@@ -376,7 +376,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -399,7 +399,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -421,7 +421,7 @@ internal class PostHogTest {
         assertEquals("value", theEvent.properties!!["prop"] as String)
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
-        assertEquals(groupProps, theEvent.properties!!["\$groups"])
+        assertEquals(groups, theEvent.properties!!["\$groups"])
 
         sut.close()
     }
@@ -438,7 +438,7 @@ internal class PostHogTest {
             properties = props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -570,7 +570,7 @@ internal class PostHogTest {
 
         sut.group("theType", "theKey", groupProps)
 
-        sut.capture("test", groupProperties = mutableMapOf("theType3" to "theKey3"))
+        sut.capture("test", groups = mutableMapOf("theType3" to "theKey3"))
 
         queueExecutor.shutdownAndAwaitTermination()
 
@@ -605,7 +605,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -637,7 +637,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -671,7 +671,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -701,7 +701,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -723,7 +723,7 @@ internal class PostHogTest {
         assertEquals("value", theEvent.properties!!["prop"] as String)
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
-        assertEquals(groupProps, theEvent.properties!!["\$groups"])
+        assertEquals(groups, theEvent.properties!!["\$groups"])
 
         sut.close()
     }
@@ -743,7 +743,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -765,7 +765,7 @@ internal class PostHogTest {
             properties = props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -913,7 +913,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -946,7 +946,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.awaitExecution()
@@ -968,7 +968,7 @@ internal class PostHogTest {
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()

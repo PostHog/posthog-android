@@ -99,7 +99,7 @@ internal class PostHogApi(
     fun decide(
         distinctId: String,
         anonymousId: String?,
-        groups: Map<String, Any>?,
+        groups: Map<String, String>?,
     ): PostHogDecideResponse? {
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
