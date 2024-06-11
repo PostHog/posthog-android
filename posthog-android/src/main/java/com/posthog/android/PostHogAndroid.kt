@@ -15,7 +15,7 @@ import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.android.replay.internal.PostHogLogCatIntegration
-import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogNoOpLogger
 import java.io.File
 
 /**
@@ -62,7 +62,7 @@ public class PostHogAndroid private constructor() {
             context: Context,
             config: T,
         ) {
-            config.logger = if (config.logger is PostHogPrintLogger) PostHogAndroidLogger(config) else config.logger
+            config.logger = if (config.logger is PostHogNoOpLogger) PostHogAndroidLogger(config) else config.logger
             config.context = config.context ?: PostHogAndroidContext(context, config)
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)

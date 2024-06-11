@@ -3,6 +3,7 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
@@ -981,6 +982,17 @@ internal class PostHogTest {
 
         theEvent = batch.batch.first()
         assertNull(theEvent.properties!!["\$session_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `logger uses System out by default`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString())
+
+        assertTrue(config.logger is PostHogPrintLogger)
 
         sut.close()
     }

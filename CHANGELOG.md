@@ -2,6 +2,7 @@
 
 - chore: change host to new address ([#137](https://github.com/PostHog/posthog-android/pull/137))
 - fix: rename groupProperties to groups for capture methods ([#139](https://github.com/PostHog/posthog-android/pull/139))
+- fix: PostHogLogger possibly leaks this ctor and crash ([#140](https://github.com/PostHog/posthog-android/pull/140))
 
 ## 3.3.0 - 2024-05-24
 
