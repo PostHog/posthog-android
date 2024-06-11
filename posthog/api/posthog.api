@@ -257,6 +257,12 @@ public abstract interface class com/posthog/internal/PostHogNetworkStatus {
 	public abstract fun isConnected ()Z
 }
 
+public final class com/posthog/internal/PostHogNoOpLogger : com/posthog/internal/PostHogLogger {
+	public fun <init> ()V
+	public fun isEnabled ()Z
+	public fun log (Ljava/lang/String;)V
+}
+
 public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field BUILD Ljava/lang/String;
 	public static final field Companion Lcom/posthog/internal/PostHogPreferences$Companion;

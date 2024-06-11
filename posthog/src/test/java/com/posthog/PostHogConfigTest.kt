@@ -1,6 +1,6 @@
 package com.posthog
 
-import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogNoOpLogger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -66,8 +66,8 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `logger uses System out by default`() {
-        assertTrue(config.logger is PostHogPrintLogger)
+    fun `logger uses NoOp by default`() {
+        assertTrue(config.logger is PostHogNoOpLogger)
     }
 
     @Test

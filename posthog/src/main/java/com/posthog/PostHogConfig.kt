@@ -5,8 +5,8 @@ import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
+import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
-import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSerializer
 import java.util.UUID
 
@@ -103,9 +103,8 @@ public open class PostHogConfig(
      */
     public var getAnonymousId: ((UUID) -> UUID) = { it },
 ) {
-    // fix me: https://stackoverflow.com/questions/53866865/leaking-this-in-constructor-warning-should-apply-to-final-classes-as-well-as
     @PostHogInternal
-    public var logger: PostHogLogger = PostHogPrintLogger(this)
+    public var logger: PostHogLogger = PostHogNoOpLogger()
 
     @PostHogInternal
     public val serializer: PostHogSerializer by lazy {

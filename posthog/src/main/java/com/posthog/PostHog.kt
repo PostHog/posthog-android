@@ -4,6 +4,7 @@ import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
@@ -12,6 +13,7 @@ import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
+import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
@@ -69,6 +71,7 @@ public class PostHog private constructor(
                     config.logger.log("Setup called despite already being setup!")
                     return
                 }
+                config.logger = if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (!apiKeys.add(config.apiKey)) {
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")

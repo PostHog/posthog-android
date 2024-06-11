@@ -201,5 +201,20 @@ internal class PostHogAndroidTest {
         val postHog = PostHogAndroid.with(context, config)
 
         assertNotNull(postHog)
+
+        postHog.close()
+    }
+
+    @Test
+    fun `logger uses Logcat by default`() {
+        val config = PostHogAndroidConfig(API_KEY)
+
+        mockContextAppStart(context, tmpDir)
+
+        val postHog = PostHogAndroid.with(context, config)
+
+        assertTrue(config.logger is PostHogAndroidLogger)
+
+        postHog.close()
     }
 }
