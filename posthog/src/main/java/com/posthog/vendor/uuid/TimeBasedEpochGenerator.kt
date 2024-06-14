@@ -1,3 +1,5 @@
+// borrowed, adapted and converted to Kotlin from https://github.com/cowtowncoder/java-uuid-generator/blob/master/src/main/java/com/fasterxml/uuid/impl/TimeBasedEpochGenerator.java
+
 package com.posthog.vendor.uuid
 
 import java.security.SecureRandom
