@@ -3,17 +3,29 @@ package com.posthog.vendor.uuid
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.fail
 
 internal class UUIDTest {
     @Test
-    fun `do not generate same value`() {
-        val uuid1 = TimeBasedEpochGenerator.generate()
-        val uuid2 = TimeBasedEpochGenerator.generate()
-        assertNotNull(uuid1)
-        assertNotNull(uuid2)
-        assertNotEquals(uuid1, uuid2)
+    fun `test duplicated and sorting`() {
+        val count = 10_000
+
+        val created = ArrayList<UUID>(count)
+        for (i in 0 until count) {
+            created.add(TimeBasedEpochGenerator.generate())
+        }
+
+        val sortedUUID = ArrayList<UUID>(created)
+        sortedUUID.sortWith(UUIDComparator())
+        val unique = HashSet<UUID>(count)
+
+        for (i in created.indices) {
+            assertEquals(created[i], sortedUUID[i])
+            if (!unique.add(created[i])) {
+                fail("Duplicate at: $i")
+            }
+        }
     }
 
     @Test
