@@ -75,7 +75,7 @@ internal class PostHogQueue(
                     dirCreated = true
                 }
 
-                val uuid = TimeBasedEpochGenerator.getInstance().generate()
+                val uuid = TimeBasedEpochGenerator.generate()
                 val file = File(dir, "$uuid.event")
                 synchronized(dequeLock) {
                     deque.add(file)

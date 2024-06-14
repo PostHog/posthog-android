@@ -203,7 +203,7 @@ public class PostHog private constructor(
             synchronized(anonymousLock) {
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
                 if (anonymousId.isNullOrBlank()) {
-                    var uuid = TimeBasedEpochGenerator.getInstance().generate()
+                    var uuid = TimeBasedEpochGenerator.generate()
                     // when getAnonymousId method is available, pass-through the value for modification
                     config?.getAnonymousId?.let { uuid = it(uuid) }
                     anonymousId = uuid.toString()
@@ -699,7 +699,7 @@ public class PostHog private constructor(
     override fun startSession() {
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
-                sessionId = TimeBasedEpochGenerator.getInstance().generate()
+                sessionId = TimeBasedEpochGenerator.generate()
             }
         }
     }

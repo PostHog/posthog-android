@@ -23,7 +23,7 @@ public data class PostHogEvent(
     val properties: Map<String, Any>? = null,
     // refactor to use PostHogDateProvider
     val timestamp: Date = Date(),
-    val uuid: UUID? = TimeBasedEpochGenerator.getInstance().generate(),
+    val uuid: UUID? = TimeBasedEpochGenerator.generate(),
     @Deprecated("Do not use")
     val type: String? = null,
     @Deprecated("Do not use it, prefer [uuid]")

@@ -857,7 +857,7 @@ internal class PostHogTest {
 
     @Test
     fun `allows for modification of the uuid generation mechanism`() {
-        val expected = TimeBasedEpochGenerator.getInstance().generate()
+        val expected = TimeBasedEpochGenerator.generate()
         val config =
             PostHogConfig(API_KEY, getAnonymousId = {
                 assertNotEquals(it, expected, "Expect two unique UUIDs")

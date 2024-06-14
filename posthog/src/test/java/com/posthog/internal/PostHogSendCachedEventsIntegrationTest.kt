@@ -61,7 +61,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         fullFile.mkdirs()
 
         content.forEach {
-            val uuid = TimeBasedEpochGenerator.getInstance().generate()
+            val uuid = TimeBasedEpochGenerator.generate()
             val file = File(fullFile.absoluteFile, "$uuid.event")
             file.writeText(it)
             date?.let { theDate ->
@@ -214,7 +214,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         // write a new file
         val folder = File(storagePrefix, API_KEY)
-        val uuid = TimeBasedEpochGenerator.getInstance().generate()
+        val uuid = TimeBasedEpochGenerator.generate()
         val file = File(folder, "$uuid.event")
 
         val tempEvent = File("src/test/resources/json/other-event.json").readText()

@@ -9,10 +9,8 @@ import kotlin.test.assertNotNull
 internal class UUIDTest {
     @Test
     fun `do not generate same value`() {
-        val sut = TimeBasedEpochGenerator.getInstance()
-
-        val uuid1 = sut.generate()
-        val uuid2 = sut.generate()
+        val uuid1 = TimeBasedEpochGenerator.generate()
+        val uuid2 = TimeBasedEpochGenerator.generate()
         assertNotNull(uuid1)
         assertNotNull(uuid2)
         assertNotEquals(uuid1, uuid2)
@@ -20,9 +18,7 @@ internal class UUIDTest {
 
     @Test
     fun `generate and parse it back with java UUID class`() {
-        val sut = TimeBasedEpochGenerator.getInstance()
-
-        val uuid = sut.generate()
+        val uuid = TimeBasedEpochGenerator.generate()
         assertNotNull(uuid)
 
         val javaUuid = UUID.fromString(uuid.toString())
