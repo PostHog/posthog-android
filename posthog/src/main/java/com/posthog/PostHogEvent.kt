@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.google.gson.annotations.SerializedName
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
 
@@ -22,7 +23,7 @@ public data class PostHogEvent(
     val properties: Map<String, Any>? = null,
     // refactor to use PostHogDateProvider
     val timestamp: Date = Date(),
-    val uuid: UUID? = UUID.randomUUID(),
+    val uuid: UUID? = TimeBasedEpochGenerator.getInstance().generate(),
     @Deprecated("Do not use")
     val type: String? = null,
     @Deprecated("Do not use it, prefer [uuid]")

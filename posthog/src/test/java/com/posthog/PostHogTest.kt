@@ -7,11 +7,11 @@ import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -857,7 +857,7 @@ internal class PostHogTest {
 
     @Test
     fun `allows for modification of the uuid generation mechanism`() {
-        val expected = UUID.randomUUID()
+        val expected = TimeBasedEpochGenerator.getInstance().generate()
         val config =
             PostHogConfig(API_KEY, getAnonymousId = {
                 assertNotEquals(it, expected, "Expect two unique UUIDs")

@@ -3,12 +3,12 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogVisibleForTesting
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
 import java.io.IOException
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
-import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
@@ -75,7 +75,8 @@ internal class PostHogQueue(
                     dirCreated = true
                 }
 
-                val file = File(dir, "${UUID.randomUUID()}.event")
+                val uuid = TimeBasedEpochGenerator.getInstance().generate()
+                val file = File(dir, "$uuid.event")
                 synchronized(dequeLock) {
                     deque.add(file)
                 }

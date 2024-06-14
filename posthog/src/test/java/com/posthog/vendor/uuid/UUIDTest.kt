@@ -7,7 +7,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 
 internal class UUIDTest {
-
     @Test
     fun `do not generate same value`() {
         val sut = TimeBasedEpochGenerator.getInstance()

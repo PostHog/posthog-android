@@ -18,6 +18,7 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -202,7 +203,7 @@ public class PostHog private constructor(
             synchronized(anonymousLock) {
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
                 if (anonymousId.isNullOrBlank()) {
-                    var uuid = UUID.randomUUID()
+                    var uuid = TimeBasedEpochGenerator.getInstance().generate()
                     // when getAnonymousId method is available, pass-through the value for modification
                     config?.getAnonymousId?.let { uuid = it(uuid) }
                     anonymousId = uuid.toString()
@@ -698,7 +699,7 @@ public class PostHog private constructor(
     override fun startSession() {
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
-                sessionId = UUID.randomUUID()
+                sessionId = TimeBasedEpochGenerator.getInstance().generate()
             }
         }
     }

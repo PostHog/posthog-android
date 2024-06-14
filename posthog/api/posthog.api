@@ -582,3 +582,9 @@ public final class com/posthog/internal/replay/RRWireframe {
 	public fun toString ()Ljava/lang/String;
 }
 
+public class com/posthog/vendor/uuid/TimeBasedEpochGenerator {
+	public fun generate ()Ljava/util/UUID;
+	public fun generate (J)Ljava/util/UUID;
+	public static fun getInstance ()Lcom/posthog/vendor/uuid/TimeBasedEpochGenerator;
+}
+
