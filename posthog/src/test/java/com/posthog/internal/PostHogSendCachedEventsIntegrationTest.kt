@@ -5,6 +5,7 @@ import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
@@ -13,7 +14,6 @@ import java.io.File
 import java.text.ParsePosition
 import java.util.Calendar
 import java.util.Date
-import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -61,7 +61,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
         fullFile.mkdirs()
 
         content.forEach {
-            val file = File(fullFile.absoluteFile, "${UUID.randomUUID()}.event")
+            val uuid = TimeBasedEpochGenerator.generate()
+            val file = File(fullFile.absoluteFile, "$uuid.event")
             file.writeText(it)
             date?.let { theDate ->
                 val cal = Calendar.getInstance()
@@ -213,7 +214,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         // write a new file
         val folder = File(storagePrefix, API_KEY)
-        val file = File(folder, "${UUID.randomUUID()}.event")
+        val uuid = TimeBasedEpochGenerator.generate()
+        val file = File(folder, "$uuid.event")
 
         val tempEvent = File("src/test/resources/json/other-event.json").readText()
         file.writeText(tempEvent)

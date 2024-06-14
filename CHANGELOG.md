@@ -1,5 +1,7 @@
 ## Next
 
+- chore: migrate UUID from v4 to v7 ([#142](https://github.com/PostHog/posthog-android/pull/142))
+
 ## 3.3.1 - 2024-06-11
 
 - chore: change host to new address ([#137](https://github.com/PostHog/posthog-android/pull/137))
