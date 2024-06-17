@@ -1,7 +1,7 @@
 ## Next
 
 - chore: migrate UUID from v4 to v7 ([#142](https://github.com/PostHog/posthog-android/pull/142))
-- recording: fix registering the ViewTreeObserver when its not attached yet ([#134](https://github.com/PostHog/posthog-android/pull/134))
+- recording: fix registering the ViewTreeObserver when its not attached yet ([#144](https://github.com/PostHog/posthog-android/pull/144))
 
 ## 3.3.1 - 2024-06-11
 
