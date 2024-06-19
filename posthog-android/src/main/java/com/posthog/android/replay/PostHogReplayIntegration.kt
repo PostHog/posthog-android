@@ -462,50 +462,59 @@ public class PostHogReplayIntegration(
         maskableWidgets: MutableList<Rect>,
     ) {
         var parentMasked = false
-        if (view is TextView) {
-            val viewText = view.text?.toString()
-            var maskIt = false
-            if (!viewText.isNullOrEmpty()) {
-                // inputType is 0-based
-                val passType = passwordInputTypes.contains(view.inputType - 1)
-                maskIt =
-                    !(!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs))
+
+        // if a view parent is tagged a non masking, mask it
+        if (view.isNoCapture()) {
+            val rect = Rect()
+            view.getGlobalVisibleRect(rect)
+            maskableWidgets.add(rect)
+            parentMasked = true
+        } else {
+            if (view is TextView) {
+                val viewText = view.text?.toString()
+                var maskIt = false
+                if (!viewText.isNullOrEmpty()) {
+                    // inputType is 0-based
+                    val passType = passwordInputTypes.contains(view.inputType - 1)
+                    maskIt =
+                        !(!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs))
+                }
+
+                val hint = view.hint?.toString()
+                if (!maskIt && !hint.isNullOrEmpty()) {
+                    maskIt =
+                        view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+                }
+
+                if (maskIt) {
+                    val rect = Rect()
+                    view.getGlobalVisibleRect(rect)
+                    maskableWidgets.add(rect)
+                    parentMasked = true
+                }
             }
 
-            val hint = view.hint?.toString()
-            if (!maskIt && !hint.isNullOrEmpty()) {
-                maskIt =
-                    view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+            if (view is Spinner) {
+                val maskIt = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+
+                if (maskIt) {
+                    val rect = Rect()
+                    view.getGlobalVisibleRect(rect)
+                    maskableWidgets.add(rect)
+                    parentMasked = true
+                }
             }
 
-            if (maskIt) {
-                val rect = Rect()
-                view.getGlobalVisibleRect(rect)
-                maskableWidgets.add(rect)
-                parentMasked = true
-            }
-        }
+            if (view is ImageView) {
+                val viewDrawable = view.drawable
+                val maskIt = !(viewDrawable?.isMaskable() == false || !view.isNoCapture(config.sessionReplayConfig.maskAllImages))
 
-        if (view is Spinner) {
-            val maskIt = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
-
-            if (maskIt) {
-                val rect = Rect()
-                view.getGlobalVisibleRect(rect)
-                maskableWidgets.add(rect)
-                parentMasked = true
-            }
-        }
-
-        if (view is ImageView) {
-            val viewDrawable = view.drawable
-            val maskIt = !(viewDrawable?.isMaskable() == false || !view.isNoCapture(config.sessionReplayConfig.maskAllImages))
-
-            if (maskIt) {
-                val rect = Rect()
-                view.getGlobalVisibleRect(rect)
-                maskableWidgets.add(rect)
-                parentMasked = true
+                if (maskIt) {
+                    val rect = Rect()
+                    view.getGlobalVisibleRect(rect)
+                    maskableWidgets.add(rect)
+                    parentMasked = true
+                }
             }
         }
 
@@ -593,8 +602,6 @@ public class PostHogReplayIntegration(
         )
     }
 
-    // PixelCopy is only API >= 24 but this is already protected by the isSupported method
-    @SuppressLint("NewApi")
     private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
@@ -1097,7 +1104,7 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.isNoCapture(maskInput: Boolean): Boolean {
+    private fun View.isNoCapture(maskInput: Boolean = false): Boolean {
         return (tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
     }
 
