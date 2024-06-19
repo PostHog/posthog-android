@@ -588,6 +588,7 @@ public class PostHogReplayIntegration(
             config.logger.log("Session Replay PixelCopy failed: $e.")
         } finally {
             thread.quit()
+            bitmap.recycle()
         }
 
         return RRWireframe(
@@ -1000,7 +1001,10 @@ public class PostHogReplayIntegration(
         }
 
         try {
-            return clonedDrawable.toBitmap(width, height).base64()
+            val bitmap = clonedDrawable.toBitmap(width, height)
+            val base64 = bitmap.base64()
+            bitmap.recycle()
+            return base64
         } catch (_: Throwable) {
             // ignore
         }
