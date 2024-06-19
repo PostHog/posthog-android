@@ -6,7 +6,10 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.PorterDuff
+import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
@@ -15,6 +18,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.VectorDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -28,6 +32,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStub
 import android.view.Window
+import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
@@ -104,6 +109,11 @@ public class PostHogReplayIntegration(
     private val displayMetrics by lazy {
         context.displayMetrics()
     }
+
+    private val paint =
+        Paint().apply {
+            color = Color.BLACK
+        }
 
     private val isSessionReplayEnabled: Boolean
         get() = config.sessionReplay && PostHog.isSessionActive()
@@ -316,7 +326,14 @@ public class PostHogReplayIntegration(
         val status = decorViews[view] ?: return
         val window = windowRef.get() ?: return
 
-        val wireframe = view.toWireframe(window) ?: return
+        val wireframe =
+            if (config.sessionReplayConfig.screenshot) {
+                view.toScreenshotWireframe(
+                    window,
+                ) ?: return
+            } else {
+                view.toWireframe() ?: return
+            }
 
         // if the decorView has no backgroundColor, we use the theme color
         // no need to do this if we are capturing a screenshot
@@ -413,17 +430,105 @@ public class PostHogReplayIntegration(
         status.lastSnapshot = wireframe
     }
 
+    private fun View.isVisible(): Boolean {
+        // TODO: also check for getGlobalVisibleRect intersects the display
+        return isShown && width >= 0 && height >= 0 && this !is ViewStub && isVisibleToUser()
+    }
+
+    private fun Drawable.isMaskable(): Boolean {
+        return when (this) {
+            is InsetDrawable, is ColorDrawable, is VectorDrawable, is GradientDrawable, is LayerDrawable -> false
+            // otherwise its not accessible anyway
+            is BitmapDrawable -> !bitmap.isRecycled
+            else -> true
+        }
+    }
+
+    private fun View.isVisibleToUser(): Boolean {
+        // Between API 16 and API 29, this method may incorrectly return false when magnification
+        // is enabled. On other versions, a node is considered visible even if it is not on
+        // the screen because magnification is active.
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+            return true
+        }
+
+        val nodeInfo = AccessibilityNodeInfo()
+        onInitializeAccessibilityNodeInfo(nodeInfo)
+        return nodeInfo.isVisibleToUser
+    }
+
+    private fun findMaskableWidgets(
+        view: View,
+        maskableWidgets: MutableList<Rect>,
+    ) {
+        var parentMasked = false
+        if (view is TextView) {
+            val viewText = view.text?.toString()
+            var maskIt = false
+            if (!viewText.isNullOrEmpty()) {
+                // inputType is 0-based
+                val passType = passwordInputTypes.contains(view.inputType - 1)
+                maskIt =
+                    !(!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs))
+            }
+
+            val hint = view.hint?.toString()
+            if (!maskIt && !hint.isNullOrEmpty()) {
+                maskIt =
+                    view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+            }
+
+            if (maskIt) {
+                val rect = Rect()
+                view.getGlobalVisibleRect(rect)
+                maskableWidgets.add(rect)
+                parentMasked = true
+            }
+        }
+
+        if (view is Spinner) {
+            val maskIt = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+
+            if (maskIt) {
+                val rect = Rect()
+                view.getGlobalVisibleRect(rect)
+                maskableWidgets.add(rect)
+                parentMasked = true
+            }
+        }
+
+        if (view is ImageView) {
+            val viewDrawable = view.drawable
+            val maskIt = !(viewDrawable?.isMaskable() == false || !view.isNoCapture(config.sessionReplayConfig.maskAllImages))
+
+            if (maskIt) {
+                val rect = Rect()
+                view.getGlobalVisibleRect(rect)
+                maskableWidgets.add(rect)
+                parentMasked = true
+            }
+        }
+
+        if (!parentMasked) {
+            if (view is ViewGroup && view.childCount > 0) {
+                for (i in 0 until view.childCount) {
+                    val viewChild = view.getChildAt(i) ?: continue
+
+                    if (!viewChild.isVisible()) {
+                        continue
+                    }
+
+                    findMaskableWidgets(viewChild, maskableWidgets)
+                }
+            }
+        }
+    }
+
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
-    private fun View.toWireframe(
-        window: Window,
-        parentId: Int? = null,
-    ): RRWireframe? {
+    private fun View.toScreenshotWireframe(window: Window): RRWireframe? {
         val view = this
-        if (!view.isShown || view.width <= 0 || view.height <= 0) {
-            return null
-        }
-        if (view is ViewStub) {
+        if (!view.isVisible()) {
             return null
         }
 
@@ -437,48 +542,74 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(displayMetrics.density)
         var base64: String? = null
 
-        // no parent id means its the root
-        if (parentId == null && config.sessionReplayConfig.screenshot) {
-            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-            val latch = CountDownLatch(1)
-            val thread = HandlerThread("PostHogReplayScreenshot")
-            thread.start()
+        val maskableWidgets = mutableListOf<Rect>()
+        findMaskableWidgets(this, maskableWidgets)
 
-            // unfortunately we cannot use the Looper.myLooper() because it will be null
-            val handler = Handler(thread.looper)
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        val latch = CountDownLatch(1)
+        val thread = HandlerThread("PostHogReplayScreenshot")
+        thread.start()
 
-            try {
-                var success = false
-                PixelCopy.request(window, bitmap, { copyResult ->
-                    if (copyResult == PixelCopy.SUCCESS) {
-                        success = true
-                    }
-                    latch.countDown()
-                }, handler)
+        // unfortunately we cannot use the Looper.myLooper() because it will be null
+        val handler = Handler(thread.looper)
 
-                // await for 1s max
-                latch.await(1000, TimeUnit.MILLISECONDS)
-
-                if (success) {
-                    base64 = bitmap.base64()
+        try {
+            var success = true
+            PixelCopy.request(window, bitmap, { copyResult ->
+                if (copyResult != PixelCopy.SUCCESS) {
+                    success = false
+                    bitmap.recycle()
                 }
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay PixelCopy failed: $e.")
-            } finally {
-                thread.quit()
-            }
+                latch.countDown()
+            }, handler)
 
-            return RRWireframe(
-                id = viewId,
-                x = x,
-                y = y,
-                width = width,
-                height = height,
-                type = "screenshot",
-                base64 = base64,
-                style = RRStyle(),
-            )
+            // await for 1s max
+            latch.await(1000, TimeUnit.MILLISECONDS)
+
+            if (success) {
+                val canvas = Canvas(bitmap)
+
+                maskableWidgets.forEach {
+                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                }
+
+                base64 = bitmap.base64()
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay PixelCopy failed: $e.")
+        } finally {
+            thread.quit()
         }
+
+        return RRWireframe(
+            id = viewId,
+            x = x,
+            y = y,
+            width = width,
+            height = height,
+            type = "screenshot",
+            base64 = base64,
+            style = RRStyle(),
+        )
+    }
+
+    // PixelCopy is only API >= 24 but this is already protected by the isSupported method
+    @SuppressLint("NewApi")
+    private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
+        val view = this
+        if (!view.isVisible()) {
+            return null
+        }
+
+        val viewId = System.identityHashCode(view)
+
+        val coordinates = IntArray(2)
+        view.getLocationOnScreen(coordinates)
+        val x = coordinates[0].densityValue(displayMetrics.density)
+        val y = coordinates[1].densityValue(displayMetrics.density)
+        val width = view.width.densityValue(displayMetrics.density)
+        val height = view.height.densityValue(displayMetrics.density)
+        var base64: String? = null
 
         var type: String? = null
         if (view.id == android.R.id.statusBarBackground) {
@@ -675,9 +806,10 @@ public class PostHogReplayIntegration(
 
         if (view is ImageView) {
             type = "image"
-            if (!view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
+            val viewDrawable = view.drawable
+            if (viewDrawable?.isMaskable() == false || !view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
                 // TODO: we can probably do a LRU caching here for already captured images
-                view.drawable?.let { drawable ->
+                viewDrawable?.let { drawable ->
                     base64 = drawable.base64(view.width, view.height)
 //                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
 //                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
@@ -727,7 +859,7 @@ public class PostHogReplayIntegration(
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(window, parentId = viewId)?.let {
+                viewChild.toWireframe(parentId = viewId)?.let {
                     children.add(it)
                 }
             }
