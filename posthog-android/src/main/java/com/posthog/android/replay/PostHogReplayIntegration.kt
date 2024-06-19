@@ -457,6 +457,12 @@ public class PostHogReplayIntegration(
         return nodeInfo.isVisibleToUser
     }
 
+    private fun View.globalVisibleRect(): Rect {
+        val rect = Rect()
+        getGlobalVisibleRect(rect)
+        return rect
+    }
+
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
@@ -465,8 +471,7 @@ public class PostHogReplayIntegration(
 
         // if a view parent is tagged a non masking, mask it
         if (view.isNoCapture()) {
-            val rect = Rect()
-            view.getGlobalVisibleRect(rect)
+            val rect = view.globalVisibleRect()
             maskableWidgets.add(rect)
             parentMasked = true
         } else {
@@ -487,8 +492,7 @@ public class PostHogReplayIntegration(
                 }
 
                 if (maskIt) {
-                    val rect = Rect()
-                    view.getGlobalVisibleRect(rect)
+                    val rect = view.globalVisibleRect()
                     maskableWidgets.add(rect)
                     parentMasked = true
                 }
@@ -498,8 +502,7 @@ public class PostHogReplayIntegration(
                 val maskIt = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
 
                 if (maskIt) {
-                    val rect = Rect()
-                    view.getGlobalVisibleRect(rect)
+                    val rect = view.globalVisibleRect()
                     maskableWidgets.add(rect)
                     parentMasked = true
                 }
@@ -510,8 +513,7 @@ public class PostHogReplayIntegration(
                 val maskIt = !(viewDrawable?.isMaskable() == false || !view.isNoCapture(config.sessionReplayConfig.maskAllImages))
 
                 if (maskIt) {
-                    val rect = Rect()
-                    view.getGlobalVisibleRect(rect)
+                    val rect = view.globalVisibleRect()
                     maskableWidgets.add(rect)
                     parentMasked = true
                 }
