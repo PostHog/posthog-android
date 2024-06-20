@@ -1,5 +1,7 @@
 ## Next
 
+## 3.4.0 - 2024-06-20
+
 - chore: screenshot masking ([#145](https://github.com/PostHog/posthog-android/pull/145))
 
 ## 3.3.2 - 2024-06-17

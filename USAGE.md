@@ -199,7 +199,7 @@ PostHog.close()
 
 Enable `Record user sessions` on the [PostHog project settings](https://us.posthog.com/settings/project-replay#replay).
 
-Requires the Android SDK version >= [3.2.0](https://github.com/PostHog/posthog-android/releases/tag/3.2.0).
+Requires the Android SDK version >= [3.4.0](https://github.com/PostHog/posthog-android/releases/).
 
 Enable the SDK to capture Session Recording.
 
