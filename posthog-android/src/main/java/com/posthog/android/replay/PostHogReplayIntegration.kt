@@ -468,6 +468,10 @@ public class PostHogReplayIntegration(
         return passwordInputTypes.contains(inputType - 1)
     }
 
+    private fun TextView.shouldMaskTextView(): Boolean {
+        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+    }
+
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
@@ -479,13 +483,13 @@ public class PostHogReplayIntegration(
             var maskIt = false
             if (!viewText.isNullOrEmpty()) {
                 maskIt =
-                    !(!view.isPasswordInputType() && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs))
+                    !(!view.isPasswordInputType() && !view.shouldMaskTextView())
             }
 
             val hint = view.hint?.toString()
             if (!maskIt && !hint.isNullOrEmpty()) {
                 maskIt =
-                    view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+                    view.shouldMaskTextView()
             }
 
             if (maskIt) {
@@ -658,7 +662,7 @@ public class PostHogReplayIntegration(
             val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
                 text =
-                    if (!view.isPasswordInputType() && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                    if (!view.isPasswordInputType() && !view.shouldMaskTextView()) {
                         viewText
                     } else {
                         viewText.mask()
@@ -668,7 +672,7 @@ public class PostHogReplayIntegration(
             val hint = view.hint?.toString()
             if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
                 text =
-                    if (!view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                    if (!view.shouldMaskTextView()) {
                         hint
                     } else {
                         hint.mask()
