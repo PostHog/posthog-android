@@ -4,7 +4,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
-    android:tag="ph-no-capture"
     tools:context=".NormalActivity"
     tools:ignore="MissingDefaultResource">
 
@@ -30,6 +29,7 @@
                     android:layout_width="230dp"
                     android:layout_height="391dp"
                     android:src="@drawable/android_logo"
+                    android:tag="ph-no-capture"
                     />
 <!--    android:tag="ph-no-capture"-->
 

@@ -463,61 +463,63 @@ public class PostHogReplayIntegration(
         return rect
     }
 
+    private fun TextView.isPasswordInputType(): Boolean {
+        // inputType is 0-based
+        return passwordInputTypes.contains(inputType - 1)
+    }
+
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
     ) {
         var parentMasked = false
 
-        // if a view parent is tagged a non masking, mask it
-        if (view.isNoCapture()) {
+        if (view is TextView) {
+            val viewText = view.text?.toString()
+            var maskIt = false
+            if (!viewText.isNullOrEmpty()) {
+                maskIt =
+                    !(!view.isPasswordInputType() && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs))
+            }
+
+            val hint = view.hint?.toString()
+            if (!maskIt && !hint.isNullOrEmpty()) {
+                maskIt =
+                    view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+            }
+
+            if (maskIt) {
+                val rect = view.globalVisibleRect()
+                maskableWidgets.add(rect)
+                parentMasked = true
+            }
+        }
+
+        if (view is Spinner) {
+            val maskIt = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+
+            if (maskIt) {
+                val rect = view.globalVisibleRect()
+                maskableWidgets.add(rect)
+                parentMasked = true
+            }
+        }
+
+        if (view is ImageView) {
+            val maskIt = view.shouldMaskImage()
+
+            if (maskIt) {
+                val rect = view.globalVisibleRect()
+                maskableWidgets.add(rect)
+                parentMasked = true
+            }
+        }
+
+        // if a view parent of any type is tagged as non masking, mask it
+        if (!parentMasked && view.isNoCapture()) {
             val rect = view.globalVisibleRect()
             maskableWidgets.add(rect)
             parentMasked = true
-        } else {
-            if (view is TextView) {
-                val viewText = view.text?.toString()
-                var maskIt = false
-                if (!viewText.isNullOrEmpty()) {
-                    // inputType is 0-based
-                    val passType = passwordInputTypes.contains(view.inputType - 1)
-                    maskIt =
-                        !(!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs))
-                }
-
-                val hint = view.hint?.toString()
-                if (!maskIt && !hint.isNullOrEmpty()) {
-                    maskIt =
-                        view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
-                }
-
-                if (maskIt) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
-                    parentMasked = true
-                }
-            }
-
-            if (view is Spinner) {
-                val maskIt = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
-
-                if (maskIt) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
-                    parentMasked = true
-                }
-            }
-
-            if (view is ImageView) {
-                val viewDrawable = view.drawable
-                val maskIt = !(viewDrawable?.isMaskable() == false || !view.isNoCapture(config.sessionReplayConfig.maskAllImages))
-
-                if (maskIt) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
-                    parentMasked = true
-                }
-            }
         }
 
         if (!parentMasked) {
@@ -605,6 +607,10 @@ public class PostHogReplayIntegration(
         )
     }
 
+    private fun ImageView.shouldMaskImage(): Boolean {
+        return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.isMaskable() == true
+    }
+
     private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
@@ -647,10 +653,8 @@ public class PostHogReplayIntegration(
         if (view is TextView) {
             val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
-                // inputType is 0-based
-                val passType = passwordInputTypes.contains(view.inputType - 1)
                 text =
-                    if (!passType && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
+                    if (!view.isPasswordInputType() && !view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)) {
                         viewText
                     } else {
                         viewText.mask()
@@ -816,10 +820,9 @@ public class PostHogReplayIntegration(
 
         if (view is ImageView) {
             type = "image"
-            val viewDrawable = view.drawable
-            if (viewDrawable?.isMaskable() == false || !view.isNoCapture(config.sessionReplayConfig.maskAllImages)) {
+            if (!view.shouldMaskImage()) {
                 // TODO: we can probably do a LRU caching here for already captured images
-                viewDrawable?.let { drawable ->
+                view.drawable?.let { drawable ->
                     base64 = drawable.base64(view.width, view.height)
 //                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
 //                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
