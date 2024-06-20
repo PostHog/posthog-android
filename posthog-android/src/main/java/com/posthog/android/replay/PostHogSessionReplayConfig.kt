@@ -6,14 +6,12 @@ import com.posthog.PostHogExperimental
 public class PostHogSessionReplayConfig(
     /**
      * Enable masking of all text input fields
-     * This is ignored if the [screenshot] option is enabled
      * Defaults to true
      */
     @PostHogExperimental
     public var maskAllTextInputs: Boolean = true,
     /**
      * Enable masking of all images to a placeholder
-     * This is ignored if the [screenshot] option is enabled
      * Defaults to true
      */
     @PostHogExperimental
