@@ -432,7 +432,18 @@ public class PostHogReplayIntegration(
 
     private fun View.isVisible(): Boolean {
         // TODO: also check for getGlobalVisibleRect intersects the display
-        return isShown && width >= 0 && height >= 0 && this !is ViewStub && isVisibleToUser()
+        val visible = isShown && width >= 0 && height >= 0 && this !is ViewStub
+
+        // Between API 16 and API 29, this method may incorrectly return false when magnification
+        // is enabled. On other versions, a node is considered visible even if it is not on
+        // the screen because magnification is active.
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+            return visible
+        }
+
+        val nodeInfo = AccessibilityNodeInfo()
+        onInitializeAccessibilityNodeInfo(nodeInfo)
+        return visible && nodeInfo.isVisibleToUser
     }
 
     private fun Drawable.shouldMaskDrawable(): Boolean {
@@ -444,32 +455,15 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.isVisibleToUser(): Boolean {
-        // Between API 16 and API 29, this method may incorrectly return false when magnification
-        // is enabled. On other versions, a node is considered visible even if it is not on
-        // the screen because magnification is active.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-            return true
-        }
-
-        val nodeInfo = AccessibilityNodeInfo()
-        onInitializeAccessibilityNodeInfo(nodeInfo)
-        return nodeInfo.isVisibleToUser
-    }
-
     private fun View.globalVisibleRect(): Rect {
         val rect = Rect()
         getGlobalVisibleRect(rect)
         return rect
     }
 
-    private fun TextView.isPasswordInputType(): Boolean {
-        // inputType is 0-based
-        return passwordInputTypes.contains(inputType - 1)
-    }
-
     private fun TextView.shouldMaskTextView(): Boolean {
-        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+        // inputType is 0-based
+        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs) || passwordInputTypes.contains(inputType - 1)
     }
 
     private fun findMaskableWidgets(
@@ -483,7 +477,7 @@ public class PostHogReplayIntegration(
             var maskIt = false
             if (!viewText.isNullOrEmpty()) {
                 maskIt =
-                    !(!view.isPasswordInputType() && !view.shouldMaskTextView())
+                    view.shouldMaskTextView()
             }
 
             val hint = view.hint?.toString()
@@ -662,7 +656,7 @@ public class PostHogReplayIntegration(
             val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
                 text =
-                    if (!view.isPasswordInputType() && !view.shouldMaskTextView()) {
+                    if (!view.shouldMaskTextView()) {
                         viewText
                     } else {
                         viewText.mask()
@@ -1016,7 +1010,9 @@ public class PostHogReplayIntegration(
         try {
             val bitmap = clonedDrawable.toBitmap(width, height)
             val base64 = bitmap.base64()
-            bitmap.recycle()
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
             return base64
         } catch (_: Throwable) {
             // ignore
