@@ -435,7 +435,7 @@ public class PostHogReplayIntegration(
         return isShown && width >= 0 && height >= 0 && this !is ViewStub && isVisibleToUser()
     }
 
-    private fun Drawable.isMaskable(): Boolean {
+    private fun Drawable.shouldMaskDrawable(): Boolean {
         return when (this) {
             is InsetDrawable, is ColorDrawable, is VectorDrawable, is GradientDrawable, is LayerDrawable -> false
             // otherwise its not accessible anyway
@@ -496,7 +496,7 @@ public class PostHogReplayIntegration(
         }
 
         if (view is Spinner) {
-            val maskIt = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+            val maskIt = view.shouldMaskSpinner()
 
             if (maskIt) {
                 val rect = view.globalVisibleRect()
@@ -608,7 +608,11 @@ public class PostHogReplayIntegration(
     }
 
     private fun ImageView.shouldMaskImage(): Boolean {
-        return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.isMaskable() == true
+        return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.shouldMaskDrawable() == true
+    }
+
+    private fun Spinner.shouldMaskSpinner(): Boolean {
+        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
     }
 
     private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
@@ -789,7 +793,7 @@ public class PostHogReplayIntegration(
         if (view is Spinner) {
             type = "input"
             inputType = "select"
-            val mask = view.isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+            val mask = view.shouldMaskSpinner()
             view.selectedItem?.let {
                 val theValue =
                     if (!mask) {

@@ -24,14 +24,14 @@
     <!--                />-->
     <!--            &lt;!&ndash;    android:visibility="gone"&ndash;&gt;-->
 
-                <ImageView
-                    android:id="@+id/imvAndroid"
-                    android:layout_width="230dp"
-                    android:layout_height="391dp"
-                    android:src="@drawable/android_logo"
-                    android:tag="ph-no-capture"
-                    />
-<!--    android:tag="ph-no-capture"-->
+    <!--            <ImageView-->
+    <!--                android:id="@+id/imvAndroid"-->
+    <!--                android:layout_width="230dp"-->
+    <!--                android:layout_height="391dp"-->
+    <!--                android:src="@drawable/android_logo"-->
+    <!--                android:tag="ph-no-capture"-->
+    <!--                />-->
+    <!--            &lt;!&ndash;        android:tag="ph-no-capture"&ndash;&gt;-->
 
     <Button
         android:layout_width="wrap_content"
