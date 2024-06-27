@@ -203,22 +203,21 @@ public class PostHogReplayIntegration(
 
     private val onTouchEventListener =
         OnTouchEventListener { motionEvent ->
-            if (!isSessionReplayEnabled) {
-                return@OnTouchEventListener
-            }
-            motionEvent.eventTime
-            val timestamp = config.dateProvider.currentTimeMillis()
-            when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
-                MotionEvent.ACTION_DOWN -> {
-                    generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+            try {
+                if (!isSessionReplayEnabled) {
+                    return@OnTouchEventListener
                 }
-                MotionEvent.ACTION_UP -> {
-                    generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                val timestamp = config.dateProvider.currentTimeMillis()
+                when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
+                    MotionEvent.ACTION_DOWN -> {
+                        generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                    }
                 }
-                // TODO: ACTION_MOVE requires the positions arrays caching since it triggers multiple times
-//            MotionEvent.ACTION_MOVE -> {
-//                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchMoveDeparted)
-//            }
+            } catch (e: Throwable) {
+                config.logger.log("OnTouchEventListener $motionEvent failed: $e.")
             }
         }
 
