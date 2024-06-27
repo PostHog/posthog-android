@@ -1,5 +1,7 @@
 ## Next
 
+- recording: `OnTouchEventListener` try catch guard to swallow unexpected errors ([#145](https://github.com/PostHog/posthog-android/pull/145))
+
 ## 3.4.0 - 2024-06-20
 
 - chore: screenshot masking ([#145](https://github.com/PostHog/posthog-android/pull/145))
