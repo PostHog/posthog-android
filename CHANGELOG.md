@@ -1,5 +1,7 @@
 ## Next
 
+- chore: create ctor overloads for better Java DX ([#148](https://github.com/PostHog/posthog-android/pull/148))
+
 ## 3.4.1 - 2024-06-27
 
 - recording: `OnTouchEventListener` try catch guard to swallow unexpected errors ([#147](https://github.com/PostHog/posthog-android/pull/147))
