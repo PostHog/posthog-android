@@ -499,9 +499,7 @@ public class PostHogReplayIntegration(
         }
 
         if (view is Spinner) {
-            val maskIt = view.shouldMaskSpinner()
-
-            if (maskIt) {
+            if (view.shouldMaskSpinner()) {
                 val rect = view.globalVisibleRect()
                 maskableWidgets.add(rect)
                 return
@@ -509,9 +507,7 @@ public class PostHogReplayIntegration(
         }
 
         if (view is ImageView) {
-            val maskIt = view.shouldMaskImage()
-
-            if (maskIt) {
+            if (view.shouldMaskImage()) {
                 val rect = view.globalVisibleRect()
                 maskableWidgets.add(rect)
                 return
@@ -519,9 +515,7 @@ public class PostHogReplayIntegration(
         }
 
         if (view is WebView) {
-            val maskIt = view.isAnyInputSensitive()
-
-            if (maskIt) {
+            if (view.isAnyInputSensitive()) {
                 val rect = view.globalVisibleRect()
                 maskableWidgets.add(rect)
                 return
