@@ -30,7 +30,7 @@ internal class PostHogLifecycleObserverIntegration(
     private val lastUpdatedSession = AtomicLong(0L)
     private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
 
-    companion object {
+    private companion object {
         // in case there are multiple instances or the SDK is closed/setup again
         // the value is still cached
         @JvmStatic

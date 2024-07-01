@@ -211,7 +211,7 @@ internal class PostHogSharedPreferences(
         return preferences
     }
 
-    companion object {
+    private companion object {
         private val SPECIAL_KEYS = listOf(GROUPS)
     }
 }
