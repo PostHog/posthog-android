@@ -1149,6 +1149,6 @@ public class PostHogReplayIntegration(
     }
 
     private companion object {
-        const val PH_NO_CAPTURE_LABEL = "ph-no-capture"
+        private const val PH_NO_CAPTURE_LABEL = "ph-no-capture"
     }
 }

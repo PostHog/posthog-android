@@ -46,7 +46,6 @@ public abstract interface class com/posthog/android/replay/PostHogDrawableConver
 }
 
 public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration {
-	public static final field PH_NO_CAPTURE_LABEL Ljava/lang/String;
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
 	public fun install ()V
 	public fun uninstall ()V
