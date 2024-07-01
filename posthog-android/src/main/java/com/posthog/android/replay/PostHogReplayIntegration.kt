@@ -460,17 +460,23 @@ public class PostHogReplayIntegration(
         return rect
     }
 
+    private fun View.isTextInputSensitive(): Boolean {
+        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+    }
+
+    private fun View.isAnyInputSensitive(): Boolean {
+        return this.isTextInputSensitive() || config.sessionReplayConfig.maskAllImages
+    }
+
     private fun TextView.shouldMaskTextView(): Boolean {
         // inputType is 0-based
-        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs) || passwordInputTypes.contains(inputType - 1)
+        return this.isTextInputSensitive() || passwordInputTypes.contains(inputType - 1)
     }
 
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
     ) {
-        var parentMasked = false
-
         if (view is TextView) {
             val viewText = view.text?.toString()
             var maskIt = false
@@ -488,7 +494,7 @@ public class PostHogReplayIntegration(
             if (maskIt) {
                 val rect = view.globalVisibleRect()
                 maskableWidgets.add(rect)
-                parentMasked = true
+                return
             }
         }
 
@@ -498,7 +504,7 @@ public class PostHogReplayIntegration(
             if (maskIt) {
                 val rect = view.globalVisibleRect()
                 maskableWidgets.add(rect)
-                parentMasked = true
+                return
             }
         }
 
@@ -508,28 +514,36 @@ public class PostHogReplayIntegration(
             if (maskIt) {
                 val rect = view.globalVisibleRect()
                 maskableWidgets.add(rect)
-                parentMasked = true
+                return
+            }
+        }
+
+        if (view is WebView) {
+            val maskIt = view.isAnyInputSensitive()
+
+            if (maskIt) {
+                val rect = view.globalVisibleRect()
+                maskableWidgets.add(rect)
+                return
             }
         }
 
         // if a view parent of any type is tagged as non masking, mask it
-        if (!parentMasked && view.isNoCapture()) {
+        if (view.isNoCapture()) {
             val rect = view.globalVisibleRect()
             maskableWidgets.add(rect)
-            parentMasked = true
+            return
         }
 
-        if (!parentMasked) {
-            if (view is ViewGroup && view.childCount > 0) {
-                for (i in 0 until view.childCount) {
-                    val viewChild = view.getChildAt(i) ?: continue
+        if (view is ViewGroup && view.childCount > 0) {
+            for (i in 0 until view.childCount) {
+                val viewChild = view.getChildAt(i) ?: continue
 
-                    if (!viewChild.isVisible()) {
-                        continue
-                    }
-
-                    findMaskableWidgets(viewChild, maskableWidgets)
+                if (!viewChild.isVisible()) {
+                    continue
                 }
+
+                findMaskableWidgets(viewChild, maskableWidgets)
             }
         }
     }
@@ -609,7 +623,7 @@ public class PostHogReplayIntegration(
     }
 
     private fun Spinner.shouldMaskSpinner(): Boolean {
-        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+        return this.isTextInputSensitive()
     }
 
     private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
@@ -1117,7 +1131,8 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isNoCapture(maskInput: Boolean = false): Boolean {
-        return (tag as? String)?.lowercase()?.contains("ph-no-capture") == true || maskInput
+        return maskInput || (tag as? String)?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true ||
+            contentDescription?.toString()?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true
     }
 
     private fun Drawable.copy(): Drawable? {
@@ -1131,5 +1146,9 @@ public class PostHogReplayIntegration(
     @SuppressLint("AnnotateVersionCheck")
     private fun isSupported(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+    }
+
+    private companion object {
+        const val PH_NO_CAPTURE_LABEL = "ph-no-capture"
     }
 }

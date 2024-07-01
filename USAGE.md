@@ -219,7 +219,7 @@ val config = PostHogAndroidConfig(apiKey).apply {
 }
 ```
 
-If you don't want to mask everything, you can disable the mask config above and mask specific views using the `ph-no-capture` tag.
+If you don't want to mask everything, you can disable the mask config above and mask specific views using the `ph-no-capture` value in the [android:tag](https://developer.android.com/reference/android/view/View#attr_android:tag) or [android:contentDescription](https://developer.android.com/reference/android/view/View#attr_android:contentDescription)..
 
 ```xml
 <ImageView
