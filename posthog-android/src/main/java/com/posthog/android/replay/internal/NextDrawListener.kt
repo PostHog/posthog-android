@@ -28,7 +28,7 @@ internal class NextDrawListener(
         }
     }
 
-    companion object {
+    internal companion object {
         // only call if onDecorViewReady
         internal fun View.onNextDraw(
             mainHandler: MainHandler,

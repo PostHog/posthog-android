@@ -1,5 +1,7 @@
 ## Next
 
+- recording: mask views with `contentDescription` setting and mask `WebView` if any masking is enabled ([#149](https://github.com/PostHog/posthog-android/pull/149))
+
 ## 3.4.2 - 2024-06-28
 
 - chore: create ctor overloads for better Java DX ([#148](https://github.com/PostHog/posthog-android/pull/148))
