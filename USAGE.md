@@ -208,7 +208,9 @@ val config = PostHogAndroidConfig(apiKey).apply {
     // sessionReplay is disabled by default
     sessionReplay = true
     // sessionReplayConfig is optional, they are enabled by default
+    // this isn't supported if using Jetpack Compose views, use with caution
     sessionReplayConfig.maskAllTextInputs = true
+    // this isn't supported if using Jetpack Compose views, use with caution
     sessionReplayConfig.maskAllImages = true
     sessionReplayConfig.captureLogcat = true
     // screenshot is disabled by default
@@ -230,6 +232,8 @@ If you don't want to mask everything, you can disable the mask config above and 
     android:tag="ph-no-capture"
 />
 ```
+
+Currently, this isn't supported if using Jetpack Compose views, We're investigating this issue.
 
 Add the `PostHogOkHttpInterceptor` to your `OkHttpClient` to capture network requests.
 
@@ -263,6 +267,7 @@ val config = PostHogAndroidConfig(apiKey).apply {
 
 - Requires Android API >= 26, otherwise it's a NoOp.
 - [Jetpack Compose](https://developer.android.com/jetpack/compose) is only supported if the `screenshot` option is enabled.
+  - Masking and Redaction aren't supported yet, We're investigating this issue. 
 - It's a representation of the user's screen, not a video recording.
   - Custom views are not fully supported.
   - If the option `screenshot` is enabled, the SDK will take a screenshot of the screen instead of making a representation of the user's screen.
