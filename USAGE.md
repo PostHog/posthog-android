@@ -233,7 +233,7 @@ If you don't want to mask everything, you can disable the mask config above and 
 />
 ```
 
-Currently, this isn't supported if using Jetpack Compose views, We're investigating this issue.
+Currently masking and redacting isn't supported if using Jetpack Compose views, We're investigating this issue.
 
 Add the `PostHogOkHttpInterceptor` to your `OkHttpClient` to capture network requests.
 
