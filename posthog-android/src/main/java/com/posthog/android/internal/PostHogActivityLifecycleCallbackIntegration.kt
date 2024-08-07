@@ -3,7 +3,6 @@ package com.posthog.android.internal
 import android.app.Activity
 import android.app.Application
 import android.app.Application.ActivityLifecycleCallbacks
-import android.content.pm.PackageManager.GET_META_DATA
 import android.os.Bundle
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
