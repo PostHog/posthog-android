@@ -55,6 +55,8 @@ internal class PostHogAndroidContext(
         staticContext["\$lib"] = config.sdkName
         staticContext["\$lib_version"] = config.sdkVersion
 
+        staticContext["\$is_emulator"] = isEmulator
+
         staticContext
     }
 
@@ -170,4 +172,20 @@ internal class PostHogAndroidContext(
 
         return dynamicContext
     }
+
+    private val isEmulator: Boolean
+        get() = ((Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"))
+                || Build.FINGERPRINT.startsWith("generic")
+                || Build.FINGERPRINT.startsWith("unknown")
+                || Build.HARDWARE.contains("goldfish")
+                || Build.HARDWARE.contains("ranchu")
+                || Build.MODEL.contains("google_sdk")
+                || Build.MODEL.contains("Emulator")
+                || Build.MODEL.contains("Android SDK built for x86")
+                || Build.MANUFACTURER.contains("Genymotion")
+                || Build.PRODUCT.contains("sdk")
+                || Build.PRODUCT.contains("vbox86p")
+                || Build.PRODUCT.contains("emulator")
+                || Build.PRODUCT.contains("simulator"))
+
 }
