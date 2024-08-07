@@ -1,5 +1,6 @@
 ## Next
 
+- fix: ensure activity name is used when activity label is not defined ([#153](https://github.com/PostHog/posthog-android/pull/153))
 - recording: mask views with `contentDescription` setting and mask `WebView` if any masking is enabled ([#149](https://github.com/PostHog/posthog-android/pull/149))
 
 ## 3.4.2 - 2024-06-28
