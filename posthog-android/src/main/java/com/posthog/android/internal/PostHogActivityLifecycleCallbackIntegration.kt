@@ -41,15 +41,15 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         }
     }
 
-        override fun onActivityStarted(activity: Activity) {
-            if (config.captureScreenViews) {
-                val screenName = activity.activityLabelOrName(config)
+    override fun onActivityStarted(activity: Activity) {
+        if (config.captureScreenViews) {
+            val screenName = activity.activityLabelOrName(config)
 
-                if (!screenName.isNullOrEmpty()) {
-                    PostHog.screen(screenName)
-                }
+            if (!screenName.isNullOrEmpty()) {
+                PostHog.screen(screenName)
             }
         }
+    }
 
 
     override fun onActivityResumed(activity: Activity) {
