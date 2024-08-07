@@ -123,39 +123,19 @@ internal fun Context.telephonyManager(): TelephonyManager? {
 }
 
 @Suppress("DEPRECATION")
-internal fun Activity.activityLabel(config: PostHogAndroidConfig): String? {
+internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String? {
     return try {
-        val packageManager = packageManager
-        val componentName = componentName
         val activityInfo = packageManager.getActivityInfo(componentName, GET_META_DATA)
-        val applicationInfo = applicationInfo
-
-        val activityLabel =
-            activityInfo.nonLocalizedLabel?.toString() ?: activityInfo.loadLabel(packageManager)
-                .toString()
-        val applicationLabel =
-            applicationInfo.nonLocalizedLabel?.toString() ?: applicationInfo.loadLabel(
-                packageManager
-            ).toString()
+        val activityLabel = activityInfo.loadLabel(packageManager).toString()
+        val applicationLabel = applicationInfo.loadLabel(packageManager).toString()
 
         if (activityLabel.isNotEmpty() && activityLabel != applicationLabel) {
             activityLabel
         } else {
-            null
+            activityInfo.name.substringAfterLast('.')
         }
     } catch (e: Throwable) {
-        config.logger.log("Error getting the Activity's label: $e.")
-        null
-    }
-}
-
-@Suppress("DEPRECATION")
-internal fun Activity.activityName(config: PostHogAndroidConfig): String? {
-    return try {
-        val info = packageManager.getActivityInfo(componentName, GET_META_DATA)
-        info.name.substringAfterLast('.')
-    } catch (e: Throwable) {
-        config.logger.log("Error getting the Activity's name: $e.")
+        config.logger.log("Error getting the Activity's label or name: $e.")
         null
     }
 }
