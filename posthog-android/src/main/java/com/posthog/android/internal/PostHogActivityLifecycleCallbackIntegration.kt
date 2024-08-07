@@ -3,6 +3,7 @@ package com.posthog.android.internal
 import android.app.Activity
 import android.app.Application
 import android.app.Application.ActivityLifecycleCallbacks
+import android.content.pm.PackageManager.GET_META_DATA
 import android.os.Bundle
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
@@ -41,20 +42,15 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         }
     }
 
-    override fun onActivityStarted(activity: Activity) {
-        if (config.captureScreenViews) {
-            val activityLabel = activity.activityLabel(config)
-            val screenName = if (!activityLabel.isNullOrEmpty()) {
-                activityLabel
-            } else {
-                activity.activityName(config)
-            }
+        override fun onActivityStarted(activity: Activity) {
+            if (config.captureScreenViews) {
+                val screenName = activity.activityLabelOrName(config)
 
-            if (!screenName.isNullOrEmpty()) {
-                PostHog.screen(screenName)
+                if (!screenName.isNullOrEmpty()) {
+                    PostHog.screen(screenName)
+                }
             }
         }
-    }
 
 
     override fun onActivityResumed(activity: Activity) {
