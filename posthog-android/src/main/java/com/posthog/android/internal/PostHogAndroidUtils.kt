@@ -130,7 +130,11 @@ internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String?
         val applicationLabel = applicationInfo.loadLabel(packageManager).toString()
 
         if (activityLabel.isNotEmpty() && activityLabel != applicationLabel) {
-            activityLabel
+            if (activityLabel == activityInfo.name) {
+                activityLabel.substringAfterLast('.')
+            } else {
+                activityLabel
+            }
         } else {
             activityInfo.name.substringAfterLast('.')
         }
