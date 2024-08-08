@@ -167,6 +167,16 @@ public interface PostHogInterface {
     public fun distinctId(): String
 
     /**
+     * Returns the [anonymousId] property
+     */
+    public fun anonymousId(): String
+
+    /**
+     * Returns the [isIdentified] property
+     */
+    public fun isIdentified(): Boolean
+
+    /**
      * Enables or disables the debug mode
      */
     public fun debug(enable: Boolean = true)

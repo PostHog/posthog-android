@@ -11,6 +11,8 @@ import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
+import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
@@ -49,6 +51,7 @@ public class PostHog private constructor(
     private val setupLock = Any()
     private val optOutLock = Any()
     private val anonymousLock = Any()
+    private val identifiedLock = Any()
     private val groupsLock = Any()
 
     private val featureFlagsCalledLock = Any()
@@ -225,6 +228,23 @@ public class PostHog private constructor(
         }
         set(value) {
             getPreferences().setValue(DISTINCT_ID, value)
+        }
+
+    private var isIdentified: Boolean
+        @JvmName("get-isIdentified")
+        get() {
+            var isIdentified: Boolean?
+            synchronized(identifiedLock) {
+                isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                if (isIdentified == null) {
+                    isIdentified = this.distinctId != this.anonymousId
+                    this.isIdentified = isIdentified as Boolean
+                }
+            }
+            return isIdentified as Boolean
+        }
+        set(value) {
+            getPreferences().setValue(IS_IDENTIFIED, value)
         }
 
     private fun buildProperties(
@@ -484,15 +504,15 @@ public class PostHog private constructor(
             config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
-        capture(
-            "\$identify",
-            distinctId = distinctId,
-            properties = props,
-            userProperties = userProperties,
-            userPropertiesSetOnce = userPropertiesSetOnce,
-        )
+        if (previousDistinctId != distinctId && !this.isIdentified) {
+            capture(
+                "\$identify",
+                distinctId = distinctId,
+                properties = props,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+            )
 
-        if (previousDistinctId != distinctId) {
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
             if (previousDistinctId.isNotBlank()) {
                 this.anonymousId = previousDistinctId
@@ -500,6 +520,7 @@ public class PostHog private constructor(
                 config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
             }
             this.distinctId = distinctId
+            this.isIdentified = true
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {

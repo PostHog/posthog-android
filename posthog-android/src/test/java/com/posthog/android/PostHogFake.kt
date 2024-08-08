@@ -107,6 +107,14 @@ public class PostHogFake : PostHogInterface {
         return ""
     }
 
+    override fun anonymousId(): String {
+        return ""
+    }
+
+    override fun isIdentified(): Boolean {
+        return false
+    }
+
     override fun debug(enable: Boolean) {
     }
 
