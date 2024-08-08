@@ -68,6 +68,8 @@ internal class PostHogAndroidContextTest {
 
         assertEquals(config.sdkName, staticContext["\$lib"])
         assertEquals(config.sdkVersion, staticContext["\$lib_version"])
+
+        assertNotNull(staticContext["\$is_emulator"])
     }
 
     @Test
