@@ -11,6 +11,7 @@ import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
@@ -48,6 +49,7 @@ public class PostHog private constructor(
     private val setupLock = Any()
     private val optOutLock = Any()
     private val anonymousLock = Any()
+    private val identifiedLock = Any()
     private val sessionLock = Any()
     private val groupsLock = Any()
 
@@ -72,7 +74,8 @@ public class PostHog private constructor(
                     config.logger.log("Setup called despite already being setup!")
                     return
                 }
-                config.logger = if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
+                config.logger =
+                    if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (!apiKeys.add(config.apiKey)) {
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
@@ -81,8 +84,20 @@ public class PostHog private constructor(
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
                 val api = PostHogApi(config)
-                val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
+                val queue = PostHogQueue(
+                    config,
+                    api,
+                    PostHogApiEndpoint.BATCH,
+                    config.storagePrefix,
+                    queueExecutor
+                )
+                val replayQueue = PostHogQueue(
+                    config,
+                    api,
+                    PostHogApiEndpoint.SNAPSHOT,
+                    config.replayStoragePrefix,
+                    replayExecutor
+                )
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -225,6 +240,23 @@ public class PostHog private constructor(
         }
         set(value) {
             getPreferences().setValue(DISTINCT_ID, value)
+        }
+
+    private var isIdentified: Boolean
+        @JvmName("get-isIdentified")
+        get() {
+            var isIdentified: Boolean?
+            synchronized(identifiedLock) {
+                isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                if (isIdentified == null) {
+                    isIdentified = this.distinctId != this.anonymousId
+                    this.isIdentified = isIdentified as Boolean
+                }
+            }
+            return isIdentified as Boolean
+        }
+        set(value) {
+            getPreferences().setValue(IS_IDENTIFIED, value)
         }
 
     private fun buildProperties(
@@ -486,15 +518,15 @@ public class PostHog private constructor(
             config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
-        capture(
-            "\$identify",
-            distinctId = distinctId,
-            properties = props,
-            userProperties = userProperties,
-            userPropertiesSetOnce = userPropertiesSetOnce,
-        )
+        if (previousDistinctId != distinctId && !this.isIdentified) {
+            capture(
+                "\$identify",
+                distinctId = distinctId,
+                properties = props,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+            )
 
-        if (previousDistinctId != distinctId) {
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
             if (previousDistinctId.isNotBlank()) {
                 this.anonymousId = previousDistinctId
@@ -502,6 +534,7 @@ public class PostHog private constructor(
                 config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
             }
             this.distinctId = distinctId
+            this.isIdentified = true
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
@@ -687,6 +720,20 @@ public class PostHog private constructor(
             return ""
         }
         return distinctId
+    }
+
+    override fun anonymousId(): String {
+        if (!isEnabled()) {
+            return ""
+        }
+        return anonymousId
+    }
+
+    public override fun isIdentified(): Boolean {
+        if (!isEnabled()) {
+            return false
+        }
+        return this.isIdentified
     }
 
     override fun debug(enable: Boolean) {
@@ -879,6 +926,10 @@ public class PostHog private constructor(
         }
 
         override fun distinctId(): String = shared.distinctId()
+
+        override fun anonymousId(): String = shared.anonymousId()
+
+        override fun isIdentified(): Boolean = shared.isIdentified()
 
         override fun debug(enable: Boolean) {
             shared.debug(enable)
