@@ -129,12 +129,13 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
     @Test
     fun `onActivityStarted returns activityInfo name if labels are the same`() {
-        val fake = executeCaptureScreenViewsTest(
-            captureScreenViews = true,
-            title = "AppLabel",
-            activityName = "com.example.MyActivity",
-            applicationLabel = "AppLabel"
-        )
+        val fake =
+            executeCaptureScreenViewsTest(
+                captureScreenViews = true,
+                title = "AppLabel",
+                activityName = "com.example.MyActivity",
+                applicationLabel = "AppLabel",
+            )
         assertEquals("MyActivity", fake.screenTitle)
     }
 

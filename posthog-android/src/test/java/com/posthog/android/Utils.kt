@@ -41,13 +41,14 @@ public fun mockScreenTitle(
     throws: Boolean,
     title: String,
     activityName: String,
-    applicationLabel: String
+    applicationLabel: String,
 ): Activity {
     val activity = mock<Activity>()
     val pm = mock<PackageManager>()
-    val ac = mock<ActivityInfo>().apply {
-        name = activityName
-    }
+    val ac =
+        mock<ActivityInfo>().apply {
+            name = activityName
+        }
     val appInfo = mock<ApplicationInfo>()
 
     whenever(ac.loadLabel(any())).thenReturn(title)

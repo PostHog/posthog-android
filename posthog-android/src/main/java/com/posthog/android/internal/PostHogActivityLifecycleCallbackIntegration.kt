@@ -51,7 +51,6 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         }
     }
 
-
     override fun onActivityResumed(activity: Activity) {
     }
 
