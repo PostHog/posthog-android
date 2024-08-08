@@ -526,6 +526,8 @@ public class PostHog private constructor(
             if (reloadFeatureFlags) {
                 reloadFeatureFlags()
             }
+        } else {
+            config?.logger?.log("already identified with id : $distinctId.")
         }
     }
 
