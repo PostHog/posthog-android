@@ -67,6 +67,8 @@ public class PostHog private constructor(
     private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
+    private var isIdentifiedLoaded: Boolean = false
+
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
             try {
@@ -245,15 +247,17 @@ public class PostHog private constructor(
     private var isIdentified: Boolean
         @JvmName("get-isIdentified")
         get() {
-            var isIdentified: Boolean?
             synchronized(identifiedLock) {
-                isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
-                if (isIdentified == null) {
-                    isIdentified = this.distinctId != this.anonymousId
-                    this.isIdentified = isIdentified as Boolean
+                if (!isIdentifiedLoaded) {
+                    var isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                    if (isIdentified == null) {
+                        isIdentified = this.distinctId != this.anonymousId
+                        this.isIdentified = isIdentified
+                    }
+                    isIdentifiedLoaded = true
                 }
             }
-            return isIdentified as Boolean
+            return this.isIdentified
         }
         set(value) {
             getPreferences().setValue(IS_IDENTIFIED, value)
