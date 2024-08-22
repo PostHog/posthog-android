@@ -55,13 +55,16 @@ public val groupProps: Map<String, Any> = mapOf("premium" to true)
 public val props: Map<String, Any> = mapOf<String, Any>("prop" to "value")
 public val uuid: UUID = UUID.fromString("8c04e5c1-8f6e-4002-96fd-1804799b6ffe")
 
-public fun generateEvent(eventName: String? = null): PostHogEvent {
+public fun generateEvent(
+    eventName: String? = null,
+    givenUuuid: UUID? = null,
+): PostHogEvent {
     return PostHogEvent(
         eventName ?: EVENT,
         distinctId = DISTINCT_ID,
         properties = props,
         timestamp = date,
-        uuid = uuid,
+        uuid = givenUuuid ?: uuid,
     )
 }
 
