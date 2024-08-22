@@ -14,6 +14,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.text.ParsePosition
+import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -313,7 +314,7 @@ internal class PostHogQueueTest {
 
         http.enqueue(MockResponse().setResponseCode(300).setBody("error"))
 
-        sut.add(generateEvent())
+        sut.add(generateEvent(givenUuuid = UUID.randomUUID()))
 
         executor.awaitExecution()
 
