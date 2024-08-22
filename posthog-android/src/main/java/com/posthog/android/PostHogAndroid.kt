@@ -74,8 +74,12 @@ public class PostHogAndroid private constructor() {
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
-            config.sdkVersion = BuildConfig.VERSION_NAME
-            config.sdkName = "posthog-android"
+            // Flutter SDK sets the sdkName and sdkVersion, so this guard is not to allow
+            // the values to be overwritten again
+            if (config.sdkName != "posthog-flutter") {
+                config.sdkName = "posthog-android"
+                config.sdkVersion = BuildConfig.VERSION_NAME
+            }
 
             val mainHandler = MainHandler()
             config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
