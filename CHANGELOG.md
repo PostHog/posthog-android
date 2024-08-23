@@ -1,6 +1,6 @@
 ## Next
 
-- chore: use getNetworkCapabilities instead of getNetworkInfo to avoid ANRs ([#154](https://github.com/PostHog/posthog-android/pull/154))
+- chore: use getNetworkCapabilities instead of getNetworkInfo to avoid ANRs ([#164](https://github.com/PostHog/posthog-android/pull/164))
 
 ## 3.5.0 - 2024-08-08
 
