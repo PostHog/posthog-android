@@ -1,5 +1,7 @@
 ## Next
 
+- chore: use getNetworkCapabilities instead of getNetworkInfo to avoid ANRs ([#154](https://github.com/PostHog/posthog-android/pull/154))
+
 ## 3.5.0 - 2024-08-08
 
 - feat: add emulator detection property to static context ([#154](https://github.com/PostHog/posthog-android/pull/154))
