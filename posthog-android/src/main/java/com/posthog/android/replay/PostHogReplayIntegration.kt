@@ -203,12 +203,13 @@ public class PostHogReplayIntegration(
 
     private val onTouchEventListener =
         OnTouchEventListener { motionEvent ->
+            val timestamp = config.dateProvider.currentTimeMillis()
+
             executor.submit {
                 try {
                     if (!isSessionReplayEnabled) {
                         return@submit
                     }
-                    val timestamp = config.dateProvider.currentTimeMillis()
                     when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
                         MotionEvent.ACTION_DOWN -> {
                             generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
