@@ -20,6 +20,7 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
+import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -701,6 +702,10 @@ public class PostHog private constructor(
         return PostHogSessionManager.isSessionActive()
     }
 
+    override fun getSessionId(): UUID? {
+        return PostHogSessionManager.getActiveSessionId()
+    }
+
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")
         return config as? T
@@ -877,6 +882,10 @@ public class PostHog private constructor(
 
         override fun isSessionActive(): Boolean {
             return shared.isSessionActive()
+        }
+
+        override fun getSessionId(): UUID? {
+            return shared.getSessionId()
         }
 
         override fun <T : PostHogConfig> getConfig(): T? {

@@ -3,6 +3,7 @@ package com.posthog.android
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
+import java.util.UUID
 
 public class PostHogFake : PostHogInterface {
     public var event: String? = null
@@ -117,6 +118,10 @@ public class PostHogFake : PostHogInterface {
 
     override fun isSessionActive(): Boolean {
         return false
+    }
+
+    override fun getSessionId(): UUID? {
+        return null
     }
 
     override fun <T : PostHogConfig> getConfig(): T? {

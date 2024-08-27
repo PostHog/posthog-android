@@ -11,6 +11,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getSessionId ()Ljava/util/UUID;
 	public fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public fun isFeatureEnabled (Ljava/lang/String;Z)Z
@@ -38,6 +39,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getSessionId ()Ljava/util/UUID;
 	public fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public fun isFeatureEnabled (Ljava/lang/String;Z)Z
@@ -178,6 +180,7 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun getConfig ()Lcom/posthog/PostHogConfig;
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun getSessionId ()Ljava/util/UUID;
 	public abstract fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public abstract fun isFeatureEnabled (Ljava/lang/String;Z)Z
