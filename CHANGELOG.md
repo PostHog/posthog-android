@@ -1,5 +1,7 @@
 ## Next
 
+- recording: expose session id ([#166](https://github.com/PostHog/posthog-android/pull/166))
+
 ## 3.5.1 - 2024-08-26
 
 - recording: capture touch interaction off of main thread to avoid ANRs ([#165](https://github.com/PostHog/posthog-android/pull/165))

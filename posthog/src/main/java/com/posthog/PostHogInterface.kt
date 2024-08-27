@@ -1,5 +1,7 @@
 package com.posthog
 
+import java.util.UUID
+
 /**
  * The PostHog SDK entry point
  */
@@ -188,6 +190,11 @@ public interface PostHogInterface {
      * Returns if a session is active
      */
     public fun isSessionActive(): Boolean
+
+    /**
+     * Returns the session Id if a session is active
+     */
+    public fun getSessionId(): UUID?
 
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?

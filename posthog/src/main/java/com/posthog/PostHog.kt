@@ -17,6 +17,7 @@ import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.UUID
@@ -48,13 +49,8 @@ public class PostHog private constructor(
     private val setupLock = Any()
     private val optOutLock = Any()
     private val anonymousLock = Any()
-    private val sessionLock = Any()
     private val groupsLock = Any()
 
-    // do not move to companion object, otherwise sessionId will be null
-    private val sessionIdNone = UUID(0, 0)
-
-    private var sessionId = sessionIdNone
     private val featureFlagsCalledLock = Any()
 
     private var config: PostHogConfig? = null
@@ -170,6 +166,10 @@ public class PostHog private constructor(
     public override fun close() {
         synchronized(setupLock) {
             try {
+                if (!isEnabled()) {
+                    return
+                }
+
                 enabled = false
 
                 config?.let { config ->
@@ -272,15 +272,13 @@ public class PostHog private constructor(
             }
         }
 
-        synchronized(sessionLock) {
-            if (sessionId != sessionIdNone) {
-                val sessionId = sessionId.toString()
-                props["\$session_id"] = sessionId
-                if (config?.sessionReplay == true) {
-                    // Session replay requires $window_id, so we set as the same as $session_id.
-                    // the backend might fallback to $session_id if $window_id is not present next.
-                    props["\$window_id"] = sessionId
-                }
+        PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
+            val tempSessionId = sessionId.toString()
+            props["\$session_id"] = tempSessionId
+            if (config?.sessionReplay == true) {
+                // Session replay requires $window_id, so we set as the same as $session_id.
+                // the backend might fallback to $session_id if $window_id is not present next.
+                props["\$window_id"] = tempSessionId
             }
         }
 
@@ -697,25 +695,35 @@ public class PostHog private constructor(
     }
 
     override fun startSession() {
-        synchronized(sessionLock) {
-            if (sessionId == sessionIdNone) {
-                sessionId = TimeBasedEpochGenerator.generate()
-            }
+        if (!isEnabled()) {
+            return
         }
+
+        PostHogSessionManager.startSession()
     }
 
     override fun endSession() {
-        synchronized(sessionLock) {
-            sessionId = sessionIdNone
+        if (!isEnabled()) {
+            return
         }
+
+        PostHogSessionManager.endSession()
     }
 
     override fun isSessionActive(): Boolean {
-        var active: Boolean
-        synchronized(sessionLock) {
-            active = sessionId != sessionIdNone
+        if (!isEnabled()) {
+            return false
         }
-        return active
+
+        return PostHogSessionManager.isSessionActive()
+    }
+
+    override fun getSessionId(): UUID? {
+        if (!isEnabled()) {
+            return null
+        }
+
+        return PostHogSessionManager.getActiveSessionId()
     }
 
     override fun <T : PostHogConfig> getConfig(): T? {
@@ -894,6 +902,10 @@ public class PostHog private constructor(
 
         override fun isSessionActive(): Boolean {
             return shared.isSessionActive()
+        }
+
+        override fun getSessionId(): UUID? {
+            return shared.getSessionId()
         }
 
         override fun <T : PostHogConfig> getConfig(): T? {
