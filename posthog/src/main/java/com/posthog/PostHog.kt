@@ -12,7 +12,6 @@ import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
-import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
@@ -63,6 +62,8 @@ public class PostHog private constructor(
     private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
+
+    private var isIdentifiedLoaded: Boolean = false
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -230,20 +231,21 @@ public class PostHog private constructor(
             getPreferences().setValue(DISTINCT_ID, value)
         }
 
-    private var isIdentified: Boolean
+    private var isIdentified: Boolean = false
         @JvmName("get-isIdentified")
         get() {
-            var isIdentified: Boolean?
             synchronized(identifiedLock) {
-                isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
-                if (isIdentified == null) {
-                    isIdentified = this.distinctId != this.anonymousId
-                    this.isIdentified = isIdentified as Boolean
+                if (!isIdentifiedLoaded) {
+                    println("hi")
+                    this.isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                        ?: (this.distinctId != this.anonymousId)
+                    isIdentifiedLoaded = true
                 }
             }
-            return isIdentified as Boolean
+            return field
         }
         set(value) {
+            field = value
             getPreferences().setValue(IS_IDENTIFIED, value)
         }
 
@@ -730,6 +732,7 @@ public class PostHog private constructor(
             return
         }
 
+        isIdentifiedLoaded = false
         PostHogSessionManager.endSession()
     }
 
