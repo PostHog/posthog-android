@@ -166,6 +166,10 @@ public class PostHog private constructor(
     public override fun close() {
         synchronized(setupLock) {
             try {
+                if (!isEnabled()) {
+                    return
+                }
+
                 enabled = false
 
                 config?.let { config ->
@@ -691,18 +695,34 @@ public class PostHog private constructor(
     }
 
     override fun startSession() {
+        if (!isEnabled()) {
+            return
+        }
+
         PostHogSessionManager.startSession()
     }
 
     override fun endSession() {
+        if (!isEnabled()) {
+            return
+        }
+
         PostHogSessionManager.endSession()
     }
 
     override fun isSessionActive(): Boolean {
+        if (!isEnabled()) {
+            return false
+        }
+
         return PostHogSessionManager.isSessionActive()
     }
 
     override fun getSessionId(): UUID? {
+        if (!isEnabled()) {
+            return null
+        }
+
         return PostHogSessionManager.getActiveSessionId()
     }
 
