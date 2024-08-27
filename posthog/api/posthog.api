@@ -302,6 +302,15 @@ public final class com/posthog/internal/PostHogSerializer {
 	public final fun serializeObject (Ljava/lang/Object;)Ljava/lang/String;
 }
 
+public final class com/posthog/internal/PostHogSessionManager {
+	public static final field INSTANCE Lcom/posthog/internal/PostHogSessionManager;
+	public final fun endSession ()V
+	public final fun getActiveSessionId ()Ljava/util/UUID;
+	public final fun isSessionActive ()Z
+	public final fun setSessionId (Ljava/util/UUID;)V
+	public final fun startSession ()V
+}
+
 public final class com/posthog/internal/PostHogThreadFactory : java/util/concurrent/ThreadFactory {
 	public fun <init> (Ljava/lang/String;)V
 	public fun newThread (Ljava/lang/Runnable;)Ljava/lang/Thread;
