@@ -232,11 +232,9 @@ public class PostHog private constructor(
         }
 
     private var isIdentified: Boolean = false
-        @JvmName("get-isIdentified")
         get() {
             synchronized(identifiedLock) {
                 if (!isIdentifiedLoaded) {
-                    println("hi")
                     this.isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
                         ?: (this.distinctId != this.anonymousId)
                     isIdentifiedLoaded = true
@@ -245,8 +243,10 @@ public class PostHog private constructor(
             return field
         }
         set(value) {
-            field = value
-            getPreferences().setValue(IS_IDENTIFIED, value)
+            synchronized(identifiedLock) {
+                field = value
+                getPreferences().setValue(IS_IDENTIFIED, value)
+            }
         }
 
     private fun buildProperties(
@@ -529,7 +529,7 @@ public class PostHog private constructor(
                 reloadFeatureFlags()
             }
         } else {
-            config?.logger?.log("already identified with id : $distinctId.")
+            config?.logger?.log("already identified with id: $distinctId.")
         }
     }
 
@@ -732,7 +732,9 @@ public class PostHog private constructor(
             return
         }
 
-        isIdentifiedLoaded = false
+        synchronized(identifiedLock) {
+            isIdentifiedLoaded = false
+        }
         PostHogSessionManager.endSession()
     }
 
