@@ -1,6 +1,8 @@
 ## Next
 
 - recording: expose session id ([#166](https://github.com/PostHog/posthog-android/pull/166))
+- feat: add `$is_identified` property ([#167](https://github.com/PostHog/posthog-android/pull/167))
+- fix: identify should not allow already identified users ([#167](https://github.com/PostHog/posthog-android/pull/167))
 
 ## 3.5.1 - 2024-08-26
 
