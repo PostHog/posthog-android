@@ -11,6 +11,7 @@ import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
@@ -49,6 +50,7 @@ public class PostHog private constructor(
     private val setupLock = Any()
     private val optOutLock = Any()
     private val anonymousLock = Any()
+    private val identifiedLock = Any()
     private val groupsLock = Any()
 
     private val featureFlagsCalledLock = Any()
@@ -60,6 +62,8 @@ public class PostHog private constructor(
     private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
+
+    private var isIdentifiedLoaded: Boolean = false
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -227,6 +231,24 @@ public class PostHog private constructor(
             getPreferences().setValue(DISTINCT_ID, value)
         }
 
+    private var isIdentified: Boolean = false
+        get() {
+            synchronized(identifiedLock) {
+                if (!isIdentifiedLoaded) {
+                    isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                        ?: (distinctId != anonymousId)
+                    isIdentifiedLoaded = true
+                }
+            }
+            return field
+        }
+        set(value) {
+            synchronized(identifiedLock) {
+                field = value
+                getPreferences().setValue(IS_IDENTIFIED, value)
+            }
+        }
+
     private fun buildProperties(
         distinctId: String,
         properties: Map<String, Any>?,
@@ -270,6 +292,8 @@ public class PostHog private constructor(
                     }
                 }
             }
+
+            props["\$is_identified"] = isIdentified
         }
 
         PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
@@ -484,15 +508,21 @@ public class PostHog private constructor(
             config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
-        capture(
-            "\$identify",
-            distinctId = distinctId,
-            properties = props,
-            userProperties = userProperties,
-            userPropertiesSetOnce = userPropertiesSetOnce,
-        )
+        if (previousDistinctId != distinctId && !isIdentified) {
+            // this has to be set before capture since this flag will be read during the event
+            // capture
+            synchronized(identifiedLock) {
+                isIdentified = true
+            }
 
-        if (previousDistinctId != distinctId) {
+            capture(
+                "\$identify",
+                distinctId = distinctId,
+                properties = props,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+            )
+
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
             if (previousDistinctId.isNotBlank()) {
                 this.anonymousId = previousDistinctId
@@ -505,6 +535,8 @@ public class PostHog private constructor(
             if (reloadFeatureFlags) {
                 reloadFeatureFlags()
             }
+        } else {
+            config?.logger?.log("already identified with id: $distinctId.")
         }
     }
 
@@ -649,6 +681,11 @@ public class PostHog private constructor(
         queue?.clear()
         replayQueue?.clear()
         featureFlagsCalled.clear()
+
+        synchronized(identifiedLock) {
+            isIdentifiedLoaded = false
+        }
+
         endSession()
         startSession()
     }

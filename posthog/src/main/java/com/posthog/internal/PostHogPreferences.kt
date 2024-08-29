@@ -28,6 +28,7 @@ public interface PostHogPreferences {
         public const val GROUPS: String = "groups"
         internal const val ANONYMOUS_ID = "anonymousId"
         internal const val DISTINCT_ID = "distinctId"
+        internal const val IS_IDENTIFIED = "isIdentified"
         internal const val OPT_OUT = "opt-out"
         internal const val FEATURE_FLAGS = "featureFlags"
         internal const val FEATURE_FLAGS_PAYLOAD = "featureFlagsPayload"
@@ -40,6 +41,7 @@ public interface PostHogPreferences {
                 GROUPS,
                 ANONYMOUS_ID,
                 DISTINCT_ID,
+                IS_IDENTIFIED,
                 OPT_OUT,
                 FEATURE_FLAGS,
                 FEATURE_FLAGS_PAYLOAD,
