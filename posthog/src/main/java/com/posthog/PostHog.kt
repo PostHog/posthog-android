@@ -650,6 +650,7 @@ public class PostHog private constructor(
         replayQueue?.clear()
         featureFlagsCalled.clear()
         endSession()
+        startSession()
     }
 
     private fun isEnabled(): Boolean {

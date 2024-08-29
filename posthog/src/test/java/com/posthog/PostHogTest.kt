@@ -935,7 +935,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `does not set session id when reset is called`() {
+    fun `reset session id when reset is called`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -959,7 +959,8 @@ internal class PostHogTest {
         var batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         var theEvent = batch.batch.first()
-        assertNotNull(theEvent.properties!!["\$session_id"])
+        val currentSessionId = theEvent.properties!!["\$session_id"]
+        assertNotNull(currentSessionId)
 
         sut.reset()
 
@@ -981,7 +982,10 @@ internal class PostHogTest {
         batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         theEvent = batch.batch.first()
-        assertNull(theEvent.properties!!["\$session_id"])
+        val newSessionId = theEvent.properties!!["\$session_id"]
+        assertNotNull(newSessionId)
+
+        assertTrue(currentSessionId != newSessionId)
 
         sut.close()
     }
