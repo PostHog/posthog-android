@@ -41,6 +41,7 @@ public interface PostHogPreferences {
                 GROUPS,
                 ANONYMOUS_ID,
                 DISTINCT_ID,
+                IS_IDENTIFIED,
                 OPT_OUT,
                 FEATURE_FLAGS,
                 FEATURE_FLAGS_PAYLOAD,

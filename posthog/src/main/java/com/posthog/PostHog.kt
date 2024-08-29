@@ -235,8 +235,8 @@ public class PostHog private constructor(
         get() {
             synchronized(identifiedLock) {
                 if (!isIdentifiedLoaded) {
-                    this.isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
-                        ?: (this.distinctId != this.anonymousId)
+                    isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                        ?: (distinctId != anonymousId)
                     isIdentifiedLoaded = true
                 }
             }
@@ -292,6 +292,8 @@ public class PostHog private constructor(
                     }
                 }
             }
+
+            props["\$is_identified"] = isIdentified
         }
 
         PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
@@ -506,7 +508,13 @@ public class PostHog private constructor(
             config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
-        if (previousDistinctId != distinctId && !this.isIdentified) {
+        if (previousDistinctId != distinctId && !isIdentified) {
+            // this has to be set before capture since this flag will be read during the event
+            // capture
+            synchronized(identifiedLock) {
+                isIdentified = true
+            }
+
             capture(
                 "\$identify",
                 distinctId = distinctId,
@@ -522,7 +530,6 @@ public class PostHog private constructor(
                 config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
             }
             this.distinctId = distinctId
-            this.isIdentified = true
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
@@ -674,7 +681,13 @@ public class PostHog private constructor(
         queue?.clear()
         replayQueue?.clear()
         featureFlagsCalled.clear()
+
+        synchronized(identifiedLock) {
+            isIdentifiedLoaded = false
+        }
+
         endSession()
+        startSession()
     }
 
     private fun isEnabled(): Boolean {
@@ -732,9 +745,6 @@ public class PostHog private constructor(
             return
         }
 
-        synchronized(identifiedLock) {
-            isIdentifiedLoaded = false
-        }
         PostHogSessionManager.endSession()
     }
 
