@@ -1,5 +1,7 @@
 ## Next
 
+## 3.6.0 - 2024-08-29
+
 - recording: expose session id ([#166](https://github.com/PostHog/posthog-android/pull/166))
 - fix: rotate session id when reset is called ([#168](https://github.com/PostHog/posthog-android/pull/168))
 - feat: add `$is_identified` property ([#167](https://github.com/PostHog/posthog-android/pull/167))
