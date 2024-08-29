@@ -1,7 +1,7 @@
 ## Next
 
 - recording: expose session id ([#166](https://github.com/PostHog/posthog-android/pull/166))
-- fix: rotate session id when reset is called ([#166](https://github.com/PostHog/posthog-android/pull/166))
+- fix: rotate session id when reset is called ([#168](https://github.com/PostHog/posthog-android/pull/168))
 
 ## 3.5.1 - 2024-08-26
 
