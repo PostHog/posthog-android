@@ -687,6 +687,7 @@ public class PostHog private constructor(
         }
 
         endSession()
+        startSession()
     }
 
     private fun isEnabled(): Boolean {
