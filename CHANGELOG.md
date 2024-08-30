@@ -1,7 +1,7 @@
 ## Next
 
-- fix: do not clear events when reset is called ([#168](https://github.com/PostHog/posthog-android/pull/168))
-- fix: reload feature flags as anon user after reset is called ([#168](https://github.com/PostHog/posthog-android/pull/168))
+- fix: do not clear events when reset is called ([#170](https://github.com/PostHog/posthog-android/pull/170))
+- fix: reload feature flags as anon user after reset is called ([#170](https://github.com/PostHog/posthog-android/pull/170))
 
 ## 3.6.0 - 2024-08-29
 
