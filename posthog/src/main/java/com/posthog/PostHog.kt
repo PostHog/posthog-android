@@ -678,16 +678,19 @@ public class PostHog private constructor(
         val except = listOf(VERSION, BUILD)
         getPreferences().clear(except = except)
         featureFlags?.clear()
-        queue?.clear()
-        replayQueue?.clear()
         featureFlagsCalled.clear()
-
         synchronized(identifiedLock) {
             isIdentifiedLoaded = false
         }
 
         endSession()
         startSession()
+
+        // reload flags as anon user
+        // only because of testing in isolation, this flag is always enabled
+        if (reloadFeatureFlags) {
+            reloadFeatureFlags()
+        }
     }
 
     private fun isEnabled(): Boolean {
