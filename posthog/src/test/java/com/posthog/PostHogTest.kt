@@ -1107,32 +1107,12 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        sut.capture(
-            EVENT,
-            DISTINCT_ID,
-            props,
-            userProperties = userProps,
-            userPropertiesSetOnce = userPropsOnce,
-            groups = groups,
-        )
-
-        queueExecutor.awaitExecution()
-
-        assertEquals(1, http.requestCount)
-
-        var request = http.takeRequest()
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        val theEvent = batch.batch.first()
-        assertNotNull(theEvent)
-
         sut.reset()
 
         featureFlagsExecutor.shutdownAndAwaitTermination()
 
-        request = http.takeRequest()
-        assertEquals(2, http.requestCount)
+        val request = http.takeRequest()
+        assertEquals(1, http.requestCount)
         assertEquals("/decide/?v=3", request.path)
 
         sut.close()
