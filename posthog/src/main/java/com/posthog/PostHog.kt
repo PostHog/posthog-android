@@ -687,7 +687,10 @@ public class PostHog private constructor(
         startSession()
 
         // reload flags as anon user
-        reloadFeatureFlags()
+        // only because of testing in isolation, this flag is always enabled
+        if (reloadFeatureFlags) {
+            reloadFeatureFlags()
+        }
     }
 
     private fun isEnabled(): Boolean {

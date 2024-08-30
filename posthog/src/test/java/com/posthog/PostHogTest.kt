@@ -1049,7 +1049,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.capture(
             EVENT,
@@ -1096,6 +1096,44 @@ internal class PostHogTest {
         assertNotNull(newSessionId)
 
         assertTrue(currentSessionId != newSessionId)
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset reloads flags as anon user`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        queueExecutor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+
+        var request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertNotNull(theEvent)
+
+        sut.reset()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        request = http.takeRequest()
+        assertEquals(2, http.requestCount)
+        assertEquals("/decide/?v=3", request.path)
 
         sut.close()
     }
