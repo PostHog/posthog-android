@@ -102,6 +102,14 @@ public open class PostHogConfig(
      * generating anonymous id (which as of now is just random UUID v4)
      */
     public var getAnonymousId: ((UUID) -> UUID) = { it },
+    /**
+     * Determines the behavior for processing user profiles.
+     * - `"always"`: Always processes user profile data for all events.
+     * - `"never"`: Never processes user profile data. This means that anonymous users will not be merged when they sign up or log in.
+     * - `"identified_only"` (default): Processes user profiles only when an identification event occurs, such as `identify`, `alias`, or `groupidentify`.
+     * Defaults to `"identified_only"`.
+     */
+    public var personProfiles: String = "identified_only",
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
