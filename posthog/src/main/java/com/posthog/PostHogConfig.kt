@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.internal.PersonProfiles
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider
@@ -109,7 +110,7 @@ public open class PostHogConfig(
      * - `"identified_only"` (default): Processes user profiles only when an identification event occurs, such as `identify`, `alias`, or `groupidentify`.
      * Defaults to `"identified_only"`.
      */
-    public var personProfiles: String = "identified_only",
+    public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
