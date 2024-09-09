@@ -1,6 +1,6 @@
 package com.posthog
 
-import com.posthog.internal.PersonProfileMode
+import com.posthog.internal.PersonProfiles
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
@@ -319,6 +319,8 @@ public class PostHog private constructor(
             props["\$set_once"] = it
         }
 
+        props["\$process_person_profile"] = hasPersonProcessing()
+
         if (appendGroups) {
             // merge groups
             mergeGroups(groups)?.let {
@@ -379,63 +381,49 @@ public class PostHog private constructor(
                 return
             }
 
-            val personProfileMode = PersonProfileMode.fromConfig(config?.personProfiles)
-            val processPersonProfile = personProfileMode.shouldProcessProfile(event)
+            var snapshotEvent = false
+            if (event == "\$snapshot") {
+                snapshotEvent = true
+            }
 
-            if (!processPersonProfile) {
-                val modifiedProperties = properties?.toMutableMap() ?: mutableMapOf()
-                modifiedProperties["\$process_person_profile"] = false
-                captureInternal(event, anonymousId, modifiedProperties, userProperties, userPropertiesSetOnce, groups)
+            var groupIdentify = false
+            if (event == GROUP_IDENTIFY) {
+                groupIdentify = true
+            }
+
+            val mergedProperties =
+                buildProperties(
+                    newDistinctId,
+                    properties = properties,
+                    userProperties = userProperties,
+                    userPropertiesSetOnce = userPropertiesSetOnce,
+                    groups = groups,
+                    // only append shared props if not a snapshot event
+                    appendSharedProps = !snapshotEvent,
+                    // only append groups if not a group identify event
+                    appendGroups = !groupIdentify,
+                )
+
+            // sanitize the properties or fallback to the original properties
+            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
+
+            val postHogEvent =
+                PostHogEvent(
+                    event,
+                    newDistinctId,
+                    properties = sanitizedProperties,
+                )
+
+            // Replay has its own queue
+            if (snapshotEvent) {
+                replayQueue?.add(postHogEvent)
                 return
             }
 
-            captureInternal(event, newDistinctId, properties, userProperties, userPropertiesSetOnce, groups)
+            queue?.add(postHogEvent)
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
-    }
-
-    private fun captureInternal(
-        event: String,
-        distinctId: String,
-        properties: Map<String, Any>?,
-        userProperties: Map<String, Any>?,
-        userPropertiesSetOnce: Map<String, Any>?,
-        groups: Map<String, String>?,
-    ) {
-        val snapshotEvent = event == "\$snapshot"
-        val groupIdentify = event == GROUP_IDENTIFY
-
-        val mergedProperties =
-            buildProperties(
-                distinctId,
-                properties = properties,
-                userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce,
-                groups = groups,
-                // only append shared props if not a snapshot event
-                appendSharedProps = !snapshotEvent,
-                // only append groups if not a group identify event
-                appendGroups = !groupIdentify,
-            )
-
-        // sanitize the properties or fallback to the original properties
-        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
-
-        val postHogEvent =
-            PostHogEvent(
-                event,
-                distinctId,
-                properties = sanitizedProperties,
-            )
-
-        // Replay has its own queue
-        if (snapshotEvent) {
-            replayQueue?.add(postHogEvent)
-            return
-        }
-
-        queue?.add(postHogEvent)
     }
 
     public override fun optIn() {
@@ -553,6 +541,16 @@ public class PostHog private constructor(
         } else {
             config?.logger?.log("already identified with id: $distinctId.")
         }
+    }
+
+    private fun hasPersonProcessing(): Boolean {
+        return !(
+            config?.personProfiles == PersonProfiles.NEVER ||
+                (
+                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                        !isIdentified
+                )
+        )
     }
 
     public override fun group(
