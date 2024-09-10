@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.internal.PersonProfiles
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
@@ -479,6 +480,156 @@ internal class PostHogTest {
 
         val theEvent = batch.batch.first()
         assertEquals("\$identify", theEvent.event)
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
+        assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
+        assertEquals(userProps, theEvent.properties!!["\$set"])
+        assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures an anon generic event where personProfile is always `() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        config.personProfiles = PersonProfiles.ALWAYS
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertEquals(API_KEY, batch.apiKey)
+        assertNotNull(batch.sentAt)
+
+        val theEvent = batch.batch.first()
+
+        assertEquals(true, theEvent.properties?.get("\$process_person_profile"))
+
+        assertEquals(EVENT, theEvent.event)
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+        assertEquals("value", theEvent.properties!!["prop"] as String)
+        assertEquals(userProps, theEvent.properties!!["\$set"])
+        assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+        assertEquals(groups, theEvent.properties!!["\$groups"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures an identify event where personProfile is identified_only`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        config.personProfiles = PersonProfiles.IDENTIFIED_ONLY
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("\$identify", theEvent.event)
+        assertEquals(true, theEvent.properties?.get("\$process_person_profile"))
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
+        assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
+        assertEquals(userProps, theEvent.properties!!["\$set"])
+        assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures an identify event where personProfile is never`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        config.personProfiles = PersonProfiles.NEVER
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("\$identify", theEvent.event)
+        assertEquals(false, theEvent.properties?.get("\$process_person_profile"))
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
+        assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
+        assertEquals(userProps, theEvent.properties!!["\$set"])
+        assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures an identify event where personProfile is always`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        config.personProfiles = PersonProfiles.ALWAYS
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("\$identify", theEvent.event)
+        assertEquals(true, theEvent.properties?.get("\$process_person_profile"))
         assertEquals(DISTINCT_ID, theEvent.distinctId)
         assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
         assertEquals(userProps, theEvent.properties!!["\$set"])
