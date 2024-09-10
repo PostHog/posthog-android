@@ -11,6 +11,7 @@ import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.ENABLE_PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
@@ -376,6 +377,12 @@ public class PostHog private constructor(
 
             val newDistinctId = distinctId ?: this.distinctId
 
+            // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
+            // we should still enable person processing since this is intentiona
+            if (userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false) {
+                requirePersonProcessing("Posthog.capture")
+            }
+
             if (newDistinctId.isBlank()) {
                 config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
                 return
@@ -481,6 +488,10 @@ public class PostHog private constructor(
             return
         }
 
+        if (!requirePersonProcessing("Posthog.alias")) {
+            return
+        }
+
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
 
@@ -493,6 +504,10 @@ public class PostHog private constructor(
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
+            return
+        }
+
+        if (!requirePersonProcessing("Posthog.identify")) {
             return
         }
 
@@ -544,13 +559,25 @@ public class PostHog private constructor(
     }
 
     private fun hasPersonProcessing(): Boolean {
+        val enablePersonProcessing = getPreferences().getValue(ENABLE_PERSON_PROCESSING) as? Boolean ?: false
+
         return !(
             config?.personProfiles == PersonProfiles.NEVER ||
                 (
                     config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                        !isIdentified
+                        !isIdentified &&
+                        !enablePersonProcessing
                 )
         )
+    }
+
+    private fun requirePersonProcessing(functionName: String): Boolean {
+        if (config?.personProfiles == PersonProfiles.NEVER) {
+            config?.logger?.log("$functionName 'was called, but process_person is set to never. This call will be ignored.'")
+            return false
+        }
+        register(ENABLE_PERSON_PROCESSING, true)
+        return true
     }
 
     public override fun group(
@@ -559,6 +586,10 @@ public class PostHog private constructor(
         groupProperties: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
+            return
+        }
+
+        if (!requirePersonProcessing("Posthog.group")) {
             return
         }
 
