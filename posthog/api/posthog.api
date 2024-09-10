@@ -62,8 +62,8 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 public class com/posthog/PostHogConfig {
 	public static final field Companion Lcom/posthog/PostHogConfig$Companion;
 	public static final field DEFAULT_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;Lcom/posthog/internal/PersonProfiles;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;Lcom/posthog/internal/PersonProfiles;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
@@ -83,6 +83,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getNetworkStatus ()Lcom/posthog/internal/PostHogNetworkStatus;
 	public final fun getOnFeatureFlags ()Lcom/posthog/PostHogOnFeatureFlags;
 	public final fun getOptOut ()Z
+	public final fun getPersonProfiles ()Lcom/posthog/internal/PersonProfiles;
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getPropertiesSanitizer ()Lcom/posthog/PostHogPropertiesSanitizer;
 	public final fun getReplayStoragePrefix ()Ljava/lang/String;
@@ -109,6 +110,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
 	public final fun setOnFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public final fun setOptOut (Z)V
+	public final fun setPersonProfiles (Lcom/posthog/internal/PersonProfiles;)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setPropertiesSanitizer (Lcom/posthog/PostHogPropertiesSanitizer;)V
 	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
@@ -228,6 +230,15 @@ public abstract interface class com/posthog/PostHogPropertiesSanitizer {
 }
 
 public abstract interface annotation class com/posthog/PostHogVisibleForTesting : java/lang/annotation/Annotation {
+}
+
+public final class com/posthog/internal/PersonProfiles : java/lang/Enum {
+	public static final field ALWAYS Lcom/posthog/internal/PersonProfiles;
+	public static final field IDENTIFIED_ONLY Lcom/posthog/internal/PersonProfiles;
+	public static final field NEVER Lcom/posthog/internal/PersonProfiles;
+	public fun toString ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PersonProfiles;
+	public static fun values ()[Lcom/posthog/internal/PersonProfiles;
 }
 
 public abstract interface class com/posthog/internal/PostHogContext {
