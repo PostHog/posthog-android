@@ -107,8 +107,7 @@ public open class PostHogConfig(
      * Determines the behavior for processing user profiles.
      * - `"always"`: Always processes user profile data for all events.
      * - `"never"`: Never processes user profile data. This means that anonymous users will not be merged when they sign up or log in.
-     * - `"identified_only"` (default): Processes user profiles only when an identification event occurs, such as `identify`, `alias`, or `groupidentify`.
-     * Defaults to `"identified_only"`.
+     * - `"identified_only"` (default): we will only process persons when you call `identify`, `alias`, and `group`, Anonymous users won't get person profiles.
      */
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
 ) {
