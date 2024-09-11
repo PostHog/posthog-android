@@ -2,7 +2,6 @@ package com.posthog.android.sample
 
 import android.app.Application
 import android.os.StrictMode
-import com.posthog.PostHog
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.PostHogPropertiesSanitizer
 import com.posthog.android.PostHogAndroid
@@ -43,7 +42,6 @@ class MyApp : Application() {
                 sessionReplayConfig.screenshot = true
             }
         PostHogAndroid.setup(this, config)
-        PostHog.capture("test")
     }
 
     private fun enableStrictMode() {
