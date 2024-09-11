@@ -3,7 +3,7 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.lifecycle:lifecycle-process than 2.6.2 is available: 2.8.4"
+        message="A newer version of androidx.lifecycle:lifecycle-process than 2.6.2 is available: 2.8.5"
         errorLine1="    implementation(&quot;androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -14,7 +14,7 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.lifecycle:lifecycle-common-java8 than 2.6.2 is available: 2.8.4"
+        message="A newer version of androidx.lifecycle:lifecycle-common-java8 than 2.6.2 is available: 2.8.5"
         errorLine1="    implementation(&quot;androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -32,6 +32,17 @@
             file="build.gradle.kts"
             line="90"
             column="20"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of org.mockito:mockito-inline than 4.11.0 is available: 5.2.0"
+        errorLine1="    testImplementation(&quot;org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="107"
+            column="24"/>
     </issue>
 
 </issues>

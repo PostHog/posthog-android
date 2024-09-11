@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.internal.PersonProfiles
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider
@@ -102,6 +103,13 @@ public open class PostHogConfig(
      * generating anonymous id (which as of now is just random UUID v4)
      */
     public var getAnonymousId: ((UUID) -> UUID) = { it },
+    /**
+     * Determines the behavior for processing user profiles.
+     * - `ALWAYS`: We will process persons data for all events.
+     * - `NEVER`: Never processes user profile data. This means that anonymous users will not be merged when they sign up or log in.
+     * - `IDENTIFIED_ONLY` (default): we will only process persons when you call `identify`, `alias`, and `group`, Anonymous users won't get person profiles.
+     */
+    public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
