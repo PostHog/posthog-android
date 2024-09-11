@@ -28,13 +28,7 @@ internal class PostHogPersonProfilesTest {
         host: String,
         flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
-        optOut: Boolean = false,
-        preloadFeatureFlags: Boolean = true,
-        reloadFeatureFlags: Boolean = true,
-        sendFeatureFlagEvent: Boolean = true,
-        integration: PostHogIntegration? = null,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         personProfiles: PersonProfiles? = PersonProfiles.IDENTIFIED_ONLY,
     ): PostHogInterface {
         config =
@@ -42,14 +36,9 @@ internal class PostHogPersonProfilesTest {
                 // for testing
                 this.flushAt = flushAt
                 this.storagePrefix = storagePrefix
-                this.optOut = optOut
-                this.preloadFeatureFlags = preloadFeatureFlags
-                if (integration != null) {
-                    addIntegration(integration)
-                }
-                this.sendFeatureFlagEvent = sendFeatureFlagEvent
+                this.preloadFeatureFlags = false
+                this.sendFeatureFlagEvent = false
                 this.cachePreferences = cachePreferences
-                this.propertiesSanitizer = propertiesSanitizer
                 if (personProfiles != null) {
                     this.personProfiles = personProfiles
                 }
@@ -60,7 +49,7 @@ internal class PostHogPersonProfilesTest {
             replayQueueExecutor,
             featureFlagsExecutor,
             cachedEventsExecutor,
-            reloadFeatureFlags,
+            false,
         )
     }
 
@@ -74,7 +63,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString())
 
         sut.identify(
             DISTINCT_ID,
@@ -107,7 +96,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString())
 
         sut.capture("test event")
 
@@ -130,7 +119,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString())
 
         sut.capture(
             "test event",
@@ -155,7 +144,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString())
 
         sut.capture(
             "test event",
@@ -180,7 +169,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString())
 
         sut.capture(
             "test event",
@@ -205,7 +194,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString(), flushAt = 2)
 
         sut.identify("distinctId")
 
@@ -229,7 +218,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString(), flushAt = 2)
 
         sut.alias("distinctId")
 
@@ -253,7 +242,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut = getSut(url.toString(), flushAt = 2)
 
         sut.group("theType", "theKey")
 
@@ -278,7 +267,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, personProfiles = PersonProfiles.ALWAYS)
+        val sut = getSut(url.toString(), personProfiles = PersonProfiles.ALWAYS)
 
         sut.capture("test event")
 
@@ -301,7 +290,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, personProfiles = PersonProfiles.NEVER)
+        val sut = getSut(url.toString(), personProfiles = PersonProfiles.NEVER)
 
         sut.identify("distinctId")
 
@@ -326,7 +315,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, personProfiles = PersonProfiles.NEVER)
+        val sut = getSut(url.toString(), personProfiles = PersonProfiles.NEVER)
 
         sut.alias("distinctId")
 
@@ -351,7 +340,7 @@ internal class PostHogPersonProfilesTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, personProfiles = PersonProfiles.NEVER)
+        val sut = getSut(url.toString(), personProfiles = PersonProfiles.NEVER)
 
         sut.group("theType", "theKey")
 

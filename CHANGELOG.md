@@ -1,5 +1,7 @@
 ## Next
 
+- chore: add personProfiles support ([#171](https://github.com/PostHog/posthog-android/pull/171))
+
 ## 3.6.1 - 2024-08-30
 
 - fix: do not clear events when reset is called ([#170](https://github.com/PostHog/posthog-android/pull/170))
