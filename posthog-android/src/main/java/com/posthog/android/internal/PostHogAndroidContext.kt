@@ -30,6 +30,15 @@ internal class PostHogAndroidContext(
     private val context: Context,
     private val config: PostHogAndroidConfig,
 ) : PostHogContext {
+    private val cacheSdkInfo by lazy {
+        val sdkInfo = mutableMapOf<String, Any>()
+
+        sdkInfo["\$lib"] = config.sdkName
+        sdkInfo["\$lib_version"] = config.sdkVersion
+
+        sdkInfo
+    }
+
     private val cacheStaticContext by lazy {
         val staticContext = mutableMapOf<String, Any>()
 
@@ -56,9 +65,6 @@ internal class PostHogAndroidContext(
         staticContext["\$device_type"] = getDeviceType(context, displayMetrics) ?: "Mobile"
         staticContext["\$os_name"] = "Android"
         staticContext["\$os_version"] = Build.VERSION.RELEASE
-
-        staticContext["\$lib"] = config.sdkName
-        staticContext["\$lib_version"] = config.sdkVersion
 
         staticContext["\$is_emulator"] = isEmulator
 
@@ -189,6 +195,10 @@ internal class PostHogAndroidContext(
         }
 
         return dynamicContext
+    }
+
+    override fun getSdkInfo(): Map<String, Any> {
+        return cacheSdkInfo
     }
 
     // Inspired from https://github.com/fluttercommunity/plus_plugins/blob/a71a27c5fbdbbfc56a30359a1aff0a3d3da8dc73/packages/device_info_plus/device_info_plus/android/src/main/kotlin/dev/fluttercommunity/plus/device_info/MethodCallHandlerImpl.kt#L105-L123

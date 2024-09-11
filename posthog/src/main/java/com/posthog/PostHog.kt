@@ -318,9 +318,29 @@ public class PostHog private constructor(
                 }
             }
 
+            userProperties?.let {
+                props["\$set"] = it
+            }
+
+            userPropertiesSetOnce?.let {
+                props["\$set_once"] = it
+            }
+
+            if (appendGroups) {
+                // merge groups
+                mergeGroups(groups)?.let {
+                    props["\$groups"] = it
+                }
+            }
+
             props["\$is_identified"] = isIdentified
 
             props["\$process_person_profile"] = hasPersonProcessing()
+        }
+
+        // Session replay should have the SDK info as well
+        config?.context?.getSdkInfo()?.let {
+            props.putAll(it)
         }
 
         PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
@@ -337,22 +357,7 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        userProperties?.let {
-            props["\$set"] = it
-        }
-
-        userPropertiesSetOnce?.let {
-            props["\$set_once"] = it
-        }
-
-        if (appendGroups) {
-            // merge groups
-            mergeGroups(groups)?.let {
-                props["\$groups"] = it
-            }
-        }
-
-        // Replay needs distinct_id also in the props
+        // Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
         if (!appendSharedProps && config?.sessionReplay == true && propDistinctId.isNullOrBlank()) {
@@ -430,7 +435,7 @@ public class PostHog private constructor(
                     groups = groups,
                     // only append shared props if not a snapshot event
                     appendSharedProps = !snapshotEvent,
-                    // only append groups if not a group identify event
+                    // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
                 )
 
