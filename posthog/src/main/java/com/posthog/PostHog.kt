@@ -346,7 +346,8 @@ public class PostHog private constructor(
         PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
             val tempSessionId = sessionId.toString()
             props["\$session_id"] = tempSessionId
-            if (config?.sessionReplay == true) {
+            // only Session replay needs $window_id
+            if (!appendSharedProps && config?.sessionReplay == true) {
                 // Session replay requires $window_id, so we set as the same as $session_id.
                 // the backend might fallback to $session_id if $window_id is not present next.
                 props["\$window_id"] = tempSessionId
@@ -357,7 +358,7 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        // Session replay needs distinct_id also in the props
+        // only Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
         if (!appendSharedProps && config?.sessionReplay == true && propDistinctId.isNullOrBlank()) {
