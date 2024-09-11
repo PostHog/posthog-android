@@ -266,8 +266,11 @@ public class PostHog private constructor(
         }
         set(value) {
             synchronized(personProcessingLock) {
-                field = value
-                getPreferences().setValue(PERSON_PROCESSING, value)
+                // only set if its different to avoid IO since this is called more often
+                if (field != value) {
+                    field = value
+                    getPreferences().setValue(PERSON_PROCESSING, value)
+                }
             }
         }
 
