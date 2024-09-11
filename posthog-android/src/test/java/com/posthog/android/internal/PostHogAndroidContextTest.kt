@@ -71,7 +71,7 @@ internal class PostHogAndroidContextTest {
 
     fun `returns sdk info`() {
         val sut = getSut()
-        val sdkInfo = sut.getStaticContext()
+        val sdkInfo = sut.getSdkInfo()
 
         assertEquals(config.sdkName, sdkInfo["\$lib"])
         assertEquals(config.sdkVersion, sdkInfo["\$lib_version"])
