@@ -1,5 +1,7 @@
 ## Next
 
+## 3.7.0 - 2024-09-11
+
 - chore: add personProfiles support ([#171](https://github.com/PostHog/posthog-android/pull/171))
 
 ## 3.6.1 - 2024-08-30
