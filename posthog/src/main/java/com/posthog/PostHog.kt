@@ -11,10 +11,10 @@ import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
-import com.posthog.internal.PostHogPreferences.Companion.ENABLE_PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
@@ -53,6 +53,7 @@ public class PostHog private constructor(
     private val optOutLock = Any()
     private val anonymousLock = Any()
     private val identifiedLock = Any()
+    private val personProcessingLock = Any()
     private val groupsLock = Any()
 
     private val featureFlagsCalledLock = Any()
@@ -66,6 +67,7 @@ public class PostHog private constructor(
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     private var isIdentifiedLoaded: Boolean = false
+    private var isPersonProcessingLoaded: Boolean = false
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -251,6 +253,24 @@ public class PostHog private constructor(
             }
         }
 
+    private var isPersonProcessingEnabled: Boolean = false
+        get() {
+            synchronized(personProcessingLock) {
+                if (!isPersonProcessingLoaded) {
+                    isPersonProcessingEnabled = getPreferences().getValue(PERSON_PROCESSING) as? Boolean
+                        ?: false
+                    isPersonProcessingLoaded = true
+                }
+            }
+            return field
+        }
+        set(value) {
+            synchronized(personProcessingLock) {
+                field = value
+                getPreferences().setValue(PERSON_PROCESSING, value)
+            }
+        }
+
     private fun buildProperties(
         distinctId: String,
         properties: Map<String, Any>?,
@@ -296,6 +316,8 @@ public class PostHog private constructor(
             }
 
             props["\$is_identified"] = isIdentified
+
+            props["\$process_person_profile"] = hasPersonProcessing()
         }
 
         PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
@@ -319,8 +341,6 @@ public class PostHog private constructor(
         userPropertiesSetOnce?.let {
             props["\$set_once"] = it
         }
-
-        props["\$process_person_profile"] = hasPersonProcessing()
 
         if (appendGroups) {
             // merge groups
@@ -378,9 +398,9 @@ public class PostHog private constructor(
             val newDistinctId = distinctId ?: this.distinctId
 
             // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
-            // we should still enable person processing since this is intentiona
+            // we should still enable person processing since this is intentional
             if (userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false) {
-                requirePersonProcessing("Posthog.capture")
+                requirePersonProcessing("capture", ignoreMessage = true)
             }
 
             if (newDistinctId.isBlank()) {
@@ -488,7 +508,7 @@ public class PostHog private constructor(
             return
         }
 
-        if (!requirePersonProcessing("Posthog.alias")) {
+        if (!requirePersonProcessing("alias")) {
             return
         }
 
@@ -507,7 +527,7 @@ public class PostHog private constructor(
             return
         }
 
-        if (!requirePersonProcessing("Posthog.identify")) {
+        if (!requirePersonProcessing("identify")) {
             return
         }
 
@@ -559,24 +579,27 @@ public class PostHog private constructor(
     }
 
     private fun hasPersonProcessing(): Boolean {
-        val enablePersonProcessing = getPreferences().getValue(ENABLE_PERSON_PROCESSING) as? Boolean ?: false
-
         return !(
             config?.personProfiles == PersonProfiles.NEVER ||
                 (
                     config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
                         !isIdentified &&
-                        !enablePersonProcessing
+                        !isPersonProcessingEnabled
                 )
         )
     }
 
-    private fun requirePersonProcessing(functionName: String): Boolean {
+    private fun requirePersonProcessing(
+        functionName: String,
+        ignoreMessage: Boolean = false,
+    ): Boolean {
         if (config?.personProfiles == PersonProfiles.NEVER) {
-            config?.logger?.log("$functionName 'was called, but process_person is set to never. This call will be ignored.'")
+            if (!ignoreMessage) {
+                config?.logger?.log("$functionName was called, but `personProfiles` is set to `never`. This call will be ignored.")
+            }
             return false
         }
-        register(ENABLE_PERSON_PROCESSING, true)
+        isPersonProcessingEnabled = true
         return true
     }
 
@@ -589,7 +612,7 @@ public class PostHog private constructor(
             return
         }
 
-        if (!requirePersonProcessing("Posthog.group")) {
+        if (!requirePersonProcessing("group")) {
             return
         }
 
@@ -725,6 +748,9 @@ public class PostHog private constructor(
         featureFlagsCalled.clear()
         synchronized(identifiedLock) {
             isIdentifiedLoaded = false
+        }
+        synchronized(personProcessingLock) {
+            isPersonProcessingLoaded = false
         }
 
         endSession()

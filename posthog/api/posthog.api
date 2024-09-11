@@ -236,7 +236,6 @@ public final class com/posthog/internal/PersonProfiles : java/lang/Enum {
 	public static final field ALWAYS Lcom/posthog/internal/PersonProfiles;
 	public static final field IDENTIFIED_ONLY Lcom/posthog/internal/PersonProfiles;
 	public static final field NEVER Lcom/posthog/internal/PersonProfiles;
-	public fun toString ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PersonProfiles;
 	public static fun values ()[Lcom/posthog/internal/PersonProfiles;
 }
@@ -280,7 +279,6 @@ public final class com/posthog/internal/PostHogNoOpLogger : com/posthog/internal
 public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field BUILD Ljava/lang/String;
 	public static final field Companion Lcom/posthog/internal/PostHogPreferences$Companion;
-	public static final field ENABLE_PERSON_PROCESSING Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
@@ -293,7 +291,6 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 
 public final class com/posthog/internal/PostHogPreferences$Companion {
 	public static final field BUILD Ljava/lang/String;
-	public static final field ENABLE_PERSON_PROCESSING Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
