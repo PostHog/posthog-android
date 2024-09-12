@@ -86,11 +86,11 @@ internal class PostHogQueue(
                     os.use { theOutputStream ->
                         config.serializer.serialize(event, theOutputStream.writer().buffered())
                     }
-                    config.logger.log("Queued event ${file.name}.")
+                    config.logger.log("Queued Event ${event.event}: ${file.name}.")
 
                     flushIfOverThreshold()
                 } catch (e: Throwable) {
-                    config.logger.log("Event ${event.event} failed to parse: $e.")
+                    config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
                 }
             }
         }
@@ -103,7 +103,11 @@ internal class PostHogQueue(
     }
 
     private fun isAboveThreshold(flushAt: Int): Boolean {
-        return deque.size >= flushAt
+        if (deque.size >= flushAt) {
+            return true
+        }
+        config.logger.log("Cannot flush the Queue yet, below the threshold: $flushAt")
+        return false
     }
 
     private fun canFlushBatch(): Boolean {
@@ -185,10 +189,14 @@ internal class PostHogQueue(
         var deleteFiles = true
         try {
             if (events.isNotEmpty()) {
+                config.logger.log("Flushing ${events.size} events.")
+
                 when (endpoint) {
                     PostHogApiEndpoint.BATCH -> api.batch(events)
                     PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
                 }
+
+                config.logger.log("Flushed ${events.size} events successfully.")
             }
         } catch (e: PostHogApiError) {
             deleteFiles = deleteFilesIfAPIError(e, config)
@@ -198,6 +206,9 @@ internal class PostHogQueue(
             // no connection should try again
             if (e.isNetworkingError()) {
                 deleteFiles = false
+                config.logger.log("Flush failed because of a network error, let's try again soon.")
+            } else {
+                config.logger.log("Flush failed: $e")
             }
             throw e
         } finally {
@@ -326,6 +337,8 @@ internal fun deleteFilesIfAPIError(
     config: PostHogConfig,
 ): Boolean {
     if (e.statusCode < 400) {
+        config.logger.log("Flush failed with ${e.statusCode}, let's try again soon.")
+
         return false
     }
     // workaround due to png images exceed our max. limit in kafka
@@ -334,6 +347,8 @@ internal fun deleteFilesIfAPIError(
         // and if it still throws 413 in the next retry, delete the files since we cannot handle anyway
         config.maxBatchSize = calcFloor(config.maxBatchSize)
         config.flushAt = calcFloor(config.flushAt)
+
+        config.logger.log("Flush failed with ${e.statusCode}, let's try again with a smaller batch.")
 
         return false
     }
