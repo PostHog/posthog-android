@@ -318,15 +318,36 @@ public class PostHog private constructor(
                 }
             }
 
+            userProperties?.let {
+                props["\$set"] = it
+            }
+
+            userPropertiesSetOnce?.let {
+                props["\$set_once"] = it
+            }
+
+            if (appendGroups) {
+                // merge groups
+                mergeGroups(groups)?.let {
+                    props["\$groups"] = it
+                }
+            }
+
             props["\$is_identified"] = isIdentified
 
             props["\$process_person_profile"] = hasPersonProcessing()
         }
 
+        // Session replay should have the SDK info as well
+        config?.context?.getSdkInfo()?.let {
+            props.putAll(it)
+        }
+
         PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
             val tempSessionId = sessionId.toString()
             props["\$session_id"] = tempSessionId
-            if (config?.sessionReplay == true) {
+            // only Session replay needs $window_id
+            if (!appendSharedProps && config?.sessionReplay == true) {
                 // Session replay requires $window_id, so we set as the same as $session_id.
                 // the backend might fallback to $session_id if $window_id is not present next.
                 props["\$window_id"] = tempSessionId
@@ -337,22 +358,7 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        userProperties?.let {
-            props["\$set"] = it
-        }
-
-        userPropertiesSetOnce?.let {
-            props["\$set_once"] = it
-        }
-
-        if (appendGroups) {
-            // merge groups
-            mergeGroups(groups)?.let {
-                props["\$groups"] = it
-            }
-        }
-
-        // Replay needs distinct_id also in the props
+        // only Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
         if (!appendSharedProps && config?.sessionReplay == true && propDistinctId.isNullOrBlank()) {
@@ -430,7 +436,7 @@ public class PostHog private constructor(
                     groups = groups,
                     // only append shared props if not a snapshot event
                     appendSharedProps = !snapshotEvent,
-                    // only append groups if not a group identify event
+                    // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
                 )
 

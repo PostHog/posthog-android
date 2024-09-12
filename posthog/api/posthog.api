@@ -242,6 +242,7 @@ public final class com/posthog/internal/PersonProfiles : java/lang/Enum {
 
 public abstract interface class com/posthog/internal/PostHogContext {
 	public abstract fun getDynamicContext ()Ljava/util/Map;
+	public abstract fun getSdkInfo ()Ljava/util/Map;
 	public abstract fun getStaticContext ()Ljava/util/Map;
 }
 

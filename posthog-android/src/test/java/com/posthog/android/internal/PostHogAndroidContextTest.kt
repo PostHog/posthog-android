@@ -66,10 +66,15 @@ internal class PostHogAndroidContextTest {
         // its dynamic
         assertNotNull(staticContext["\$os_version"])
 
-        assertEquals(config.sdkName, staticContext["\$lib"])
-        assertEquals(config.sdkVersion, staticContext["\$lib_version"])
-
         assertNotNull(staticContext["\$is_emulator"])
+    }
+
+    fun `returns sdk info`() {
+        val sut = getSut()
+        val sdkInfo = sut.getSdkInfo()
+
+        assertEquals(config.sdkName, sdkInfo["\$lib"])
+        assertEquals(config.sdkVersion, sdkInfo["\$lib_version"])
     }
 
     @Test
