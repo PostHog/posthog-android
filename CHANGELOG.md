@@ -1,6 +1,6 @@
 ## Next
 
-- recording: missing startTime for network logs ([#171](https://github.com/PostHog/posthog-android/pull/171))
+- recording: missing startTime for network logs ([#174](https://github.com/PostHog/posthog-android/pull/174))
 
 ## 3.7.0 - 2024-09-11
 
