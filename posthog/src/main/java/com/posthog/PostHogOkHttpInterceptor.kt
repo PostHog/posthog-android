@@ -57,7 +57,7 @@ public class PostHogOkHttpInterceptor
                     "name" to url,
                     "method" to method,
                     "responseStatus" to statusCode,
-                    "timestamp" to end,
+                    "timestamp" to start,
                     "duration" to (end - start),
                     "initiatorType" to "fetch",
                     "entryType" to "resource",
