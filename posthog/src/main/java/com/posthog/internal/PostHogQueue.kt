@@ -206,9 +206,9 @@ internal class PostHogQueue(
             // no connection should try again
             if (e.isNetworkingError()) {
                 deleteFiles = false
-                config.logger.log("Flush failed because of a network error, let's try again soon.")
+                config.logger.log("Flushing failed because of a network error, let's try again soon.")
             } else {
-                config.logger.log("Flush failed: $e")
+                config.logger.log("Flushing failed: $e")
             }
             throw e
         } finally {
@@ -337,7 +337,7 @@ internal fun deleteFilesIfAPIError(
     config: PostHogConfig,
 ): Boolean {
     if (e.statusCode < 400) {
-        config.logger.log("Flush failed with ${e.statusCode}, let's try again soon.")
+        config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
     }
@@ -348,7 +348,7 @@ internal fun deleteFilesIfAPIError(
         config.maxBatchSize = calcFloor(config.maxBatchSize)
         config.flushAt = calcFloor(config.flushAt)
 
-        config.logger.log("Flush failed with ${e.statusCode}, let's try again with a smaller batch.")
+        config.logger.log("Flushing failed with ${e.statusCode}, let's try again with a smaller batch.")
 
         return false
     }
