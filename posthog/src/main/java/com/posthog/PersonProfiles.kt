@@ -1,4 +1,4 @@
-package com.posthog.internal
+package com.posthog
 
 public enum class PersonProfiles {
     NEVER,
