@@ -65,7 +65,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                                     val time = log.time?.time?.time ?: config.dateProvider.currentTimeMillis()
                                     val event = RRPluginEvent("rrweb/console@1", props, time)
                                     // TODO: batch events
-                                    listOf(event).capture()
+                                    listOf(event).capture(config.getSessionReplayMode())
                                 }
                             } catch (e: Throwable) {
                                 // ignore

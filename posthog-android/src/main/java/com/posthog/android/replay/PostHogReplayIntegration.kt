@@ -253,7 +253,7 @@ public class PostHogReplayIntegration(
             // if we batch them, we need to be aware that the order of the events matters
             // also because if we send a mouse interaction later, it might be attached to the wrong
             // screen
-            mouseInteractions.capture()
+            mouseInteractions.capture(config.getSessionReplayMode())
         }
     }
 
@@ -427,7 +427,7 @@ public class PostHogReplayIntegration(
         }
 
         if (events.isNotEmpty()) {
-            events.capture()
+            events.capture(config.getSessionReplayMode())
         }
 
         status.lastSnapshot = wireframe

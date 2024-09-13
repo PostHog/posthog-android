@@ -2,7 +2,9 @@ package com.posthog.android
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogExperimental
+import com.posthog.PostHogInternal
 import com.posthog.android.replay.PostHogSessionReplayConfig
+import com.posthog.internal.replay.PostHogSessionReplayMode
 
 /**
  * The SDK Config
@@ -21,4 +23,10 @@ public open class PostHogAndroidConfig
         public var captureScreenViews: Boolean = true,
         @PostHogExperimental
         public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
-    ) : PostHogConfig(apiKey, host)
+    ) : PostHogConfig(apiKey, host) {
+
+        @PostHogInternal
+        public fun getSessionReplayMode(): PostHogSessionReplayMode {
+            return if (sessionReplayConfig.screenshot) PostHogSessionReplayMode.SCREENSHOT else PostHogSessionReplayMode.WIREFRAME
+        }
+    }
