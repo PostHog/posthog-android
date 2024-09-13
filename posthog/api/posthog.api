@@ -17,6 +17,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public fun isOptOut ()Z
 	public fun isSessionActive ()Z
+	public fun isSessionReplayActive ()Z
 	public fun optIn ()V
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
@@ -45,6 +46,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public fun isOptOut ()Z
 	public fun isSessionActive ()Z
+	public fun isSessionReplayActive ()Z
 	public fun optIn ()V
 	public fun optOut ()V
 	public final fun overrideSharedInstance (Lcom/posthog/PostHogInterface;)V
@@ -188,6 +190,7 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public abstract fun isOptOut ()Z
 	public abstract fun isSessionActive ()Z
+	public abstract fun isSessionReplayActive ()Z
 	public abstract fun optIn ()V
 	public abstract fun optOut ()V
 	public abstract fun register (Ljava/lang/String;Ljava/lang/Object;)V
