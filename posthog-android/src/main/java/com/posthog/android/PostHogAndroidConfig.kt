@@ -24,7 +24,6 @@ public open class PostHogAndroidConfig
         @PostHogExperimental
         public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
     ) : PostHogConfig(apiKey, host) {
-
         @PostHogInternal
         public fun getSessionReplayMode(): PostHogSessionReplayMode {
             return if (sessionReplayConfig.screenshot) PostHogSessionReplayMode.SCREENSHOT else PostHogSessionReplayMode.WIREFRAME

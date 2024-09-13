@@ -334,6 +334,14 @@ public final class com/posthog/internal/PostHogUtilsKt {
 	public static final fun interruptSafely (Ljava/lang/Thread;)V
 }
 
+public final class com/posthog/internal/replay/PostHogSessionReplayMode : java/lang/Enum {
+	public static final field SCREENSHOT Lcom/posthog/internal/replay/PostHogSessionReplayMode;
+	public static final field WIREFRAME Lcom/posthog/internal/replay/PostHogSessionReplayMode;
+	public final fun getMode ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/PostHogSessionReplayMode;
+	public static fun values ()[Lcom/posthog/internal/replay/PostHogSessionReplayMode;
+}
+
 public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
 }
@@ -556,7 +564,8 @@ public final class com/posthog/internal/replay/RRStyle {
 }
 
 public final class com/posthog/internal/replay/RRUtilsKt {
-	public static final fun capture (Ljava/util/List;)V
+	public static final fun capture (Ljava/util/List;Lcom/posthog/internal/replay/PostHogSessionReplayMode;)V
+	public static synthetic fun capture$default (Ljava/util/List;Lcom/posthog/internal/replay/PostHogSessionReplayMode;ILjava/lang/Object;)V
 }
 
 public final class com/posthog/internal/replay/RRWireframe {

@@ -6,7 +6,7 @@ import com.posthog.PostHogInternal
 @PostHogInternal
 public enum class PostHogSessionReplayMode(public val mode: String) {
     WIREFRAME("wireframe"),
-    SCREENSHOT("screenshot")
+    SCREENSHOT("screenshot"),
 }
 
 @PostHogInternal
@@ -15,7 +15,7 @@ public fun List<RREvent>.capture(mode: PostHogSessionReplayMode = PostHogSession
         mutableMapOf(
             "\$snapshot_data" to this,
             "\$snapshot_source" to "mobile",
-            "\$snapshot_mode" to mode.mode
+            "\$snapshot_mode" to mode.mode,
         )
     PostHog.capture("\$snapshot", properties = properties)
 }
