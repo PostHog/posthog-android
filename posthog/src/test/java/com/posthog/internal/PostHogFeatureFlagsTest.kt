@@ -5,6 +5,7 @@ import com.posthog.PostHogConfig
 import com.posthog.awaitExecution
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
+import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
@@ -25,17 +26,19 @@ internal class PostHogFeatureFlagsTest {
     private val responseDecideApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
+    private var config: PostHogConfig? = null
+
     private fun getSut(
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogFeatureFlags {
-        val config =
+        config =
             PostHogConfig(API_KEY, host).apply {
                 this.networkStatus = networkStatus
                 cachePreferences = preferences
             }
-        val api = PostHogApi(config)
-        return PostHogFeatureFlags(config, api, executor = executor)
+        val api = PostHogApi(config!!)
+        return PostHogFeatureFlags(config!!, api, executor = executor)
     }
 
     @BeforeTest
@@ -86,6 +89,7 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
+        assertFalse(sut.isSessionReplayFlagActive())
         assertTrue(callback)
     }
 
@@ -292,5 +296,50 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(flags?.get("4535-funnel-bar-viz") as Boolean)
         assertTrue(payloads?.get("thePayload") as Boolean)
+    }
+
+    @Test
+    fun `returns session replay enabled after decide API call`() {
+        val file = File("src/test/resources/json/basic-decide-recording.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertEquals("/b/", config?.snapshotEndpoint)
+
+        sut.clear()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+    }
+
+    @Test
+    fun `read session replay config from start`() {
+        val flags = mapOf("endpoint" to "/b/")
+        preferences.setValue(SESSION_REPLAY, flags)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertEquals("/b/", config?.snapshotEndpoint)
     }
 }
