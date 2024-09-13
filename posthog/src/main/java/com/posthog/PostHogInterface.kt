@@ -192,6 +192,12 @@ public interface PostHogInterface {
     public fun isSessionActive(): Boolean
 
     /**
+     * Returns if Session Replay is Active
+     * Android only.
+     */
+    public fun isSessionReplayActive(): Boolean
+
+    /**
      * Returns the session Id if a session is active
      */
     public fun getSessionId(): UUID?

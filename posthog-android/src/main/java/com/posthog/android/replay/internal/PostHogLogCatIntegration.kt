@@ -18,7 +18,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     private var logcatThread: Thread? = null
 
     private val isSessionReplayEnabled: Boolean
-        get() = config.sessionReplay && PostHog.isSessionActive()
+        get() = PostHog.isSessionReplayActive()
 
     override fun install() {
         if (!config.sessionReplayConfig.captureLogcat || !isSupported()) {

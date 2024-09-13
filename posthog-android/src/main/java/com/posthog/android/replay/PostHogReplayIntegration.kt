@@ -116,7 +116,7 @@ public class PostHogReplayIntegration(
         }
 
     private val isSessionReplayEnabled: Boolean
-        get() = config.sessionReplay && PostHog.isSessionActive()
+        get() = PostHog.isSessionReplayActive()
 
     private val onRootViewsChangedListener =
         OnRootViewsChangedListener { view, added ->

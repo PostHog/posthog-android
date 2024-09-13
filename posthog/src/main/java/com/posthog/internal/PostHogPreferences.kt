@@ -33,6 +33,7 @@ public interface PostHogPreferences {
         internal const val OPT_OUT = "opt-out"
         internal const val FEATURE_FLAGS = "featureFlags"
         internal const val FEATURE_FLAGS_PAYLOAD = "featureFlagsPayload"
+        internal const val SESSION_REPLAY = "sessionReplay"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
@@ -47,6 +48,7 @@ public interface PostHogPreferences {
                 OPT_OUT,
                 FEATURE_FLAGS,
                 FEATURE_FLAGS_PAYLOAD,
+                SESSION_REPLAY,
                 VERSION,
                 BUILD,
                 STRINGIFIED_KEYS,

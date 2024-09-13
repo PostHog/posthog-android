@@ -1,5 +1,7 @@
 ## Next
 
+- recording: respect session replay project settings from app start ([#177](https://github.com/PostHog/posthog-android/pull/177))
+
 ## 3.7.0 - 2024-09-11
 
 - chore: add personProfiles support ([#171](https://github.com/PostHog/posthog-android/pull/171))

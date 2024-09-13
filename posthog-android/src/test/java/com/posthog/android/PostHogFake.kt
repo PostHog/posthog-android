@@ -120,6 +120,10 @@ public class PostHogFake : PostHogInterface {
         return false
     }
 
+    override fun isSessionReplayActive(): Boolean {
+        return false
+    }
+
     override fun getSessionId(): UUID? {
         return null
     }
