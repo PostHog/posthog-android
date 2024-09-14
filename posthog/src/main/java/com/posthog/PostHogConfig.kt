@@ -1,6 +1,5 @@
 package com.posthog
 
-import com.posthog.internal.PersonProfiles
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider

@@ -1,6 +1,5 @@
 package com.posthog
 
-import com.posthog.internal.PersonProfiles
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags

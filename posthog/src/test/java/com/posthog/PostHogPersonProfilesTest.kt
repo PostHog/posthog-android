@@ -1,6 +1,5 @@
 package com.posthog
 
-import com.posthog.internal.PersonProfiles
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogSerializer
