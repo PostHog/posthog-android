@@ -1,5 +1,9 @@
 ## Next
 
+## 3.7.2 - 2024-09-17
+
+- no user facing changes
+
 ## 3.7.1 - 2024-09-17
 
 - recording: respect session replay project settings from app start ([#177](https://github.com/PostHog/posthog-android/pull/177))
