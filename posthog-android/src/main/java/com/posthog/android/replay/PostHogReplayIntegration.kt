@@ -126,6 +126,8 @@ public class PostHogReplayIntegration(
             view.phoneWindow?.let { window ->
                 var hasDecorView = false
 
+                // react native already has the window attached
+                // so we check if the decor view exists otherwise we need the onDecorViewReady anyways
                 window.peekDecorView()?.let { decorView ->
                     hasDecorView = decorViews[decorView] != null
                 }
