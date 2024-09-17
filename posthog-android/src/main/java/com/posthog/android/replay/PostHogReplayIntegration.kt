@@ -118,58 +118,65 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = PostHog.isSessionReplayActive()
 
-    private val onRootViewsChangedListener =
-        OnRootViewsChangedListener { view, added ->
-            try {
-                if (added) {
-                    view.phoneWindow?.let { window ->
-                        if (view.windowAttachCount == 0) {
-                            window.onDecorViewReady { decorView ->
-                                try {
-                                    val listener =
-                                        decorView.onNextDraw(
-                                            mainHandler,
-                                            config.dateProvider,
-                                            config.sessionReplayConfig.debouncerDelayMs,
-                                        ) {
-                                            if (!isSessionReplayEnabled) {
-                                                return@onNextDraw
-                                            }
-                                            val timestamp = config.dateProvider.currentTimeMillis()
+    private fun addView(
+        view: View,
+        added: Boolean,
+    ) {
+        try {
+            if (added) {
+                view.phoneWindow?.let { window ->
+                    if (view.windowAttachCount == 0) {
+                        window.onDecorViewReady { decorView ->
+                            try {
+                                val listener =
+                                    decorView.onNextDraw(
+                                        mainHandler,
+                                        config.dateProvider,
+                                        config.sessionReplayConfig.debouncerDelayMs,
+                                    ) {
+                                        if (!isSessionReplayEnabled) {
+                                            return@onNextDraw
+                                        }
+                                        val timestamp = config.dateProvider.currentTimeMillis()
 
-                                            executor.submit {
-                                                try {
-                                                    generateSnapshot(WeakReference(decorView), WeakReference(window), timestamp)
-                                                } catch (e: Throwable) {
-                                                    config.logger.log("Session Replay generateSnapshot failed: $e.")
-                                                }
+                                        executor.submit {
+                                            try {
+                                                generateSnapshot(WeakReference(decorView), WeakReference(window), timestamp)
+                                            } catch (e: Throwable) {
+                                                config.logger.log("Session Replay generateSnapshot failed: $e.")
                                             }
                                         }
+                                    }
 
-                                    val status = ViewTreeSnapshotStatus(listener)
-                                    decorViews[decorView] = status
-                                } catch (e: Throwable) {
-                                    config.logger.log("Session Replay onDecorViewReady failed: $e.")
-                                }
+                                val status = ViewTreeSnapshotStatus(listener)
+                                decorViews[decorView] = status
+                            } catch (e: Throwable) {
+                                config.logger.log("Session Replay onDecorViewReady failed: $e.")
                             }
-
-                            window.touchEventInterceptors += onTouchEventListener
-                            // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
-                            // window.keyEventInterceptors
                         }
+
+                        window.touchEventInterceptors += onTouchEventListener
+                        // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
+                        // window.keyEventInterceptors
                     }
-                } else {
-                    view.phoneWindow?.let { window ->
-                        window.peekDecorView()?.let { decorView ->
-                            decorViews[decorView]?.let { status ->
-                                cleanSessionState(decorView, status)
-                            }
+                }
+            } else {
+                view.phoneWindow?.let { window ->
+                    window.peekDecorView()?.let { decorView ->
+                        decorViews[decorView]?.let { status ->
+                            cleanSessionState(decorView, status)
                         }
                     }
                 }
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
             }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
+        }
+    }
+
+    private val onRootViewsChangedListener =
+        OnRootViewsChangedListener { view, added ->
+            addView(view, added)
         }
 
     private fun detectKeyboardVisibility(
@@ -287,6 +294,20 @@ public class PostHogReplayIntegration(
     override fun install() {
         if (!isSupported()) {
             return
+        }
+
+        // workaround for react native that is started after the window is added
+        // Curtains.rootViews should be empty for normal apps yet
+        Curtains.rootViews.forEach { view ->
+            view.phoneWindow?.let { window ->
+                window.peekDecorView()?.let { decorView ->
+                    val hasDecorView = decorViews[decorView] != null
+
+                    if (!hasDecorView) {
+                        addView(view, true)
+                    }
+                }
+            }
         }
 
         try {
