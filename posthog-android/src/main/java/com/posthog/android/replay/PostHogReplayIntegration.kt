@@ -120,12 +120,19 @@ public class PostHogReplayIntegration(
 
     private fun addView(
         view: View,
-        added: Boolean,
+        added: Boolean = true,
     ) {
         try {
-            if (added) {
-                view.phoneWindow?.let { window ->
-                    if (view.windowAttachCount == 0) {
+            view.phoneWindow?.let { window ->
+                var hasDecorView = false
+
+                // react native already has the window attached
+                // so we check if the decor view exists otherwise we need the onDecorViewReady anyways
+                window.peekDecorView()?.let { decorView ->
+                    hasDecorView = decorViews[decorView] != null
+                }
+                if (added) {
+                    if (view.windowAttachCount == 0 || !hasDecorView) {
                         window.onDecorViewReady { decorView ->
                             try {
                                 val listener =
@@ -158,10 +165,10 @@ public class PostHogReplayIntegration(
                         window.touchEventInterceptors += onTouchEventListener
                         // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
                         // window.keyEventInterceptors
+                    } else {
+                        config.logger.log("Session Replay already has onDecorViewReady.")
                     }
-                }
-            } else {
-                view.phoneWindow?.let { window ->
+                } else {
                     window.peekDecorView()?.let { decorView ->
                         decorViews[decorView]?.let { status ->
                             cleanSessionState(decorView, status)
@@ -299,15 +306,7 @@ public class PostHogReplayIntegration(
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
         Curtains.rootViews.forEach { view ->
-            view.phoneWindow?.let { window ->
-                window.peekDecorView()?.let { decorView ->
-                    val hasDecorView = decorViews[decorView] != null
-
-                    if (!hasDecorView) {
-                        addView(view, true)
-                    }
-                }
-            }
+            addView(view)
         }
 
         try {
