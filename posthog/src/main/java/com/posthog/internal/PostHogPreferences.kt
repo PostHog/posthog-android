@@ -26,8 +26,8 @@ public interface PostHogPreferences {
 
     public companion object {
         public const val GROUPS: String = "groups"
-        internal const val ANONYMOUS_ID = "anonymousId"
-        internal const val DISTINCT_ID = "distinctId"
+        public const val ANONYMOUS_ID: String = "anonymousId"
+        public const val DISTINCT_ID: String = "distinctId"
         internal const val IS_IDENTIFIED = "isIdentified"
         internal const val PERSON_PROCESSING = "personProcessingEnabled"
         internal const val OPT_OUT = "opt-out"
