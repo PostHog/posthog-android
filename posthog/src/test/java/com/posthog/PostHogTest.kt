@@ -1045,6 +1045,46 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `captures screen event and alias event with screen_name`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val screenName = "HomeScreen"
+
+        val alias = "UserAlias"
+        sut.screen(screenName)
+
+        sut.alias(alias)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        var request = http.takeRequest()
+
+        assertEquals(2, http.requestCount)
+
+        var content = request.body.unGzip()
+        var batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        var theEvent = batch.batch.first()
+
+        assertEquals(screenName, theEvent.properties!!["\$screen_name"])
+
+        request = http.takeRequest()
+
+        assertEquals(2, http.requestCount)
+
+        content = request.body.unGzip()
+        batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        theEvent = batch.batch.first()
+        assertEquals(alias, theEvent.properties!!["alias"])
+        assertEquals(screenName, theEvent.properties!!["\$screen_name"])
+        sut.close()
+    }
+
+    @Test
     fun `reset session id when reset is called`() {
         val http = mockHttp()
         val url = http.url("/")

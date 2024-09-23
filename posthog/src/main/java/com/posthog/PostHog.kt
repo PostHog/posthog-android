@@ -68,6 +68,8 @@ public class PostHog private constructor(
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
 
+    private lateinit var currentScreen: String
+
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
             try {
@@ -317,6 +319,10 @@ public class PostHog private constructor(
                 }
             }
 
+            currentScreen.let {
+                props["\$screen_name"] = currentScreen
+            }
+
             userProperties?.let {
                 props["\$set"] = it
             }
@@ -505,6 +511,8 @@ public class PostHog private constructor(
 
         val props = mutableMapOf<String, Any>()
         props["\$screen_name"] = screenTitle
+
+        currentScreen = screenTitle
 
         properties?.let {
             props.putAll(it)
