@@ -448,7 +448,7 @@ public class PostHog private constructor(
             }
 
             // sanitize the properties or fallback to the original properties
-            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(currentProperties.toMutableMap()) ?: mergedProperties
+            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(currentProperties.toMutableMap()) ?: currentProperties
 
             val postHogEvent =
                 PostHogEvent(
