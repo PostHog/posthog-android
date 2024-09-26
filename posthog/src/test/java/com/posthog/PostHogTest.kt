@@ -297,8 +297,8 @@ internal class PostHogTest {
         val http =
             mockHttp(
                 response =
-                MockResponse()
-                    .setBody(responseDecideApi),
+                    MockResponse()
+                        .setBody(responseDecideApi),
             )
         http.enqueue(
             MockResponse()
