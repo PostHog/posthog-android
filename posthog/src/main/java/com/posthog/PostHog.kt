@@ -68,8 +68,6 @@ public class PostHog private constructor(
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
 
-    private lateinit var currentScreen: String
-
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
             try {
@@ -319,10 +317,6 @@ public class PostHog private constructor(
                 }
             }
 
-            currentScreen.let {
-                props["\$screen_name"] = currentScreen
-            }
-
             userProperties?.let {
                 props["\$set"] = it
             }
@@ -447,8 +441,14 @@ public class PostHog private constructor(
                     appendGroups = !groupIdentify,
                 )
 
+            var currentProperties = mergedProperties
+            // has to run before the sanitizer so people can remove stuff processors add
+            config?.processors?.forEach {
+                currentProperties = it.process(currentProperties.toMutableMap())
+            }
+
             // sanitize the properties or fallback to the original properties
-            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
+            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(currentProperties.toMutableMap()) ?: currentProperties
 
             val postHogEvent =
                 PostHogEvent(
@@ -511,8 +511,6 @@ public class PostHog private constructor(
 
         val props = mutableMapOf<String, Any>()
         props["\$screen_name"] = screenTitle
-
-        currentScreen = screenTitle
 
         properties?.let {
             props.putAll(it)

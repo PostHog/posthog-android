@@ -156,6 +156,9 @@ public open class PostHogConfig(
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()
 
+    private val processorsList: MutableList<PostHogPropertiesProcessor> = mutableListOf()
+    private val processorsLock = Any()
+
     /**
      * The integrations list
      */
@@ -185,6 +188,21 @@ public open class PostHogConfig(
     public fun removeIntegration(integration: PostHogIntegration) {
         synchronized(integrationLock) {
             integrationsList.remove(integration)
+        }
+    }
+
+    public val processors: List<PostHogPropertiesProcessor>
+        get() {
+            val list: List<PostHogPropertiesProcessor>
+            synchronized(processorsLock) {
+                list = processorsList.toList()
+            }
+            return list
+        }
+
+    public fun addProcessor(processor: PostHogPropertiesProcessor) {
+        synchronized(processorsLock) {
+            processorsList.add(processor)
         }
     }
 
