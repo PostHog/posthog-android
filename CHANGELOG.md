@@ -1,6 +1,6 @@
 ## Next
 
-- fix: isFeatureEnabled wasn't sending the $feature_flag_called event ([#177](https://github.com/PostHog/posthog-android/pull/177))
+- fix: isFeatureEnabled wasn't sending the $feature_flag_called event ([#185](https://github.com/PostHog/posthog-android/pull/185))
 
 ## 3.7.4 - 2024-09-23
 
