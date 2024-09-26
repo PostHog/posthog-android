@@ -692,18 +692,17 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
+        val value = featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
+
+        sendFeatureFlagCalled(key, value)
+
+        return value
     }
 
-    public override fun getFeatureFlag(
+    private fun sendFeatureFlagCalled(
         key: String,
-        defaultValue: Any?,
-    ): Any? {
-        if (!isEnabled()) {
-            return defaultValue
-        }
-        val value = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
-
+        value: Any?,
+    ) {
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
             val values = featureFlagsCalled[key] ?: mutableListOf()
@@ -723,6 +722,18 @@ public class PostHog private constructor(
 
             capture("\$feature_flag_called", properties = props)
         }
+    }
+
+    public override fun getFeatureFlag(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
+        if (!isEnabled()) {
+            return defaultValue
+        }
+        val value = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+
+        sendFeatureFlagCalled(key, value)
 
         return value
     }

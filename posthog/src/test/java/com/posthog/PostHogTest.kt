@@ -290,6 +290,58 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `isFeatureEnabled captures feature flag event if enabled`() {
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val responseDecideApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                MockResponse()
+                    .setBody(responseDecideApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+
+        assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
+
+        @Suppress("UNCHECKED_CAST")
+        val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
+        assertTrue(theFlags.contains("4535-funnel-bar-viz"))
+
+        assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
+        assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
+
+        sut.close()
+    }
+
+    @Test
     fun `getFeatureFlagPayload returns the value after reloaded`() {
         val http =
             mockHttp(

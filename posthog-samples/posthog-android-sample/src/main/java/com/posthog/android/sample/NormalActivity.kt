@@ -3,9 +3,9 @@ package com.posthog.android.sample
 import android.os.Bundle
 import android.widget.Button
 import androidx.activity.ComponentActivity
+import com.posthog.PostHog
 import com.posthog.PostHogOkHttpInterceptor
 import okhttp3.OkHttpClient
-import okhttp3.internal.closeQuietly
 
 class NormalActivity : ComponentActivity() {
     private val client =
@@ -33,13 +33,15 @@ class NormalActivity : ComponentActivity() {
 //            }
 //            startActivity(Intent(this, NothingActivity::class.java))
 //            finish()
-            Thread {
-                client.newCall(
-                    okhttp3.Request.Builder()
-                        .url("https://google.com")
-                        .build(),
-                ).execute().closeQuietly()
-            }.start()
+//            Thread {
+//                client.newCall(
+//                    okhttp3.Request.Builder()
+//                        .url("https://google.com")
+//                        .build(),
+//                ).execute().closeQuietly()
+//            }.start()
+            val result = PostHog.isFeatureEnabled("my-boolean-flag", false)
+            println(result)
         }
     }
 }

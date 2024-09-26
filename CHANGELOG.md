@@ -1,5 +1,7 @@
 ## Next
 
+- fix: isFeatureEnabled wasn't sending the $feature_flag_called event ([#177](https://github.com/PostHog/posthog-android/pull/177))
+
 ## 3.7.4 - 2024-09-23
 
 - no user facing changes
