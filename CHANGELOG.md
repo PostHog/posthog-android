@@ -1,5 +1,7 @@
 ## Next
 
+- feat: add referrerURL automatically ([#186](https://github.com/PostHog/posthog-android/pull/186))
+
 ## 3.7.5 - 2024-09-26
 
 - fix: isFeatureEnabled wasn't sending the $feature_flag_called event ([#185](https://github.com/PostHog/posthog-android/pull/185))
