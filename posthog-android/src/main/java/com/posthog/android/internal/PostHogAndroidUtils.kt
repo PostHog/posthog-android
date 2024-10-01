@@ -176,7 +176,7 @@ internal fun Intent.getReferrerInfo(config: PostHogAndroidConfig): Map<String, S
 
 internal fun String.tryParse(config: PostHogAndroidConfig): Uri? {
     return try {
-        Uri.parse(toString())
+        Uri.parse(this)
     } catch (e: Throwable) {
         config.logger.log("Error parsing string: $this. Exception: $e.")
         null
