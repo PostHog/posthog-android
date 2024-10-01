@@ -71,6 +71,20 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         return fake
     }
 
+    private fun executeDeepLinkTestWithReferrer(
+        url: String,
+        captureDeepLinks: Boolean = true,
+    ): PostHogFake {
+        val sut = getSut(captureDeepLinks = captureDeepLinks)
+        val activity = mockActivityUri(url, true)
+
+        val fake = createPostHogFake()
+
+        sut.install()
+        sut.onActivityCreated(activity, null)
+        return fake
+    }
+
     @Test
     fun `onActivityCreated captures deep link with url`() {
         val url = "http://google.com"
@@ -94,6 +108,28 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         val fake = executeDeepLinkTest(url)
 
         assertEquals(url, fake.properties?.get("url"))
+    }
+
+    @Test
+    fun `onActivityCreated captures deep link with web referrer`() {
+        val url = "http://google.com"
+        val domain = url.substringAfter("://")
+        val fake = executeDeepLinkTestWithReferrer(url)
+
+        assertEquals("Deep Link Opened", fake.event)
+        assertEquals(url, fake.properties?.get("\$referrer"))
+        assertEquals(domain, fake.properties?.get("\$referring_domain"))
+    }
+
+    @Test
+    fun `onActivityCreated captures deep link with app referrer`() {
+        val url = "android-app://com.example.source"
+        val domain = url.substringAfter("://")
+        val fake = executeDeepLinkTestWithReferrer(url)
+
+        assertEquals("Deep Link Opened", fake.event)
+        assertEquals(url, fake.properties?.get("\$referrer"))
+        assertEquals(domain, fake.properties?.get("\$referring_domain"))
     }
 
     @Test
