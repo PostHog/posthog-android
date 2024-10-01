@@ -133,6 +133,15 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     }
 
     @Test
+    fun `onActivityCreated also captures referrer for unparsable url`() {
+        val url = "google.com"
+        val fake = executeDeepLinkTestWithReferrer(url)
+
+        assertEquals("Deep Link Opened", fake.event)
+        assertEquals(url, fake.properties?.get("\$referrer"))
+    }
+
+    @Test
     fun `onActivityCreated does not capture deep link if disabled`() {
         val fake = executeDeepLinkTest("http://google.com", captureDeepLinks = false)
 

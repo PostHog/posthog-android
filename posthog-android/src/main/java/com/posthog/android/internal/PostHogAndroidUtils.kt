@@ -151,35 +151,33 @@ internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String?
 }
 
 @Suppress("DEPRECATION")
-internal fun Activity.getReferrerInfo(config: PostHogAndroidConfig): Map<String, String>? {
-    return try {
-        val intent = this.intent
-        val referrerInfoMap = mutableMapOf<String, String>()
-        val referrer: Uri?
-        val referrerName: String?
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
-            referrer = intent.getParcelableExtra(Intent.EXTRA_REFERRER)
-            referrerName = intent.getStringExtra(Intent.EXTRA_REFERRER_NAME)
-        } else {
-            referrer = intent.getParcelableExtra("android.intent.extra.REFERRER")
-            referrerName = intent.getStringExtra("android.intent.extra.REFERRER_NAME")
-        }
-        if (referrer == null && referrerName == null) {
-            return null
-        } else if (referrer == null) {
-            Uri.parse(referrerName)?.let { uri ->
-                referrerInfoMap["\$referrer"] = uri.toString()
-                uri.host?.let { referrerInfoMap["\$referring_domain"] = it }
+internal fun Activity.getReferrerInfo(config: PostHogAndroidConfig): Map<String, String> {
+    val referrerInfoMap = mutableMapOf<String, String>()
+    val referrer: Uri?
+    val referrerName: String?
+    this.intent?.let { intent ->
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                referrer = intent.getParcelableExtra(Intent.EXTRA_REFERRER)
+                referrerName = intent.getStringExtra(Intent.EXTRA_REFERRER_NAME)
+            } else {
+                referrer = intent.getParcelableExtra("android.intent.extra.REFERRER")
+                referrerName = intent.getStringExtra("android.intent.extra.REFERRER_NAME")
             }
-        } else {
-            referrerInfoMap["\$referrer"] = referrer.toString()
-            referrer.host?.let { referrerInfoMap["\$referring_domain"] = it }
+            referrer?.let {
+                referrerInfoMap["\$referrer"] = referrer.toString()
+                referrer.host?.let { referrerInfoMap["\$referring_domain"] = it }
+            } ?: referrerName?.let {
+                referrerInfoMap["\$referrer"] = referrerName
+                Uri.parse(referrerName).let { uri ->
+                    uri.host?.let { referrerInfoMap["\$referring_domain"] = it }
+                }
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Error getting the Activity's referrer info: $e.")
         }
-        referrerInfoMap
-    } catch (e: Throwable) {
-        config.logger.log("Error getting the Activity's referrer info: $e.")
-        null
     }
+    return referrerInfoMap
 }
 
 internal fun isMainThread(mainHandler: MainHandler): Boolean {
