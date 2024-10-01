@@ -37,7 +37,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                 } catch (e: UnsupportedOperationException) {
                     config.logger.log("Deep link $data has invalid query param names.")
                 } finally {
-                    props["url"] = data.toString()
+                    data?.let { props["url"] = it.toString() }
                     activity.getReferrerInfo(config)?.let { props.putAll(it) }
                     PostHog.capture("Deep Link Opened", properties = props)
                 }
