@@ -65,8 +65,8 @@ public fun mockScreenTitle(
         whenever(
             pm.getActivityInfo(
                 any(),
-                any<Int>()
-            )
+                any<Int>(),
+            ),
         ).thenThrow(PackageManager.NameNotFoundException())
     } else {
         whenever(pm.getActivityInfo(any(), any<Int>())).thenReturn(ac)

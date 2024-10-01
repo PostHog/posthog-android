@@ -104,7 +104,7 @@ internal fun Context.hasPermission(permission: String): Boolean {
     return checkPermission(
         permission,
         Process.myPid(),
-        Process.myUid()
+        Process.myUid(),
     ) == PackageManager.PERMISSION_GRANTED
 }
 
