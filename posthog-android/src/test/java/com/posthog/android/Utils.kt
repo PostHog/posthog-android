@@ -27,11 +27,18 @@ import org.mockito.kotlin.whenever
 
 public const val API_KEY: String = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
 
-public fun mockActivityUri(uri: String): Activity {
+public fun mockActivityUri(
+    uri: String,
+    referrer: Boolean = false,
+): Activity {
     val activity = mock<Activity>()
     val intent =
         Intent().apply {
             data = Uri.parse(uri)
+            if (referrer) {
+                putExtra(Intent.EXTRA_REFERRER, Uri.parse(uri))
+                putExtra(Intent.EXTRA_REFERRER_NAME, uri)
+            }
         }
     whenever(activity.intent).thenReturn(intent)
     return activity
@@ -55,7 +62,12 @@ public fun mockScreenTitle(
     whenever(appInfo.loadLabel(any())).thenReturn(applicationLabel)
 
     if (throws) {
-        whenever(pm.getActivityInfo(any(), any<Int>())).thenThrow(PackageManager.NameNotFoundException())
+        whenever(
+            pm.getActivityInfo(
+                any(),
+                any<Int>(),
+            ),
+        ).thenThrow(PackageManager.NameNotFoundException())
     } else {
         whenever(pm.getActivityInfo(any(), any<Int>())).thenReturn(ac)
     }

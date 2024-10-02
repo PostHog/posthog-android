@@ -22,19 +22,23 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         savedInstanceState: Bundle?,
     ) {
         if (config.captureDeepLinks) {
-            activity.intent.data?.let {
+            activity.intent?.let { intent ->
                 val props = mutableMapOf<String, Any>()
+                val data = intent.data
                 try {
-                    for (item in it.queryParameterNames) {
-                        val param = it.getQueryParameter(item)
-                        if (!param.isNullOrEmpty()) {
-                            props[item] = param
+                    data?.let {
+                        for (item in it.queryParameterNames) {
+                            val param = it.getQueryParameter(item)
+                            if (!param.isNullOrEmpty()) {
+                                props[item] = param
+                            }
                         }
                     }
                 } catch (e: UnsupportedOperationException) {
-                    config.logger.log("Deep link $it has invalid query param names.")
+                    config.logger.log("Deep link $data has invalid query param names.")
                 } finally {
-                    props["url"] = it.toString()
+                    data?.let { props["url"] = it.toString() }
+                    intent.getReferrerInfo(config).let { props.putAll(it) }
                     PostHog.capture("Deep Link Opened", properties = props)
                 }
             }

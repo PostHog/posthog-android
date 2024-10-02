@@ -4,11 +4,13 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.PackageManager.GET_META_DATA
 import android.graphics.Point
 import android.net.ConnectivityManager
+import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.telephony.TelephonyManager
@@ -99,7 +101,11 @@ internal fun Context.appContext(): Context {
 }
 
 internal fun Context.hasPermission(permission: String): Boolean {
-    return checkPermission(permission, Process.myPid(), Process.myUid()) == PackageManager.PERMISSION_GRANTED
+    return checkPermission(
+        permission,
+        Process.myPid(),
+        Process.myUid(),
+    ) == PackageManager.PERMISSION_GRANTED
 }
 
 @Suppress("DEPRECATION")
@@ -140,6 +146,39 @@ internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String?
         }
     } catch (e: Throwable) {
         config.logger.log("Error getting the Activity's label or name: $e.")
+        null
+    }
+}
+
+@Suppress("DEPRECATION")
+internal fun Intent.getReferrerInfo(config: PostHogAndroidConfig): Map<String, String> {
+    val referrerInfoMap = mutableMapOf<String, String>()
+    val referrer: Uri?
+    val referrerName: String?
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+        referrer = this.getParcelableExtra(Intent.EXTRA_REFERRER)
+        referrerName = this.getStringExtra(Intent.EXTRA_REFERRER_NAME)
+    } else {
+        referrer = this.getParcelableExtra("android.intent.extra.REFERRER")
+        referrerName = this.getStringExtra("android.intent.extra.REFERRER_NAME")
+    }
+    referrer?.let {
+        referrerInfoMap["\$referrer"] = referrer.toString()
+        referrer.host?.let { referrerInfoMap["\$referring_domain"] = it }
+    } ?: referrerName?.let {
+        referrerInfoMap["\$referrer"] = referrerName
+        referrerName.tryParse(config)?.let { uri ->
+            uri.host?.let { referrerInfoMap["\$referring_domain"] = it }
+        }
+    }
+    return referrerInfoMap
+}
+
+internal fun String.tryParse(config: PostHogAndroidConfig): Uri? {
+    return try {
+        Uri.parse(this)
+    } catch (e: Throwable) {
+        config.logger.log("Error parsing string: $this. Exception: $e.")
         null
     }
 }
