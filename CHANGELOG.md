@@ -1,5 +1,7 @@
 ## Next
 
+## 3.8.0 - 2024-10-03
+
 - feat: add referrerURL automatically ([#186](https://github.com/PostHog/posthog-android/pull/186))
 
 ## 3.7.5 - 2024-09-26
