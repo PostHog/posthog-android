@@ -191,6 +191,7 @@ internal fun isMainThread(mainHandler: MainHandler): Boolean {
 
 @PostHogInternal
 @Suppress("DEPRECATION")
+@Throws(PackageManager.NameNotFoundException::class)
 public fun getApplicationInfo(context: Context): ApplicationInfo =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         context
