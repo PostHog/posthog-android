@@ -1,5 +1,7 @@
 ## Next
 
+- recording: `OnTouchEventListener` try catch guard to swallow unexpected errors take 2 ([#147](https://github.com/PostHog/posthog-android/pull/147))
+
 ## 3.8.0 - 2024-10-03
 
 - feat: add referrerURL automatically ([#186](https://github.com/PostHog/posthog-android/pull/186))
