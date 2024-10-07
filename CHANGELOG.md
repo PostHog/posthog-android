@@ -1,6 +1,6 @@
 ## Next
 
-- recording: `OnTouchEventListener` try catch guard to swallow unexpected errors take 2 ([#147](https://github.com/PostHog/posthog-android/pull/147))
+- recording: `OnTouchEventListener` try catch guard to swallow unexpected errors take 2 ([#196](https://github.com/PostHog/posthog-android/pull/196))
 
 ## 3.8.0 - 2024-10-03
 
