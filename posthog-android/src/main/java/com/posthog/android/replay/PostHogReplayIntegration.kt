@@ -75,7 +75,7 @@ import com.posthog.internal.replay.RRWireframe
 import com.posthog.internal.replay.capture
 import curtains.Curtains
 import curtains.OnRootViewsChangedListener
-import curtains.OnTouchEventListener
+import curtains.TouchEventInterceptor
 import curtains.onDecorViewReady
 import curtains.phoneWindow
 import curtains.touchEventInterceptors
@@ -216,27 +216,34 @@ public class PostHogReplayIntegration(
     }
 
     private val onTouchEventListener =
-        OnTouchEventListener { motionEvent ->
+        TouchEventInterceptor { motionEvent, dispatch ->
             val timestamp = config.dateProvider.currentTimeMillis()
 
-            executor.submit {
-                try {
-                    if (!isSessionReplayEnabled) {
-                        return@submit
-                    }
-                    when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
-                        MotionEvent.ACTION_DOWN -> {
-                            generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+            try {
+                val state = dispatch(motionEvent)
+
+                executor.submit {
+                    try {
+                        if (!isSessionReplayEnabled) {
+                            return@submit
                         }
-                        MotionEvent.ACTION_UP -> {
-                            generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                        when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
+                            MotionEvent.ACTION_DOWN -> {
+                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+                            }
+                            MotionEvent.ACTION_UP -> {
+                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                            }
                         }
+                    } catch (e: Throwable) {
+                        config.logger.log("Executor#OnTouchEventListener $motionEvent failed: $e.")
                     }
-                } catch (e: Throwable) {
-                    config.logger.log("OnTouchEventListener $motionEvent failed: $e.")
                 }
+                state
+            } catch (e: Throwable) {
+                config.logger.log("TouchEventInterceptor $motionEvent failed: $e.")
+                throw e
             }
-            return@OnTouchEventListener
         }
 
     private fun generateMouseInteractions(
