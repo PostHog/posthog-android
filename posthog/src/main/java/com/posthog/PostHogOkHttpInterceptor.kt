@@ -66,6 +66,9 @@ public class PostHogOkHttpInterceptor
             val requests = listOf(requestMap)
             val payload = mapOf<String, Any>("requests" to requests)
 
+            // TODO: get the android config and pass the sesson replay mode
+            // likely needs a processor on the android side since this class
+            // does not know about the PostHogAndroidConfig
             listOf(RRPluginEvent("rrweb/network@1", payload, end)).capture()
         }
     }
