@@ -41,6 +41,10 @@ public final class com/posthog/android/internal/MainHandler {
 	public final fun getMainLooper ()Landroid/os/Looper;
 }
 
+public final class com/posthog/android/internal/PostHogAndroidUtilsKt {
+	public static final fun getApplicationInfo (Landroid/content/Context;)Landroid/content/pm/ApplicationInfo;
+}
+
 public abstract interface class com/posthog/android/replay/PostHogDrawableConverter {
 	public abstract fun convert (Landroid/graphics/drawable/Drawable;)Landroid/graphics/Bitmap;
 }
