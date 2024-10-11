@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.PackageManager.GET_META_DATA
@@ -16,6 +17,7 @@ import android.os.Process
 import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import com.posthog.PostHogInternal
 import com.posthog.android.PostHogAndroidConfig
 
 @Suppress("DEPRECATION")
@@ -186,3 +188,20 @@ internal fun String.tryParse(config: PostHogAndroidConfig): Uri? {
 internal fun isMainThread(mainHandler: MainHandler): Boolean {
     return Thread.currentThread().id == mainHandler.mainLooper.thread.id
 }
+
+@PostHogInternal
+@Suppress("DEPRECATION")
+@Throws(PackageManager.NameNotFoundException::class)
+public fun getApplicationInfo(context: Context): ApplicationInfo =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context
+            .packageManager
+            .getApplicationInfo(
+                context.packageName,
+                PackageManager.ApplicationInfoFlags.of(GET_META_DATA.toLong()),
+            )
+    } else {
+        context
+            .packageManager
+            .getApplicationInfo(context.packageName, GET_META_DATA)
+    }
