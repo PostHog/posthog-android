@@ -36,6 +36,37 @@ internal class PostHogFeatureFlags(
         preloadSessionReplayFlag()
     }
 
+    private fun isRecordingActive(
+        featureFlags: Map<String, Any>,
+        sessionRecording: Map<String, Any>,
+    ): Boolean {
+        var recordingActive = true
+
+        // Check for boolean flags
+        val linkedFlag = sessionRecording["linkedFlag"]
+        if (linkedFlag is String) {
+            val value = featureFlags[linkedFlag]
+            if (value is Boolean) {
+                recordingActive = value
+            }
+        } else if (linkedFlag is Map<*, *>) {
+            // Check for specific flag variant
+            val flag = linkedFlag["flag"] as? String
+            val variant = linkedFlag["variant"] as? String
+            if (flag != null && variant != null) {
+                val value = featureFlags[flag] as? String
+                recordingActive = value == variant
+            }
+        }
+        // check for multi flag variant (any)
+        // val linkedFlag = sessionRecording["linkedFlag"] as? String,
+        //    featureFlags[linkedFlag] != nil
+        // is also a valid check but since we cannot check the value of the flag,
+        // we consider session recording is active
+
+        return recordingActive
+    }
+
     fun loadFeatureFlags(
         distinctId: String,
         anonymousId: String?,
@@ -74,26 +105,30 @@ internal class PostHogFeatureFlags(
                             this.featureFlagPayloads = normalizedPayloads
                         }
 
-                        when (response.sessionRecording) {
+                        when (val sessionRecording = response.sessionRecording) {
                             is Boolean -> {
                                 // if sessionRecording is a Boolean, its always disabled
                                 // so we don't enable sessionReplayFlagActive here
-                                sessionReplayFlagActive = false
+                                sessionReplayFlagActive = sessionRecording
 
-                                config.cachePreferences?.remove(SESSION_REPLAY)
+                                if (!sessionRecording) {
+                                    config.cachePreferences?.remove(SESSION_REPLAY)
+                                } else {
+                                    // do nothing
+                                }
                             }
 
                             is Map<*, *> -> {
                                 @Suppress("UNCHECKED_CAST")
-                                (response.sessionRecording as? Map<String, Any?>)?.let { sessionRecording ->
+                                (sessionRecording as? Map<String, Any>)?.let {
                                     // keeps the value from config.sessionReplay since having sessionRecording
                                     // means its enabled on the project settings, but its only enabled
                                     // when local config.sessionReplay is also enabled
-                                    config.snapshotEndpoint = sessionRecording["endpoint"] as? String
+                                    config.snapshotEndpoint = it["endpoint"] as? String
                                         ?: config.snapshotEndpoint
 
-                                    sessionReplayFlagActive = true
-                                    config.cachePreferences?.setValue(SESSION_REPLAY, sessionRecording)
+                                    sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+                                    config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
                                     // TODO:
                                     // consoleLogRecordingEnabled -> Boolean or null
@@ -131,14 +166,19 @@ internal class PostHogFeatureFlags(
 
     private fun preloadSessionReplayFlag() {
         synchronized(featureFlagsLock) {
-            @Suppress("UNCHECKED_CAST")
-            val sessionRecording = config.cachePreferences?.getValue(SESSION_REPLAY) as? Map<String, Any>
+            config.cachePreferences?.let { preferences ->
+                @Suppress("UNCHECKED_CAST")
+                val sessionRecording = preferences.getValue(SESSION_REPLAY) as? Map<String, Any>
 
-            if (sessionRecording != null) {
-                sessionReplayFlagActive = true
+                @Suppress("UNCHECKED_CAST")
+                val flags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any>
 
-                config.snapshotEndpoint = sessionRecording["endpoint"] as? String
-                    ?: config.snapshotEndpoint
+                if (sessionRecording != null) {
+                    sessionReplayFlagActive = isRecordingActive(flags ?: mapOf(), sessionRecording)
+
+                    config.snapshotEndpoint = sessionRecording["endpoint"] as? String
+                        ?: config.snapshotEndpoint
+                }
             }
         }
     }
