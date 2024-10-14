@@ -342,4 +342,96 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(sut.isSessionReplayFlagActive())
         assertEquals("/b/", config?.snapshotEndpoint)
     }
+
+    @Test
+    fun `returns isSessionReplayFlagActive true if bool linked flag is enabled`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-enabled.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive false if bool linked flag is disabled`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-disabled.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive true if multi variant linked flag is a match`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-variant-match.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive false if multi variant linked flag is not a match`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-variant-not-match.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+    }
 }
