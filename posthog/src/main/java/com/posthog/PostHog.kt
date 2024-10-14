@@ -441,8 +441,14 @@ public class PostHog private constructor(
                     appendGroups = !groupIdentify,
                 )
 
+            var currentProperties = mergedProperties
+            // has to run before the sanitizer so people can remove stuff processors add
+            config?.processors?.forEach {
+                currentProperties = it.process(currentProperties.toMutableMap())
+            }
+
             // sanitize the properties or fallback to the original properties
-            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
+            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(currentProperties.toMutableMap()) ?: currentProperties
 
             val postHogEvent =
                 PostHogEvent(
