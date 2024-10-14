@@ -1,5 +1,7 @@
 ## Next
 
+## 3.8.2 - 2024-10-14
+
 - recording: session replay respect feature flag variants ([#197](https://github.com/PostHog/posthog-android/pull/197))
 
 ## 3.8.1 - 2024-10-09
