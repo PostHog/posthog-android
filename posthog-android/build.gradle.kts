@@ -89,6 +89,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     implementation("com.squareup.curtains:curtains:${PosthogBuildConfig.Dependencies.CURTAINS}")
+    implementation("androidx.compose.ui:ui-android:1.7.3")
 
     // compatibility
     signature("org.codehaus.mojo.signature:java18:${PosthogBuildConfig.Plugins.SIGNATURE_JAVA18}@signature")

@@ -14,7 +14,7 @@ object PosthogBuildConfig {
     }
 
     object Android {
-        val COMPILE_SDK = 33
+        val COMPILE_SDK = 34
 
         // when changing this, remember to check the ANIMAL_SNIFFER_SDK_VERSION
         // Session Replay (addOnFrameMetricsAvailableListener requires API 26)
