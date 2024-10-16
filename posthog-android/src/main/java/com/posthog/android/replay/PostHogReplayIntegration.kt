@@ -46,6 +46,10 @@ import android.widget.RatingBar
 import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHog
@@ -55,6 +59,7 @@ import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
+import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
@@ -553,6 +558,10 @@ public class PostHogReplayIntegration(
             }
         }
 
+        if (view.isComposeView()) {
+            findMaskableComposeRects(view, maskableWidgets)
+        }
+
         // if a view parent of any type is tagged as non masking, mask it
         if (view.isNoCapture()) {
             val rect = view.globalVisibleRect()
@@ -570,6 +579,55 @@ public class PostHogReplayIntegration(
 
                 findMaskableWidgets(viewChild, maskableWidgets)
             }
+        }
+    }
+
+    private fun findMaskableComposeRects(
+        view: View,
+        rectsToMask: MutableList<Rect>,
+    ) {
+        val semanticsOwner =
+            (view as? RootForTest)?.semanticsOwner ?: run {
+                config.logger.log("View is not a RootForTest: $view")
+                return
+            }
+        val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
+
+        semanticsNodes.forEach { node ->
+            val isTextInput = node.config.contains(SemanticsProperties.EditableText)
+            val isPassword = node.config.contains(SemanticsProperties.Password)
+            val isImage = node.config.contains(SemanticsProperties.ContentDescription)
+            val shouldMaskAnyway = node.config.getOrNull(PostHogReplayMask) == true
+
+            if (!shouldMaskAnyway) {
+                if (isTextInput && (config.sessionReplayConfig.maskAllTextInputs || isPassword)) {
+                    rectsToMask.add(node.boundsInWindow.toRect())
+                }
+
+                if (isImage && config.sessionReplayConfig.maskAllImages) {
+                    rectsToMask.add(node.boundsInWindow.toRect())
+                }
+            } else {
+                rectsToMask.add(node.boundsInWindow.toRect())
+            }
+        }
+    }
+
+    private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
+        return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+    }
+
+    private fun View.isComposeView(): Boolean {
+        return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)
+    }
+
+    private val isComposeAvailable by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        try {
+            Class.forName(ANDROID_COMPOSE_VIEW_CLASS_NAME)
+            true
+        } catch (e: Throwable) {
+            config.logger.log("Compose not available: $e.")
+            false
         }
     }
 
@@ -1175,5 +1233,7 @@ public class PostHogReplayIntegration(
 
     private companion object {
         private const val PH_NO_CAPTURE_LABEL = "ph-no-capture"
+        private const val ANDROID_COMPOSE_VIEW_CLASS_NAME = "androidx.compose.ui.platform.AndroidComposeView"
+        private const val ANDROID_COMPOSE_VIEW = "AndroidComposeView"
     }
 }
