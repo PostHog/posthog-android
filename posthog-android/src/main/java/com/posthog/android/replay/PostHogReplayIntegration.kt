@@ -58,6 +58,7 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
@@ -118,6 +119,15 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = PostHog.isSessionReplayActive()
 
+    private var sessionStartTime = 0L
+    private val events = mutableListOf<RREvent>()
+    private var minSessionThresholdCrossed = false
+
+    @Suppress("UNCHECKED_CAST")
+    private val replayPreferenceMap by lazy {
+        config.cachePreferences?.getValue(PostHogPreferences.SESSION_REPLAY) as? Map<String, Any>
+    }
+
     private fun addView(
         view: View,
         added: Boolean = true,
@@ -148,7 +158,11 @@ public class PostHogReplayIntegration(
 
                                         executor.submit {
                                             try {
-                                                generateSnapshot(WeakReference(decorView), WeakReference(window), timestamp)
+                                                generateSnapshot(
+                                                    WeakReference(decorView),
+                                                    WeakReference(window),
+                                                    timestamp
+                                                )
                                             } catch (e: Throwable) {
                                                 config.logger.log("Session Replay generateSnapshot failed: $e.")
                                             }
@@ -229,10 +243,19 @@ public class PostHogReplayIntegration(
                         }
                         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
                             MotionEvent.ACTION_DOWN -> {
-                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+                                generateMouseInteractions(
+                                    timestamp,
+                                    motionEvent,
+                                    RRMouseInteraction.TouchStart
+                                )
                             }
+
                             MotionEvent.ACTION_UP -> {
-                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                                generateMouseInteractions(
+                                    timestamp,
+                                    motionEvent,
+                                    RRMouseInteraction.TouchEnd
+                                )
                             }
                         }
                     } catch (e: Throwable) {
@@ -265,7 +288,8 @@ public class PostHogReplayIntegration(
                     x = absX,
                     y = absY,
                 )
-            val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
+            val mouseInteraction =
+                RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
             mouseInteractions.add(mouseInteraction)
         }
 
@@ -312,6 +336,9 @@ public class PostHogReplayIntegration(
 
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
+
+        sessionStartTime = config.dateProvider.currentTimeMillis()
+
         Curtains.rootViews.forEach { view ->
             addView(view)
         }
@@ -325,6 +352,7 @@ public class PostHogReplayIntegration(
 
     override fun uninstall() {
         try {
+
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
             decorViews.entries.forEach {
@@ -372,8 +400,6 @@ public class PostHogReplayIntegration(
                 wireframe.style?.backgroundColor = it
             }
         }
-
-        val events = mutableListOf<RREvent>()
 
         if (!status.sentMetaEvent) {
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
@@ -453,11 +479,33 @@ public class PostHogReplayIntegration(
             events.add(it)
         }
 
-        if (events.isNotEmpty()) {
+        if (events.isNotEmpty() && sessionLongerThanMinDuration()) {
+            config.logger.log("Session replay events captured: " + events.size)
             events.capture()
+            events.clear()
         }
 
         status.lastSnapshot = wireframe
+    }
+
+    private fun sessionLongerThanMinDuration(): Boolean {
+        //Check value only if threshold not crossed.
+        if (!minSessionThresholdCrossed) {
+            val serverMinDuration = replayPreferenceMap?.let { map ->
+                (map["minimumDurationMilliseconds"] as Number).toLong()
+            } ?: 0L
+
+            //Give server min duration is set, give it a higher priority than locally passed config
+            val finalMinimumDuration = if (serverMinDuration > 0) {
+                serverMinDuration
+            } else {
+                config.sessionReplayConfig.minSessionDurationMs
+            }
+
+            minSessionThresholdCrossed =
+                config.dateProvider.currentTimeMillis() - sessionStartTime >= finalMinimumDuration
+        }
+        return minSessionThresholdCrossed
     }
 
     private fun View.isVisible(): Boolean {
@@ -742,14 +790,17 @@ public class PostHogReplayIntegration(
                     style.verticalAlign = "center"
                     style.horizontalAlign = "center"
                 }
+
                 View.TEXT_ALIGNMENT_TEXT_END, View.TEXT_ALIGNMENT_VIEW_END -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "right"
                 }
+
                 View.TEXT_ALIGNMENT_TEXT_START, View.TEXT_ALIGNMENT_VIEW_START -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "left"
                 }
+
                 View.TEXT_ALIGNMENT_GRAVITY -> {
                     val horizontalAlignment =
                         when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
@@ -769,6 +820,7 @@ public class PostHogReplayIntegration(
                         }
                     style.verticalAlign = verticalAlignment
                 }
+
                 else -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "left"

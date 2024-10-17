@@ -853,7 +853,8 @@ public class PostHog private constructor(
     // this is used in cases where we know the session is already active
     // so we spare another locker
     private fun isSessionReplayFlagActive(): Boolean {
-        return config?.sessionReplay == true && featureFlags?.isSessionReplayFlagActive() == true
+        //FIXME -> Remove this true hardcoding
+        return true || config?.sessionReplay == true && featureFlags?.isSessionReplayFlagActive() == true
     }
 
     override fun isSessionReplayActive(): Boolean {

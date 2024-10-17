@@ -218,6 +218,8 @@ val config = PostHogAndroidConfig(apiKey).apply {
     sessionReplayConfig.screenshot = false
     // debouncerDelayMs is 500ms by default
     sessionReplayConfig.debouncerDelayMs = 1000
+    // minSessionDurationMs is 1000ms by default
+    sessionReplayConfig.minSessionDurationMs = 2000
 }
 ```
 
