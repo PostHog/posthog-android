@@ -120,6 +120,7 @@ public class PostHogReplayIntegration(
 
     private var sessionStartTime = 0L
     private val events = mutableListOf<RREvent>()
+    private var minSessionThresholdCrossed = false
 
     private fun addView(
         view: View,
@@ -473,6 +474,7 @@ public class PostHogReplayIntegration(
         }
 
         if (events.isNotEmpty() && sessionLongerThanMinDuration()) {
+            config.logger.log("Session replay events captured: " + events.size)
             events.capture()
             events.clear()
         }
@@ -481,9 +483,12 @@ public class PostHogReplayIntegration(
     }
 
     private fun sessionLongerThanMinDuration(): Boolean {
-        //TODO improve this -> Consider BE variable as well
-        return config.dateProvider.currentTimeMillis() - sessionStartTime >=
-            config.sessionReplayConfig.minSessionDurationMs
+        if (!minSessionThresholdCrossed) {
+            minSessionThresholdCrossed =
+                config.dateProvider.currentTimeMillis() - sessionStartTime >=
+                    config.sessionReplayConfig.minSessionDurationMs
+        }
+        return minSessionThresholdCrossed
     }
 
     private fun View.isVisible(): Boolean {
