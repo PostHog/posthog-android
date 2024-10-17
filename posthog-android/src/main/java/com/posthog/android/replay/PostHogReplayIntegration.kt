@@ -58,6 +58,7 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
@@ -121,6 +122,11 @@ public class PostHogReplayIntegration(
     private var sessionStartTime = 0L
     private val events = mutableListOf<RREvent>()
     private var minSessionThresholdCrossed = false
+
+    @Suppress("UNCHECKED_CAST")
+    private val replayPreferenceMap by lazy {
+        config.cachePreferences?.getValue(PostHogPreferences.SESSION_REPLAY) as? Map<String, Any>
+    }
 
     private fun addView(
         view: View,
@@ -483,10 +489,21 @@ public class PostHogReplayIntegration(
     }
 
     private fun sessionLongerThanMinDuration(): Boolean {
+        //Check value only if threshold not crossed.
         if (!minSessionThresholdCrossed) {
+            val serverMinDuration = replayPreferenceMap?.let { map ->
+                (map["minimumDurationMilliseconds"] as Number).toLong()
+            } ?: 0L
+
+            //Give server min duration a higher priority
+            val finalMinimumDuration = if (serverMinDuration <= 0) {
+                serverMinDuration
+            } else {
+                config.sessionReplayConfig.minSessionDurationMs
+            }
+
             minSessionThresholdCrossed =
-                config.dateProvider.currentTimeMillis() - sessionStartTime >=
-                    config.sessionReplayConfig.minSessionDurationMs
+                config.dateProvider.currentTimeMillis() - sessionStartTime >= finalMinimumDuration
         }
         return minSessionThresholdCrossed
     }
