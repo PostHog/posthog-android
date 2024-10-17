@@ -40,6 +40,7 @@ class MyApp : Application() {
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true
                 sessionReplayConfig.screenshot = true
+                sessionReplayConfig.minSessionDurationMs = 2000
             }
         PostHogAndroid.setup(this, config)
     }
