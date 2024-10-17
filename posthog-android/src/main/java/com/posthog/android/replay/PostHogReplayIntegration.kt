@@ -495,8 +495,8 @@ public class PostHogReplayIntegration(
                 (map["minimumDurationMilliseconds"] as Number).toLong()
             } ?: 0L
 
-            //Give server min duration a higher priority
-            val finalMinimumDuration = if (serverMinDuration <= 0) {
+            //Give server min duration is set, give it a higher priority than locally passed config
+            val finalMinimumDuration = if (serverMinDuration > 0) {
                 serverMinDuration
             } else {
                 config.sessionReplayConfig.minSessionDurationMs
