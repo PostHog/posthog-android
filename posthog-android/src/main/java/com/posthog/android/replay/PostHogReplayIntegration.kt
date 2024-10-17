@@ -119,8 +119,7 @@ public class PostHogReplayIntegration(
         get() = PostHog.isSessionReplayActive()
 
     private var sessionStartTime = 0L
-    private var sessionEndTime = 0L
-
+    private val events = mutableListOf<RREvent>()
 
     private fun addView(
         view: View,
@@ -346,12 +345,6 @@ public class PostHogReplayIntegration(
 
     override fun uninstall() {
         try {
-            sessionEndTime = config.dateProvider.currentTimeMillis()
-
-            //TODO improve this
-            if (sessionEndTime - sessionStartTime <= config.sessionReplayConfig.minSessionDurationMs) {
-               //Delete existing session recording?
-            }
 
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
@@ -400,8 +393,6 @@ public class PostHogReplayIntegration(
                 wireframe.style?.backgroundColor = it
             }
         }
-
-        val events = mutableListOf<RREvent>()
 
         if (!status.sentMetaEvent) {
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
@@ -481,11 +472,18 @@ public class PostHogReplayIntegration(
             events.add(it)
         }
 
-        if (events.isNotEmpty()) {
+        if (events.isNotEmpty() && sessionLongerThanMinDuration()) {
             events.capture()
+            events.clear()
         }
 
         status.lastSnapshot = wireframe
+    }
+
+    private fun sessionLongerThanMinDuration(): Boolean {
+        //TODO improve this -> Consider BE variable as well
+        return config.dateProvider.currentTimeMillis() - sessionStartTime >=
+            config.sessionReplayConfig.minSessionDurationMs
     }
 
     private fun View.isVisible(): Boolean {
