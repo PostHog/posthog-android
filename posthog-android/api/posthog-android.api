@@ -49,7 +49,16 @@ public abstract interface class com/posthog/android/replay/PostHogDrawableConver
 	public abstract fun convert (Landroid/graphics/drawable/Drawable;)Landroid/graphics/Bitmap;
 }
 
+public final class com/posthog/android/replay/PostHogMaskModifier {
+	public static final field INSTANCE Lcom/posthog/android/replay/PostHogMaskModifier;
+	public final fun postHogMask (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
+	public static synthetic fun postHogMask$default (Lcom/posthog/android/replay/PostHogMaskModifier;Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
+}
+
 public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration {
+	public static final field ANDROID_COMPOSE_VIEW Ljava/lang/String;
+	public static final field ANDROID_COMPOSE_VIEW_CLASS_NAME Ljava/lang/String;
+	public static final field PH_NO_CAPTURE_LABEL Ljava/lang/String;
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
 	public fun install ()V
 	public fun uninstall ()V

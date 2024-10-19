@@ -36,13 +36,13 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of org.mockito:mockito-inline than 4.11.0 is available: 5.2.0"
-        errorLine1="    testImplementation(&quot;org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        message="A newer version of androidx.compose.ui:ui than 1.0.0 is available: 1.7.4"
+        errorLine1="    implementation(&quot;androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="107"
-            column="24"/>
+            line="91"
+            column="20"/>
     </issue>
 
 </issues>
