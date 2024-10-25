@@ -2,8 +2,8 @@
 
 ## 3.8.3 - 2024-10-25
 
-- recording: fix crash when calling view.isVisible ([#197](https://github.com/PostHog/posthog-android/pull/197))
-- recording: change debouncerDelayMs default from 500ms to 1000ms (1s) ([#197](https://github.com/PostHog/posthog-android/pull/197))
+- recording: fix crash when calling view.isVisible ([#201](https://github.com/PostHog/posthog-android/pull/201))
+- recording: change debouncerDelayMs default from 500ms to 1000ms (1s) ([#201](https://github.com/PostHog/posthog-android/pull/201))
 
 ## 3.8.2 - 2024-10-14
 
