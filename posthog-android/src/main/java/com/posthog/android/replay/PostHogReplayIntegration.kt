@@ -496,6 +496,8 @@ public class PostHogReplayIntegration(
             }
         } catch (e: Throwable) {
             config.logger.log("Session Replay isVisible failed: $e.")
+            // if there's an exception, we just return true otherwise we might miss some views
+            return true
         }
         return false
     }
