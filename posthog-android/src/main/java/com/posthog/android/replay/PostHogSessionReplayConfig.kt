@@ -44,8 +44,9 @@ public class PostHogSessionReplayConfig
          * Deboucer delay used to reduce the number of snapshots captured and reduce performance impact
          * This is used for capturing the view as a wireframe or screenshot
          * The lower the number more snapshots will be captured but higher the performance impact
-         * Defaults to 500ms
+         * Defaults to 1000ms = 1s
+         * Ps: it was 500ms by default until version 3.8.2
          */
         @PostHogExperimental
-        public var debouncerDelayMs: Long = 500,
+        public var debouncerDelayMs: Long = 1000,
     )

@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Point
 import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.RectF
@@ -30,9 +31,7 @@ import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewStub
 import android.view.Window
-import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
@@ -464,20 +463,47 @@ public class PostHogReplayIntegration(
         status.lastSnapshot = wireframe
     }
 
+    /**
+     * Adapted from https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/view/View.java;l=11620;bpv=0;bpt=1
+     */
     private fun View.isVisible(): Boolean {
-        // TODO: also check for getGlobalVisibleRect intersects the display
-        val visible = isShown && width >= 0 && height >= 0 && this !is ViewStub
+        try {
+            if (isAttachedToWindow) {
+                // Attached to invisible window means this view is not visible.
+                if (windowVisibility != View.VISIBLE) {
+                    return false
+                }
+                // An invisible predecessor or one with alpha zero means
+                // that this view is not visible to the user.
+                var current: Any? = this
+                while (current is View) {
+                    val view = current
+                    val transitionAlpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) view.transitionAlpha else 1f
+                    // We have attach info so this view is attached and there is no
+                    // need to check whether we reach to ViewRootImpl on the way up.
+                    if (view.alpha <= 0 || transitionAlpha <= 0 || view.visibility != View.VISIBLE) {
+                        return false
+                    }
+                    current = view.parent
+                }
+                // Check if the view is entirely covered by its predecessors.
+                val visibleRect = Rect()
+                val offset = Point()
 
-        // Between API 16 and API 29, this method may incorrectly return false when magnification
-        // is enabled. On other versions, a node is considered visible even if it is not on
-        // the screen because magnification is active.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-            return visible
+                return getGlobalVisibleRect(visibleRect, offset)
+
+                // TODO: also check for getGlobalVisibleRect intersects the display
+//            if (boundInView != null) {
+//                visibleRect.offset(-offset.x, -offset.y)
+//                return boundInView.intersect(visibleRect)
+//            }
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay isVisible failed: $e.")
+            // if there's an exception, we just return true otherwise we might miss some views
+            return true
         }
-
-        val nodeInfo = AccessibilityNodeInfo()
-        onInitializeAccessibilityNodeInfo(nodeInfo)
-        return visible && nodeInfo.isVisibleToUser
+        return false
     }
 
     private fun Drawable.shouldMaskDrawable(): Boolean {
