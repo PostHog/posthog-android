@@ -540,7 +540,7 @@ public class PostHogReplayIntegration(
     ) {
         when {
             view.isComposeView() -> {
-                findMaskableComposeRects(view, maskableWidgets)
+                findMaskableComposeWidgets(view, maskableWidgets)
             }
 
             view.isNoCapture() -> {
@@ -603,9 +603,9 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun findMaskableComposeRects(
+    private fun findMaskableComposeWidgets(
         view: View,
-        rectsToMask: MutableList<Rect>,
+        maskableWidgets: MutableList<Rect>,
     ) {
         val semanticsOwner =
             (view as? RootForTest)?.semanticsOwner ?: run {
@@ -625,17 +625,17 @@ public class PostHogReplayIntegration(
 
             when {
                 isNoCapture -> {
-                    rectsToMask.add(node.boundsInWindow.toRect())
+                    maskableWidgets.add(node.boundsInWindow.toRect())
                 }
 
                 !hasMaskModifier -> {
                     when {
                         (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
-                            rectsToMask.add(node.boundsInWindow.toRect())
+                            maskableWidgets.add(node.boundsInWindow.toRect())
                         }
 
                         hasImage && config.sessionReplayConfig.maskAllImages -> {
-                            rectsToMask.add(node.boundsInWindow.toRect())
+                            maskableWidgets.add(node.boundsInWindow.toRect())
                         }
                     }
                 }
