@@ -4,10 +4,11 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,12 +45,12 @@ fun greeting(
 ) {
     var text by remember { mutableStateOf("Hello $name!") }
 
-    ClickableText(
+    Text(
         text = AnnotatedString(text),
-        modifier = modifier,
-        onClick = {
-            text = "Clicked!"
-        },
+        modifier =
+            modifier.clickable {
+                text = "Clicked!"
+            },
     )
 }
 

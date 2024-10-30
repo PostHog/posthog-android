@@ -45,6 +45,9 @@ import android.widget.RatingBar
 import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHog
@@ -54,6 +57,7 @@ import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
+import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
@@ -534,68 +538,131 @@ public class PostHogReplayIntegration(
         view: View,
         maskableWidgets: MutableList<Rect>,
     ) {
-        if (view is TextView) {
-            val viewText = view.text?.toString()
-            var maskIt = false
-            if (!viewText.isNullOrEmpty()) {
-                maskIt =
-                    view.shouldMaskTextView()
+        when {
+            view.isComposeView() -> {
+                findMaskableComposeWidgets(view, maskableWidgets)
             }
 
-            val hint = view.hint?.toString()
-            if (!maskIt && !hint.isNullOrEmpty()) {
-                maskIt =
-                    view.shouldMaskTextView()
-            }
-
-            if (maskIt) {
+            view.isNoCapture() -> {
                 val rect = view.globalVisibleRect()
                 maskableWidgets.add(rect)
-                return
             }
-        }
 
-        if (view is Spinner) {
-            if (view.shouldMaskSpinner()) {
-                val rect = view.globalVisibleRect()
-                maskableWidgets.add(rect)
-                return
-            }
-        }
-
-        if (view is ImageView) {
-            if (view.shouldMaskImage()) {
-                val rect = view.globalVisibleRect()
-                maskableWidgets.add(rect)
-                return
-            }
-        }
-
-        if (view is WebView) {
-            if (view.isAnyInputSensitive()) {
-                val rect = view.globalVisibleRect()
-                maskableWidgets.add(rect)
-                return
-            }
-        }
-
-        // if a view parent of any type is tagged as non masking, mask it
-        if (view.isNoCapture()) {
-            val rect = view.globalVisibleRect()
-            maskableWidgets.add(rect)
-            return
-        }
-
-        if (view is ViewGroup && view.childCount > 0) {
-            for (i in 0 until view.childCount) {
-                val viewChild = view.getChildAt(i) ?: continue
-
-                if (!viewChild.isVisible()) {
-                    continue
+            view is TextView -> {
+                val viewText = view.text?.toString()
+                var maskIt = false
+                if (!viewText.isNullOrEmpty()) {
+                    maskIt =
+                        view.shouldMaskTextView()
                 }
 
-                findMaskableWidgets(viewChild, maskableWidgets)
+                val hint = view.hint?.toString()
+                if (!maskIt && !hint.isNullOrEmpty()) {
+                    maskIt =
+                        view.shouldMaskTextView()
+                }
+
+                if (maskIt) {
+                    val rect = view.globalVisibleRect()
+                    maskableWidgets.add(rect)
+                }
             }
+
+            view is Spinner -> {
+                if (view.shouldMaskSpinner()) {
+                    val rect = view.globalVisibleRect()
+                    maskableWidgets.add(rect)
+                }
+            }
+
+            view is ImageView -> {
+                if (view.shouldMaskImage()) {
+                    val rect = view.globalVisibleRect()
+                    maskableWidgets.add(rect)
+                }
+            }
+
+            view is WebView -> {
+                if (view.isAnyInputSensitive()) {
+                    val rect = view.globalVisibleRect()
+                    maskableWidgets.add(rect)
+                }
+            }
+
+            view is ViewGroup && view.childCount > 0 -> {
+                for (i in 0 until view.childCount) {
+                    val viewChild = view.getChildAt(i) ?: continue
+
+                    if (!viewChild.isVisible()) {
+                        continue
+                    }
+
+                    findMaskableWidgets(viewChild, maskableWidgets)
+                }
+            }
+        }
+    }
+
+    private fun findMaskableComposeWidgets(
+        view: View,
+        maskableWidgets: MutableList<Rect>,
+    ) {
+        try {
+            val semanticsOwner =
+                (view as? RootForTest)?.semanticsOwner ?: run {
+                    config.logger.log("View is not a RootForTest: $view")
+                    return
+                }
+            val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
+
+            semanticsNodes.forEach { node ->
+                val hasText = node.config.contains(SemanticsProperties.Text)
+                val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
+                val hasPassword = node.config.contains(SemanticsProperties.Password)
+                val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
+
+                val hasMaskModifier = node.config.contains(PostHogReplayMask)
+                val isNoCapture = hasMaskModifier && node.config[PostHogReplayMask]
+
+                when {
+                    isNoCapture -> {
+                        maskableWidgets.add(node.boundsInWindow.toRect())
+                    }
+
+                    !hasMaskModifier -> {
+                        when {
+                            (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
+                                maskableWidgets.add(node.boundsInWindow.toRect())
+                            }
+
+                            hasImage && config.sessionReplayConfig.maskAllImages -> {
+                                maskableWidgets.add(node.boundsInWindow.toRect())
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            // swallow possible errors due to compose versioning, etc
+            config.logger.log("Session Replay findMaskableComposeWidgets failed: $e")
+        }
+    }
+
+    private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
+        return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+    }
+
+    private fun View.isComposeView(): Boolean {
+        return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)
+    }
+
+    private val isComposeAvailable by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        try {
+            Class.forName(ANDROID_COMPOSE_VIEW_CLASS_NAME)
+            true
+        } catch (e: Throwable) {
+            config.logger.log("Compose not available: $e.")
+            false
         }
     }
 
@@ -1199,7 +1266,9 @@ public class PostHogReplayIntegration(
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
     }
 
-    private companion object {
-        private const val PH_NO_CAPTURE_LABEL = "ph-no-capture"
+    internal companion object {
+        const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
+        const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
+        const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
     }
 }

@@ -1,5 +1,7 @@
 ## Next
 
+- recording: add replay masking to jetpack compose views ([#198](https://github.com/PostHog/posthog-android/pull/198))
+
 ## 3.8.3 - 2024-10-25
 
 - recording: fix crash when calling view.isVisible ([#201](https://github.com/PostHog/posthog-android/pull/201))

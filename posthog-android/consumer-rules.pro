@@ -77,4 +77,8 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# used in reflection to check if compose is available at runtime
+-keepnames class androidx.compose.ui.platform.AndroidComposeView
+
 ##---------------End: proguard configuration for okhttp3  ----------

@@ -90,6 +90,9 @@ dependencies {
     implementation("androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     implementation("com.squareup.curtains:curtains:${PosthogBuildConfig.Dependencies.CURTAINS}")
 
+    // compile only
+    compileOnly("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}")
+
     // compatibility
     signature("org.codehaus.mojo.signature:java18:${PosthogBuildConfig.Plugins.SIGNATURE_JAVA18}@signature")
     signature(
