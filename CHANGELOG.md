@@ -1,5 +1,7 @@
 ## Next
 
+## 3.9.0 - 2024-10-30
+
 - recording: add replay masking to jetpack compose views ([#198](https://github.com/PostHog/posthog-android/pull/198))
 
 ## 3.8.3 - 2024-10-25
