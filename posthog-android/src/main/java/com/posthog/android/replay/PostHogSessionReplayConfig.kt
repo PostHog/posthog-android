@@ -9,14 +9,12 @@ public class PostHogSessionReplayConfig
         /**
          * Enable masking of all text input fields
          * Defaults to true
-         * This isn't supported if using Jetpack Compose views, use with caution
          */
         @PostHogExperimental
         public var maskAllTextInputs: Boolean = true,
         /**
          * Enable masking of all images to a placeholder
          * Defaults to true
-         * This isn't supported if using Jetpack Compose views, use with caution
          */
         @PostHogExperimental
         public var maskAllImages: Boolean = true,
