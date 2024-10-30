@@ -607,39 +607,44 @@ public class PostHogReplayIntegration(
         view: View,
         maskableWidgets: MutableList<Rect>,
     ) {
-        val semanticsOwner =
-            (view as? RootForTest)?.semanticsOwner ?: run {
-                config.logger.log("View is not a RootForTest: $view")
-                return
-            }
-        val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
-
-        semanticsNodes.forEach { node ->
-            val hasText = node.config.contains(SemanticsProperties.Text)
-            val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
-            val hasPassword = node.config.contains(SemanticsProperties.Password)
-            val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
-
-            val hasMaskModifier = node.config.contains(PostHogReplayMask)
-            val isNoCapture = hasMaskModifier && node.config[PostHogReplayMask]
-
-            when {
-                isNoCapture -> {
-                    maskableWidgets.add(node.boundsInWindow.toRect())
+        try {
+            val semanticsOwner =
+                (view as? RootForTest)?.semanticsOwner ?: run {
+                    config.logger.log("View is not a RootForTest: $view")
+                    return
                 }
+            val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
 
-                !hasMaskModifier -> {
-                    when {
-                        (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
-                            maskableWidgets.add(node.boundsInWindow.toRect())
-                        }
+            semanticsNodes.forEach { node ->
+                val hasText = node.config.contains(SemanticsProperties.Text)
+                val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
+                val hasPassword = node.config.contains(SemanticsProperties.Password)
+                val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
-                        hasImage && config.sessionReplayConfig.maskAllImages -> {
-                            maskableWidgets.add(node.boundsInWindow.toRect())
+                val hasMaskModifier = node.config.contains(PostHogReplayMask)
+                val isNoCapture = hasMaskModifier && node.config[PostHogReplayMask]
+
+                when {
+                    isNoCapture -> {
+                        maskableWidgets.add(node.boundsInWindow.toRect())
+                    }
+
+                    !hasMaskModifier -> {
+                        when {
+                            (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
+                                maskableWidgets.add(node.boundsInWindow.toRect())
+                            }
+
+                            hasImage && config.sessionReplayConfig.maskAllImages -> {
+                                maskableWidgets.add(node.boundsInWindow.toRect())
+                            }
                         }
                     }
                 }
             }
+        } catch (e: Throwable) {
+            // swallow possible errors due to compose versioning, etc
+            config.logger.log("Session Replay findMaskableComposeWidgets failed: $e")
         }
     }
 
