@@ -37,12 +37,12 @@
     <issue
         id="GradleDependency"
         message="A newer version of androidx.compose.ui:ui than 1.0.0 is available: 1.7.4"
-        errorLine1="    implementation(&quot;androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}&quot;)"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="    compileOnly(&quot;androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}&quot;)"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="91"
-            column="20"/>
+            line="94"
+            column="17"/>
     </issue>
 
 </issues>
