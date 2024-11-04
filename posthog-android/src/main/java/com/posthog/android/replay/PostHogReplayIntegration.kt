@@ -123,11 +123,6 @@ public class PostHogReplayIntegration(
     private val events = mutableListOf<RREvent>()
     private var minSessionThresholdCrossed = false
 
-    @Suppress("UNCHECKED_CAST")
-    private val replayPreferenceMap by lazy {
-        config.cachePreferences?.getValue(PostHogPreferences.SESSION_REPLAY) as? Map<String, Any>
-    }
-
     private fun addView(
         view: View,
         added: Boolean = true,
@@ -476,16 +471,8 @@ public class PostHogReplayIntegration(
     private fun sessionLongerThanMinDuration(): Boolean {
         //Check value only if threshold not crossed.
         if (!minSessionThresholdCrossed) {
-            val serverMinDuration = replayPreferenceMap?.let { map ->
-                (map["minimumDurationMilliseconds"] as Number).toLong()
-            } ?: 0L
-
             //Give server min duration is set, give it a higher priority than locally passed config
-            val finalMinimumDuration = if (serverMinDuration > 0) {
-                serverMinDuration
-            } else {
-                config.sessionReplayConfig.minSessionDurationMs
-            }
+            val finalMinimumDuration = config.minReplaySessionDurationMs ?: config.sessionReplayConfig.minSessionDurationMs
 
             minSessionThresholdCrossed =
                 config.dateProvider.currentTimeMillis() - sessionStartTime >= finalMinimumDuration

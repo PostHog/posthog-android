@@ -151,6 +151,9 @@ public open class PostHogConfig(
     public var snapshotEndpoint: String = "/s/"
 
     @PostHogInternal
+    public var minReplaySessionDurationMs: Long? = null
+
+    @PostHogInternal
     public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
 
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()

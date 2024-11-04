@@ -127,6 +127,9 @@ internal class PostHogFeatureFlags(
                                     config.snapshotEndpoint = it["endpoint"] as? String
                                         ?: config.snapshotEndpoint
 
+                                    config.minReplaySessionDurationMs = it["minimumDurationMilliseconds"] as? Long
+                                        ?: config.minReplaySessionDurationMs
+
                                     sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
                                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
@@ -178,6 +181,9 @@ internal class PostHogFeatureFlags(
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
+
+                    config.minReplaySessionDurationMs = sessionRecording["minimumDurationMilliseconds"] as? Long
+                        ?: config.minReplaySessionDurationMs
                 }
             }
         }
