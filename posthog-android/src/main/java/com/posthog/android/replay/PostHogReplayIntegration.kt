@@ -119,8 +119,9 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = PostHog.isSessionReplayActive()
 
-    private var sessionStartTime = 0L
+    private val sessionStartTime by lazy { config.dateProvider.currentTimeMillis() }
     private val events = mutableListOf<RREvent>()
+    private val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
     private var minSessionThresholdCrossed = false
 
     private fun addView(
@@ -256,7 +257,6 @@ public class PostHogReplayIntegration(
         motionEvent: MotionEvent,
         type: RRMouseInteraction,
     ) {
-        val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
         for (index in 0 until motionEvent.pointerCount) {
             // if the id is 0, BE transformer will set it to the virtual bodyId
             val id = motionEvent.getPointerId(index)
@@ -274,12 +274,14 @@ public class PostHogReplayIntegration(
             mouseInteractions.add(mouseInteraction)
         }
 
-        if (mouseInteractions.isNotEmpty()) {
+        if (mouseInteractions.isNotEmpty() && sessionLongerThanMinDuration()) {
             // TODO: we can probably batch those
             // if we batch them, we need to be aware that the order of the events matters
             // also because if we send a mouse interaction later, it might be attached to the wrong
             // screen
+            config.logger.log("Session replay mouse events captured: " + mouseInteractions.size)
             mouseInteractions.capture()
+            mouseInteractions.clear()
         }
     }
 
@@ -317,8 +319,6 @@ public class PostHogReplayIntegration(
 
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
-
-        sessionStartTime = config.dateProvider.currentTimeMillis()
 
         Curtains.rootViews.forEach { view ->
             addView(view)
@@ -473,6 +473,8 @@ public class PostHogReplayIntegration(
         if (!minSessionThresholdCrossed) {
             //Give server min duration is set, give it a higher priority than locally passed config
             val finalMinimumDuration = config.minReplaySessionDurationMs ?: config.sessionReplayConfig.minSessionDurationMs
+
+            config.logger.log("Minimum replay session duration set to: $finalMinimumDuration")
 
             minSessionThresholdCrossed =
                 config.dateProvider.currentTimeMillis() - sessionStartTime >= finalMinimumDuration
