@@ -158,11 +158,7 @@ public class PostHogReplayIntegration(
 
                                         executor.submit {
                                             try {
-                                                generateSnapshot(
-                                                    WeakReference(decorView),
-                                                    WeakReference(window),
-                                                    timestamp
-                                                )
+                                                generateSnapshot(WeakReference(decorView), WeakReference(window), timestamp)
                                             } catch (e: Throwable) {
                                                 config.logger.log("Session Replay generateSnapshot failed: $e.")
                                             }
@@ -243,19 +239,10 @@ public class PostHogReplayIntegration(
                         }
                         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
                             MotionEvent.ACTION_DOWN -> {
-                                generateMouseInteractions(
-                                    timestamp,
-                                    motionEvent,
-                                    RRMouseInteraction.TouchStart
-                                )
+                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
                             }
-
                             MotionEvent.ACTION_UP -> {
-                                generateMouseInteractions(
-                                    timestamp,
-                                    motionEvent,
-                                    RRMouseInteraction.TouchEnd
-                                )
+                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
                             }
                         }
                     } catch (e: Throwable) {
@@ -288,8 +275,7 @@ public class PostHogReplayIntegration(
                     x = absX,
                     y = absY,
                 )
-            val mouseInteraction =
-                RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
+            val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
             mouseInteractions.add(mouseInteraction)
         }
 
@@ -352,7 +338,6 @@ public class PostHogReplayIntegration(
 
     override fun uninstall() {
         try {
-
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
             decorViews.entries.forEach {
@@ -790,17 +775,14 @@ public class PostHogReplayIntegration(
                     style.verticalAlign = "center"
                     style.horizontalAlign = "center"
                 }
-
                 View.TEXT_ALIGNMENT_TEXT_END, View.TEXT_ALIGNMENT_VIEW_END -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "right"
                 }
-
                 View.TEXT_ALIGNMENT_TEXT_START, View.TEXT_ALIGNMENT_VIEW_START -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "left"
                 }
-
                 View.TEXT_ALIGNMENT_GRAVITY -> {
                     val horizontalAlignment =
                         when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
@@ -820,7 +802,6 @@ public class PostHogReplayIntegration(
                         }
                     style.verticalAlign = verticalAlignment
                 }
-
                 else -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "left"
