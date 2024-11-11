@@ -658,7 +658,6 @@ public class PostHogReplayIntegration(
         try {
             // await for 1s max
             latch.await(1000, TimeUnit.MILLISECONDS)
-            config.logger.log("test")
         } catch (e: Throwable) {
             config.logger.log("Session Replay findMaskableComposeWidgets failed: $e")
         }
