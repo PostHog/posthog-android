@@ -1,6 +1,6 @@
 ## Next
 
-- recording: fix observation on multiple threads in layout/draw is not supported for compose ([#198](https://github.com/PostHog/posthog-android/pull/198))
+- recording: fix observation on multiple threads in layout/draw is not supported for compose ([#204](https://github.com/PostHog/posthog-android/pull/204))
 
 ## 3.9.0 - 2024-10-30
 
