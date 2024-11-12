@@ -7,7 +7,7 @@ public class PostHogSessionReplayConfig
     @JvmOverloads
     constructor(
         /**
-         * Enable masking of all text input fields
+         * Enable masking of all text and text input fields
          * Defaults to true
          */
         @PostHogExperimental
