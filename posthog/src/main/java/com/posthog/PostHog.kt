@@ -556,6 +556,8 @@ public class PostHog private constructor(
             config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
+        var shouldReloadFlags = false
+
         if (previousDistinctId != distinctId && !isIdentified) {
             // this has to be set before capture since this flag will be read during the event
             // capture
@@ -578,13 +580,23 @@ public class PostHog private constructor(
                 config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
             }
             this.distinctId = distinctId
+            shouldReloadFlags = true
+        } else if (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true) {
+            capture(
+                "\$set",
+                distinctId = distinctId,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+            )
 
-            // only because of testing in isolation, this flag is always enabled
-            if (reloadFeatureFlags) {
-                reloadFeatureFlags()
-            }
+            shouldReloadFlags = true
         } else {
             config?.logger?.log("already identified with id: $distinctId.")
+        }
+
+        // only because of testing in isolation, this flag(reloadFeatureFlags) is always enabled
+        if (shouldReloadFlags && reloadFeatureFlags) {
+            reloadFeatureFlags()
         }
     }
 
