@@ -596,6 +596,9 @@ internal class PostHogTest {
             userPropertiesSetOnce = userPropsOnce,
         )
 
+        val userProps = mapOf("user1" to "theResult")
+        val userPropsOnce = mapOf("logged" to false)
+
         sut.identify(
             DISTINCT_ID,
             userProperties = userProps,
@@ -612,6 +615,8 @@ internal class PostHogTest {
         val theEvent = batch.batch.last()
 
         assertEquals("\$set", theEvent.event)
+        assertEquals(userProps, theEvent.properties!!["\$set"])
+        assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
 
         sut.close()
     }
