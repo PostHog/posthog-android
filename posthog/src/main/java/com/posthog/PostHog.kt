@@ -556,7 +556,8 @@ public class PostHog private constructor(
             config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
         }
 
-        if (previousDistinctId != distinctId && !isIdentified) {
+        val hasDifferentDistinctId = previousDistinctId != distinctId
+        if (hasDifferentDistinctId && !isIdentified) {
             // this has to be set before capture since this flag will be read during the event
             // capture
             synchronized(identifiedLock) {
@@ -583,6 +584,16 @@ public class PostHog private constructor(
             if (reloadFeatureFlags) {
                 reloadFeatureFlags()
             }
+            // we need to make sure the user props update is for the same user
+            // otherwise they have to reset and identify again
+        } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
+            capture(
+                "\$set",
+                distinctId = distinctId,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+            )
+            // Note we don't reload flags on property changes as these get processed async
         } else {
             config?.logger?.log("already identified with id: $distinctId.")
         }
