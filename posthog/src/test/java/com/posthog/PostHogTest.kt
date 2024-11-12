@@ -622,6 +622,45 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `does not capture a set event if different user`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        val userProps = mapOf("user1" to "theResult")
+        val userPropsOnce = mapOf("logged" to false)
+
+        sut.identify(
+            "different user",
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.last()
+
+        assertEquals(1, batch.batch.size)
+        assertEquals("\$identify", theEvent.event)
+
+        sut.close()
+    }
+
+    @Test
     fun `captures an identify event post reset`() {
         val http = mockHttp()
         val url = http.url("/")
