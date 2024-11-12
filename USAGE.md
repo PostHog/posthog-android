@@ -197,79 +197,12 @@ PostHog.close()
 
 ## Android Session Recording
 
+Read the Mobile session replay [documentation](https://posthog.com/docs/session-replay/mobile).
+
 Enable `Record user sessions` on the [PostHog project settings](https://us.posthog.com/settings/project-replay#replay).
 
-Requires the Android SDK version >= [3.4.0](https://github.com/PostHog/posthog-android/releases/).
+[Install the SDK](https://posthog.com/docs/session-replay/installation?tab=Android) to capture Session recording.
 
-Enable the SDK to capture Session Recording.
+Install and learn more about [Network performance recording](https://posthog.com/docs/session-replay/network-recording?tab=Android).
 
-```kotlin
-val config = PostHogAndroidConfig(apiKey).apply {
-    // sessionReplay is disabled by default
-    sessionReplay = true
-    // sessionReplayConfig is optional, they are enabled by default
-    // this isn't supported if using Jetpack Compose views, use with caution
-    sessionReplayConfig.maskAllTextInputs = true
-    // this isn't supported if using Jetpack Compose views, use with caution
-    sessionReplayConfig.maskAllImages = true
-    sessionReplayConfig.captureLogcat = true
-    // screenshot is disabled by default
-    // The screenshot may contain sensitive information, use with caution
-    sessionReplayConfig.screenshot = false
-    // debouncerDelayMs is 500ms by default
-    sessionReplayConfig.debouncerDelayMs = 1000
-}
-```
-
-If you don't want to mask everything, you can disable the mask config above and mask specific views using the `ph-no-capture` value in the [android:tag](https://developer.android.com/reference/android/view/View#attr_android:tag) or [android:contentDescription](https://developer.android.com/reference/android/view/View#attr_android:contentDescription)..
-
-```xml
-<ImageView
-    android:id="@+id/imvAndroid"
-    android:layout_width="230dp"
-    android:layout_height="391dp"
-    android:src="@drawable/android_logo"
-    android:tag="ph-no-capture"
-/>
-```
-
-Currently masking and redacting isn't supported if using Jetpack Compose views, We're investigating this issue.
-
-Add the `PostHogOkHttpInterceptor` to your `OkHttpClient` to capture network requests.
-
-```kotlin
-import com.posthog.PostHogOkHttpInterceptor
-import okhttp3.OkHttpClient
-
-private val client = OkHttpClient.Builder()
-    .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
-    .build()
-```
-
-If there are missing images (Drawables) in the session recording, most likely is because the Drawable could not be transformed to a Bitmap. You can transform the Drawable to a Bitmap programmatically using the `drawableConverter`.
-
-```kotlin
-import com.posthog.android.replay.PostHogDrawableConverter
-
-val config = PostHogAndroidConfig(apiKey).apply {
-  sessionReplayConfig.drawableConverter = PostHogDrawableConverter { drawable ->
-    // your custom Drawables
-    if (drawable is IconicsDrawable) {
-      drawable.toBitmap()
-    } else {
-      null
-    }
-  }
-}
-```
-
-### Limitations
-
-- Requires Android API >= 26, otherwise it's a NoOp.
-- [Jetpack Compose](https://developer.android.com/jetpack/compose) is only supported if the `screenshot` option is enabled.
-  - Masking and Redaction aren't supported yet, We're investigating this issue. 
-- It's a representation of the user's screen, not a video recording.
-  - Custom views are not fully supported.
-  - If the option `screenshot` is enabled, the SDK will take a screenshot of the screen instead of making a representation of the user's screen.
-- WebView is not supported, a placeholder will be shown.
-- React Native and Flutter for Android aren't supported.
+Learn more about [Privacy controls](https://posthog.com/docs/session-replay/privacy?tab=Android).
