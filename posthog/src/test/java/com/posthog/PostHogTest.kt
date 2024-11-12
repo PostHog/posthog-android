@@ -574,13 +574,44 @@ internal class PostHogTest {
 
         sut.identify(
             "anotherDistinctId",
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures a set event if identified`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        sut.identify(
+            DISTINCT_ID,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
 
-        assertEquals(1, http.requestCount)
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.last()
+
+        assertEquals("\$set", theEvent.event)
 
         sut.close()
     }
