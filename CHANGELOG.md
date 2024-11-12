@@ -1,6 +1,6 @@
 ## Next
 
-- fix: allow changing person properties after identify ([#204](https://github.com/PostHog/posthog-android/pull/204)) 
+- fix: allow changing person properties after identify ([#205](https://github.com/PostHog/posthog-android/pull/205)) 
 
 ## 3.9.1 - 2024-11-11
 
