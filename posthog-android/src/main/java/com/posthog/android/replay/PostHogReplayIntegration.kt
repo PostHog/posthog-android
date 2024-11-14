@@ -58,7 +58,6 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
-import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
@@ -154,7 +153,11 @@ public class PostHogReplayIntegration(
 
                                         executor.submit {
                                             try {
-                                                generateSnapshot(WeakReference(decorView), WeakReference(window), timestamp)
+                                                generateSnapshot(
+                                                    WeakReference(decorView),
+                                                    WeakReference(window),
+                                                    timestamp
+                                                )
                                             } catch (e: Throwable) {
                                                 config.logger.log("Session Replay generateSnapshot failed: $e.")
                                             }
@@ -235,10 +238,19 @@ public class PostHogReplayIntegration(
                         }
                         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
                             MotionEvent.ACTION_DOWN -> {
-                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+                                generateMouseInteractions(
+                                    timestamp,
+                                    motionEvent,
+                                    RRMouseInteraction.TouchStart
+                                )
                             }
+
                             MotionEvent.ACTION_UP -> {
-                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                                generateMouseInteractions(
+                                    timestamp,
+                                    motionEvent,
+                                    RRMouseInteraction.TouchEnd
+                                )
                             }
                         }
                     } catch (e: Throwable) {
@@ -270,10 +282,15 @@ public class PostHogReplayIntegration(
                     x = absX,
                     y = absY,
                 )
-            val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
+            val mouseInteraction =
+                RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
             mouseInteractions.add(mouseInteraction)
         }
 
+        tryFlushMouseInteractions()
+    }
+
+    private fun tryFlushMouseInteractions() {
         if (mouseInteractions.isNotEmpty() && sessionLongerThanMinDuration()) {
             // TODO: we can probably batch those
             // if we batch them, we need to be aware that the order of the events matters
@@ -332,6 +349,8 @@ public class PostHogReplayIntegration(
     }
 
     override fun uninstall() {
+        tryFlushEvents()
+        tryFlushMouseInteractions()
         try {
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
@@ -459,20 +478,25 @@ public class PostHogReplayIntegration(
             events.add(it)
         }
 
+        tryFlushEvents()
+
+        status.lastSnapshot = wireframe
+    }
+
+    private fun tryFlushEvents() {
         if (events.isNotEmpty() && sessionLongerThanMinDuration()) {
             config.logger.log("Session replay events captured: " + events.size)
             events.capture()
             events.clear()
         }
-
-        status.lastSnapshot = wireframe
     }
 
     private fun sessionLongerThanMinDuration(): Boolean {
         //Check value only if threshold not crossed.
         if (!minSessionThresholdCrossed) {
             //Give server min duration is set, give it a higher priority than locally passed config
-            val finalMinimumDuration = config.minReplaySessionDurationMs ?: config.sessionReplayConfig.minSessionDurationMs
+            val finalMinimumDuration =
+                config.minReplaySessionDurationMs ?: config.sessionReplayConfig.minSessionDurationMs
 
             config.logger.log("Minimum replay session duration set to: $finalMinimumDuration")
 
@@ -764,14 +788,17 @@ public class PostHogReplayIntegration(
                     style.verticalAlign = "center"
                     style.horizontalAlign = "center"
                 }
+
                 View.TEXT_ALIGNMENT_TEXT_END, View.TEXT_ALIGNMENT_VIEW_END -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "right"
                 }
+
                 View.TEXT_ALIGNMENT_TEXT_START, View.TEXT_ALIGNMENT_VIEW_START -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "left"
                 }
+
                 View.TEXT_ALIGNMENT_GRAVITY -> {
                     val horizontalAlignment =
                         when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
@@ -791,6 +818,7 @@ public class PostHogReplayIntegration(
                         }
                     style.verticalAlign = verticalAlignment
                 }
+
                 else -> {
                     style.verticalAlign = "center"
                     style.horizontalAlign = "left"
