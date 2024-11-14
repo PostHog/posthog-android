@@ -58,6 +58,7 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
@@ -82,6 +83,7 @@ import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
+import java.util.UUID
 import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -118,10 +120,14 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = PostHog.isSessionReplayActive()
 
-    private val sessionStartTime by lazy { config.dateProvider.currentTimeMillis() }
-    private val events = mutableListOf<RREvent>()
-    private val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
-    private var minSessionThresholdCrossed = false
+    private val sessionStartTimes = mutableMapOf<UUID?, Long?>()
+    private val events = mutableMapOf<UUID?, MutableList<RREvent>>()
+    private val mouseInteractions =
+        mutableMapOf<UUID?, MutableList<RRIncrementalMouseInteractionEvent>>()
+    private val minSessionDuration by lazy {
+        config.minReplaySessionDurationMs
+            ?: config.sessionReplayConfig.minSessionDurationMs ?: 0
+    }
 
     private fun addView(
         view: View,
@@ -269,6 +275,7 @@ public class PostHogReplayIntegration(
         motionEvent: MotionEvent,
         type: RRMouseInteraction,
     ) {
+        val currentSessionId = PostHogSessionManager.getActiveSessionId()
         for (index in 0 until motionEvent.pointerCount) {
             // if the id is 0, BE transformer will set it to the virtual bodyId
             val id = motionEvent.getPointerId(index)
@@ -284,21 +291,43 @@ public class PostHogReplayIntegration(
                 )
             val mouseInteraction =
                 RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
-            mouseInteractions.add(mouseInteraction)
+            handleSessionStarts(currentSessionId)
+            insertMouseInteractions(currentSessionId, mouseInteraction)
         }
 
         tryFlushMouseInteractions()
     }
 
+    private fun handleSessionStarts(currentSessionId: UUID?) {
+        config.logger.log("sessionstarts: $currentSessionId")
+        if (sessionStartTimes.containsKey(currentSessionId)) return
+
+        config.logger.log("Session added: $currentSessionId")
+        sessionStartTimes[currentSessionId] =
+            PostHogSessionManager.getActiveSessionStartTime()
+    }
+
+    private fun insertMouseInteractions(
+        currentSessionId: UUID?,
+        mouseInteraction: RRIncrementalMouseInteractionEvent
+    ) {
+        config.logger.log("session: insertMouseInteraction")
+        val currentSessionMouseInteractions =
+            mouseInteractions[currentSessionId] ?: mutableListOf()
+        currentSessionMouseInteractions.add(mouseInteraction)
+        mouseInteractions[currentSessionId] = currentSessionMouseInteractions
+    }
+
     private fun tryFlushMouseInteractions() {
-        if (mouseInteractions.isNotEmpty() && sessionLongerThanMinDuration()) {
-            // TODO: we can probably batch those
-            // if we batch them, we need to be aware that the order of the events matters
-            // also because if we send a mouse interaction later, it might be attached to the wrong
-            // screen
-            config.logger.log("Session replay mouse events captured: " + mouseInteractions.size)
-            mouseInteractions.capture()
-            mouseInteractions.clear()
+        mouseInteractions.forEach {
+            config.logger.log("session: tryFlushMouseInteractions:" + it.key + ": " + it.value)
+            val sessionId = it.key
+            val sessionIdStartTime = sessionStartTimes[sessionId] ?: 0
+            if (System.currentTimeMillis() - sessionIdStartTime >= minSessionDuration) {
+                config.logger.log("Session replay mouse events captured: " + it.value.size)
+                it.value.capture()
+                mouseInteractions.remove(sessionId)
+            }
         }
     }
 
@@ -306,6 +335,7 @@ public class PostHogReplayIntegration(
         view: View,
         status: ViewTreeSnapshotStatus,
     ) {
+        config.logger.log("cleanSessionState")
         if (view.isAliveAndAttachedToWindow()) {
             mainHandler.handler.post {
                 // 2nd check to avoid:
@@ -327,6 +357,9 @@ public class PostHogReplayIntegration(
         }
 
         decorViews.remove(view)
+
+        tryFlushEvents()
+        tryFlushMouseInteractions()
     }
 
     override fun install() {
@@ -349,8 +382,6 @@ public class PostHogReplayIntegration(
     }
 
     override fun uninstall() {
-        tryFlushEvents()
-        tryFlushMouseInteractions()
         try {
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
@@ -400,8 +431,12 @@ public class PostHogReplayIntegration(
             }
         }
 
+        val currentSessionId = PostHogSessionManager.getActiveSessionId()
+        handleSessionStarts(currentSessionId)
+
         if (!status.sentMetaEvent) {
-            val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
+            val title =
+                view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
             // TODO: cache and compare, if size changes, we send a ViewportResize event
 
             val screenSizeInfo = view.context.screenSize() ?: return
@@ -413,7 +448,7 @@ public class PostHogReplayIntegration(
                     height = screenSizeInfo.height,
                     timestamp = timestamp,
                 )
-            events.add(metaEvent)
+            insertEvent(currentSessionId, metaEvent)
             status.sentMetaEvent = true
         }
 
@@ -425,7 +460,7 @@ public class PostHogReplayIntegration(
                     initialOffsetLeft = 0,
                     timestamp = timestamp,
                 )
-            events.add(event)
+            insertEvent(currentSessionId, event)
             status.sentFullSnapshot = true
         } else {
             val lastSnapshot = status.lastSnapshot
@@ -467,7 +502,7 @@ public class PostHogReplayIntegration(
                         mutationData = incrementalMutationData,
                         timestamp = timestamp,
                     )
-                events.add(incrementalSnapshotEvent)
+                insertEvent(currentSessionId, incrementalSnapshotEvent)
             }
         }
 
@@ -475,7 +510,7 @@ public class PostHogReplayIntegration(
         val (visible, event) = detectKeyboardVisibility(view, status.keyboardVisible)
         status.keyboardVisible = visible
         event?.let {
-            events.add(it)
+            insertEvent(currentSessionId, it)
         }
 
         tryFlushEvents()
@@ -483,27 +518,28 @@ public class PostHogReplayIntegration(
         status.lastSnapshot = wireframe
     }
 
-    private fun tryFlushEvents() {
-        if (events.isNotEmpty() && sessionLongerThanMinDuration()) {
-            config.logger.log("Session replay events captured: " + events.size)
-            events.capture()
-            events.clear()
-        }
+    private fun insertEvent(
+        currentSessionId: UUID?,
+        event: RREvent
+    ) {
+        config.logger.log("session: insertEvent: $currentSessionId")
+        val currentSessionEvents =
+            events[currentSessionId] ?: mutableListOf()
+        currentSessionEvents.add(event)
+        events[currentSessionId] = currentSessionEvents
     }
 
-    private fun sessionLongerThanMinDuration(): Boolean {
-        //Check value only if threshold not crossed.
-        if (!minSessionThresholdCrossed) {
-            //Give server min duration is set, give it a higher priority than locally passed config
-            val finalMinimumDuration =
-                (config.minReplaySessionDurationMs ?: config.sessionReplayConfig.minSessionDurationMs) ?: 0
-
-            config.logger.log("Minimum replay session duration set to: $finalMinimumDuration")
-
-            minSessionThresholdCrossed =
-                config.dateProvider.currentTimeMillis() - sessionStartTime >= finalMinimumDuration
+    private fun tryFlushEvents() {
+        events.forEach {
+            config.logger.log("session: tryFlushEvents:" + it.key + ": " + it.value)
+            val sessionId = it.key
+            val sessionIdStartTime = sessionStartTimes[sessionId] ?: 0
+            if (System.currentTimeMillis() - sessionIdStartTime >= minSessionDuration) {
+                config.logger.log("Session replay mouse events captured: " + it.value.size)
+                it.value.capture()
+                events.remove(sessionId)
+            }
         }
-        return minSessionThresholdCrossed
     }
 
     private fun View.isVisible(): Boolean {
@@ -842,7 +878,8 @@ public class PostHogReplayIntegration(
             // Do not set padding if the text is centered, otherwise the padding will be off
             if (style.verticalAlign != "center") {
                 style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
-                style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
+                style.paddingBottom =
+                    view.totalPaddingBottom.densityValue(displayMetrics.density)
             }
             if (style.horizontalAlign != "center") {
                 style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
@@ -1206,7 +1243,8 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isNoCapture(maskInput: Boolean = false): Boolean {
-        return maskInput || (tag as? String)?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true ||
+        return maskInput || (tag as? String)?.lowercase()
+            ?.contains(PH_NO_CAPTURE_LABEL) == true ||
             contentDescription?.toString()?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true
     }
 

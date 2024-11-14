@@ -15,11 +15,13 @@ public object PostHogSessionManager {
     private val sessionIdNone = UUID(0, 0)
 
     private var sessionId = sessionIdNone
+    private var sessionStartTime: Long = 0
 
     public fun startSession() {
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
                 sessionId = TimeBasedEpochGenerator.generate()
+                sessionStartTime = System.currentTimeMillis()
             }
         }
     }
@@ -27,6 +29,7 @@ public object PostHogSessionManager {
     public fun endSession() {
         synchronized(sessionLock) {
             sessionId = sessionIdNone
+            sessionStartTime = 0
         }
     }
 
@@ -38,9 +41,18 @@ public object PostHogSessionManager {
         return tempSessionId
     }
 
+    public fun getActiveSessionStartTime(): Long? {
+        var tempSessionStartTime: Long?
+        synchronized(sessionLock) {
+            tempSessionStartTime = if (sessionStartTime != 0L) sessionStartTime else null
+        }
+        return tempSessionStartTime
+    }
+
     public fun setSessionId(sessionId: UUID) {
         synchronized(sessionLock) {
             this.sessionId = sessionId
+            this.sessionStartTime = System.currentTimeMillis()
         }
     }
 
