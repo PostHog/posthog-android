@@ -496,7 +496,7 @@ public class PostHogReplayIntegration(
         if (!minSessionThresholdCrossed) {
             //Give server min duration is set, give it a higher priority than locally passed config
             val finalMinimumDuration =
-                config.minReplaySessionDurationMs ?: config.sessionReplayConfig.minSessionDurationMs
+                (config.minReplaySessionDurationMs ?: config.sessionReplayConfig.minSessionDurationMs) ?: 0
 
             config.logger.log("Minimum replay session duration set to: $finalMinimumDuration")
 

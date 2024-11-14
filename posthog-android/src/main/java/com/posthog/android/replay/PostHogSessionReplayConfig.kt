@@ -51,8 +51,8 @@ public class PostHogSessionReplayConfig
         /**
          * Define the minimum duration for sessions to be recorded.
          * This is useful if you want to exclude sessions that are too short to be useful.
-         * Defaults to 0ms
+         * Defaults to null
          */
         @PostHogExperimental
-        public var minSessionDurationMs: Long = 0,
+        public var minSessionDurationMs: Long? = null,
     )
