@@ -1,5 +1,7 @@
 ## Next
 
+- no user facing changes
+
 ## 3.9.2 - 2024-11-12
 
 - fix: allow changing person properties after identify ([#205](https://github.com/PostHog/posthog-android/pull/205)) 

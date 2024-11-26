@@ -121,6 +121,10 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = PostHog.isSessionReplayActive()
 
+    // flutter captures snapshots, so we don't need to capture them here
+    private val isNativeSdk: Boolean
+        get() = (config.sdkName != "posthog-flutter")
+
     private fun addView(
         view: View,
         added: Boolean = true,
@@ -144,7 +148,7 @@ public class PostHogReplayIntegration(
                                         config.dateProvider,
                                         config.sessionReplayConfig.debouncerDelayMs,
                                     ) {
-                                        if (!isSessionReplayEnabled) {
+                                        if (!isSessionReplayEnabled || !isNativeSdk) {
                                             return@onNextDraw
                                         }
                                         val timestamp = config.dateProvider.currentTimeMillis()
