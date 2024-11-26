@@ -9,16 +9,19 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.PackageManager.GET_META_DATA
+import android.graphics.Bitmap
 import android.graphics.Point
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.telephony.TelephonyManager
+import android.util.Base64
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import com.posthog.PostHogInternal
 import com.posthog.android.PostHogAndroidConfig
+import java.io.ByteArrayOutputStream
 
 @Suppress("DEPRECATION")
 internal fun getPackageInfo(
@@ -205,3 +208,52 @@ public fun getApplicationInfo(context: Context): ApplicationInfo =
             .packageManager
             .getApplicationInfo(context.packageName, GET_META_DATA)
     }
+
+private fun Bitmap.isValid(): Boolean {
+    return !isRecycled &&
+        width > 0 &&
+        height > 0
+}
+
+@PostHogInternal
+@Suppress("DEPRECATION")
+public fun Bitmap.base64(
+    format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+    quality: Int = 30,
+): String? {
+    if (!isValid()) {
+        return null
+    }
+
+    val lossyFormat =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            Bitmap.CompressFormat.WEBP
+        }
+
+    val losslessFormat =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSLESS
+        } else {
+            Bitmap.CompressFormat.WEBP
+        }
+
+    val htmlFormat =
+        when (format) {
+            Bitmap.CompressFormat.JPEG -> "jpeg"
+            Bitmap.CompressFormat.PNG -> "png"
+            Bitmap.CompressFormat.WEBP -> "webp"
+            lossyFormat -> "webp"
+            losslessFormat -> "webp"
+            else -> "jpeg"
+        }
+
+    ByteArrayOutputStream(allocationByteCount).use {
+        // we can make format and type configurable
+        compress(format, quality, it)
+        val byteArray = it.toByteArray()
+        val encoded = Base64.encodeToString(byteArray, Base64.DEFAULT) ?: return null
+        return "data:image/$htmlFormat;base64,$encoded"
+    }
+}
