@@ -42,6 +42,8 @@ public final class com/posthog/android/internal/MainHandler {
 }
 
 public final class com/posthog/android/internal/PostHogAndroidUtilsKt {
+	public static final fun base64 (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;I)Ljava/lang/String;
+	public static synthetic fun base64$default (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;IILjava/lang/Object;)Ljava/lang/String;
 	public static final fun getApplicationInfo (Landroid/content/Context;)Landroid/content/pm/ApplicationInfo;
 }
 
