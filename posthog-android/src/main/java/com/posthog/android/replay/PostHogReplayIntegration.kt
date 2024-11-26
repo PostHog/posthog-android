@@ -24,7 +24,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.text.InputType
-import android.util.Base64
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -54,6 +53,7 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
+import com.posthog.android.internal.base64
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
@@ -83,7 +83,6 @@ import curtains.onDecorViewReady
 import curtains.phoneWindow
 import curtains.touchEventInterceptors
 import curtains.windowAttachCount
-import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
@@ -121,6 +120,10 @@ public class PostHogReplayIntegration(
     private val isSessionReplayEnabled: Boolean
         get() = PostHog.isSessionReplayActive()
 
+    // flutter captures snapshots, so we don't need to capture them here
+    private val isNativeSdk: Boolean
+        get() = (config.sdkName != "posthog-flutter")
+
     private fun addView(
         view: View,
         added: Boolean = true,
@@ -144,7 +147,7 @@ public class PostHogReplayIntegration(
                                         config.dateProvider,
                                         config.sessionReplayConfig.debouncerDelayMs,
                                     ) {
-                                        if (!isSessionReplayEnabled) {
+                                        if (!isSessionReplayEnabled || !isNativeSdk) {
                                             return@onNextDraw
                                         }
                                         val timestamp = config.dateProvider.currentTimeMillis()
@@ -1094,26 +1097,6 @@ public class PostHogReplayIntegration(
             }
         }
         return null
-    }
-
-    private fun Bitmap.isValid(): Boolean {
-        return !isRecycled &&
-            width > 0 &&
-            height > 0
-    }
-
-    private fun Bitmap.base64(): String? {
-        if (!isValid()) {
-            return null
-        }
-
-        ByteArrayOutputStream(allocationByteCount).use {
-            // we can make format and type configurable
-            compress(Bitmap.CompressFormat.JPEG, 30, it)
-            val byteArray = it.toByteArray()
-            val encoded = Base64.encodeToString(byteArray, Base64.DEFAULT) ?: return null
-            return "data:image/jpeg;base64,$encoded"
-        }
     }
 
     private fun Drawable.base64(
