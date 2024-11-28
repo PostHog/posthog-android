@@ -1,4 +1,4 @@
-package com.posthog.android.internal
+package com.posthog
 
 public object ScreenTracker {
     @Volatile private lateinit var currentScreen: String

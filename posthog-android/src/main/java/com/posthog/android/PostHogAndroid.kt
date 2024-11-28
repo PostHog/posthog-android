@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.PostHogScreenProcessor
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
@@ -11,7 +12,6 @@ import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
 import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
-import com.posthog.android.internal.PostHogScreenProcessor
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import com.posthog.android.replay.PostHogReplayIntegration

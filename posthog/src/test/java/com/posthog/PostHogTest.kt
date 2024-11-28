@@ -45,6 +45,7 @@ internal class PostHogTest {
         reloadFeatureFlags: Boolean = true,
         sendFeatureFlagEvent: Boolean = true,
         integration: PostHogIntegration? = null,
+        processor: PostHogPropertiesProcessor? = null,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     ): PostHogInterface {
@@ -57,6 +58,9 @@ internal class PostHogTest {
                 this.preloadFeatureFlags = preloadFeatureFlags
                 if (integration != null) {
                     addIntegration(integration)
+                }
+                if (processor != null) {
+                    addProcessor(processor)
                 }
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.cachePreferences = cachePreferences
@@ -1044,45 +1048,6 @@ internal class PostHogTest {
         sut.close()
     }
 
-    @Test
-    fun `captures screen event and alias event with screen_name`() {
-        val http = mockHttp()
-        val url = http.url("/")
-
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
-
-        val screenName = "HomeScreen"
-
-        val alias = "UserAlias"
-        sut.screen(screenName)
-
-        sut.alias(alias)
-
-        queueExecutor.shutdownAndAwaitTermination()
-
-        var request = http.takeRequest()
-
-        assertEquals(2, http.requestCount)
-
-        var content = request.body.unGzip()
-        var batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        var theEvent = batch.batch.first()
-
-        assertEquals(screenName, theEvent.properties!!["\$screen_name"])
-
-        request = http.takeRequest()
-
-        assertEquals(2, http.requestCount)
-
-        content = request.body.unGzip()
-        batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        theEvent = batch.batch.first()
-        assertEquals(alias, theEvent.properties!!["alias"])
-        assertEquals(screenName, theEvent.properties!!["\$screen_name"])
-        sut.close()
-    }
 
     @Test
     fun `reset session id when reset is called`() {
@@ -1165,6 +1130,62 @@ internal class PostHogTest {
         val sut = getSut(url.toString())
 
         assertTrue(config.logger is PostHogPrintLogger)
+
+        sut.close()
+    }
+
+    @Test
+    fun `processor does not override existing screen_name in event properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, processor = PostHogScreenProcessor())
+
+        ScreenTracker.setCurrentScreen("CurrentScreen")
+
+        sut.capture(
+            "Test Event",
+            properties = mapOf(
+                "test_prop" to "test_value",
+                "\$screen_name" to "ProvidedScreen"
+            )
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("ProvidedScreen", theEvent.properties?.get("\$screen_name"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `processor adds screen_name to event properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, processor = PostHogScreenProcessor())
+
+        ScreenTracker.setCurrentScreen("TestScreen")
+
+        sut.capture("Test Event", properties = mapOf("test_prop" to "test_value"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("TestScreen", theEvent.properties?.get("\$screen_name"))
 
         sut.close()
     }

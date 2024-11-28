@@ -1,8 +1,6 @@
-package com.posthog.android.internal
+package com.posthog
 
-import com.posthog.PostHogPropertiesProcessor
-
-internal class PostHogScreenProcessor : PostHogPropertiesProcessor {
+public class PostHogScreenProcessor : PostHogPropertiesProcessor {
     override fun process(properties: MutableMap<String, Any>): Map<String, Any> {
         if (properties.containsKey("\$screen_name")) {
             return properties
