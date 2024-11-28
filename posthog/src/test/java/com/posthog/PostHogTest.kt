@@ -1048,7 +1048,6 @@ internal class PostHogTest {
         sut.close()
     }
 
-
     @Test
     fun `reset session id when reset is called`() {
         val http = mockHttp()
@@ -1145,10 +1144,11 @@ internal class PostHogTest {
 
         sut.capture(
             "Test Event",
-            properties = mapOf(
-                "test_prop" to "test_value",
-                "\$screen_name" to "ProvidedScreen"
-            )
+            properties =
+                mapOf(
+                    "test_prop" to "test_value",
+                    "\$screen_name" to "ProvidedScreen",
+                ),
         )
 
         queueExecutor.shutdownAndAwaitTermination()
