@@ -1,6 +1,6 @@
 ## Next
 
-- chore: change screenshot image type from JPEG to WEBP ([#130](https://github.com/PostHog/posthog-android/pull/130))
+- chore: change screenshot image type from JPEG to WEBP ([#211](https://github.com/PostHog/posthog-android/pull/211))
 
 ## 3.9.3 - 2024-11-26
 
