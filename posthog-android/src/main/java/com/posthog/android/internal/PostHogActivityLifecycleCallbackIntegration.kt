@@ -51,6 +51,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 
             if (!screenName.isNullOrEmpty()) {
                 PostHog.screen(screenName)
+                ScreenTracker.setCurrentScreen(screenName)
             }
         }
     }

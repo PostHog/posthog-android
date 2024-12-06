@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.PostHogScreenProcessor
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
@@ -87,6 +88,10 @@ public class PostHogAndroid private constructor() {
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
                     config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
+                }
+                // if the processor depends on captureScreenViews, only adds if its enabled
+                if (config.captureScreenViews) {
+                    config.addProcessor(PostHogScreenProcessor())
                 }
             }
             if (config.captureApplicationLifecycleEvents) {
