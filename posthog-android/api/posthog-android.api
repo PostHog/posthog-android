@@ -27,6 +27,7 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public final fun getCaptureDeepLinks ()Z
 	public final fun getCaptureScreenViews ()Z
 	public final fun getSessionReplayConfig ()Lcom/posthog/android/replay/PostHogSessionReplayConfig;
+	public final fun getSessionReplayMode ()Lcom/posthog/internal/replay/PostHogSessionReplayMode;
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
 	public final fun setCaptureDeepLinks (Z)V
 	public final fun setCaptureScreenViews (Z)V
