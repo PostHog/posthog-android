@@ -145,7 +145,7 @@ public class PostHogReplayIntegration(
                                     decorView.onNextDraw(
                                         mainHandler,
                                         config.dateProvider,
-                                        config.sessionReplayConfig.debouncerDelayMs,
+                                        config.sessionReplayConfig.throttleDelayMs,
                                     ) {
                                         if (!isSessionReplayEnabled || !isNativeSdk) {
                                             return@onNextDraw
