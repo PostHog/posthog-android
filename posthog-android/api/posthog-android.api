@@ -74,19 +74,22 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;)V
 	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;Z)V
 	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJ)V
-	public synthetic fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJ)V
+	public synthetic fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureLogcat ()Z
 	public final fun getDebouncerDelayMs ()J
 	public final fun getDrawableConverter ()Lcom/posthog/android/replay/PostHogDrawableConverter;
 	public final fun getMaskAllImages ()Z
 	public final fun getMaskAllTextInputs ()Z
 	public final fun getScreenshot ()Z
+	public final fun getThrottleDelayMs ()J
 	public final fun setCaptureLogcat (Z)V
 	public final fun setDebouncerDelayMs (J)V
 	public final fun setDrawableConverter (Lcom/posthog/android/replay/PostHogDrawableConverter;)V
 	public final fun setMaskAllImages (Z)V
 	public final fun setMaskAllTextInputs (Z)V
 	public final fun setScreenshot (Z)V
+	public final fun setThrottleDelayMs (J)V
 }
 
 public class com/posthog/android/replay/internal/LogLine {

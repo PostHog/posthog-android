@@ -1,5 +1,8 @@
 ## Next
 
+- chore: change screenshots debouncing approach to throttling ([#131](https://github.com/PostHog/posthog-flutter/pull/131))
+  - Added `throttleDelayMs` config and deprecated `debouncerDelayMs` config.
+
 ## 3.9.3 - 2024-11-26
 
 - no user facing changes
