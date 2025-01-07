@@ -53,10 +53,10 @@ import com.posthog.PostHog
 import com.posthog.PostHogIntegration
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
-import com.posthog.android.internal.base64
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
 import com.posthog.android.internal.screenSize
+import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
@@ -733,7 +733,7 @@ public class PostHogReplayIntegration(
                     canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
                 }
 
-                base64 = bitmap.base64()
+                base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy failed: $e.")
@@ -1106,7 +1106,7 @@ public class PostHogReplayIntegration(
     ): String? {
         val convertedBitmap = runDrawableConverter(this)
         if (convertedBitmap != null) {
-            return convertedBitmap.base64()
+            return convertedBitmap.webpBase64()
         }
 
         var clonedDrawable = this
@@ -1117,7 +1117,7 @@ public class PostHogReplayIntegration(
         when (clonedDrawable) {
             is BitmapDrawable -> {
                 try {
-                    return clonedDrawable.bitmap.base64()
+                    return clonedDrawable.bitmap.webpBase64()
                 } catch (_: Throwable) {
                     // ignore
                 }
@@ -1138,7 +1138,7 @@ public class PostHogReplayIntegration(
 
         try {
             val bitmap = clonedDrawable.toBitmap(width, height)
-            val base64 = bitmap.base64()
+            val base64 = bitmap.webpBase64()
             if (!bitmap.isRecycled) {
                 bitmap.recycle()
             }

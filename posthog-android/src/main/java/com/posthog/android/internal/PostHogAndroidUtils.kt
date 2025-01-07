@@ -217,6 +217,19 @@ private fun Bitmap.isValid(): Boolean {
 
 @PostHogInternal
 @Suppress("DEPRECATION")
+public fun Bitmap.webpBase64(quality: Int = 30): String? {
+    val format =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            Bitmap.CompressFormat.WEBP
+        }
+
+    return base64(format, quality)
+}
+
+@PostHogInternal
+@Suppress("DEPRECATION")
 public fun Bitmap.base64(
     format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
     quality: Int = 30,
