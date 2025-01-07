@@ -1,5 +1,7 @@
 ## Next
 
+- chore: change screenshots debouncing approach to throttling ([#214](https://github.com/PostHog/posthog-flutter/pull/214))
+  - Added `throttleDelayMs` config and deprecated `debouncerDelayMs` config.
 - chore: change screenshot image type from JPEG to WEBP ([#211](https://github.com/PostHog/posthog-android/pull/211))
 
 ## 3.9.3 - 2024-11-26
