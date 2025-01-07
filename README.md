@@ -8,7 +8,7 @@
 
 Please see the main [PostHog docs](https://posthog.com/docs).
 
-Specifically, the [Android integration](https://posthog.com/docs/integrations/android-integration) details.
+Specifically, the [Android docs](https://posthog.com/docs/libraries/android) details.
 
 ## Questions?
 
