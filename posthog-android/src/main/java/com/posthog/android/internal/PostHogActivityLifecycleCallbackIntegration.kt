@@ -41,7 +41,10 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                 } finally {
                     data?.let { props["url"] = it.toString() }
                     intent.getReferrerInfo(config).let { props.putAll(it) }
-                    postHog?.capture("Deep Link Opened", properties = props)
+
+                    if (props.isNotEmpty()) {
+                        postHog?.capture("Deep Link Opened", properties = props)
+                    }
                 }
             }
         }
