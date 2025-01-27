@@ -130,7 +130,7 @@ internal class PostHogSendCachedEventsIntegration(
         storagePrefix: String?,
         endpoint: PostHogApiEndpoint,
     ) {
-        storagePrefix.let {
+        storagePrefix?.let {
             val dir = File(it, config.apiKey)
 
             if (!dir.existsSafely(config)) {
