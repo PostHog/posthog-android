@@ -22,5 +22,11 @@ public fun List<RREvent>.capture(postHog: PostHogInterface? = null) {
             "\$snapshot_data" to this,
             "\$snapshot_source" to "mobile",
         )
-    postHog?.capture("\$snapshot", properties = properties)
+
+    // its not guaranteed that the posthog instance is set
+    if (postHog != null) {
+        postHog.capture("\$snapshot", properties = properties)
+    } else {
+        this.capture()
+    }
 }

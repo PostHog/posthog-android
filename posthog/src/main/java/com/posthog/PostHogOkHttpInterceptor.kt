@@ -14,7 +14,7 @@ public class PostHogOkHttpInterceptor(
     public constructor(captureNetworkTelemetry: Boolean = true) : this(captureNetworkTelemetry, null)
 
     private val isSessionReplayEnabled: Boolean
-        get() = postHog?.isSessionReplayActive() ?: false
+        get() = postHog?.isSessionReplayActive() ?: PostHog.isSessionReplayActive()
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
@@ -73,11 +73,6 @@ public class PostHogOkHttpInterceptor(
         val events = listOf(RRPluginEvent("rrweb/network@1", payload, end))
 
         // its not guaranteed that the posthog instance is set
-        if (postHog != null) {
-            events.capture(postHog)
-        } else {
-            // use static instance
-            events.capture()
-        }
+        events.capture(postHog)
     }
 }
