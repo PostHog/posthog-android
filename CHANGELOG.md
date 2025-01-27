@@ -1,5 +1,7 @@
 ## Next
 
+- chore: Session Replay - GA
+
 ## 3.10.0 - 2025-01-07
 
 - chore: change screenshots debouncing approach to throttling ([#214](https://github.com/PostHog/posthog-flutter/pull/214))
