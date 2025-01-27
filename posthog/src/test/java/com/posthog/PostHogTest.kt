@@ -45,6 +45,7 @@ internal class PostHogTest {
         reloadFeatureFlags: Boolean = true,
         sendFeatureFlagEvent: Boolean = true,
         integration: PostHogIntegration? = null,
+        processor: PostHogPropertiesProcessor? = null,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     ): PostHogInterface {
@@ -57,6 +58,9 @@ internal class PostHogTest {
                 this.preloadFeatureFlags = preloadFeatureFlags
                 if (integration != null) {
                     addIntegration(integration)
+                }
+                if (processor != null) {
+                    addProcessor(processor)
                 }
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.cachePreferences = cachePreferences
@@ -1252,6 +1256,63 @@ internal class PostHogTest {
         val sut = getSut(url.toString())
 
         assertTrue(config.logger is PostHogPrintLogger)
+
+        sut.close()
+    }
+
+    @Test
+    fun `processor does not override existing screen_name in event properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, processor = PostHogScreenProcessor())
+
+        ScreenTracker.setCurrentScreen("CurrentScreen")
+
+        sut.capture(
+            "Test Event",
+            properties =
+                mapOf(
+                    "test_prop" to "test_value",
+                    "\$screen_name" to "ProvidedScreen",
+                ),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("ProvidedScreen", theEvent.properties?.get("\$screen_name"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `processor adds screen_name to event properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, processor = PostHogScreenProcessor())
+
+        ScreenTracker.setCurrentScreen("TestScreen")
+
+        sut.capture("Test Event", properties = mapOf("test_prop" to "test_value"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("TestScreen", theEvent.properties?.get("\$screen_name"))
 
         sut.close()
     }

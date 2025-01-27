@@ -6,6 +6,7 @@ import android.app.Application.ActivityLifecycleCallbacks
 import android.os.Bundle
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.ScreenTracker
 import com.posthog.android.PostHogAndroidConfig
 
 /**
@@ -51,6 +52,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 
             if (!screenName.isNullOrEmpty()) {
                 PostHog.screen(screenName)
+                ScreenTracker.setCurrentScreen(screenName)
             }
         }
     }
