@@ -43,7 +43,9 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     fun `install registers the lifecycle callback`() {
         val sut = getSut()
 
-        sut.install()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
 
         verify(application).registerActivityLifecycleCallbacks(any())
     }
@@ -66,7 +68,7 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
         sut.onActivityCreated(activity, null)
         return fake
     }
@@ -80,7 +82,7 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
         sut.onActivityCreated(activity, null)
         return fake
     }
@@ -160,7 +162,7 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
         sut.onActivityStarted(activity)
         return fake
     }
