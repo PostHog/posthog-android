@@ -1,7 +1,7 @@
 ## Next
 
 - chore: Session Replay - GA
-- fix: session replay and auto capture works with 'with' method ([#214](https://github.com/PostHog/posthog-flutter/pull/214))
+- fix: session replay and auto capture works with 'with' method ([#217](https://github.com/PostHog/posthog-flutter/pull/217))
 
 ## 3.10.0 - 2025-01-07
 

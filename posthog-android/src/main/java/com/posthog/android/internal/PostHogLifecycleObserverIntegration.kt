@@ -109,8 +109,8 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
-        this.postHog = postHog
         try {
+            this.postHog = postHog
             if (isMainThread(mainHandler)) {
                 add()
             } else {
