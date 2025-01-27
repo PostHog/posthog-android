@@ -1,6 +1,7 @@
 ## Next
 
 - chore: Session Replay - GA
+- fix: sending cached events null check ([#218](https://github.com/PostHog/posthog-flutter/pull/218))
 
 ## 3.10.0 - 2025-01-07
 
