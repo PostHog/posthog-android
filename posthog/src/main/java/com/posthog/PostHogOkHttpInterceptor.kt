@@ -6,66 +6,78 @@ import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 
-public class PostHogOkHttpInterceptor
+public class PostHogOkHttpInterceptor(
+    private var captureNetworkTelemetry: Boolean = true,
+    private val postHog: PostHogInterface? = null,
+) : Interceptor {
     @JvmOverloads
-    constructor(private val captureNetworkTelemetry: Boolean = true) : Interceptor {
-        private val isSessionReplayEnabled: Boolean
-            get() = PostHog.isSessionReplayActive()
+    public constructor(captureNetworkTelemetry: Boolean = true) : this(captureNetworkTelemetry, null)
 
-        override fun intercept(chain: Interceptor.Chain): Response {
-            val originalRequest = chain.request()
+    private val isSessionReplayEnabled: Boolean
+        get() = postHog?.isSessionReplayActive() ?: false
 
-            try {
-                val response = chain.proceed(originalRequest)
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
 
-                captureNetworkEvent(originalRequest, response)
+        try {
+            val response = chain.proceed(originalRequest)
 
-                return response
-            } catch (e: Throwable) {
-                throw e
-            }
-        }
+            captureNetworkEvent(originalRequest, response)
 
-        private fun captureNetworkEvent(
-            request: Request,
-            response: Response,
-        ) {
-            // do not capture network logs if session replay is disabled
-            if (!captureNetworkTelemetry || !isSessionReplayEnabled) {
-                return
-            }
-            val url = request.url.toString()
-            val method = request.method
-            val statusCode = response.code
-            val start = response.sentRequestAtMillis
-            val end = response.receivedResponseAtMillis
-            val transferSize = (response.body?.contentLength() ?: 0) + (request.body?.contentLength() ?: 0)
-
-            val requestMap = mutableMapOf<String, Any>()
-
-            var cache = false
-            response.cacheResponse?.let {
-                cache = true
-            }
-            if (transferSize >= 0) {
-                // the UI special case if the transferSize is 0 as coming from cache
-                requestMap["transferSize"] = if (!cache) transferSize else 0
-            }
-
-            requestMap.putAll(
-                mapOf(
-                    "name" to url,
-                    "method" to method,
-                    "responseStatus" to statusCode,
-                    "timestamp" to start,
-                    "duration" to (end - start),
-                    "initiatorType" to "fetch",
-                    "entryType" to "resource",
-                ),
-            )
-            val requests = listOf(requestMap)
-            val payload = mapOf<String, Any>("requests" to requests)
-
-            listOf(RRPluginEvent("rrweb/network@1", payload, end)).capture()
+            return response
+        } catch (e: Throwable) {
+            throw e
         }
     }
+
+    private fun captureNetworkEvent(
+        request: Request,
+        response: Response,
+    ) {
+        // do not capture network logs if session replay is disabled
+        if (!captureNetworkTelemetry || !isSessionReplayEnabled) {
+            return
+        }
+        val url = request.url.toString()
+        val method = request.method
+        val statusCode = response.code
+        val start = response.sentRequestAtMillis
+        val end = response.receivedResponseAtMillis
+        val transferSize = (response.body?.contentLength() ?: 0) + (request.body?.contentLength() ?: 0)
+
+        val requestMap = mutableMapOf<String, Any>()
+
+        var cache = false
+        response.cacheResponse?.let {
+            cache = true
+        }
+        if (transferSize >= 0) {
+            // the UI special case if the transferSize is 0 as coming from cache
+            requestMap["transferSize"] = if (!cache) transferSize else 0
+        }
+
+        requestMap.putAll(
+            mapOf(
+                "name" to url,
+                "method" to method,
+                "responseStatus" to statusCode,
+                "timestamp" to start,
+                "duration" to (end - start),
+                "initiatorType" to "fetch",
+                "entryType" to "resource",
+            ),
+        )
+        val requests = listOf(requestMap)
+        val payload = mapOf<String, Any>("requests" to requests)
+
+        val events = listOf(RRPluginEvent("rrweb/network@1", payload, end))
+
+        // its not guaranteed that the posthog instance is set
+        if (postHog != null) {
+            events.capture(postHog)
+        } else {
+            // use static instance
+            events.capture()
+        }
+    }
+}

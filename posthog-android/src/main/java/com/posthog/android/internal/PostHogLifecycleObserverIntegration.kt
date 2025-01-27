@@ -5,8 +5,8 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import java.util.Timer
 import java.util.TimerTask
@@ -29,6 +29,8 @@ internal class PostHogLifecycleObserverIntegration(
     private var timerTask: TimerTask? = null
     private val lastUpdatedSession = AtomicLong(0L)
     private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
+
+    private var postHog: PostHogInterface? = null
 
     private companion object {
         // in case there are multiple instances or the SDK is closed/setup again
@@ -54,7 +56,7 @@ internal class PostHogLifecycleObserverIntegration(
                 fromBackground = true
             }
 
-            PostHog.capture("Application Opened", properties = props)
+            postHog?.capture("Application Opened", properties = props)
         }
     }
 
@@ -67,7 +69,7 @@ internal class PostHogLifecycleObserverIntegration(
         if (lastUpdatedSession == 0L ||
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
-            PostHog.startSession()
+            postHog?.startSession()
         }
         this.lastUpdatedSession.set(currentTimeMillis)
     }
@@ -85,7 +87,7 @@ internal class PostHogLifecycleObserverIntegration(
             timerTask =
                 object : TimerTask() {
                     override fun run() {
-                        PostHog.endSession()
+                        postHog?.endSession()
                     }
                 }
             timer.schedule(timerTask, sessionMaxInterval)
@@ -94,7 +96,7 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun onStop(owner: LifecycleOwner) {
         if (config.captureApplicationLifecycleEvents) {
-            PostHog.capture("Application Backgrounded")
+            postHog?.capture("Application Backgrounded")
         }
 
         val currentTimeMillis = config.dateProvider.currentTimeMillis()
@@ -106,7 +108,8 @@ internal class PostHogLifecycleObserverIntegration(
         lifecycle.addObserver(this)
     }
 
-    override fun install() {
+    override fun install(postHog: PostHogInterface) {
+        this.postHog = postHog
         try {
             if (isMainThread(mainHandler)) {
                 add()
@@ -126,6 +129,7 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun uninstall() {
         try {
+            this.postHog = null
             if (isMainThread(mainHandler)) {
                 remove()
             } else {

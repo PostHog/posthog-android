@@ -124,7 +124,7 @@ public class PostHog private constructor(
 
                 config.integrations.forEach {
                     try {
-                        it.install()
+                        it.install(this)
                     } catch (e: Throwable) {
                         config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
                     }

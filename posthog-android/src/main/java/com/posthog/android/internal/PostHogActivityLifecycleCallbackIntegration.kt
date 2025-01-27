@@ -4,8 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.app.Application.ActivityLifecycleCallbacks
 import android.os.Bundle
-import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 
 /**
@@ -17,6 +17,8 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     private val application: Application,
     private val config: PostHogAndroidConfig,
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
+    private var postHog: PostHogInterface? = null
+
     override fun onActivityCreated(
         activity: Activity,
         savedInstanceState: Bundle?,
@@ -39,7 +41,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                 } finally {
                     data?.let { props["url"] = it.toString() }
                     intent.getReferrerInfo(config).let { props.putAll(it) }
-                    PostHog.capture("Deep Link Opened", properties = props)
+                    postHog?.capture("Deep Link Opened", properties = props)
                 }
             }
         }
@@ -50,7 +52,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
             val screenName = activity.activityLabelOrName(config)
 
             if (!screenName.isNullOrEmpty()) {
-                PostHog.screen(screenName)
+                postHog?.screen(screenName)
             }
         }
     }
@@ -73,11 +75,13 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     override fun onActivityDestroyed(activity: Activity) {
     }
 
-    override fun install() {
+    override fun install(postHog: PostHogInterface) {
+        this.postHog = postHog
         application.registerActivityLifecycleCallbacks(this)
     }
 
     override fun uninstall() {
+        this.postHog = null
         application.unregisterActivityLifecycleCallbacks(this)
     }
 }

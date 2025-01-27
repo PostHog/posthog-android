@@ -64,7 +64,7 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public static final field ANDROID_COMPOSE_VIEW_CLASS_NAME Ljava/lang/String;
 	public static final field PH_NO_CAPTURE_LABEL Ljava/lang/String;
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
-	public fun install ()V
+	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun uninstall ()V
 }
 
