@@ -1,5 +1,7 @@
 ## Next
 
+- fix: do not allow default integrations multiple times ([#218](https://github.com/PostHog/posthog-flutter/pull/218))
+
 ## 3.11.0 - 2025-01-27
 
 - chore: Session Replay - GA

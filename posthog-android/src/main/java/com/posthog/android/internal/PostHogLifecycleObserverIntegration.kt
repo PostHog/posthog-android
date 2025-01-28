@@ -38,6 +38,9 @@ internal class PostHogLifecycleObserverIntegration(
         @JvmStatic
         @Volatile
         private var fromBackground = false
+
+        @Volatile
+        private var integrationInstalled = false
     }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -109,6 +112,11 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
+        if (integrationInstalled) {
+            return
+        }
+        integrationInstalled = true
+
         try {
             this.postHog = postHog
             if (isMainThread(mainHandler)) {
@@ -129,6 +137,7 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun uninstall() {
         try {
+            integrationInstalled = false
             this.postHog = null
             if (isMainThread(mainHandler)) {
                 remove()

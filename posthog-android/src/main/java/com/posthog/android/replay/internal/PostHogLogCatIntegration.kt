@@ -22,10 +22,16 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
     private var postHog: PostHogInterface? = null
 
+    private companion object {
+        @Volatile
+        private var integrationInstalled = false
+    }
+
     override fun install(postHog: PostHogInterface) {
-        if (!config.sessionReplayConfig.captureLogcat || !isSupported()) {
+        if (integrationInstalled || !config.sessionReplayConfig.captureLogcat || !isSupported()) {
             return
         }
+        integrationInstalled = true
         this.postHog = postHog
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
         val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
@@ -90,6 +96,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     }
 
     override fun uninstall() {
+        integrationInstalled = false
         this.postHog = null
         logcatInProgress = false
         logcatThread?.interruptSafely()

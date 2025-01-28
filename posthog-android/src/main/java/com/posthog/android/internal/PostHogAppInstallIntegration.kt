@@ -16,7 +16,17 @@ internal class PostHogAppInstallIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
 ) : PostHogIntegration {
+    private companion object {
+        @Volatile
+        private var integrationInstalled = false
+    }
+
     override fun install(postHog: PostHogInterface) {
+        if (integrationInstalled) {
+            return
+        }
+        integrationInstalled = true
+
         getPackageInfo(context, config)?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
                 val versionName = packageInfo.versionName
@@ -55,5 +65,9 @@ internal class PostHogAppInstallIntegration(
                 postHog.capture(event, properties = props)
             }
         }
+    }
+
+    override fun uninstall() {
+        integrationInstalled = false
     }
 }

@@ -23,7 +23,17 @@ internal class PostHogSendCachedEventsIntegration(
     private val startDate: Date,
     private val executor: ExecutorService,
 ) : PostHogIntegration {
+    private companion object {
+        @Volatile
+        private var integrationInstalled = false
+    }
+
     override fun install(postHog: PostHogInterface) {
+        if (integrationInstalled) {
+            return
+        }
+        integrationInstalled = true
+
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
@@ -215,5 +225,9 @@ internal class PostHogSendCachedEventsIntegration(
                 config.logger.log("Flushing events failed: $e.")
             }
         }
+    }
+
+    override fun uninstall() {
+        integrationInstalled = false
     }
 }

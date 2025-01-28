@@ -314,9 +314,10 @@ public class PostHogReplayIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (!isSupported()) {
+        if (integrationInstalled || !isSupported()) {
             return
         }
+        integrationInstalled = true
         this.postHog = postHog
 
         // workaround for react native that is started after the window is added
@@ -334,6 +335,7 @@ public class PostHogReplayIntegration(
 
     override fun uninstall() {
         try {
+            integrationInstalled = false
             this.postHog = null
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
@@ -1272,5 +1274,8 @@ public class PostHogReplayIntegration(
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
+
+        @Volatile
+        private var integrationInstalled = false
     }
 }

@@ -87,6 +87,7 @@ public class PostHogAndroid private constructor() {
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
                     config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
+                    config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
                 }
             }
             if (config.captureApplicationLifecycleEvents) {
