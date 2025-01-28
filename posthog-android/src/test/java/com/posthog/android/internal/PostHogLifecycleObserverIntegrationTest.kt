@@ -41,6 +41,8 @@ internal class PostHogLifecycleObserverIntegrationTest {
         sut.install(fake)
 
         assertEquals(1, fakeLifecycle.observers)
+
+        sut.uninstall()
     }
 
     @Test
@@ -69,6 +71,8 @@ internal class PostHogLifecycleObserverIntegrationTest {
         assertEquals("1.0.0", fake.properties?.get("version"))
         assertEquals(1L, fake.properties?.get("build"))
         assertEquals(false, fake.properties?.get("from_background"))
+
+        sut.uninstall()
     }
 
     @Test
@@ -84,6 +88,8 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         assertEquals("Application Opened", fake.event)
         assertEquals(true, fake.properties?.get("from_background"))
+
+        sut.uninstall()
     }
 
     @Test
@@ -97,5 +103,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         sut.onStop(ProcessLifecycleOwner.get())
 
         assertEquals("Application Backgrounded", fake.event)
+
+        sut.uninstall()
     }
 }

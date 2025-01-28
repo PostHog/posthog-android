@@ -91,6 +91,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertFalse(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
+
+        sut.uninstall()
     }
 
     @Test
@@ -104,6 +106,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
+
+        sut.uninstall()
     }
 
     @Test
@@ -119,6 +123,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
+
+        sut.uninstall()
     }
 
     @Test
@@ -135,6 +141,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(2, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -151,6 +159,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -168,6 +178,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -185,6 +197,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         assertEquals(2, File(storagePrefix, API_KEY).listFiles()!!.size)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -202,6 +216,8 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         assertEquals(2, File(storagePrefix, API_KEY).listFiles()!!.size)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -235,5 +251,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         val files = File(storagePrefix, API_KEY).listFiles()!!
         assertEquals(1, files.size)
         assertEquals(tempEvent, files[0].readText())
+
+        sut.uninstall()
     }
 }
