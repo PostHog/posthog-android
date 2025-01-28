@@ -10,6 +10,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import org.mockito.Mockito.mock
 import java.io.File
 import java.text.ParsePosition
 import java.util.Calendar
@@ -85,7 +86,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
                 false
             })
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -98,7 +99,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = "host")
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -113,7 +114,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -128,7 +129,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -144,7 +145,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -161,7 +162,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -178,7 +179,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -195,7 +196,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -226,7 +227,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         // +1 sec
         file.setLastModified(cal.time.time)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 

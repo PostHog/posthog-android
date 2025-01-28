@@ -49,8 +49,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
@@ -118,11 +118,13 @@ public class PostHogReplayIntegration(
         }
 
     private val isSessionReplayEnabled: Boolean
-        get() = PostHog.isSessionReplayActive()
+        get() = postHog?.isSessionReplayActive() ?: false
 
     // flutter captures snapshots, so we don't need to capture them here
     private val isNativeSdk: Boolean
         get() = (config.sdkName != "posthog-flutter")
+
+    private var postHog: PostHogInterface? = null
 
     private fun addView(
         view: View,
@@ -280,7 +282,7 @@ public class PostHogReplayIntegration(
             // if we batch them, we need to be aware that the order of the events matters
             // also because if we send a mouse interaction later, it might be attached to the wrong
             // screen
-            mouseInteractions.capture()
+            mouseInteractions.capture(postHog)
         }
     }
 
@@ -311,10 +313,11 @@ public class PostHogReplayIntegration(
         decorViews.remove(view)
     }
 
-    override fun install() {
+    override fun install(postHog: PostHogInterface) {
         if (!isSupported()) {
             return
         }
+        this.postHog = postHog
 
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
@@ -331,6 +334,7 @@ public class PostHogReplayIntegration(
 
     override fun uninstall() {
         try {
+            this.postHog = null
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
             decorViews.entries.forEach {
@@ -460,7 +464,7 @@ public class PostHogReplayIntegration(
         }
 
         if (events.isNotEmpty()) {
-            events.capture()
+            events.capture(postHog)
         }
 
         status.lastSnapshot = wireframe

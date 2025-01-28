@@ -8,6 +8,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import org.mockito.Mockito.mock
 import java.io.File
 import java.util.Date
 import java.util.concurrent.Executors
@@ -75,7 +76,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
                 false
             })
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -88,7 +89,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host")
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -103,7 +104,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -118,7 +119,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -134,7 +135,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -151,7 +152,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -168,7 +169,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
@@ -185,7 +186,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 

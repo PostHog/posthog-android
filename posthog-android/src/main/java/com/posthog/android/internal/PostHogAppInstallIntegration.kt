@@ -1,8 +1,8 @@
 package com.posthog.android.internal
 
 import android.content.Context
-import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
@@ -16,7 +16,7 @@ internal class PostHogAppInstallIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
 ) : PostHogIntegration {
-    override fun install() {
+    override fun install(postHog: PostHogInterface) {
         getPackageInfo(context, config)?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
                 val versionName = packageInfo.versionName
@@ -52,7 +52,7 @@ internal class PostHogAppInstallIntegration(
                 preferences.setValue(VERSION, versionName)
                 preferences.setValue(BUILD, versionCode)
 
-                PostHog.capture(event, properties = props)
+                postHog.capture(event, properties = props)
             }
         }
     }

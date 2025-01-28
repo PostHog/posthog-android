@@ -3,7 +3,7 @@ package com.posthog
 internal class FakePostHogIntegration : PostHogIntegration {
     var installed = false
 
-    override fun install() {
+    override fun install(postHog: PostHogInterface) {
         installed = true
     }
 

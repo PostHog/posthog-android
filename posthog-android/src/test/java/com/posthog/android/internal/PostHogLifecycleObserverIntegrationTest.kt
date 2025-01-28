@@ -36,7 +36,9 @@ internal class PostHogLifecycleObserverIntegrationTest {
     fun `install adds the observer`() {
         val sut = getSut()
 
-        sut.install()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
 
         assertEquals(1, fakeLifecycle.observers)
     }
@@ -45,7 +47,9 @@ internal class PostHogLifecycleObserverIntegrationTest {
     fun `uninstall removes the observer`() {
         val sut = getSut()
 
-        sut.install()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
         sut.uninstall()
 
         assertEquals(0, fakeLifecycle.observers)
@@ -57,6 +61,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         val fake = createPostHogFake()
         context.mockPackageInfo("1.0.0", 1)
+        sut.install(fake)
 
         sut.onStart(ProcessLifecycleOwner.get())
 
@@ -72,6 +77,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         val fake = createPostHogFake()
         context.mockPackageInfo("1.0.0", 1)
+        sut.install(fake)
 
         sut.onStart(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())
@@ -85,6 +91,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val sut = getSut()
 
         val fake = createPostHogFake()
+        sut.install(fake)
 
         sut.onStart(ProcessLifecycleOwner.get())
         sut.onStop(ProcessLifecycleOwner.get())

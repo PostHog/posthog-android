@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import java.io.File
 import java.io.FileFilter
 import java.io.IOException
@@ -22,7 +23,7 @@ internal class PostHogSendCachedEventsIntegration(
     private val startDate: Date,
     private val executor: ExecutorService,
 ) : PostHogIntegration {
-    override fun install() {
+    override fun install(postHog: PostHogInterface) {
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")

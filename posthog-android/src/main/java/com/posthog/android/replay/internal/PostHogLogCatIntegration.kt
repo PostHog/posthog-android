@@ -2,8 +2,8 @@ package com.posthog.android.replay.internal
 
 import android.annotation.SuppressLint
 import android.os.Build
-import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.interruptSafely
 import com.posthog.internal.replay.RRPluginEvent
@@ -18,12 +18,15 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     private var logcatThread: Thread? = null
 
     private val isSessionReplayEnabled: Boolean
-        get() = PostHog.isSessionReplayActive()
+        get() = postHog?.isSessionReplayActive() ?: false
 
-    override fun install() {
+    private var postHog: PostHogInterface? = null
+
+    override fun install(postHog: PostHogInterface) {
         if (!config.sessionReplayConfig.captureLogcat || !isSupported()) {
             return
         }
+        this.postHog = postHog
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
         val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
         cmd.add("-T")
@@ -65,7 +68,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                                     val time = log.time?.time?.time ?: config.dateProvider.currentTimeMillis()
                                     val event = RRPluginEvent("rrweb/console@1", props, time)
                                     // TODO: batch events
-                                    listOf(event).capture()
+                                    listOf(event).capture(postHog)
                                 }
                             } catch (e: Throwable) {
                                 // ignore
@@ -87,6 +90,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     }
 
     override fun uninstall() {
+        this.postHog = null
         logcatInProgress = false
         logcatThread?.interruptSafely()
     }

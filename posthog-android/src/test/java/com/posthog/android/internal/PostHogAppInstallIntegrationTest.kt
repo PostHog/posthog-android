@@ -39,7 +39,7 @@ internal class PostHogAppInstallIntegrationTest {
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
 
         assertEquals("Application Installed", fake.event)
         assertEquals("1.0.0", fake.properties?.get("version"))
@@ -54,11 +54,11 @@ internal class PostHogAppInstallIntegrationTest {
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
 
         context.mockPackageInfo("2.0.0", 2)
 
-        sut.install()
+        sut.install(fake)
 
         assertEquals("Application Updated", fake.event)
         assertEquals("1.0.0", fake.properties?.get("previous_version"))
@@ -75,11 +75,11 @@ internal class PostHogAppInstallIntegrationTest {
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
 
         assertEquals(1, fake.captures)
 
-        sut.install()
+        sut.install(fake)
 
         // sanity check
         assertEquals(1, fake.captures)

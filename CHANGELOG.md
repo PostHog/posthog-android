@@ -1,6 +1,7 @@
 ## Next
 
 - chore: Session Replay - GA
+- fix: session replay and auto capture works with 'with' method ([#217](https://github.com/PostHog/posthog-flutter/pull/217))
 - fix: sending cached events null check ([#218](https://github.com/PostHog/posthog-flutter/pull/218))
 
 ## 3.10.0 - 2025-01-07
