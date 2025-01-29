@@ -46,6 +46,12 @@ public class PostHogAndroid private constructor() {
 
         /**
          * Setup the SDK and returns an instance that you can hold and pass it around
+         *
+         * All default PostHogIntegration's will only be installed for the very 1st instance,
+         * either that be created with the [setup] or [with] method otherwise they would race each other
+         * and cause issues, so the 1st instance of the SDK that is created on the hosting app
+         * will hold all installed integrations, the order of the setup matters.
+         *
          * @param T the type of the Config
          * @property context the Context
          * @property config the Config
