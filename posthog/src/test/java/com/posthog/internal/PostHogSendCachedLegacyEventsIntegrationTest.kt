@@ -81,6 +81,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertFalse(getLegacyFile(legacyStoragePrefix).isEmpty)
+
+        sut.uninstall()
     }
 
     @Test
@@ -94,6 +96,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
+
+        sut.uninstall()
     }
 
     @Test
@@ -109,6 +113,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
+
+        sut.uninstall()
     }
 
     @Test
@@ -125,6 +131,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(2, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -141,6 +149,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -158,6 +168,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -175,6 +187,8 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         assertEquals(2, getLegacyFile(legacyStoragePrefix).size())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -192,5 +206,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         assertEquals(2, getLegacyFile(legacyStoragePrefix).size())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 }

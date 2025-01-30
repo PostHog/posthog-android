@@ -48,6 +48,8 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         sut.install(fake)
 
         verify(application).registerActivityLifecycleCallbacks(any())
+
+        sut.uninstall()
     }
 
     @Test
@@ -70,6 +72,8 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
         sut.install(fake)
         sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
         return fake
     }
 
@@ -84,6 +88,8 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
         sut.install(fake)
         sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
         return fake
     }
 
@@ -164,6 +170,8 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
         sut.install(fake)
         sut.onActivityStarted(activity)
+        sut.uninstall()
+
         return fake
     }
 

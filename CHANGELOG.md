@@ -1,14 +1,16 @@
 ## Next
 
+- fix: do not allow default integrations multiple times ([#219](https://github.com/PostHog/posthog-android/pull/219))
+
 ## 3.11.0 - 2025-01-27
 
 - chore: Session Replay - GA
-- fix: session replay and auto capture works with 'with' method ([#217](https://github.com/PostHog/posthog-flutter/pull/217))
-- fix: sending cached events null check ([#218](https://github.com/PostHog/posthog-flutter/pull/218))
+- fix: session replay and auto capture works with 'with' method ([#217](https://github.com/PostHog/posthog-android/pull/217))
+- fix: sending cached events null check ([#218](https://github.com/PostHog/posthog-android/pull/218))
 
 ## 3.10.0 - 2025-01-07
 
-- chore: change screenshots debouncing approach to throttling ([#214](https://github.com/PostHog/posthog-flutter/pull/214))
+- chore: change screenshots debouncing approach to throttling ([#214](https://github.com/PostHog/posthog-android/pull/214))
   - Added `throttleDelayMs` config and deprecated `debouncerDelayMs` config.
 - chore: change screenshot image type from JPEG to WEBP ([#211](https://github.com/PostHog/posthog-android/pull/211))
 

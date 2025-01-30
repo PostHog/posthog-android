@@ -19,6 +19,11 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
     private var postHog: PostHogInterface? = null
 
+    private companion object {
+        @Volatile
+        private var integrationInstalled = false
+    }
+
     override fun onActivityCreated(
         activity: Activity,
         savedInstanceState: Bundle?,
@@ -79,12 +84,18 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
+        if (integrationInstalled) {
+            return
+        }
+        integrationInstalled = true
+
         this.postHog = postHog
         application.registerActivityLifecycleCallbacks(this)
     }
 
     override fun uninstall() {
         this.postHog = null
+        integrationInstalled = false
         application.unregisterActivityLifecycleCallbacks(this)
     }
 }
