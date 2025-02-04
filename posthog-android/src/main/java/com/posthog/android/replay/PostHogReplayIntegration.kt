@@ -1237,18 +1237,26 @@ public class PostHogReplayIntegration(
     }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getRawX(index)
+        return if (index < 0 || index >= pointerCount) {
+            rawX // Fallback to single-touch `rawX` to prevent crashes
         } else {
-            rawX
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                getRawX(index)
+            } else {
+                rawX
+            }
         }
     }
 
     private fun MotionEvent.getRawYCompat(index: Int): Float {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getRawY(index)
+        return if (index < 0 || index >= pointerCount) {
+            rawY // Fallback to single-touch `rawY` to prevent crashes
         } else {
-            rawY
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                getRawY(index)
+            } else {
+                rawY
+            }
         }
     }
 

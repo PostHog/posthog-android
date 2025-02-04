@@ -1,5 +1,7 @@
 ## Next
 
+- fix: touches fall back to single touches if out of bounds ([#219](https://github.com/PostHog/posthog-android/pull/219))
+
 ## 3.11.1 - 2025-01-30
 
 - fix: do not allow default integrations multiple times ([#219](https://github.com/PostHog/posthog-android/pull/219))
