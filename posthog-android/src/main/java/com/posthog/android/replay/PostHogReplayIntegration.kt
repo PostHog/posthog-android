@@ -261,20 +261,24 @@ public class PostHogReplayIntegration(
     ) {
         val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
         for (index in 0 until motionEvent.pointerCount) {
-            // if the id is 0, BE transformer will set it to the virtual bodyId
-            val id = motionEvent.getPointerId(index)
-            val absX = motionEvent.getRawXCompat(index).toInt().densityValue(displayMetrics.density)
-            val absY = motionEvent.getRawYCompat(index).toInt().densityValue(displayMetrics.density)
+            try {
+                // if the id is 0, BE transformer will set it to the virtual bodyId
+                val id = motionEvent.getPointerId(index)
+                val absX = motionEvent.getRawXCompat(index).toInt().densityValue(displayMetrics.density)
+                val absY = motionEvent.getRawYCompat(index).toInt().densityValue(displayMetrics.density)
 
-            val mouseInteractionData =
-                RRIncrementalMouseInteractionData(
-                    id = id,
-                    type = type,
-                    x = absX,
-                    y = absY,
-                )
-            val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
-            mouseInteractions.add(mouseInteraction)
+                val mouseInteractionData =
+                    RRIncrementalMouseInteractionData(
+                        id = id,
+                        type = type,
+                        x = absX,
+                        y = absY,
+                    )
+                val mouseInteraction = RRIncrementalMouseInteractionEvent(mouseInteractionData, timestamp)
+                mouseInteractions.add(mouseInteraction)
+            } catch (e: Throwable) {
+                config.logger.log("Reading MotionEvent pointers failed: $e.")
+            }
         }
 
         if (mouseInteractions.isNotEmpty()) {
@@ -1237,18 +1241,26 @@ public class PostHogReplayIntegration(
     }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getRawX(index)
+        return if (index < 0 || index >= pointerCount) {
+            rawX // Fallback to single-touch `rawX` to prevent crashes
         } else {
-            rawX
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                getRawX(index)
+            } else {
+                rawX
+            }
         }
     }
 
     private fun MotionEvent.getRawYCompat(index: Int): Float {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getRawY(index)
+        return if (index < 0 || index >= pointerCount) {
+            rawY // Fallback to single-touch `rawY` to prevent crashes
         } else {
-            rawY
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                getRawY(index)
+            } else {
+                rawY
+            }
         }
     }
 
