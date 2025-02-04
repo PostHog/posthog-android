@@ -1,5 +1,7 @@
 ## Next
 
+## 3.11.2 - 2025-02-04
+
 - fix: touches fall back to single touches if out of bounds ([#221](https://github.com/PostHog/posthog-android/pull/221))
 
 ## 3.11.1 - 2025-01-30
