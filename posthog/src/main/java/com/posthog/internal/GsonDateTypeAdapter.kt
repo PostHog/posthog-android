@@ -17,17 +17,24 @@ import java.util.Date
  * @property config the Config
  */
 internal class GsonDateTypeAdapter(private val config: PostHogConfig) : JsonDeserializer<Date>, JsonSerializer<Date> {
-
-    override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext?): Date? {
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type,
+        context: JsonDeserializationContext,
+    ): Date? {
         return try {
-            ISO8601Utils.parse(json?.asString, ParsePosition(0))
+            ISO8601Utils.parse(json.asString, ParsePosition(0))
         } catch (e: Throwable) {
-            config.logger.log("${json?.asString} isn't a deserializable ISO8601 Date: $e.")
+            config.logger.log("${json.asString} isn't a deserializable ISO8601 Date: $e.")
             null
         }
     }
 
-    override fun serialize(src: Date?, typeOfSrc: Type?, context: JsonSerializationContext?): JsonElement? {
+    override fun serialize(
+        src: Date,
+        typeOfSrc: Type,
+        context: JsonSerializationContext,
+    ): JsonElement? {
         return try {
             val dateStr = ISO8601Utils.format(src, true)
             JsonPrimitive(dateStr)

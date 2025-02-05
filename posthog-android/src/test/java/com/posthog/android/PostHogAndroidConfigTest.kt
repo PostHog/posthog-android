@@ -5,12 +5,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 internal class PostHogAndroidConfigTest {
-
-    private val config = PostHogAndroidConfig(apiKey)
+    private val config = PostHogAndroidConfig(API_KEY)
 
     @Test
     fun `captureApplicationLifecycleEvents sets given apiKey`() {
-        assertEquals(apiKey, config.apiKey)
+        assertEquals(API_KEY, config.apiKey)
     }
 
     @Test

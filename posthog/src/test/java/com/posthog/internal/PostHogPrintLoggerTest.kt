@@ -1,7 +1,7 @@
 package com.posthog.internal
 
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import kotlin.test.BeforeTest
@@ -18,9 +18,10 @@ internal class PostHogPrintLoggerTest {
     }
 
     private fun getSut(debug: Boolean = false): PostHogPrintLogger {
-        val config = PostHogConfig(apiKey).apply {
-            this.debug = debug
-        }
+        val config =
+            PostHogConfig(API_KEY).apply {
+                this.debug = debug
+            }
         return PostHogPrintLogger(config)
     }
 

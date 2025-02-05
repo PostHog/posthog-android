@@ -4,7 +4,6 @@ import java.util.Calendar
 import java.util.Date
 
 internal class FakePostHogDateProvider : PostHogDateProvider {
-
     private var currentDate: Date? = null
     private var addSecondsToCurrentDate: Date? = null
 
@@ -27,5 +26,13 @@ internal class FakePostHogDateProvider : PostHogDateProvider {
         val cal = Calendar.getInstance()
         cal.add(Calendar.SECOND, seconds)
         return cal.time
+    }
+
+    override fun currentTimeMillis(): Long {
+        return System.currentTimeMillis()
+    }
+
+    override fun nanoTime(): Long {
+        return System.nanoTime()
     }
 }

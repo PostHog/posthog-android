@@ -12,6 +12,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.NetworkInfo
@@ -24,34 +25,67 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
-public const val apiKey: String = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+public const val API_KEY: String = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
 
-public fun mockActivityUri(uri: String): Activity {
+public fun mockActivityUri(
+    uri: String,
+    referrer: Boolean = false,
+): Activity {
     val activity = mock<Activity>()
-    val intent = Intent().apply {
-        data = Uri.parse(uri)
-    }
+    val intent =
+        Intent().apply {
+            data = Uri.parse(uri)
+            if (referrer) {
+                putExtra(Intent.EXTRA_REFERRER, Uri.parse(uri))
+                putExtra(Intent.EXTRA_REFERRER_NAME, uri)
+            }
+        }
     whenever(activity.intent).thenReturn(intent)
     return activity
 }
 
-public fun mockScreenTitle(throws: Boolean, title: String): Activity {
+public fun mockScreenTitle(
+    throws: Boolean,
+    title: String,
+    activityName: String,
+    applicationLabel: String,
+): Activity {
     val activity = mock<Activity>()
     val pm = mock<PackageManager>()
-    val ac = mock<ActivityInfo>()
+    val ac =
+        mock<ActivityInfo>().apply {
+            name = activityName
+        }
+    val appInfo = mock<ApplicationInfo>()
+
     whenever(ac.loadLabel(any())).thenReturn(title)
+    whenever(appInfo.loadLabel(any())).thenReturn(applicationLabel)
+
     if (throws) {
-        whenever(pm.getActivityInfo(any(), any<Int>())).thenThrow(PackageManager.NameNotFoundException())
+        whenever(
+            pm.getActivityInfo(
+                any(),
+                any<Int>(),
+            ),
+        ).thenThrow(PackageManager.NameNotFoundException())
     } else {
         whenever(pm.getActivityInfo(any(), any<Int>())).thenReturn(ac)
     }
+
+    whenever(pm.getApplicationInfo(any(), any<Int>())).thenReturn(appInfo)
+
     val component = mock<ComponentName>()
     whenever(activity.componentName).thenReturn(component)
     whenever(activity.packageManager).thenReturn(pm)
+    whenever(activity.applicationInfo).thenReturn(appInfo) // Ensure applicationInfo is not null
+
     return activity
 }
 
-public fun Context.mockPackageInfo(name: String = "1.0.0", code: Int = 1) {
+public fun Context.mockPackageInfo(
+    name: String = "1.0.0",
+    code: Int = 1,
+) {
     val pm = mock<PackageManager>()
     whenever(packageManager).thenReturn(pm)
     whenever(packageName).thenReturn("com.package")
@@ -72,15 +106,21 @@ public fun Context.mockAppInfo() {
 public fun Context.mockDisplayMetrics() {
     val res = mock<Resources>()
     whenever(resources).thenReturn(res)
-    val dm = DisplayMetrics().apply {
-        density = 1f
-        heightPixels = 100
-        widthPixels = 150
-    }
+    val dm =
+        DisplayMetrics().apply {
+            density = 1f
+            heightPixels = 100
+            widthPixels = 150
+        }
+    val configuration = mock<Configuration>()
+    whenever(resources.configuration).thenReturn(configuration)
     whenever(res.displayMetrics).thenReturn(dm)
 }
 
-public fun mockContextAppStart(context: Context, tmpDir: TemporaryFolder) {
+public fun mockContextAppStart(
+    context: Context,
+    tmpDir: TemporaryFolder,
+) {
     val app = mock<Application>()
     whenever(context.applicationContext).thenReturn(app)
     whenever(app.getDir(any(), any())).thenReturn(tmpDir.newFolder())
@@ -89,14 +129,21 @@ public fun mockContextAppStart(context: Context, tmpDir: TemporaryFolder) {
     whenever(app.getSharedPreferences(any(), any())).thenReturn(sharedPreferences)
 }
 
-public fun mockPermission(context: Context, permission: Int = PackageManager.PERMISSION_GRANTED): ConnectivityManager {
+public fun mockPermission(
+    context: Context,
+    permission: Int = PackageManager.PERMISSION_GRANTED,
+): ConnectivityManager {
     val cm = mock<ConnectivityManager>()
     whenever(context.getSystemService(any())).thenReturn(cm)
     whenever(context.checkPermission(any(), any(), any())).thenReturn(permission)
     return cm
 }
 
-public fun mockNetworkInfo(connectivityManager: ConnectivityManager, hasNetwork: Boolean = true, isConnected: Boolean = true) {
+public fun mockNetworkInfo(
+    connectivityManager: ConnectivityManager,
+    hasNetwork: Boolean = true,
+    isConnected: Boolean = true,
+) {
     if (hasNetwork) {
         val ni = mock<NetworkInfo>()
         whenever(connectivityManager.activeNetworkInfo).thenReturn(ni)
@@ -110,7 +157,11 @@ public fun Context.mockTelephone() {
     whenever(tm.networkOperatorName).thenReturn("name")
 }
 
-public fun mockGetNetworkInfo(connectivityManager: ConnectivityManager, networkType: Int, isConnected: Boolean = true) {
+public fun mockGetNetworkInfo(
+    connectivityManager: ConnectivityManager,
+    networkType: Int,
+    isConnected: Boolean = true,
+) {
     val ni = mock<NetworkInfo>()
     whenever(connectivityManager.getNetworkInfo(networkType)).thenReturn(ni)
     whenever(ni.isConnected).thenReturn(isConnected)

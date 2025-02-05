@@ -3,6 +3,7 @@ package com.posthog.android
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
+import java.util.UUID
 
 public class PostHogFake : PostHogInterface {
     public var event: String? = null
@@ -22,7 +23,7 @@ public class PostHogFake : PostHogInterface {
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
-        groupProperties: Map<String, Any>?,
+        groups: Map<String, String>?,
     ) {
         this.event = event
         this.properties = properties
@@ -39,15 +40,24 @@ public class PostHogFake : PostHogInterface {
     override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
     }
 
-    override fun isFeatureEnabled(key: String, defaultValue: Boolean): Boolean {
+    override fun isFeatureEnabled(
+        key: String,
+        defaultValue: Boolean,
+    ): Boolean {
         return false
     }
 
-    override fun getFeatureFlag(key: String, defaultValue: Any?): Any? {
+    override fun getFeatureFlag(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         return null
     }
 
-    override fun getFeatureFlagPayload(key: String, defaultValue: Any?): Any? {
+    override fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         return null
     }
 
@@ -63,10 +73,17 @@ public class PostHogFake : PostHogInterface {
     override fun optOut() {
     }
 
-    override fun group(type: String, key: String, groupProperties: Map<String, Any>?) {
+    override fun group(
+        type: String,
+        key: String,
+        groupProperties: Map<String, Any>?,
+    ) {
     }
 
-    override fun screen(screenTitle: String, properties: Map<String, Any>?) {
+    override fun screen(
+        screenTitle: String,
+        properties: Map<String, Any>?,
+    ) {
         this.screenTitle = screenTitle
     }
 
@@ -77,7 +94,10 @@ public class PostHogFake : PostHogInterface {
         return false
     }
 
-    override fun register(key: String, value: Any) {
+    override fun register(
+        key: String,
+        value: Any,
+    ) {
     }
 
     override fun unregister(key: String) {
@@ -88,5 +108,27 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun debug(enable: Boolean) {
+    }
+
+    override fun startSession() {
+    }
+
+    override fun endSession() {
+    }
+
+    override fun isSessionActive(): Boolean {
+        return false
+    }
+
+    override fun isSessionReplayActive(): Boolean {
+        return false
+    }
+
+    override fun getSessionId(): UUID? {
+        return null
+    }
+
+    override fun <T : PostHogConfig> getConfig(): T? {
+        return null
     }
 }

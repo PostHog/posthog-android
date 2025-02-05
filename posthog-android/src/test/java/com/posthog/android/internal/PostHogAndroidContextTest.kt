@@ -5,8 +5,8 @@ package com.posthog.android.internal
 import android.content.Context
 import android.net.ConnectivityManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.apiKey
 import com.posthog.android.mockAppInfo
 import com.posthog.android.mockDisplayMetrics
 import com.posthog.android.mockGetNetworkInfo
@@ -28,7 +28,7 @@ internal class PostHogAndroidContextTest {
     private lateinit var config: PostHogAndroidConfig
 
     private fun getSut(): PostHogAndroidContext {
-        config = PostHogAndroidConfig(apiKey)
+        config = PostHogAndroidConfig(API_KEY)
         return PostHogAndroidContext(context, config)
     }
 
@@ -66,8 +66,15 @@ internal class PostHogAndroidContextTest {
         // its dynamic
         assertNotNull(staticContext["\$os_version"])
 
-        assertEquals(config.sdkName, staticContext["\$lib"])
-        assertEquals(config.sdkVersion, staticContext["\$lib_version"])
+        assertNotNull(staticContext["\$is_emulator"])
+    }
+
+    fun `returns sdk info`() {
+        val sut = getSut()
+        val sdkInfo = sut.getSdkInfo()
+
+        assertEquals(config.sdkName, sdkInfo["\$lib"])
+        assertEquals(config.sdkVersion, sdkInfo["\$lib_version"])
     }
 
     @Test
@@ -87,7 +94,10 @@ internal class PostHogAndroidContextTest {
         assertEquals("name", dynamicContext["\$network_carrier"])
     }
 
-    private fun executeNetworkTest(networkType: Int = ConnectivityManager.TYPE_WIFI, isConnected: Boolean = true): Map<String, Any> {
+    private fun executeNetworkTest(
+        networkType: Int = ConnectivityManager.TYPE_WIFI,
+        isConnected: Boolean = true,
+    ): Map<String, Any> {
         val sut = getSut()
         val cm = mockPermission(context)
         mockGetNetworkInfo(cm, networkType, isConnected = isConnected)

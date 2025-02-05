@@ -4,8 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.app.Application.ActivityLifecycleCallbacks
 import android.os.Bundle
-import com.posthog.PostHog
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 
 /**
@@ -17,23 +17,39 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     private val application: Application,
     private val config: PostHogAndroidConfig,
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
+    private var postHog: PostHogInterface? = null
 
-    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+    private companion object {
+        @Volatile
+        private var integrationInstalled = false
+    }
+
+    override fun onActivityCreated(
+        activity: Activity,
+        savedInstanceState: Bundle?,
+    ) {
         if (config.captureDeepLinks) {
-            activity.intent.data?.let {
+            activity.intent?.let { intent ->
                 val props = mutableMapOf<String, Any>()
+                val data = intent.data
                 try {
-                    for (item in it.queryParameterNames) {
-                        val param = it.getQueryParameter(item)
-                        if (!param.isNullOrEmpty()) {
-                            props[item] = param
+                    data?.let {
+                        for (item in it.queryParameterNames) {
+                            val param = it.getQueryParameter(item)
+                            if (!param.isNullOrEmpty()) {
+                                props[item] = param
+                            }
                         }
                     }
                 } catch (e: UnsupportedOperationException) {
-                    config.logger.log("Deep link $it has invalid query param names.")
+                    config.logger.log("Deep link $data has invalid query param names.")
                 } finally {
-                    props["url"] = it.toString()
-                    PostHog.capture("Deep Link Opened", properties = props)
+                    data?.let { props["url"] = it.toString() }
+                    intent.getReferrerInfo(config).let { props.putAll(it) }
+
+                    if (props.isNotEmpty()) {
+                        postHog?.capture("Deep Link Opened", properties = props)
+                    }
                 }
             }
         }
@@ -41,9 +57,10 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 
     override fun onActivityStarted(activity: Activity) {
         if (config.captureScreenViews) {
-            val activityLabel = activity.activityLabel(config)
-            if (!activityLabel.isNullOrEmpty()) {
-                PostHog.screen(activityLabel)
+            val screenName = activity.activityLabelOrName(config)
+
+            if (!screenName.isNullOrEmpty()) {
+                postHog?.screen(screenName)
             }
         }
     }
@@ -57,17 +74,28 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     override fun onActivityStopped(activity: Activity) {
     }
 
-    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
+    override fun onActivitySaveInstanceState(
+        activity: Activity,
+        outState: Bundle,
+    ) {
     }
 
     override fun onActivityDestroyed(activity: Activity) {
     }
 
-    override fun install() {
+    override fun install(postHog: PostHogInterface) {
+        if (integrationInstalled) {
+            return
+        }
+        integrationInstalled = true
+
+        this.postHog = postHog
         application.registerActivityLifecycleCallbacks(this)
     }
 
     override fun uninstall() {
+        this.postHog = null
+        integrationInstalled = false
         application.unregisterActivityLifecycleCallbacks(this)
     }
 }

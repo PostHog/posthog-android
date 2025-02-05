@@ -63,7 +63,10 @@ fun Project.javadocConfig() {
     }
 }
 
-fun MavenPom.postHogConfig(projectName: String, repo: String = "posthog-android") {
+fun MavenPom.postHogConfig(
+    projectName: String,
+    repo: String = "posthog-android",
+) {
     name.set(projectName)
     description.set("SDK for posthog.com")
     url.set("https://github.com/trustwallet/$repo")
@@ -94,16 +97,23 @@ fun MavenPom.postHogConfig(projectName: String, repo: String = "posthog-android"
     }
 }
 
-fun MavenPublication.postHogConfig(projectName: String, properties: Map<String, Any?>) {
+fun MavenPublication.postHogConfig(
+    projectName: String,
+    properties: Map<String, Any?>,
+) {
     groupId = "com.github.trustwallet"
     artifactId = projectName
     version = properties[PostHogPublishConfig.versionNameProperty].toString()
 }
 
-fun SigningExtension.postHogConfig(variantName: String, publishingExtension: PublishingExtension) {
+fun SigningExtension.postHogConfig(
+    variantName: String,
+    publishingExtension: PublishingExtension,
+) {
     val privateKey = System.getenv("GPG_PRIVATE_KEY")
     val password = System.getenv("GPG_PASSPHRASE")
-    isRequired = true
+    // releases are only signed on CI, so skip this locally
+    isRequired = PosthogBuildConfig.isCI()
     useInMemoryPgpKeys(privateKey, password)
     sign(publishingExtension.publications.getByName(variantName))
 }

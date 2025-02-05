@@ -3,9 +3,9 @@ package com.posthog.android.internal
 import android.app.Application
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.PostHogFake
-import com.posthog.android.apiKey
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockActivityUri
 import com.posthog.android.mockScreenTitle
@@ -20,17 +20,17 @@ import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogActivityLifecycleCallbackIntegrationTest {
-
     private val application = mock<Application>()
 
     private fun getSut(
         captureDeepLinks: Boolean = true,
         captureScreenViews: Boolean = true,
     ): PostHogActivityLifecycleCallbackIntegration {
-        val config = PostHogAndroidConfig(apiKey).apply {
-            this.captureDeepLinks = captureDeepLinks
-            this.captureScreenViews = captureScreenViews
-        }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                this.captureDeepLinks = captureDeepLinks
+                this.captureScreenViews = captureScreenViews
+            }
         return PostHogActivityLifecycleCallbackIntegration(application, config)
     }
 
@@ -43,9 +43,13 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     fun `install registers the lifecycle callback`() {
         val sut = getSut()
 
-        sut.install()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
 
         verify(application).registerActivityLifecycleCallbacks(any())
+
+        sut.uninstall()
     }
 
     @Test
@@ -57,14 +61,35 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         verify(application).unregisterActivityLifecycleCallbacks(any())
     }
 
-    private fun executeDeepLinkTest(url: String, captureDeepLinks: Boolean = true): PostHogFake {
+    private fun executeDeepLinkTest(
+        url: String,
+        captureDeepLinks: Boolean = true,
+    ): PostHogFake {
         val sut = getSut(captureDeepLinks = captureDeepLinks)
         val activity = mockActivityUri(url)
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
         sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        return fake
+    }
+
+    private fun executeDeepLinkTestWithReferrer(
+        url: String,
+        captureDeepLinks: Boolean = true,
+    ): PostHogFake {
+        val sut = getSut(captureDeepLinks = captureDeepLinks)
+        val activity = mockActivityUri(url, true)
+
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
         return fake
     }
 
@@ -94,6 +119,37 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     }
 
     @Test
+    fun `onActivityCreated captures deep link with web referrer`() {
+        val url = "http://google.com"
+        val domain = url.substringAfter("://")
+        val fake = executeDeepLinkTestWithReferrer(url)
+
+        assertEquals("Deep Link Opened", fake.event)
+        assertEquals(url, fake.properties?.get("\$referrer"))
+        assertEquals(domain, fake.properties?.get("\$referring_domain"))
+    }
+
+    @Test
+    fun `onActivityCreated captures deep link with app referrer`() {
+        val url = "android-app://com.example.source"
+        val domain = url.substringAfter("://")
+        val fake = executeDeepLinkTestWithReferrer(url)
+
+        assertEquals("Deep Link Opened", fake.event)
+        assertEquals(url, fake.properties?.get("\$referrer"))
+        assertEquals(domain, fake.properties?.get("\$referring_domain"))
+    }
+
+    @Test
+    fun `onActivityCreated also captures referrer for unparsable url`() {
+        val url = "google.com"
+        val fake = executeDeepLinkTestWithReferrer(url)
+
+        assertEquals("Deep Link Opened", fake.event)
+        assertEquals(url, fake.properties?.get("\$referrer"))
+    }
+
+    @Test
     fun `onActivityCreated does not capture deep link if disabled`() {
         val fake = executeDeepLinkTest("http://google.com", captureDeepLinks = false)
 
@@ -104,14 +160,18 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         captureScreenViews: Boolean = true,
         throws: Boolean = false,
         title: String = "Title",
+        activityName: String = "com.example.MyActivity",
+        applicationLabel: String = "AppLabel",
     ): PostHogFake {
         val sut = getSut(captureScreenViews = captureScreenViews)
-        val activity = mockScreenTitle(throws, title)
+        val activity = mockScreenTitle(throws, title, activityName, applicationLabel)
 
         val fake = createPostHogFake()
 
-        sut.install()
+        sut.install(fake)
         sut.onActivityStarted(activity)
+        sut.uninstall()
+
         return fake
     }
 
@@ -120,6 +180,18 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         val fake = executeCaptureScreenViewsTest()
 
         assertEquals("Title", fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityStarted returns activityInfo name if labels are the same`() {
+        val fake =
+            executeCaptureScreenViewsTest(
+                captureScreenViews = true,
+                title = "AppLabel",
+                activityName = "com.example.MyActivity",
+                applicationLabel = "AppLabel",
+            )
+        assertEquals("MyActivity", fake.screenTitle)
     }
 
     @Test
@@ -137,9 +209,9 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     }
 
     @Test
-    fun `onActivityStarted does not capture if title is empty`() {
+    fun `onActivityStarted returns activity name if activity label are the empty`() {
         val fake = executeCaptureScreenViewsTest(title = "")
 
-        assertNull(fake.screenTitle)
+        assertEquals("MyActivity", fake.screenTitle)
     }
 }

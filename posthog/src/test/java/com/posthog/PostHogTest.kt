@@ -2,9 +2,12 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -14,19 +17,20 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogTest {
-
     @get:Rule
     val tmpDir = TemporaryFolder()
 
     private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
+    private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val featureFlagsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlags"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
-    private val serializer = PostHogSerializer(PostHogConfig(apiKey))
+    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
     private val file = File("src/test/resources/json/basic-decide-no-errors.json")
@@ -34,6 +38,7 @@ internal class PostHogTest {
 
     fun getSut(
         host: String,
+        flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         optOut: Boolean = false,
         preloadFeatureFlags: Boolean = true,
@@ -43,20 +48,28 @@ internal class PostHogTest {
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     ): PostHogInterface {
-        config = PostHogConfig(apiKey, host).apply {
-            // for testing
-            flushAt = 1
-            this.storagePrefix = storagePrefix
-            this.optOut = optOut
-            this.preloadFeatureFlags = preloadFeatureFlags
-            if (integration != null) {
-                addIntegration(integration)
+        config =
+            PostHogConfig(API_KEY, host).apply {
+                // for testing
+                this.flushAt = flushAt
+                this.storagePrefix = storagePrefix
+                this.optOut = optOut
+                this.preloadFeatureFlags = preloadFeatureFlags
+                if (integration != null) {
+                    addIntegration(integration)
+                }
+                this.sendFeatureFlagEvent = sendFeatureFlagEvent
+                this.cachePreferences = cachePreferences
+                this.propertiesSanitizer = propertiesSanitizer
             }
-            this.sendFeatureFlagEvent = sendFeatureFlagEvent
-            this.cachePreferences = cachePreferences
-            this.propertiesSanitizer = propertiesSanitizer
-        }
-        return PostHog.withInternal(config, queueExecutor, featureFlagsExecutor, cachedEventsExecutor, reloadFeatureFlags)
+        return PostHog.withInternal(
+            config,
+            queueExecutor,
+            replayQueueExecutor,
+            featureFlagsExecutor,
+            cachedEventsExecutor,
+            reloadFeatureFlags,
+        )
     }
 
     @AfterTest
@@ -178,11 +191,12 @@ internal class PostHogTest {
 
     @Test
     fun `isFeatureEnabled returns value after reloaded`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -198,11 +212,12 @@ internal class PostHogTest {
 
     @Test
     fun `getFeatureFlag returns the value after reloaded`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -221,11 +236,12 @@ internal class PostHogTest {
         val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
         val responseDecideApi = file.readText()
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         http.enqueue(
             MockResponse()
                 .setBody(""),
@@ -274,12 +290,65 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `getFeatureFlagPayload returns the value after reloaded`() {
-        val http = mockHttp(
-            response =
+    fun `isFeatureEnabled captures feature flag event if enabled`() {
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val responseDecideApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
+        http.enqueue(
             MockResponse()
-                .setBody(responseDecideApi),
+                .setBody(""),
         )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+
+        assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
+
+        @Suppress("UNCHECKED_CAST")
+        val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
+        assertTrue(theFlags.contains("4535-funnel-bar-viz"))
+
+        assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
+        assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlagPayload returns the value after reloaded`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -317,12 +386,12 @@ internal class PostHogTest {
         sut.optOut()
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -342,12 +411,12 @@ internal class PostHogTest {
         sut.optOut()
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.awaitExecution()
@@ -355,12 +424,12 @@ internal class PostHogTest {
         sut.optIn()
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -378,12 +447,12 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -394,18 +463,18 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(apiKey, batch.apiKey)
+        assertEquals(API_KEY, batch.apiKey)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
-        assertEquals(event, theEvent.event)
-        assertEquals(distinctId, theEvent.distinctId)
+        assertEquals(EVENT, theEvent.event)
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
         assertNotNull(theEvent.timestamp)
         assertNotNull(theEvent.uuid)
         assertEquals("value", theEvent.properties!!["prop"] as String)
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
-        assertEquals(groupProps, theEvent.properties!!["\$groups"])
+        assertEquals(groups, theEvent.properties!!["\$groups"])
 
         sut.close()
     }
@@ -418,11 +487,11 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         sut.capture(
-            event,
+            EVENT,
             properties = props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -447,7 +516,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.identify(
-            distinctId,
+            DISTINCT_ID,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
         )
@@ -462,10 +531,215 @@ internal class PostHogTest {
 
         val theEvent = batch.batch.first()
         assertEquals("\$identify", theEvent.event)
-        assertEquals(distinctId, theEvent.distinctId)
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
         assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture an identify event with invalid distinct id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(
+            "   ",
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture an identify event if identified`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        sut.identify(
+            "anotherDistinctId",
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures a set event if identified`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        val userProps = mapOf("user1" to "theResult")
+        val userPropsOnce = mapOf("logged" to false)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.last()
+
+        assertEquals("\$set", theEvent.event)
+        assertEquals(userProps, theEvent.properties!!["\$set"])
+        assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture a set event if different user`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        val userProps = mapOf("user1" to "theResult")
+        val userPropsOnce = mapOf("logged" to false)
+
+        sut.identify(
+            "different user",
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.last()
+
+        assertEquals(1, batch.batch.size)
+        assertEquals("\$identify", theEvent.event)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures an identify event post reset`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        sut.reset()
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(2, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `sets is_identified property for identified user`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertTrue(theEvent.properties!!["\$is_identified"] as Boolean)
+
+        sut.close()
+    }
+
+    @Test
+    fun `sets is_identified property for non identified user`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capture(
+            "test",
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertFalse(theEvent.properties!!["\$is_identified"] as Boolean)
 
         sut.close()
     }
@@ -518,8 +792,38 @@ internal class PostHogTest {
         assertEquals("theType", theEvent.properties!!["\$group_type"] as String)
         assertEquals("theKey", theEvent.properties!!["\$group_key"] as String)
         assertEquals(groupProps, theEvent.properties!!["\$group_set"])
-        // since theres no cached groups yet
-        assertNull(theEvent.properties!!["\$groups"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `merges group`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val myPrefs = PostHogMemoryPreferences()
+        val groups = mutableMapOf("theType2" to "theKey2")
+        myPrefs.setValue(GROUPS, groups)
+        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, cachePreferences = myPrefs, reloadFeatureFlags = false)
+
+        sut.group("theType", "theKey", groupProps)
+
+        sut.capture("test", groups = mutableMapOf("theType3" to "theKey3"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.last()
+
+        val allGroups = mutableMapOf<String, Any>()
+        allGroups.putAll(groups)
+        allGroups["theType"] = "theKey"
+        allGroups["theType3"] = "theKey3"
+        assertEquals(allGroups, theEvent.properties!!["\$groups"])
 
         sut.close()
     }
@@ -534,12 +838,12 @@ internal class PostHogTest {
         sut.register("newRegister", true)
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -566,12 +870,12 @@ internal class PostHogTest {
         sut.register("version", "123")
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -600,12 +904,12 @@ internal class PostHogTest {
         sut.unregister("newRegister")
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -630,12 +934,12 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -646,18 +950,18 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(apiKey, batch.apiKey)
+        assertEquals(API_KEY, batch.apiKey)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
-        assertEquals(event, theEvent.event)
-        assertEquals(distinctId, theEvent.distinctId)
+        assertEquals(EVENT, theEvent.event)
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
         assertNotNull(theEvent.timestamp)
         assertNotNull(theEvent.uuid)
         assertEquals("value", theEvent.properties!!["prop"] as String)
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
-        assertEquals(groupProps, theEvent.properties!!["\$groups"])
+        assertEquals(groups, theEvent.properties!!["\$groups"])
 
         sut.close()
     }
@@ -672,12 +976,12 @@ internal class PostHogTest {
         sut.close()
 
         sut.capture(
-            event,
-            distinctId,
+            EVENT,
+            DISTINCT_ID,
             props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -691,20 +995,20 @@ internal class PostHogTest {
         val url = http.url("/")
 
         val myPrefs = PostHogMemoryPreferences()
-        myPrefs.setValue(apiKey, """{"anonymousId":"anonId","distinctId":"disId"}""")
+        myPrefs.setValue(API_KEY, """{"anonymousId":"anonId","distinctId":"disId"}""")
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = myPrefs)
 
         sut.capture(
-            event,
+            EVENT,
             properties = props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
 
-        assertNull(myPrefs.getValue(apiKey))
+        assertNull(myPrefs.getValue(API_KEY))
 
         val request = http.takeRequest()
 
@@ -737,11 +1041,12 @@ internal class PostHogTest {
         val file = File("src/test/resources/json/basic-decide-no-errors.json")
         val responseDecideApi = file.readText()
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         http.enqueue(
             MockResponse()
                 .setBody(""),
@@ -788,8 +1093,21 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `allows for modification of the uuid generation mechanism`() {
+        val expected = TimeBasedEpochGenerator.generate()
+        val config =
+            PostHogConfig(API_KEY, getAnonymousId = {
+                assertNotEquals(it, expected, "Expect two unique UUIDs")
+                expected
+            })
+        // now generate an event
+        val sut = PostHog.with(config)
+        assertEquals(expected.toString(), sut.distinctId(), "It should use the injected uuid instead")
+    }
+
+    @Test
     fun `enables debug mode`() {
-        val config = PostHogConfig(apiKey)
+        val config = PostHogConfig(API_KEY)
         val sut = PostHog.with(config)
 
         sut.debug(true)
@@ -801,9 +1119,10 @@ internal class PostHogTest {
 
     @Test
     fun `disables debug mode`() {
-        val config = PostHogConfig(apiKey).apply {
-            debug = true
-        }
+        val config =
+            PostHogConfig(API_KEY).apply {
+                debug = true
+            }
         val sut = PostHog.with(config)
 
         sut.debug(false)
@@ -816,21 +1135,23 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
-            properties.apply {
-                remove("prop")
+        val propertiesSanitizer =
+            PostHogPropertiesSanitizer { properties ->
+                properties.apply {
+                    remove("prop")
+                }
             }
-        }
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, propertiesSanitizer = propertiesSanitizer)
 
         sut.capture(
-            event,
-            distinctId,
-            props, // contains "prop"
+            EVENT,
+            DISTINCT_ID,
+            // contains "prop"
+            props,
             userProperties = userProps,
             userPropertiesSetOnce = userPropsOnce,
-            groupProperties = groupProps,
+            groups = groups,
         )
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -841,11 +1162,96 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(apiKey, batch.apiKey)
+        assertEquals(API_KEY, batch.apiKey)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
         assertNull(theEvent.properties!!["prop"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset session id when reset is called`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        queueExecutor.awaitExecution()
+
+        var request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        var content = request.body.unGzip()
+        var batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        var theEvent = batch.batch.first()
+        val currentSessionId = theEvent.properties!!["\$session_id"]
+        assertNotNull(currentSessionId)
+
+        sut.reset()
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        request = http.takeRequest()
+
+        assertEquals(2, http.requestCount)
+        content = request.body.unGzip()
+        batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        theEvent = batch.batch.first()
+        val newSessionId = theEvent.properties!!["\$session_id"]
+        assertNotNull(newSessionId)
+
+        assertTrue(currentSessionId != newSessionId)
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset reloads flags as anon user`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reset()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        assertEquals(1, http.requestCount)
+        assertEquals("/decide/?v=3", request.path)
+
+        sut.close()
+    }
+
+    @Test
+    fun `logger uses System out by default`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString())
+
+        assertTrue(config.logger is PostHogPrintLogger)
 
         sut.close()
     }

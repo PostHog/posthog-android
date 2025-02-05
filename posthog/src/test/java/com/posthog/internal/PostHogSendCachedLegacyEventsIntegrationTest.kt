@@ -1,13 +1,14 @@
 package com.posthog.internal
 
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import org.mockito.Mockito.mock
 import java.io.File
 import java.util.Date
 import java.util.concurrent.Executors
@@ -33,13 +34,13 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
-        val config = PostHogConfig(apiKey, host = host).apply {
-            this.legacyStoragePrefix = legacyStoragePrefix
-            this.networkStatus = networkStatus
-            this.maxBatchSize = maxBatchSize
-        }
-        val dateProvider = PostHogCalendarDateProvider()
-        val api = PostHogApi(config, dateProvider)
+        val config =
+            PostHogConfig(API_KEY, host = host).apply {
+                this.legacyStoragePrefix = legacyStoragePrefix
+                this.networkStatus = networkStatus
+                this.maxBatchSize = maxBatchSize
+            }
+        val api = PostHogApi(config)
         return PostHogSendCachedEventsIntegration(config, api, date, executor = executor)
     }
 
@@ -50,7 +51,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
     private fun getLegacyFile(legacyStoragePrefix: String): QueueFile {
         val legacyDir = File(legacyStoragePrefix)
-        val legacyFile = File(legacyDir, "$apiKey.tmp")
+        val legacyFile = File(legacyDir, "$API_KEY.tmp")
         return QueueFile.Builder(legacyFile)
             .forceLegacy(true)
             .build()
@@ -70,15 +71,18 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     fun `install bails out if not connected`() {
         val legacyStoragePrefix = writeLegacyFile(listOf(event))
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host", networkStatus = {
-            false
-        })
+        val sut =
+            getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host", networkStatus = {
+                false
+            })
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertFalse(getLegacyFile(legacyStoragePrefix).isEmpty)
+
+        sut.uninstall()
     }
 
     @Test
@@ -87,11 +91,13 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host")
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
+
+        sut.uninstall()
     }
 
     @Test
@@ -102,11 +108,13 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
+
+        sut.uninstall()
     }
 
     @Test
@@ -117,12 +125,14 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(2, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -133,12 +143,14 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -150,12 +162,14 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertTrue(getLegacyFile(legacyStoragePrefix).isEmpty)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -167,12 +181,14 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertEquals(2, getLegacyFile(legacyStoragePrefix).size())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -184,11 +200,13 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
 
         val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertEquals(2, getLegacyFile(legacyStoragePrefix).size())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 }

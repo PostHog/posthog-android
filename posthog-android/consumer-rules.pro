@@ -23,6 +23,10 @@
 -keep class com.posthog.internal.PostHogDecideResponse { *; }
 -keep class com.posthog.internal.PostHogDecideResponse { <init>(); }
 
+# Session Replay
+-keep class com.posthog.internal.replay.** { *; }
+-keep class com.posthog.internal.replay.** { <init>(); }
+
 # Prevent proguard from stripping interface information from TypeAdapter, TypeAdapterFactory,
 # JsonSerializer, JsonDeserializer instances (so they can be used in @JsonAdapter)
 -keep class * extends com.google.gson.TypeAdapter
@@ -73,4 +77,8 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# used in reflection to check if compose is available at runtime
+-keepnames class androidx.compose.ui.platform.AndroidComposeView
+
 ##---------------End: proguard configuration for okhttp3  ----------

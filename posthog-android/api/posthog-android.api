@@ -16,13 +16,97 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 }
 
 public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
+	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Z)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZ)V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZ)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z
 	public final fun getCaptureDeepLinks ()Z
 	public final fun getCaptureScreenViews ()Z
+	public final fun getSessionReplayConfig ()Lcom/posthog/android/replay/PostHogSessionReplayConfig;
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
 	public final fun setCaptureDeepLinks (Z)V
 	public final fun setCaptureScreenViews (Z)V
+	public final fun setSessionReplayConfig (Lcom/posthog/android/replay/PostHogSessionReplayConfig;)V
+}
+
+public final class com/posthog/android/internal/MainHandler {
+	public fun <init> ()V
+	public fun <init> (Landroid/os/Looper;)V
+	public synthetic fun <init> (Landroid/os/Looper;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getHandler ()Landroid/os/Handler;
+	public final fun getMainLooper ()Landroid/os/Looper;
+}
+
+public final class com/posthog/android/internal/PostHogAndroidUtilsKt {
+	public static final fun base64 (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;I)Ljava/lang/String;
+	public static synthetic fun base64$default (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;IILjava/lang/Object;)Ljava/lang/String;
+	public static final fun getApplicationInfo (Landroid/content/Context;)Landroid/content/pm/ApplicationInfo;
+	public static final fun webpBase64 (Landroid/graphics/Bitmap;I)Ljava/lang/String;
+	public static synthetic fun webpBase64$default (Landroid/graphics/Bitmap;IILjava/lang/Object;)Ljava/lang/String;
+}
+
+public abstract interface class com/posthog/android/replay/PostHogDrawableConverter {
+	public abstract fun convert (Landroid/graphics/drawable/Drawable;)Landroid/graphics/Bitmap;
+}
+
+public final class com/posthog/android/replay/PostHogMaskModifier {
+	public static final field INSTANCE Lcom/posthog/android/replay/PostHogMaskModifier;
+	public final fun postHogMask (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
+	public static synthetic fun postHogMask$default (Lcom/posthog/android/replay/PostHogMaskModifier;Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
+}
+
+public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration {
+	public static final field ANDROID_COMPOSE_VIEW Ljava/lang/String;
+	public static final field ANDROID_COMPOSE_VIEW_CLASS_NAME Ljava/lang/String;
+	public static final field PH_NO_CAPTURE_LABEL Ljava/lang/String;
+	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
+	public fun install (Lcom/posthog/PostHogInterface;)V
+	public fun uninstall ()V
+}
+
+public final class com/posthog/android/replay/PostHogSessionReplayConfig {
+	public fun <init> ()V
+	public fun <init> (Z)V
+	public fun <init> (ZZ)V
+	public fun <init> (ZZZ)V
+	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;)V
+	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;Z)V
+	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJ)V
+	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJ)V
+	public synthetic fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCaptureLogcat ()Z
+	public final fun getDebouncerDelayMs ()J
+	public final fun getDrawableConverter ()Lcom/posthog/android/replay/PostHogDrawableConverter;
+	public final fun getMaskAllImages ()Z
+	public final fun getMaskAllTextInputs ()Z
+	public final fun getScreenshot ()Z
+	public final fun getThrottleDelayMs ()J
+	public final fun setCaptureLogcat (Z)V
+	public final fun setDebouncerDelayMs (J)V
+	public final fun setDrawableConverter (Lcom/posthog/android/replay/PostHogDrawableConverter;)V
+	public final fun setMaskAllImages (Z)V
+	public final fun setMaskAllTextInputs (Z)V
+	public final fun setScreenshot (Z)V
+	public final fun setThrottleDelayMs (J)V
+}
+
+public class com/posthog/android/replay/internal/LogLine {
+	public field level Ljava/lang/String;
+	public field tag Ljava/lang/String;
+	public field text Ljava/lang/String;
+	public field time Ljava/util/GregorianCalendar;
+	public fun <init> ()V
+}
+
+public class com/posthog/android/replay/internal/LogcatParser {
+	public static final field BUFFER_BEGIN_RE Ljava/util/regex/Pattern;
+	public static final field DATE_TIME_MS_PATTERN Ljava/lang/String;
+	public static final field UTC Ljava/util/TimeZone;
+	public fun <init> ()V
+	public fun parse (Ljava/lang/String;)Lcom/posthog/android/replay/internal/LogLine;
 }
 

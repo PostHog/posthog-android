@@ -22,10 +22,12 @@ internal class PostHogSharedPreferences(
     private val sharedPreferences: SharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE),
 ) :
     PostHogPreferences {
-
     private val lock = Any()
 
-    override fun getValue(key: String, defaultValue: Any?): Any? {
+    override fun getValue(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         val value: Any?
         synchronized(lock) {
             value = sharedPreferences.all[key] ?: defaultValue
@@ -35,7 +37,11 @@ internal class PostHogSharedPreferences(
         return convertValue(key, value, stringifiedKeys)
     }
 
-    private fun convertValue(key: String, value: Any?, keys: Set<String>): Any? {
+    private fun convertValue(
+        key: String,
+        value: Any?,
+        keys: Set<String>,
+    ): Any? {
         return when (value) {
             is String -> {
                 // we only want to deserialize special keys
@@ -54,7 +60,10 @@ internal class PostHogSharedPreferences(
         }
     }
 
-    override fun setValue(key: String, value: Any) {
+    override fun setValue(
+        key: String,
+        value: Any,
+    ) {
         val edit = sharedPreferences.edit()
 
         synchronized(lock) {
@@ -118,12 +127,18 @@ internal class PostHogSharedPreferences(
         }
     }
 
-    private fun addToStringifiedKeys(key: String, editor: SharedPreferences.Editor) {
+    private fun addToStringifiedKeys(
+        key: String,
+        editor: SharedPreferences.Editor,
+    ) {
         val stringifiedKeys = getStringifiedKeys() + key
         editor.putStringSet(STRINGIFIED_KEYS, stringifiedKeys)
     }
 
-    private fun removeFromStringifiedKeys(key: String, editor: SharedPreferences.Editor) {
+    private fun removeFromStringifiedKeys(
+        key: String,
+        editor: SharedPreferences.Editor,
+    ) {
         val keys = getStringifiedKeys().toMutableSet()
         if (!keys.contains(key)) {
             return
@@ -136,7 +151,11 @@ internal class PostHogSharedPreferences(
         return sharedPreferences.getStringSet(STRINGIFIED_KEYS, setOf()) ?: setOf()
     }
 
-    private fun serializeObject(key: String, value: Any, editor: SharedPreferences.Editor) {
+    private fun serializeObject(
+        key: String,
+        value: Any,
+        editor: SharedPreferences.Editor,
+    ) {
         try {
             config.serializer.serializeObject(value)?.let {
                 editor.putString(key, it)
@@ -157,7 +176,8 @@ internal class PostHogSharedPreferences(
                 // to the original (and stringified) value
                 return it
             }
-        } catch (ignored: Throwable) { }
+        } catch (ignored: Throwable) {
+        }
         return value
     }
 
@@ -176,9 +196,10 @@ internal class PostHogSharedPreferences(
             @Suppress("UNCHECKED_CAST")
             allPreferences = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
         }
-        val filteredPreferences = allPreferences.filterKeys { key ->
-            !ALL_INTERNAL_KEYS.contains(key)
-        }
+        val filteredPreferences =
+            allPreferences.filterKeys { key ->
+                !ALL_INTERNAL_KEYS.contains(key)
+            }
         val preferences = mutableMapOf<String, Any>()
         val stringifiedKeys = getStringifiedKeys()
         for ((key, value) in filteredPreferences) {
@@ -190,7 +211,7 @@ internal class PostHogSharedPreferences(
         return preferences
     }
 
-    companion object {
+    private companion object {
         private val SPECIAL_KEYS = listOf(GROUPS)
     }
 }

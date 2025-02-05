@@ -119,6 +119,8 @@ PostHog.unregister("team_id")
 Load feature flags automatically
 
 ```kotlin
+import com.posthog.PostHogOnFeatureFlags
+
 val config = PostHogAndroidConfig(apiKey).apply {
     preloadFeatureFlags = true
     // get notified when feature flags are loaded
@@ -162,6 +164,8 @@ val distinctId = PostHog.distinctId()
 Sanitize event properties
 
 ```kotlin
+import com.posthog.PostHogPropertiesSanitizer
+
 val config = PostHogAndroidConfig(apiKey).apply {
     propertiesSanitizer = PostHogPropertiesSanitizer { properties ->
         properties.apply {
@@ -190,3 +194,15 @@ Close the SDK
 ```kotlin
 PostHog.close()
 ```
+
+## Android Session Recording
+
+Read the Mobile session replay [documentation](https://posthog.com/docs/session-replay/mobile).
+
+Enable `Record user sessions` on the [PostHog project settings](https://us.posthog.com/settings/project-replay#replay).
+
+[Install the SDK](https://posthog.com/docs/session-replay/installation?tab=Android) to capture Session recording.
+
+Install and learn more about [Network performance recording](https://posthog.com/docs/session-replay/network-recording?tab=Android).
+
+Learn more about [Privacy controls](https://posthog.com/docs/session-replay/privacy?tab=Android).

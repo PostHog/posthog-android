@@ -6,7 +6,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogMemoryPreferencesTest {
-
     private fun getSut(): PostHogMemoryPreferences {
         return PostHogMemoryPreferences()
     }

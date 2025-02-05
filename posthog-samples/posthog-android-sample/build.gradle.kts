@@ -39,6 +39,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = PosthogBuildConfig.Kotlin.COMPILER_EXTENSION_VERSION
@@ -52,6 +53,17 @@ android {
     androidComponents.beforeVariants {
         it.enable = !PosthogBuildConfig.shouldSkipDebugVariant(it.name)
     }
+
+    lint {
+        warningsAsErrors = false
+        abortOnError = false
+        ignoreTestSources = true
+
+        // lint runs only for debug build
+        checkReleaseBuilds = false
+
+        baseline = File("lint-baseline.xml")
+    }
 }
 
 kotlin {
@@ -62,12 +74,14 @@ kotlin {
 dependencies {
     implementation(project(mapOf("path" to ":posthog-android")))
 
-    implementation("androidx.activity:activity-compose:1.8.0")
+    implementation("androidx.activity:activity-compose:1.7.2")
     implementation(platform("androidx.compose:compose-bom:2023.03.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
+    implementation("com.squareup.okhttp3:okhttp")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.12")

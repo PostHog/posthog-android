@@ -1,10 +1,11 @@
 package com.posthog
 
+import java.util.UUID
+
 /**
  * The PostHog SDK entry point
  */
 public interface PostHogInterface {
-
     /**
      * Setup the SDK
      * @param config the SDK configuration
@@ -22,7 +23,7 @@ public interface PostHogInterface {
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
-     * @param groupProperties the group properties, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
     public fun capture(
         event: String,
@@ -30,7 +31,7 @@ public interface PostHogInterface {
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
-        groupProperties: Map<String, Any>? = null,
+        groups: Map<String, String>? = null,
     )
 
     /**
@@ -58,7 +59,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
      */
-    public fun isFeatureEnabled(key: String, defaultValue: Boolean = false): Boolean
+    public fun isFeatureEnabled(
+        key: String,
+        defaultValue: Boolean = false,
+    ): Boolean
 
     /**
      * Returns the feature flag
@@ -66,7 +70,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
-    public fun getFeatureFlag(key: String, defaultValue: Any? = null): Any?
+    public fun getFeatureFlag(
+        key: String,
+        defaultValue: Any? = null,
+    ): Any?
 
     /**
      * Returns the feature flag payload
@@ -74,7 +81,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
-    public fun getFeatureFlagPayload(key: String, defaultValue: Any? = null): Any?
+    public fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any? = null,
+    ): Any?
 
     /**
      * Flushes all the events in the Queue right away
@@ -104,14 +114,21 @@ public interface PostHogInterface {
      * @param key the Group key
      * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
-    public fun group(type: String, key: String, groupProperties: Map<String, Any>? = null)
+    public fun group(
+        type: String,
+        key: String,
+        groupProperties: Map<String, Any>? = null,
+    )
 
     /**
      * Captures a screen view event
      * @param screenTitle the screen title
      * @param properties the custom properties
      */
-    public fun screen(screenTitle: String, properties: Map<String, Any>? = null)
+    public fun screen(
+        screenTitle: String,
+        properties: Map<String, Any>? = null,
+    )
 
     /**
      * Creates an alias for the user
@@ -133,7 +150,10 @@ public interface PostHogInterface {
      * @param key the Key
      * @param value the Value
      */
-    public fun register(key: String, value: Any)
+    public fun register(
+        key: String,
+        value: Any,
+    )
 
     /**
      * Unregisters the previously set property to be sent with all the following events
@@ -150,4 +170,38 @@ public interface PostHogInterface {
      * Enables or disables the debug mode
      */
     public fun debug(enable: Boolean = true)
+
+    /**
+     * Starts a session
+     * The SDK will automatically start a session when you call [setup]
+     * On Android, the SDK will automatically start a session when the app is in the foreground
+     */
+    public fun startSession()
+
+    /**
+     * Ends a session
+     * The SDK will automatically end a session when you call [close]
+     * On Android, the SDK will automatically end a session when the app is in the background
+     * for at least 30 minutes
+     */
+    public fun endSession()
+
+    /**
+     * Returns if a session is active
+     */
+    public fun isSessionActive(): Boolean
+
+    /**
+     * Returns if Session Replay is Active
+     * Android only.
+     */
+    public fun isSessionReplayActive(): Boolean
+
+    /**
+     * Returns the session Id if a session is active
+     */
+    public fun getSessionId(): UUID?
+
+    @PostHogInternal
+    public fun <T : PostHogConfig> getConfig(): T?
 }

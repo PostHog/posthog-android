@@ -1,10 +1,11 @@
 package com.posthog.internal
 
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.awaitExecution
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
+import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
@@ -25,17 +26,19 @@ internal class PostHogFeatureFlagsTest {
     private val responseDecideApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
+    private var config: PostHogConfig? = null
+
     private fun getSut(
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogFeatureFlags {
-        val config = PostHogConfig(apiKey, host).apply {
-            this.networkStatus = networkStatus
-            cachePreferences = preferences
-        }
-        val dateProvider = PostHogCalendarDateProvider()
-        val api = PostHogApi(config, dateProvider)
-        return PostHogFeatureFlags(config, api, executor = executor)
+        config =
+            PostHogConfig(API_KEY, host).apply {
+                this.networkStatus = networkStatus
+                cachePreferences = preferences
+            }
+        val api = PostHogApi(config!!)
+        return PostHogFeatureFlags(config!!, api, executor = executor)
     }
 
     @BeforeTest
@@ -45,18 +48,20 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `load flags bails out if not connected`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
-        val sut = getSut(host = url.toString(), networkStatus = {
-            false
-        })
+        val sut =
+            getSut(host = url.toString(), networkStatus = {
+                false
+            })
 
-        sut.loadFeatureFlags("distinctId", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("distinctId", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -65,17 +70,18 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `load flags from decide api and call the onFeatureFlags callback`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
         var callback = false
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap()) {
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap()) {
             callback = true
         }
 
@@ -83,21 +89,23 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
+        assertFalse(sut.isSessionReplayFlagActive())
         assertTrue(callback)
     }
 
     @Test
     fun `clear the loaded feature flags`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -114,16 +122,17 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `returns all feature flags`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -133,16 +142,17 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `returns default value if given`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -151,26 +161,28 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `merge feature flags if there are errors`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.awaitExecution()
 
         val file = File("src/test/resources/json/basic-decide-with-errors.json")
 
-        val response = MockResponse()
-            .setBody(file.readText())
+        val response =
+            MockResponse()
+                .setBody(file.readText())
         http.enqueue(response)
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -185,16 +197,17 @@ internal class PostHogFeatureFlagsTest {
     fun `returns flag enabled if multivariant`() {
         val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(file.readText()),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -208,16 +221,17 @@ internal class PostHogFeatureFlagsTest {
     fun `getFeatureFlagPayload returns non strigified JSON`() {
         val file = File("src/test/resources/json/decide-with-stringfied-flags.json")
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(file.readText()),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -244,11 +258,12 @@ internal class PostHogFeatureFlagsTest {
         preferences.setValue(FEATURE_FLAGS, mapOf("foo" to true))
         preferences.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("foo" to true))
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(file.readText()),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -259,16 +274,17 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `load feature flags from cache if not loaded from the network yet`() {
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -280,5 +296,142 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(flags?.get("4535-funnel-bar-viz") as Boolean)
         assertTrue(payloads?.get("thePayload") as Boolean)
+    }
+
+    @Test
+    fun `returns session replay enabled after decide API call`() {
+        val file = File("src/test/resources/json/basic-decide-recording.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertEquals("/b/", config?.snapshotEndpoint)
+
+        sut.clear()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+    }
+
+    @Test
+    fun `read session replay config from start`() {
+        val flags = mapOf("endpoint" to "/b/")
+        preferences.setValue(SESSION_REPLAY, flags)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertEquals("/b/", config?.snapshotEndpoint)
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive true if bool linked flag is enabled`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-enabled.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive false if bool linked flag is disabled`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-disabled.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive true if multi variant linked flag is a match`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-variant-match.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive false if multi variant linked flag is not a match`() {
+        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-variant-not-match.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+
+        sut.clear()
     }
 }

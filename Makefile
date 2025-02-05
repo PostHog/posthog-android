@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine
 
 clean:
 	./gradlew clean
@@ -36,3 +36,7 @@ test:
 # compile already runs the tests (tests only java)
 testJava:
 	./gradlew :posthog:test
+
+generateLintBaseLine:
+	rm -f posthog-android/lint-baseline.xml
+	./gradlew lintDebug -Dlint.baselines.continue=true

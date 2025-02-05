@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
+import com.posthog.PostHogInterface
 import java.io.File
 import java.io.FileFilter
 import java.io.IOException
@@ -22,7 +23,17 @@ internal class PostHogSendCachedEventsIntegration(
     private val startDate: Date,
     private val executor: ExecutorService,
 ) : PostHogIntegration {
-    override fun install() {
+    private companion object {
+        @Volatile
+        private var integrationInstalled = false
+    }
+
+    override fun install(postHog: PostHogInterface) {
+        if (integrationInstalled) {
+            return
+        }
+        integrationInstalled = true
+
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
@@ -30,11 +41,13 @@ internal class PostHogSendCachedEventsIntegration(
             }
 
             flushLegacyEvents()
-            flushEvents()
+            flushEvents(config.storagePrefix, PostHogApiEndpoint.BATCH)
+            flushEvents(config.replayStoragePrefix, PostHogApiEndpoint.SNAPSHOT)
         }
         executor.shutdown()
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
     private fun flushLegacyEvents() {
         config.legacyStoragePrefix?.let {
             val legacyDir = File(it)
@@ -46,9 +59,10 @@ internal class PostHogSendCachedEventsIntegration(
 
             var legacy: QueueFile? = null
             try {
-                legacy = QueueFile.Builder(legacyFile)
-                    .forceLegacy(true)
-                    .build()
+                legacy =
+                    QueueFile.Builder(legacyFile)
+                        .forceLegacy(true)
+                        .build()
 
                 while (!legacy.isEmpty) {
                     val events = mutableListOf<PostHogEvent>()
@@ -115,13 +129,18 @@ internal class PostHogSendCachedEventsIntegration(
             } finally {
                 try {
                     legacy?.close()
-                } catch (ignored: Throwable) {}
+                } catch (ignored: Throwable) {
+                }
             }
         }
     }
 
-    private fun flushEvents() {
-        config.storagePrefix?.let {
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun flushEvents(
+        storagePrefix: String?,
+        endpoint: PostHogApiEndpoint,
+    ) {
+        storagePrefix?.let {
             val dir = File(it, config.apiKey)
 
             if (!dir.existsSafely(config)) {
@@ -173,11 +192,13 @@ internal class PostHogSendCachedEventsIntegration(
                     if (events.isNotEmpty()) {
                         var deleteFiles = true
                         try {
-                            api.batch(events)
-                        } catch (e: PostHogApiError) {
-                            if (e.statusCode < 400) {
-                                deleteFiles = false
+                            when (endpoint) {
+                                PostHogApiEndpoint.BATCH -> api.batch(events)
+                                PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
                             }
+                        } catch (e: PostHogApiError) {
+                            deleteFiles = deleteFilesIfAPIError(e, config)
+
                             throw e
                         } catch (e: IOException) {
                             // no connection should try again
@@ -204,5 +225,9 @@ internal class PostHogSendCachedEventsIntegration(
                 config.logger.log("Flushing events failed: $e.")
             }
         }
+    }
+
+    override fun uninstall() {
+        integrationInstalled = false
     }
 }

@@ -1,19 +1,20 @@
 package com.posthog.internal
 
 import com.google.gson.internal.bind.util.ISO8601Utils
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import org.mockito.Mockito.mock
 import java.io.File
 import java.text.ParsePosition
 import java.util.Calendar
 import java.util.Date
-import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -37,13 +38,13 @@ internal class PostHogSendCachedEventsIntegrationTest {
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
-        val config = PostHogConfig(apiKey, host = host).apply {
-            this.storagePrefix = storagePrefix
-            this.networkStatus = networkStatus
-            this.maxBatchSize = maxBatchSize
-        }
-        val dateProvider = PostHogCalendarDateProvider()
-        val api = PostHogApi(config, dateProvider)
+        val config =
+            PostHogConfig(API_KEY, host = host).apply {
+                this.storagePrefix = storagePrefix
+                this.networkStatus = networkStatus
+                this.maxBatchSize = maxBatchSize
+            }
+        val api = PostHogApi(config)
         return PostHogSendCachedEventsIntegration(config, api, date, executor = executor)
     }
 
@@ -52,13 +53,17 @@ internal class PostHogSendCachedEventsIntegrationTest {
         tmpDir.root.deleteRecursively()
     }
 
-    private fun writeFile(content: List<String> = emptyList(), date: Date? = null): String {
+    private fun writeFile(
+        content: List<String> = emptyList(),
+        date: Date? = null,
+    ): String {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        val fullFile = File(storagePrefix, apiKey)
+        val fullFile = File(storagePrefix, API_KEY)
         fullFile.mkdirs()
 
         content.forEach {
-            val file = File(fullFile.absoluteFile, "${UUID.randomUUID()}.event")
+            val uuid = TimeBasedEpochGenerator.generate()
+            val file = File(fullFile.absoluteFile, "$uuid.event")
             file.writeText(it)
             date?.let { theDate ->
                 val cal = Calendar.getInstance()
@@ -76,15 +81,18 @@ internal class PostHogSendCachedEventsIntegrationTest {
     fun `install bails out if not connected`() {
         val storagePrefix = writeFile(listOf(event))
 
-        val sut = getSut(storagePrefix = storagePrefix, host = "host", networkStatus = {
-            false
-        })
+        val sut =
+            getSut(storagePrefix = storagePrefix, host = "host", networkStatus = {
+                false
+            })
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertFalse(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertFalse(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
+
+        sut.uninstall()
     }
 
     @Test
@@ -93,11 +101,13 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = "host")
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
+
+        sut.uninstall()
     }
 
     @Test
@@ -108,11 +118,13 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
+
+        sut.uninstall()
     }
 
     @Test
@@ -123,12 +135,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(2, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -139,12 +153,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -156,12 +172,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(storagePrefix, apiKey).listFiles()!!.isEmpty())
+        assertTrue(File(storagePrefix, API_KEY).listFiles()!!.isEmpty())
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -173,12 +191,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(2, File(storagePrefix, apiKey).listFiles()!!.size)
+        assertEquals(2, File(storagePrefix, API_KEY).listFiles()!!.size)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -190,12 +210,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         val sut = getSut(storagePrefix = storagePrefix, host = url.toString())
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(2, File(storagePrefix, apiKey).listFiles()!!.size)
+        assertEquals(2, File(storagePrefix, API_KEY).listFiles()!!.size)
         assertEquals(1, http.requestCount)
+
+        sut.uninstall()
     }
 
     @Test
@@ -208,8 +230,9 @@ internal class PostHogSendCachedEventsIntegrationTest {
         val sut = getSut(date, storagePrefix = storagePrefix, host = url.toString(), maxBatchSize = 1)
 
         // write a new file
-        val folder = File(storagePrefix, apiKey)
-        val file = File(folder, "${UUID.randomUUID()}.event")
+        val folder = File(storagePrefix, API_KEY)
+        val uuid = TimeBasedEpochGenerator.generate()
+        val file = File(folder, "$uuid.event")
 
         val tempEvent = File("src/test/resources/json/other-event.json").readText()
         file.writeText(tempEvent)
@@ -220,13 +243,15 @@ internal class PostHogSendCachedEventsIntegrationTest {
         // +1 sec
         file.setLastModified(cal.time.time)
 
-        sut.install()
+        sut.install(mock())
 
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, http.requestCount)
-        val files = File(storagePrefix, apiKey).listFiles()!!
+        val files = File(storagePrefix, API_KEY).listFiles()!!
         assertEquals(1, files.size)
         assertEquals(tempEvent, files[0].readText())
+
+        sut.uninstall()
     }
 }

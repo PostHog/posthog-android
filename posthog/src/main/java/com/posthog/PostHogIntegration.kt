@@ -6,8 +6,10 @@ package com.posthog
 public interface PostHogIntegration {
     /**
      * Install the Integration after the SDK is setup
+     * that requires a posthog instance to capture events
      */
-    public fun install()
+    public fun install(postHog: PostHogInterface) {
+    }
 
     /**
      * Uninstall the Integration after the SDK is closed

@@ -5,9 +5,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.android.API_KEY
 import com.posthog.android.FakeLifecycle
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.apiKey
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockPackageInfo
 import org.junit.runner.RunWith
@@ -22,8 +22,9 @@ internal class PostHogLifecycleObserverIntegrationTest {
     private val fakeLifecycle = FakeLifecycle(Lifecycle.State.CREATED)
 
     private fun getSut(): PostHogLifecycleObserverIntegration {
-        val config = PostHogAndroidConfig(apiKey)
-        return PostHogLifecycleObserverIntegration(context, config, lifecycle = fakeLifecycle)
+        val config = PostHogAndroidConfig(API_KEY)
+        val mainHandler = MainHandler()
+        return PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
     }
 
     @BeforeTest
@@ -35,16 +36,22 @@ internal class PostHogLifecycleObserverIntegrationTest {
     fun `install adds the observer`() {
         val sut = getSut()
 
-        sut.install()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
 
         assertEquals(1, fakeLifecycle.observers)
+
+        sut.uninstall()
     }
 
     @Test
     fun `uninstall removes the observer`() {
         val sut = getSut()
 
-        sut.install()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
         sut.uninstall()
 
         assertEquals(0, fakeLifecycle.observers)
@@ -56,6 +63,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         val fake = createPostHogFake()
         context.mockPackageInfo("1.0.0", 1)
+        sut.install(fake)
 
         sut.onStart(ProcessLifecycleOwner.get())
 
@@ -63,6 +71,8 @@ internal class PostHogLifecycleObserverIntegrationTest {
         assertEquals("1.0.0", fake.properties?.get("version"))
         assertEquals(1L, fake.properties?.get("build"))
         assertEquals(false, fake.properties?.get("from_background"))
+
+        sut.uninstall()
     }
 
     @Test
@@ -71,12 +81,15 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         val fake = createPostHogFake()
         context.mockPackageInfo("1.0.0", 1)
+        sut.install(fake)
 
         sut.onStart(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())
 
         assertEquals("Application Opened", fake.event)
         assertEquals(true, fake.properties?.get("from_background"))
+
+        sut.uninstall()
     }
 
     @Test
@@ -84,10 +97,13 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val sut = getSut()
 
         val fake = createPostHogFake()
+        sut.install(fake)
 
         sut.onStart(ProcessLifecycleOwner.get())
         sut.onStop(ProcessLifecycleOwner.get())
 
         assertEquals("Application Backgrounded", fake.event)
+
+        sut.uninstall()
     }
 }

@@ -13,7 +13,7 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
-public const val apiKey: String = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+public const val API_KEY: String = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
 
 public fun ExecutorService.shutdownAndAwaitTermination() {
     shutdown() // Disable new tasks from being submitted
@@ -45,30 +45,34 @@ public fun ExecutorService.awaitExecution() {
 }
 
 public val date: Date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
-public const val event: String = "event"
-public const val distinctId: String = "distinctId"
-public const val anonId: String = "anonId"
-public val groups: Map<String, Any> = mapOf("group1" to "theValue")
+public const val EVENT: String = "event"
+public const val DISTINCT_ID: String = "distinctId"
+public const val ANON_ID: String = "anonId"
+public val groups: Map<String, String> = mapOf("group1" to "theValue")
 public val userProps: Map<String, Any> = mapOf("user1" to "theValue")
 public val userPropsOnce: Map<String, Any> = mapOf("logged" to true)
 public val groupProps: Map<String, Any> = mapOf("premium" to true)
 public val props: Map<String, Any> = mapOf<String, Any>("prop" to "value")
 public val uuid: UUID = UUID.fromString("8c04e5c1-8f6e-4002-96fd-1804799b6ffe")
 
-public fun generateEvent(eventName: String? = null): PostHogEvent {
+public fun generateEvent(
+    eventName: String? = null,
+    givenUuuid: UUID? = null,
+): PostHogEvent {
     return PostHogEvent(
-        eventName ?: event,
-        distinctId = distinctId,
+        eventName ?: EVENT,
+        distinctId = DISTINCT_ID,
         properties = props,
         timestamp = date,
-        uuid = uuid,
+        uuid = givenUuuid ?: uuid,
     )
 }
 
 public fun mockHttp(
     total: Int = 1,
-    response: MockResponse = MockResponse()
-        .setBody(""),
+    response: MockResponse =
+        MockResponse()
+            .setBody(""),
 ): MockWebServer {
     val mock = MockWebServer()
     mock.start()

@@ -17,7 +17,7 @@
         tools:targetApi="34"
         android:name=".MyApp">
         <activity
-            android:name="com.posthog.android.sample.MainActivity"
+            android:name="com.posthog.android.sample.NormalActivity"
             android:exported="true"
             android:theme="@style/Theme.PostHogAndroidSample">
             <intent-filter>
@@ -26,6 +26,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="com.posthog.android.sample.NothingActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PostHogAndroidSample" />
     </application>
 
 </manifest>

@@ -1,8 +1,8 @@
 package com.posthog.internal
 
+import com.posthog.API_KEY
 import com.posthog.BuildConfig
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.generateEvent
 import com.posthog.mockHttp
 import okhttp3.mockwebserver.MockResponse
@@ -13,13 +13,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 internal class PostHogApiTest {
-
-    private fun getSut(
-        host: String,
-    ): PostHogApi {
-        val config = PostHogConfig(apiKey, host)
-        val dateProvider = PostHogCalendarDateProvider()
-        return PostHogApi(config, dateProvider)
+    private fun getSut(host: String): PostHogApi {
+        val config = PostHogConfig(API_KEY, host)
+        return PostHogApi(config)
     }
 
     @Test
@@ -54,9 +50,10 @@ internal class PostHogApiTest {
         val event = generateEvent()
         val events = listOf(event)
 
-        val exc = assertThrows(PostHogApiError::class.java) {
-            sut.batch(events)
-        }
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.batch(events)
+            }
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)
         assertNotNull(exc.body)
@@ -67,16 +64,17 @@ internal class PostHogApiTest {
         val file = File("src/test/resources/json/basic-decide-no-errors.json")
         val responseDecideApi = file.readText()
 
-        val http = mockHttp(
-            response =
-            MockResponse()
-                .setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        val response = sut.decide("distinctId", "anonId", emptyMap())
+        val response = sut.decide("distinctId", anonymousId = "anonId", emptyMap())
 
         val request = http.takeRequest()
 
@@ -96,9 +94,10 @@ internal class PostHogApiTest {
 
         val sut = getSut(host = url.toString())
 
-        val exc = assertThrows(PostHogApiError::class.java) {
-            sut.decide("distinctId", "anonId", emptyMap())
-        }
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.decide("distinctId", anonymousId = "anonId", emptyMap())
+            }
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)
         assertNotNull(exc.body)

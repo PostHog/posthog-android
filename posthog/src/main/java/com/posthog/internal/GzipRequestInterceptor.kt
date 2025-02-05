@@ -24,6 +24,7 @@ import okhttp3.MediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.Response
+import okio.Buffer
 import okio.BufferedSink
 import okio.GzipSink
 import okio.buffer
@@ -47,16 +48,17 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
         ) {
             chain.proceed(originalRequest)
         } else {
-            val compressedRequest = try {
-                originalRequest.newBuilder()
-                    .header("Content-Encoding", "gzip")
-                    .method(originalRequest.method, gzip(body))
-                    .build()
-            } catch (e: Throwable) {
-                config.logger.log("Failed to gzip the request body: $e.")
+            val compressedRequest =
+                try {
+                    originalRequest.newBuilder()
+                        .header("Content-Encoding", "gzip")
+                        .method(originalRequest.method, forceContentLength(gzip(body)))
+                        .build()
+                } catch (e: Throwable) {
+                    config.logger.log("Failed to gzip the request body: $e.")
 
-                originalRequest
-            }
+                    originalRequest
+                }
             chain.proceed(compressedRequest)
         }
     }
@@ -76,6 +78,28 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
                 val gzipSink = GzipSink(sink).buffer()
                 body.writeTo(gzipSink)
                 gzipSink.close()
+            }
+        }
+    }
+
+    // https://github.com/square/okhttp/issues/350
+    @Throws(IOException::class)
+    private fun forceContentLength(body: RequestBody): RequestBody {
+        val buffer = Buffer()
+        body.writeTo(buffer)
+
+        return object : RequestBody() {
+            override fun contentType(): MediaType? {
+                return body.contentType()
+            }
+
+            override fun contentLength(): Long {
+                return buffer.size
+            }
+
+            @Throws(IOException::class)
+            override fun writeTo(sink: BufferedSink) {
+                sink.write(buffer.snapshot())
             }
         }
     }

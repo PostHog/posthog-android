@@ -1,12 +1,18 @@
 package com.posthog.internal
 
+import com.posthog.PostHogInternal
 import java.util.Date
 
 /**
  * Interface to read the current Date
  */
-internal interface PostHogDateProvider {
-    fun currentDate(): Date
+@PostHogInternal
+public interface PostHogDateProvider {
+    public fun currentDate(): Date
 
-    fun addSecondsToCurrentDate(seconds: Int): Date
+    public fun addSecondsToCurrentDate(seconds: Int): Date
+
+    public fun currentTimeMillis(): Long
+
+    public fun nanoTime(): Long
 }

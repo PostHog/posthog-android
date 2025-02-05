@@ -1,25 +1,26 @@
 package com.posthog.internal
 
 import com.google.gson.internal.bind.util.ISO8601Utils
+import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.apiKey
 import com.posthog.awaitExecution
 import com.posthog.generateEvent
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.text.ParsePosition
+import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 internal class PostHogQueueTest {
-
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     @get:Rule
@@ -30,20 +31,21 @@ internal class PostHogQueueTest {
         maxQueueSize: Int = 1000,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         flushAt: Int = 20,
-        dateProvider: PostHogDateProvider = PostHogCalendarDateProvider(),
+        dateProvider: PostHogDateProvider = PostHogDeviceDateProvider(),
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
-
     ): PostHogQueue {
-        val config = PostHogConfig(apiKey, host).apply {
-            this.maxQueueSize = maxQueueSize
-            this.storagePrefix = storagePrefix
-            this.flushAt = flushAt
-            this.networkStatus = networkStatus
-            this.maxBatchSize = maxBatchSize
-        }
-        val api = PostHogApi(config, dateProvider)
-        return PostHogQueue(config, api, executor = executor, dateProvider = dateProvider)
+        val config =
+            PostHogConfig(API_KEY, host).apply {
+                this.maxQueueSize = maxQueueSize
+                this.storagePrefix = storagePrefix
+                this.flushAt = flushAt
+                this.networkStatus = networkStatus
+                this.maxBatchSize = maxBatchSize
+                this.dateProvider = dateProvider
+            }
+        val api = PostHogApi(config)
+        return PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, executor = executor)
     }
 
     @Test
@@ -78,7 +80,7 @@ internal class PostHogQueueTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(File(path, apiKey).exists())
+        assertTrue(File(path, API_KEY).exists())
     }
 
     @Test
@@ -93,7 +95,7 @@ internal class PostHogQueueTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -156,9 +158,10 @@ internal class PostHogQueueTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(host = url.toString(), flushAt = 1, networkStatus = {
-            false
-        })
+        val sut =
+            getSut(host = url.toString(), flushAt = 1, networkStatus = {
+                false
+            })
 
         sut.add(generateEvent())
 
@@ -173,9 +176,10 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         var connected = false
-        val sut = getSut(host = url.toString(), flushAt = 1, networkStatus = {
-            connected
-        })
+        val sut =
+            getSut(host = url.toString(), flushAt = 1, networkStatus = {
+                connected
+            })
 
         sut.add(generateEvent())
 
@@ -203,7 +207,7 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -219,7 +223,7 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -236,7 +240,7 @@ internal class PostHogQueueTest {
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -252,14 +256,14 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
 
         sut.clear()
 
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -271,16 +275,12 @@ internal class PostHogQueueTest {
         val path = tmpDir.newFolder().absolutePath
         val sut = getSut(host = url.toString(), flushAt = 1, storagePrefix = path, dateProvider = fakeCurrentTime)
 
-        // to be sure that the delay is before now
-        val date = ISO8601Utils.parse("1970-09-20T11:58:49.000Z", ParsePosition(0))
-        fakeCurrentTime.setAddSecondsToCurrentDate(date)
-
         sut.add(generateEvent())
 
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
 
         http.enqueue(MockResponse().setBody(""))
 
@@ -289,7 +289,7 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
@@ -310,16 +310,16 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, apiKey).listFiles()!!.size)
+        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
 
         http.enqueue(MockResponse().setResponseCode(300).setBody("error"))
 
-        sut.add(generateEvent())
+        sut.add(generateEvent(givenUuuid = UUID.randomUUID()))
 
         executor.awaitExecution()
 
         assertEquals(2, sut.dequeList.size)
-        assertEquals(2, File(path, apiKey).listFiles()!!.size)
+        assertEquals(2, File(path, API_KEY).listFiles()!!.size)
 
         http.enqueue(MockResponse().setBody(""))
         http.enqueue(MockResponse().setBody(""))
@@ -329,7 +329,39 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, apiKey).listFiles()!!.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
         assertEquals(4, http.requestCount)
+    }
+
+    @Test
+    fun `reduces batch size if 413`() {
+        val e = PostHogApiError(413, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+        assertEquals(config.maxBatchSize, 25) // default 50
+        assertEquals(config.flushAt, 10) // default 20
+    }
+
+    @Test
+    fun `delete files if batch is min already`() {
+        val e = PostHogApiError(413, "", null)
+        val config =
+            PostHogConfig(API_KEY).apply {
+                maxBatchSize = 1
+                flushAt = 1
+            }
+
+        assertTrue(deleteFilesIfAPIError(e, config))
+        assertEquals(config.maxBatchSize, 1)
+        assertEquals(config.flushAt, 1)
+    }
+
+    @Test
+    fun `delete files if errored`() {
+        val e = PostHogApiError(400, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertTrue(deleteFilesIfAPIError(e, config))
     }
 }

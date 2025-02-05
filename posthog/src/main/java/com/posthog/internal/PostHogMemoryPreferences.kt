@@ -10,7 +10,10 @@ public class PostHogMemoryPreferences : PostHogPreferences {
     private val lock = Any()
     private val preferences = mutableMapOf<String, Any>()
 
-    override fun getValue(key: String, defaultValue: Any?): Any? {
+    override fun getValue(
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
         val value: Any?
         synchronized(lock) {
             value = preferences[key] ?: defaultValue
@@ -18,7 +21,10 @@ public class PostHogMemoryPreferences : PostHogPreferences {
         return value
     }
 
-    override fun setValue(key: String, value: Any) {
+    override fun setValue(
+        key: String,
+        value: Any,
+    ) {
         synchronized(lock) {
             preferences[key] = value
         }

@@ -1,6 +1,6 @@
 package com.posthog
 
-import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogNoOpLogger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,11 +8,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogConfigTest {
-    private val config = PostHogConfig(apiKey)
+    private val config = PostHogConfig(API_KEY)
 
     @Test
     fun `host is set app posthog com by default`() {
-        assertEquals("https://app.posthog.com", config.host)
+        assertEquals("https://us.i.posthog.com", config.host)
     }
 
     @Test
@@ -66,8 +66,8 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `logger uses System out by default`() {
-        assertTrue(config.logger is PostHogPrintLogger)
+    fun `logger uses NoOp by default`() {
+        assertTrue(config.logger is PostHogNoOpLogger)
     }
 
     @Test
@@ -78,6 +78,12 @@ internal class PostHogConfigTest {
     @Test
     fun `sdk version is set the java sdk by default`() {
         assertEquals(BuildConfig.VERSION_NAME, config.sdkVersion)
+    }
+
+    @Test
+    fun `user agent is returned correctly if changed`() {
+        config.sdkName = "posthog-android"
+        assertEquals("posthog-android/${BuildConfig.VERSION_NAME}", config.userAgent)
     }
 
     @Test
