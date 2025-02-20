@@ -290,6 +290,46 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `getFeatureFlagPayload captures feature flag event if enabled`() {
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val responseDecideApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                MockResponse()
+                    .setBody(responseDecideApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        featureFlagsExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        assertTrue(sut.getFeatureFlagPayload("thePayload") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+
+        sut.close()
+    }
+
+    @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
         val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
         val responseDecideApi = file.readText()

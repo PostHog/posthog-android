@@ -1,5 +1,7 @@
 ## Next
 
+- fix: getFeatureFlagPayload wasn't sending the $feature_flag_called event ([#226](https://github.com/PostHog/posthog-android/pull/226))
+
 ## 3.11.2 - 2025-02-04
 
 - fix: touches fall back to single touches if out of bounds ([#221](https://github.com/PostHog/posthog-android/pull/221))
