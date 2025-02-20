@@ -756,7 +756,11 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
+        val value = featureFlags?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
+
+        sendFeatureFlagCalled(key, value)
+
+        return value
     }
 
     public override fun flush() {
