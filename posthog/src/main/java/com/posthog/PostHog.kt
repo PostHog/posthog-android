@@ -44,7 +44,7 @@ public class PostHog private constructor(
             PostHogThreadFactory("PostHogSendCachedEventsThread"),
         ),
     private val reloadFeatureFlags: Boolean = true,
-) : PostHogInterface {
+) : PostHogInterface, PostHogStateless() {
     @Volatile
     private var enabled = false
 
@@ -85,7 +85,8 @@ public class PostHog private constructor(
                 config.cachePreferences = cachePreferences
                 val api = PostHogApi(config)
                 val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
+                val replayQueue =
+                    PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
                 val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -138,10 +139,6 @@ public class PostHog private constructor(
                 config.logger.log("Setup failed: $e.")
             }
         }
-    }
-
-    private fun getPreferences(): PostHogPreferences {
-        return config?.cachePreferences ?: memoryPreferences
     }
 
     private fun legacyPreferences(
@@ -252,27 +249,6 @@ public class PostHog private constructor(
             }
         }
 
-    private var isPersonProcessingEnabled: Boolean = false
-        get() {
-            synchronized(personProcessingLock) {
-                if (!isPersonProcessingLoaded) {
-                    isPersonProcessingEnabled = getPreferences().getValue(PERSON_PROCESSING) as? Boolean
-                        ?: false
-                    isPersonProcessingLoaded = true
-                }
-            }
-            return field
-        }
-        set(value) {
-            synchronized(personProcessingLock) {
-                // only set if its different to avoid IO since this is called more often
-                if (field != value) {
-                    field = value
-                    getPreferences().setValue(PERSON_PROCESSING, value)
-                }
-            }
-        }
-
     private fun buildProperties(
         distinctId: String,
         properties: Map<String, Any>?,
@@ -370,24 +346,6 @@ public class PostHog private constructor(
         return props
     }
 
-    private fun mergeGroups(givenGroups: Map<String, String>?): Map<String, String>? {
-        val preferences = getPreferences()
-
-        @Suppress("UNCHECKED_CAST")
-        val groups = preferences.getValue(GROUPS) as? Map<String, String>
-        val newGroups = mutableMapOf<String, String>()
-
-        groups?.let {
-            newGroups.putAll(it)
-        }
-
-        givenGroups?.let {
-            newGroups.putAll(it)
-        }
-
-        return newGroups.ifEmpty { null }
-    }
-
     public override fun capture(
         event: String,
         distinctId: String?,
@@ -406,13 +364,6 @@ public class PostHog private constructor(
             }
 
             val newDistinctId = distinctId ?: this.distinctId
-
-            // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
-            // we should still enable person processing since this is intentional
-            if (userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false) {
-                requirePersonProcessing("capture", ignoreMessage = true)
-            }
-
             if (newDistinctId.isBlank()) {
                 config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
                 return
@@ -442,7 +393,8 @@ public class PostHog private constructor(
                 )
 
             // sanitize the properties or fallback to the original properties
-            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
+            val sanitizedProperties =
+                config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
 
             val postHogEvent =
                 PostHogEvent(
@@ -457,42 +409,10 @@ public class PostHog private constructor(
                 return
             }
 
-            queue?.add(postHogEvent)
+            super.capture(event, newDistinctId, properties, userProperties, userPropertiesSetOnce, groups)
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
-    }
-
-    public override fun optIn() {
-        if (!isEnabled()) {
-            return
-        }
-
-        synchronized(optOutLock) {
-            config?.optOut = false
-            getPreferences().setValue(OPT_OUT, false)
-        }
-    }
-
-    public override fun optOut() {
-        if (!isEnabled()) {
-            return
-        }
-
-        synchronized(optOutLock) {
-            config?.optOut = true
-            getPreferences().setValue(OPT_OUT, true)
-        }
-    }
-
-    /**
-     * Is Opt Out
-     */
-    public override fun isOptOut(): Boolean {
-        if (!isEnabled()) {
-            return true
-        }
-        return config?.optOut ?: true
     }
 
     public override fun screen(
@@ -564,13 +484,7 @@ public class PostHog private constructor(
                 isIdentified = true
             }
 
-            capture(
-                "\$identify",
-                distinctId = distinctId,
-                properties = props,
-                userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce,
-            )
+            super.identify(distinctId, userProperties, userPropertiesSetOnce)
 
             // We keep the AnonymousId to be used by decide calls and identify to link the previousId
             if (previousDistinctId.isNotBlank()) {
@@ -597,31 +511,6 @@ public class PostHog private constructor(
         } else {
             config?.logger?.log("already identified with id: $distinctId.")
         }
-    }
-
-    private fun hasPersonProcessing(): Boolean {
-        return !(
-            config?.personProfiles == PersonProfiles.NEVER ||
-                (
-                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                        !isIdentified &&
-                        !isPersonProcessingEnabled
-                )
-        )
-    }
-
-    private fun requirePersonProcessing(
-        functionName: String,
-        ignoreMessage: Boolean = false,
-    ): Boolean {
-        if (config?.personProfiles == PersonProfiles.NEVER) {
-            if (!ignoreMessage) {
-                config?.logger?.log("$functionName was called, but `personProfiles` is set to `never`. This call will be ignored.")
-            }
-            return false
-        }
-        isPersonProcessingEnabled = true
-        return true
     }
 
     public override fun group(
@@ -666,7 +555,7 @@ public class PostHog private constructor(
             preferences.setValue(GROUPS, newGroups)
         }
 
-        capture(GROUP_IDENTIFY, properties = props)
+        super.group(this.distinctId, type, key, groupProperties)
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
@@ -763,7 +652,7 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return
         }
-        queue?.flush()
+        super.flush()
         replayQueue?.flush()
     }
 
@@ -795,13 +684,6 @@ public class PostHog private constructor(
         }
     }
 
-    private fun isEnabled(): Boolean {
-        if (!enabled) {
-            config?.logger?.log("Setup isn't called.")
-        }
-        return enabled
-    }
-
     public override fun register(
         key: String,
         value: Any,
@@ -828,13 +710,6 @@ public class PostHog private constructor(
             return ""
         }
         return distinctId
-    }
-
-    override fun debug(enable: Boolean) {
-        if (!isEnabled()) {
-            return
-        }
-        config?.debug = enable
     }
 
     override fun startSession() {
@@ -878,11 +753,6 @@ public class PostHog private constructor(
         }
 
         return PostHogSessionManager.getActiveSessionId()
-    }
-
-    override fun <T : PostHogConfig> getConfig(): T? {
-        @Suppress("UNCHECKED_CAST")
-        return config as? T
     }
 
     public companion object : PostHogInterface {

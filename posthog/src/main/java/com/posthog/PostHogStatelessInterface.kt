@@ -3,12 +3,12 @@ package com.posthog
 import java.util.UUID
 
 /**
- * The PostHog SDK entry point
+ * The Stateless PostHog SDK entry point
  */
-public interface PostHogInterface : PostHogCoreInterface {
+public interface PostHogStatelessInterface : PostHogCoreInterface {
     /**
      * Captures events
-     * @param distinctId the distinctId, the generated [distinctId] is used if not given
+     * @param distinctId the distinctId of the user performing the event
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
@@ -16,7 +16,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      */
     public fun capture(
         event: String,
-        distinctId: String? = null,
+        distinctId: String,
         properties: Map<String, Any>? = null,
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
@@ -24,18 +24,14 @@ public interface PostHogInterface : PostHogCoreInterface {
     )
 
     /**
-     * Reloads the feature flags
-     * @param onFeatureFlags the callback to get notified once feature flags is ready to use
-     */
-    public fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags? = null)
-
-    /**
      * Returns if a feature flag is enabled, the feature flag must be a Boolean
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
      */
     public fun isFeatureEnabled(
+        distinctId: String,
         key: String,
         defaultValue: Boolean = false,
     ): Boolean
@@ -43,10 +39,12 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns the feature flag
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
      */
     public fun getFeatureFlag(
+        distinctId: String,
         key: String,
         defaultValue: Any? = null,
     ): Any?
@@ -54,102 +52,36 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns the feature flag payload
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
      */
     public fun getFeatureFlagPayload(
+        distinctId: String,
         key: String,
         defaultValue: Any? = null,
     ): Any?
 
     /**
-     * Resets all the cached properties including the [distinctId]
-     * The SDK will behave as its been setup for the first time
-     */
-    public fun reset()
-
-    /**
      * Creates a group
      * Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param distinctId the distinctId
      * @param type the Group type
      * @param key the Group key
      * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
     public fun group(
+        distinctId: String,
         type: String,
         key: String,
         groupProperties: Map<String, Any>? = null,
     )
 
     /**
-     * Captures a screen view event
-     * @param screenTitle the screen title
-     * @param properties the custom properties
-     */
-    public fun screen(
-        screenTitle: String,
-        properties: Map<String, Any>? = null,
-    )
-
-    /**
      * Creates an alias for the user
      * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
+     * @param distinctId the distinctId
      * @param alias the alias
      */
-    public fun alias(alias: String)
-
-    /**
-     * Register a property to always be sent with all the following events until you call
-     * [unregister] with the same key
-     * PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by
-     * the SDK only.
-     * @param key the Key
-     * @param value the Value
-     */
-    public fun register(
-        key: String,
-        value: Any,
-    )
-
-    /**
-     * Unregisters the previously set property to be sent with all the following events
-     * @param key the Key
-     */
-    public fun unregister(key: String)
-
-    /**
-     * Returns the registered [distinctId] property
-     */
-    public fun distinctId(): String
-
-    /**
-     * Starts a session
-     * The SDK will automatically start a session when you call [setup]
-     * On Android, the SDK will automatically start a session when the app is in the foreground
-     */
-    public fun startSession()
-
-    /**
-     * Ends a session
-     * The SDK will automatically end a session when you call [close]
-     * On Android, the SDK will automatically end a session when the app is in the background
-     * for at least 30 minutes
-     */
-    public fun endSession()
-
-    /**
-     * Returns if a session is active
-     */
-    public fun isSessionActive(): Boolean
-
-    /**
-     * Returns if Session Replay is Active
-     * Android only.
-     */
-    public fun isSessionReplayActive(): Boolean
-
-    /**
-     * Returns the session Id if a session is active
-     */
-    public fun getSessionId(): UUID?
+    public fun alias(distinctId: String, alias: String)
 }
