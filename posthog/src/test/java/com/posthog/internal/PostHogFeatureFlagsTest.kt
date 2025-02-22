@@ -438,9 +438,10 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `clear flags when quota limited`() {
         // First load some feature flags
-        val http = mockHttp(
-            response = MockResponse().setBody(responseDecideApi),
-        )
+        val http =
+            mockHttp(
+                response = MockResponse().setBody(responseDecideApi),
+            )
         val url = http.url("/")
         val sut = getSut(host = url.toString())
 
@@ -453,19 +454,20 @@ internal class PostHogFeatureFlagsTest {
         assertNotNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
 
         // Now send a quota limited response
-        val quotaLimitedResponse = """
+        val quotaLimitedResponse =
+            """
             {
                 "featureFlags": {},
                 "featureFlagPayloads": {},
                 "quotaLimited": ["feature_flags"]
             }
-        """.trimIndent()
-        
+            """.trimIndent()
+
         http.enqueue(MockResponse().setBody(quotaLimitedResponse))
 
         // Reload flags
         sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
-        
+
         executor.shutdownAndAwaitTermination()
 
         // Verify flags are cleared
