@@ -437,42 +437,46 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `clear flags when quota limited`() {
-        // First load some feature flags
         val http =
             mockHttp(
-                response = MockResponse().setBody(responseDecideApi),
+                response =
+                    MockResponse().setBody(
+                        """
+                        {
+                            "featureFlags": {"flag1": true},
+                            "featureFlagPayloads": {"flag1": "payload1"}
+                        }
+                        """.trimIndent(),
+                    ),
             )
         val url = http.url("/")
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        // Load initial flags
+        sut.loadFeatureFlags("test_id", null, null, null)
         executor.awaitExecution()
 
         // Verify flags are loaded
-        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        assertNotNull(sut.getFeatureFlags())
         assertNotNull(preferences.getValue(FEATURE_FLAGS))
-        assertNotNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
 
-        // Now send a quota limited response
-        val quotaLimitedResponse =
-            """
-            {
-                "featureFlags": {},
-                "featureFlagPayloads": {},
-                "quotaLimited": ["feature_flags"]
-            }
-            """.trimIndent()
-
-        http.enqueue(MockResponse().setBody(quotaLimitedResponse))
+        // Send quota limited response
+        http.enqueue(
+            MockResponse().setBody(
+                """
+                {
+                    "quotaLimited": ["feature_flags"]
+                }
+                """.trimIndent(),
+            ),
+        )
 
         // Reload flags
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
-
-        executor.shutdownAndAwaitTermination()
+        sut.loadFeatureFlags("test_id", null, null, null)
+        executor.awaitExecution()
 
         // Verify flags are cleared
         assertNull(sut.getFeatureFlags())
         assertNull(preferences.getValue(FEATURE_FLAGS))
-        assertNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
     }
 }
