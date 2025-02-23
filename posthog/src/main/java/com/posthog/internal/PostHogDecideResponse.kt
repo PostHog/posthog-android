@@ -17,5 +17,5 @@ internal data class PostHogDecideResponse(
     val featureFlagPayloads: Map<String, Any?>?,
     // its either a boolean or a map, see https://github.com/PostHog/posthog-js/blob/10fd7f4fa083f997d31a4a4c7be7d311d0a95e74/src/types.ts#L235-L243
     val sessionRecording: Any? = false,
-    val quotaLimited: Array<String>? = null,
+    val quotaLimited: List<String>? = null,
 )
