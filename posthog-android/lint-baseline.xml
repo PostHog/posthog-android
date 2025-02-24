@@ -36,24 +36,13 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.compose.ui:ui than 1.0.0 is available: 1.7.7"
+        message="A newer version of androidx.compose.ui:ui than 1.0.0 is available: 1.7.8"
         errorLine1="    compileOnly(&quot;androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}&quot;)"
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
             line="94"
             column="17"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of org.jetbrains.kotlin:kotlin-test-junit than 1.8.22 is available: 1.9.20"
-        errorLine1="    testImplementation(&quot;org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="108"
-            column="24"/>
     </issue>
 
 </issues>
