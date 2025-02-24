@@ -102,6 +102,12 @@ public open class PostHogConfig(
      */
     public var getAnonymousId: ((UUID) -> UUID) = { it },
     /**
+     * Flag to reuse the anonymous id.
+     * If enabled, the anonymous id will be reused across `identify()` and `reset()` calls.
+     * Defaults to false.
+     */
+    public var reuseAnonymousId: Boolean = false,
+    /**
      * Determines the behavior for processing user profiles.
      * - `ALWAYS`: We will process persons data for all events.
      * - `NEVER`: Never processes user profile data. This means that anonymous users will not be merged when they sign up or log in.

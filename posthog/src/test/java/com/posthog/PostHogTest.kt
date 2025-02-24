@@ -44,6 +44,7 @@ internal class PostHogTest {
         preloadFeatureFlags: Boolean = true,
         reloadFeatureFlags: Boolean = true,
         sendFeatureFlagEvent: Boolean = true,
+        reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
@@ -59,6 +60,7 @@ internal class PostHogTest {
                     addIntegration(integration)
                 }
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
+                this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
             }
@@ -1034,6 +1036,21 @@ internal class PostHogTest {
         queueExecutor.shutdownAndAwaitTermination()
 
         assertEquals("myNewDistinctId", sut.distinctId())
+    }
+
+    @Test
+    fun `reuse anonymousId when flag reuseAnonymousId is true`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, reuseAnonymousId = true)
+
+        val anonymousId = sut.distinctId()
+        sut.reset()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(anonymousId, sut.distinctId())
     }
 
     @Test

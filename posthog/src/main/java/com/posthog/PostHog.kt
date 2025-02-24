@@ -774,8 +774,13 @@ public class PostHog private constructor(
 
         // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
-        val except = listOf(VERSION, BUILD)
-        getPreferences().clear(except = except)
+        val except = mutableListOf(VERSION, BUILD)
+        config?.let {
+            if (it.reuseAnonymousId) {
+                except.add(ANONYMOUS_ID)
+            }
+        }
+        getPreferences().clear(except = except.toList())
         featureFlags?.clear()
         featureFlagsCalled.clear()
         synchronized(identifiedLock) {
