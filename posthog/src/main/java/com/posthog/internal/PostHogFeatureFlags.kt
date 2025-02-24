@@ -97,7 +97,7 @@ internal class PostHogFeatureFlags(
                                 preferences.remove(FEATURE_FLAGS)
                                 preferences.remove(FEATURE_FLAGS_PAYLOAD)
                             }
-                            return@executeSafely
+                            return@synchronized
                         }
 
                         if (response.errorsWhileComputingFlags) {
