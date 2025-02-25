@@ -90,7 +90,7 @@ internal class PostHogFeatureFlags(
                 response?.let {
                     synchronized(featureFlagsLock) {
                         if (response.quotaLimited?.contains("feature_flags") == true) {
-                            config.logger.log("Feature flags are quota limited, clearing existing flags")
+                            config.logger.log("Feature flags are quota limited, clearing existing flags. Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts")
                             this.featureFlags = null
                             this.featureFlagPayloads = null
                             config.cachePreferences?.let { preferences ->
