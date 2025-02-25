@@ -1,6 +1,6 @@
 ## Next
 
-## 3.11.3 - 2025-02-24
+## 3.11.3 - 2025-02-25
 
 - feat: support quota limiting for feature flags ([#228](https://github.com/PostHog/posthog-android/pull/228))
 
