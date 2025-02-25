@@ -89,6 +89,17 @@ internal class PostHogFeatureFlags(
 
                 response?.let {
                     synchronized(featureFlagsLock) {
+                        if (response.quotaLimited?.contains("feature_flags") == true) {
+                            config.logger.log("Feature flags are quota limited, clearing existing flags")
+                            this.featureFlags = null
+                            this.featureFlagPayloads = null
+                            config.cachePreferences?.let { preferences ->
+                                preferences.remove(FEATURE_FLAGS)
+                                preferences.remove(FEATURE_FLAGS_PAYLOAD)
+                            }
+                            return@let
+                        }
+
                         if (response.errorsWhileComputingFlags) {
                             // if not all flags were computed, we upsert flags instead of replacing them
                             this.featureFlags =

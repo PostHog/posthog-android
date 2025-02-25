@@ -434,4 +434,49 @@ internal class PostHogFeatureFlagsTest {
 
         sut.clear()
     }
+
+    @Test
+    fun `clear flags when quota limited`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse().setBody(
+                        """
+                        {
+                            "featureFlags": {"flag1": true},
+                            "featureFlagPayloads": {"flag1": "payload1"}
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+        val url = http.url("/")
+        val sut = getSut(host = url.toString())
+
+        // Load initial flags
+        sut.loadFeatureFlags("test_id", null, null, null)
+        executor.awaitExecution()
+
+        // Verify flags are loaded
+        assertNotNull(sut.getFeatureFlags())
+        assertNotNull(preferences.getValue(FEATURE_FLAGS))
+
+        // Send quota limited response
+        http.enqueue(
+            MockResponse().setBody(
+                """
+                {
+                    "quotaLimited": ["feature_flags"]
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        // Reload flags
+        sut.loadFeatureFlags("test_id", null, null, null)
+        executor.awaitExecution()
+
+        // Verify flags are cleared
+        assertNull(sut.getFeatureFlags())
+        assertNull(preferences.getValue(FEATURE_FLAGS))
+    }
 }
