@@ -45,26 +45,4 @@
             column="17"/>
     </issue>
 
-    <issue
-        id="GradleDependency"
-        message="A newer version of org.mockito.kotlin:mockito-kotlin than 4.1.0 is available: 5.4.0"
-        errorLine1="    testImplementation(&quot;org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="106"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of com.squareup.okhttp3:mockwebserver than 4.11.0 is available: 4.12.0"
-        errorLine1="    testImplementation(&quot;com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="109"
-            column="24"/>
-    </issue>
-
 </issues>
