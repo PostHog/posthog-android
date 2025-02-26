@@ -46,9 +46,20 @@ internal class PostHogFeatureFlags(
         val linkedFlag = sessionRecording["linkedFlag"]
         if (linkedFlag is String) {
             val value = featureFlags[linkedFlag]
-            if (value is Boolean) {
-                recordingActive = value
-            }
+            recordingActive =
+                when (value) {
+                    is Boolean -> {
+                        value
+                    }
+                    is String -> {
+                        // if its a multi-variant flag linked to "any"
+                        true
+                    }
+                    else -> {
+                        // disable recording if the flag does not exist/quota limited
+                        false
+                    }
+                }
         } else if (linkedFlag is Map<*, *>) {
             // Check for specific flag variant
             val flag = linkedFlag["flag"] as? String
@@ -56,6 +67,9 @@ internal class PostHogFeatureFlags(
             if (flag != null && variant != null) {
                 val value = featureFlags[flag] as? String
                 recordingActive = value == variant
+            } else {
+                // disable recording if the flag does not exist/quota limited
+                recordingActive = false
             }
         }
         // check for multi flag variant (any)
@@ -90,7 +104,10 @@ internal class PostHogFeatureFlags(
                 response?.let {
                     synchronized(featureFlagsLock) {
                         if (response.quotaLimited?.contains("feature_flags") == true) {
-                            config.logger.log("Feature flags are quota limited, clearing existing flags")
+                            config.logger.log(
+                                """Feature flags are quota limited, clearing existing flags.
+                                    Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
+                            )
                             this.featureFlags = null
                             this.featureFlagPayloads = null
                             config.cachePreferences?.let { preferences ->
