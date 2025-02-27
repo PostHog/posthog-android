@@ -575,11 +575,13 @@ public class PostHog private constructor(
                 userPropertiesSetOnce = userPropertiesSetOnce,
             )
 
-            // We keep the AnonymousId to be used by decide calls and identify to link the previousId
-            if (previousDistinctId.isNotBlank()) {
-                this.anonymousId = previousDistinctId
-            } else {
-                config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
+            if (config?.reuseAnonymousId != true) {
+                // We keep the AnonymousId to be used by decide calls and identify to link the previousId
+                if (previousDistinctId.isNotBlank()) {
+                    this.anonymousId = previousDistinctId
+                } else {
+                    config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
+                }
             }
             this.distinctId = distinctId
 
