@@ -1,5 +1,7 @@
 ## Next
 
+- feat: support reuse of `anonymousId` between user changes ([#229](https://github.com/PostHog/posthog-android/pull/229))
+
 ## 3.11.3 - 2025-02-26
 
 - feat: support quota limiting for feature flags ([#228](https://github.com/PostHog/posthog-android/pull/228) and [#230](https://github.com/PostHog/posthog-android/pull/230))

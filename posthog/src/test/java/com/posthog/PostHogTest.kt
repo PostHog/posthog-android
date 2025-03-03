@@ -44,6 +44,7 @@ internal class PostHogTest {
         preloadFeatureFlags: Boolean = true,
         reloadFeatureFlags: Boolean = true,
         sendFeatureFlagEvent: Boolean = true,
+        reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
@@ -59,6 +60,7 @@ internal class PostHogTest {
                     addIntegration(integration)
                 }
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
+                this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
             }
@@ -1034,6 +1036,60 @@ internal class PostHogTest {
         queueExecutor.shutdownAndAwaitTermination()
 
         assertEquals("myNewDistinctId", sut.distinctId())
+    }
+
+    @Test
+    fun `reuse anonymousId when flag reuseAnonymousId is true`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, reuseAnonymousId = true)
+
+        val anonymousId = sut.distinctId()
+        sut.reset()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(anonymousId, sut.distinctId())
+    }
+
+    @Test
+    fun `anonymousId is not overwritten on re-identify when reuseAnonymousId is true`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, reuseAnonymousId = true)
+
+        val anonymousId = sut.distinctId()
+        sut.identify("myDistinctId")
+        sut.identify("myNewDistinctId")
+        sut.reset()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(anonymousId, sut.distinctId())
+    }
+
+    @Test
+    fun `do not link anonymousId on identify when reuseAnonymousId is true`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, reuseAnonymousId = true)
+
+        sut.identify("myDistinctId")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertNull(theEvent.properties!!["\$anon_distinct_id"])
     }
 
     @Test

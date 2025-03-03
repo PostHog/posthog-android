@@ -102,6 +102,30 @@ public open class PostHogConfig(
      */
     public var getAnonymousId: ((UUID) -> UUID) = { it },
     /**
+     * Flag to reuse the anonymous id.
+     * If enabled, the anonymous id will be reused across `identify()` and `reset()` calls.
+     *
+     * Events captured before the user has identified won't be linked to the identified user, e.g.:
+     *
+     * Guest user (anonymous id) captures an event (click on X).
+     *
+     * User logs in (User A) calls identify
+     * User A captures an event (clicks on Y)
+     * User A logs out (calls reset)
+     *
+     * Guest user (reused anonymous id) captures an event (click on Z)
+     *
+     * click on X and click on Z events will be associated to the same user (anonymous id)
+     *
+     * clicks on Y event will be associated only with User A
+     *
+     * This will allow you to reuse the anonymous id as a Guest user, but all the events happening before
+     * or after the user logs in and logs out won't be associated.
+     *
+     * Defaults to false.
+     */
+    public var reuseAnonymousId: Boolean = false,
+    /**
      * Determines the behavior for processing user profiles.
      * - `ALWAYS`: We will process persons data for all events.
      * - `NEVER`: Never processes user profile data. This means that anonymous users will not be merged when they sign up or log in.
