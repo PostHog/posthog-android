@@ -91,6 +91,9 @@ internal class PostHogQueue(
                     flushIfOverThreshold()
                 } catch (e: Throwable) {
                     config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
+
+                    // if for some reason the file failed to serialize, lets delete it
+                    file.deleteSafely(config)
                 }
             }
         }
@@ -163,6 +166,17 @@ internal class PostHogQueue(
         }
     }
 
+    private fun deleteFileSafely(
+        file: File,
+        throwable: Throwable? = null,
+    ) {
+        synchronized(dequeLock) {
+            deque.remove(file)
+        }
+        file.deleteSafely(config)
+        config.logger.log("File: ${file.name} failed to parse: $throwable.")
+    }
+
     @Throws(PostHogApiError::class, IOException::class)
     private fun batchEvents() {
         val files = takeFiles()
@@ -175,14 +189,12 @@ internal class PostHogQueue(
                     val event = config.serializer.deserialize<PostHogEvent?>(it.reader().buffered())
                     event?.let { theEvent ->
                         events.add(theEvent)
+                    } ?: run {
+                        deleteFileSafely(file)
                     }
                 }
             } catch (e: Throwable) {
-                synchronized(dequeLock) {
-                    deque.remove(file)
-                }
-                file.deleteSafely(config)
-                config.logger.log("File: ${file.name} failed to parse: $e.")
+                deleteFileSafely(file, e)
             }
         }
 
