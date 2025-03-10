@@ -1,5 +1,7 @@
 ## Next
 
+## 3.12.0 - 2025-03-10
+
 - feat: support reuse of `anonymousId` between user changes ([#229](https://github.com/PostHog/posthog-android/pull/229))
 - chore: delete queue files if serialization fails ([#232](https://github.com/PostHog/posthog-android/pull/232))
 
