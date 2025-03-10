@@ -81,23 +81,19 @@ internal class PostHogQueue(
                     deque.add(file)
                 }
 
-                var hasPendingEvents = true
                 try {
                     val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
                     os.use { theOutputStream ->
                         config.serializer.serialize(event, theOutputStream.writer().buffered())
                     }
                     config.logger.log("Queued Event ${event.event}: ${file.name}.")
+
+                    flushIfOverThreshold()
                 } catch (e: Throwable) {
-                    hasPendingEvents = false
                     config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
 
                     // if for some reason the file failed to serialize, lets delete it
                     file.deleteSafely(config)
-                }
-
-                if (hasPendingEvents) {
-                    flushIfOverThreshold()
                 }
             }
         }
