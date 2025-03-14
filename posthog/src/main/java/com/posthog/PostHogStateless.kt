@@ -193,7 +193,6 @@ public open class PostHogStateless protected constructor(
 
         props["\$process_person_profile"] = hasPersonProcessing()
 
-
         // Session replay should have the SDK info as well
         config?.context?.getSdkInfo()?.let {
             props.putAll(it)
@@ -310,7 +309,10 @@ public open class PostHogStateless protected constructor(
         return config?.optOut ?: true
     }
 
-    public override fun alias(distinctId: String, alias: String) {
+    public override fun alias(
+        distinctId: String,
+        alias: String,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -356,12 +358,12 @@ public open class PostHogStateless protected constructor(
 
     protected fun hasPersonProcessing(): Boolean {
         return !(
-                config?.personProfiles == PersonProfiles.NEVER ||
-                        (
-                                config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                                        !isPersonProcessingEnabled
-                                )
+            config?.personProfiles == PersonProfiles.NEVER ||
+                (
+                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                        !isPersonProcessingEnabled
                 )
+        )
     }
 
     protected fun requirePersonProcessing(
@@ -590,7 +592,10 @@ public open class PostHogStateless protected constructor(
             shared.group(distinctId, type, key, groupProperties = groupProperties)
         }
 
-        public override fun alias(distinctId: String, alias: String) {
+        public override fun alias(
+            distinctId: String,
+            alias: String,
+        ) {
             shared.alias(distinctId, alias)
         }
 

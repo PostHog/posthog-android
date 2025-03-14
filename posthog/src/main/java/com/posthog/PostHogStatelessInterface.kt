@@ -81,5 +81,8 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param distinctId the distinctId
      * @param alias the alias
      */
-    public fun alias(distinctId: String, alias: String)
+    public fun alias(
+        distinctId: String,
+        alias: String,
+    )
 }
