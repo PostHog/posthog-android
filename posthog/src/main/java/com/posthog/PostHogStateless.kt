@@ -6,23 +6,12 @@ import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
-import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
-import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
-import com.posthog.internal.PostHogPreferences.Companion.BUILD
-import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
-import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
-import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
-import com.posthog.internal.PostHogSendCachedEventsIntegration
-import com.posthog.internal.PostHogSerializer
-import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
-import com.posthog.vendor.uuid.TimeBasedEpochGenerator
-import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -42,7 +31,6 @@ public open class PostHogStateless protected constructor(
     private val setupLock = Any()
     private val optOutLock = Any()
     private val personProcessingLock = Any()
-    private val groupsLock = Any()
 
     private var config: PostHogConfig? = null
 
@@ -126,7 +114,7 @@ public open class PostHogStateless protected constructor(
         }
     }
 
-    protected var isPersonProcessingEnabled: Boolean = false
+    private var isPersonProcessingEnabled: Boolean = false
         get() {
             synchronized(personProcessingLock) {
                 if (!isPersonProcessingLoaded) {
@@ -152,61 +140,59 @@ public open class PostHogStateless protected constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
-        appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
 
-        if (appendSharedProps) {
-            val registeredPrefs = getPreferences().getAll()
-            if (registeredPrefs.isNotEmpty()) {
-                props.putAll(registeredPrefs)
-            }
-
-            config?.context?.getStaticContext()?.let {
-                props.putAll(it)
-            }
-
-            config?.context?.getDynamicContext()?.let {
-                props.putAll(it)
-            }
-
-            if (config?.sendFeatureFlagEvent == true) {
-                featureFlags?.getFeatureFlags()?.let {
-                    if (it.isNotEmpty()) {
-                        val keys = mutableListOf<String>()
-                        for (entry in it.entries) {
-                            props["\$feature/${entry.key}"] = entry.value
-
-                            // only add active feature flags
-                            val active = entry.value as? Boolean ?: true
-
-                            if (active) {
-                                keys.add(entry.key)
-                            }
-                        }
-                        props["\$active_feature_flags"] = keys
-                    }
-                }
-            }
-
-            userProperties?.let {
-                props["\$set"] = it
-            }
-
-            userPropertiesSetOnce?.let {
-                props["\$set_once"] = it
-            }
-
-            if (appendGroups) {
-                // merge groups
-                mergeGroups(groups)?.let {
-                    props["\$groups"] = it
-                }
-            }
-
-            props["\$process_person_profile"] = hasPersonProcessing()
+        val registeredPrefs = getPreferences().getAll()
+        if (registeredPrefs.isNotEmpty()) {
+            props.putAll(registeredPrefs)
         }
+
+        config?.context?.getStaticContext()?.let {
+            props.putAll(it)
+        }
+
+        config?.context?.getDynamicContext()?.let {
+            props.putAll(it)
+        }
+
+        if (config?.sendFeatureFlagEvent == true) {
+            featureFlags?.getFeatureFlags()?.let {
+                if (it.isNotEmpty()) {
+                    val keys = mutableListOf<String>()
+                    for (entry in it.entries) {
+                        props["\$feature/${entry.key}"] = entry.value
+
+                        // only add active feature flags
+                        val active = entry.value as? Boolean ?: true
+
+                        if (active) {
+                            keys.add(entry.key)
+                        }
+                    }
+                    props["\$active_feature_flags"] = keys
+                }
+            }
+        }
+
+        userProperties?.let {
+            props["\$set"] = it
+        }
+
+        userPropertiesSetOnce?.let {
+            props["\$set_once"] = it
+        }
+
+        if (appendGroups) {
+            // merge groups
+            mergeGroups(groups)?.let {
+                props["\$groups"] = it
+            }
+        }
+
+        props["\$process_person_profile"] = hasPersonProcessing()
+
 
         // Session replay should have the SDK info as well
         config?.context?.getSdkInfo()?.let {
@@ -272,7 +258,6 @@ public open class PostHogStateless protected constructor(
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
                     groups = groups,
-                    appendSharedProps = true,
                     appendGroups = !groupIdentify,
                 )
 
@@ -440,7 +425,7 @@ public open class PostHogStateless protected constructor(
         if (config?.sendFeatureFlagEvent == true) {
             val props = mutableMapOf<String, Any>()
             props["\$feature_flag"] = key
-            // value should never be nullabe anyway
+            // value should never be nullable anyway
             props["\$feature_flag_response"] = value ?: ""
 
             capture("\$feature_flag_called", distinctId, properties = props)
@@ -518,27 +503,12 @@ public open class PostHogStateless protected constructor(
         }
 
         /**
-         * Setup the SDK and returns an instance that you can hold and pass it around
+         * Set up the SDK and returns an instance that you can hold and pass it around
          * @param T the type of the Config
          * @property config the Config
          */
         public fun <T : PostHogConfig> with(config: T): PostHogStatelessInterface {
             val instance = PostHogStateless()
-            instance.setup(config)
-            return instance
-        }
-
-        @PostHogVisibleForTesting
-        internal fun <T : PostHogConfig> withInternal(
-            config: T,
-            queueExecutor: ExecutorService,
-            featureFlagsExecutor: ExecutorService,
-        ): PostHogStatelessInterface {
-            val instance =
-                PostHogStateless(
-                    queueExecutor,
-                    featureFlagsExecutor,
-                )
             instance.setup(config)
             return instance
         }
