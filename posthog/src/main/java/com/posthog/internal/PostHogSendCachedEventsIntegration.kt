@@ -79,11 +79,12 @@ internal class PostHogSendCachedEventsIntegration(
                                 event?.let {
                                     events.add(event)
                                     eventsCount++
+                                } ?: run {
+                                    removeFileSafely(iterator)
                                 }
                             }
                         } catch (e: Throwable) {
-                            iterator.remove()
-                            config.logger.log("Event failed to parse: $e.")
+                            removeFileSafely(iterator, e)
                         }
                         // stop the while loop since the batch is full
                         if (events.size >= config.maxBatchSize) {
@@ -135,6 +136,24 @@ internal class PostHogSendCachedEventsIntegration(
         }
     }
 
+    private fun deleteFileSafely(
+        file: File,
+        iterator: MutableIterator<File>,
+        throwable: Throwable? = null,
+    ) {
+        config.logger.log("File: ${file.name} failed to parse: $throwable.")
+        iterator.remove()
+        file.deleteSafely(config)
+    }
+
+    private fun removeFileSafely(
+        iterator: MutableIterator<ByteArray>,
+        throwable: Throwable? = null,
+    ) {
+        config.logger.log("Event failed to parse: $throwable.")
+        iterator.remove()
+    }
+
     @Throws(PostHogApiError::class, IOException::class)
     private fun flushEvents(
         storagePrefix: String?,
@@ -175,12 +194,12 @@ internal class PostHogSendCachedEventsIntegration(
                                 event?.let {
                                     events.add(event)
                                     eventsCount++
+                                } ?: run {
+                                    deleteFileSafely(file, iterator)
                                 }
                             }
                         } catch (e: Throwable) {
-                            config.logger.log("File: ${file.name} failed to parse: $e.")
-                            iterator.remove()
-                            file.deleteSafely(config)
+                            deleteFileSafely(file, iterator, e)
                         }
 
                         // stop the while loop since the batch is full

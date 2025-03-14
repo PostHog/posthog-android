@@ -469,11 +469,14 @@ public class PostHog private constructor(
         val previousDistinctId = this.distinctId
 
         val props = mutableMapOf<String, Any>()
-        val anonymousId = this.anonymousId
-        if (anonymousId.isNotBlank()) {
-            props["\$anon_distinct_id"] = anonymousId
-        } else {
-            config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
+
+        if (config?.reuseAnonymousId != true) {
+            val anonymousId = this.anonymousId
+            if (anonymousId.isNotBlank()) {
+                props["\$anon_distinct_id"] = anonymousId
+            } else {
+                config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
+            }
         }
 
         val hasDifferentDistinctId = previousDistinctId != distinctId
@@ -486,11 +489,13 @@ public class PostHog private constructor(
 
             super.identify(distinctId, userProperties, userPropertiesSetOnce)
 
-            // We keep the AnonymousId to be used by decide calls and identify to link the previousId
-            if (previousDistinctId.isNotBlank()) {
-                this.anonymousId = previousDistinctId
-            } else {
-                config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
+            if (config?.reuseAnonymousId != true) {
+                // We keep the AnonymousId to be used by decide calls and identify to link the previousId
+                if (previousDistinctId.isNotBlank()) {
+                    this.anonymousId = previousDistinctId
+                } else {
+                    config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
+                }
             }
             this.distinctId = distinctId
 
@@ -575,7 +580,11 @@ public class PostHog private constructor(
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
 
         val distinctId = this.distinctId
-        val anonymousId = this.anonymousId
+        var anonymousId: String? = null
+
+        if (config?.reuseAnonymousId != true) {
+            anonymousId = this.anonymousId
+        }
 
         if (distinctId.isBlank()) {
             config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
@@ -663,8 +672,13 @@ public class PostHog private constructor(
 
         // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
-        val except = listOf(VERSION, BUILD)
-        getPreferences().clear(except = except)
+        val except = mutableListOf(VERSION, BUILD)
+        // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
+        // account on the device)
+        if (config?.reuseAnonymousId == true) {
+            except.add(ANONYMOUS_ID)
+        }
+        getPreferences().clear(except = except.toList())
         featureFlags?.clear()
         featureFlagsCalled.clear()
         synchronized(identifiedLock) {
