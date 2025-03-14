@@ -5,7 +5,6 @@ import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNoOpLogger
-import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
@@ -13,7 +12,6 @@ import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
-import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
@@ -49,7 +47,6 @@ public class PostHog private constructor(
     private var enabled = false
 
     private val setupLock = Any()
-    private val optOutLock = Any()
     private val anonymousLock = Any()
     private val identifiedLock = Any()
     private val personProcessingLock = Any()
@@ -326,7 +323,7 @@ public class PostHog private constructor(
             // only Session replay needs $window_id
             if (!appendSharedProps && isSessionReplayFlagActive) {
                 // Session replay requires $window_id, so we set as the same as $session_id.
-                // the backend might fallback to $session_id if $window_id is not present next.
+                // the backend might fall back to $session_id if $window_id is not present next.
                 props["\$window_id"] = tempSessionId
             }
         }
@@ -626,7 +623,7 @@ public class PostHog private constructor(
         if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
             val props = mutableMapOf<String, Any>()
             props["\$feature_flag"] = key
-            // value should never be nullabe anyway
+            // value should never be nullable anyway
             props["\$feature_flag_response"] = value ?: ""
 
             capture("\$feature_flag_called", properties = props)
@@ -670,7 +667,7 @@ public class PostHog private constructor(
             return
         }
 
-        // only remove properties, preserve BUILD and VERSION keys in order to to fix over-sending
+        // only remove properties, preserve BUILD and VERSION keys in order to fix over-sending
         // of 'Application Installed' events and under-sending of 'Application Updated' events
         val except = mutableListOf(VERSION, BUILD)
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
@@ -788,7 +785,7 @@ public class PostHog private constructor(
         }
 
         /**
-         * Setup the SDK and returns an instance that you can hold and pass it around
+         * Set up the SDK and returns an instance that you can hold and pass it around
          * @param T the type of the Config
          * @property config the Config
          */

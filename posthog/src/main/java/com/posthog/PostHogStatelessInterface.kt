@@ -1,7 +1,5 @@
 package com.posthog
 
-import java.util.UUID
-
 /**
  * The Stateless PostHog SDK entry point
  */

@@ -1,7 +1,5 @@
 package com.posthog
 
-import java.util.UUID
-
 public interface PostHogCoreInterface {
     /**
      * Setup the SDK
