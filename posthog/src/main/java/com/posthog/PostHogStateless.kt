@@ -26,7 +26,7 @@ public open class PostHogStateless protected constructor(
         ),
 ) : PostHogStatelessInterface {
     @Volatile
-    private var enabled = false
+    protected var enabled: Boolean = false
 
     private val setupLock = Any()
     private val optOutLock = Any()
@@ -358,12 +358,12 @@ public open class PostHogStateless protected constructor(
 
     protected fun hasPersonProcessing(): Boolean {
         return !(
-            config?.personProfiles == PersonProfiles.NEVER ||
-                (
-                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                        !isPersonProcessingEnabled
+                config?.personProfiles == PersonProfiles.NEVER ||
+                        (
+                                config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                                        !isPersonProcessingEnabled
+                                )
                 )
-        )
     }
 
     protected fun requirePersonProcessing(

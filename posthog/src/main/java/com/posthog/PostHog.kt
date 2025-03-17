@@ -43,9 +43,6 @@ public class PostHog private constructor(
         ),
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface, PostHogStateless() {
-    @Volatile
-    private var enabled = false
-
     private val setupLock = Any()
     private val anonymousLock = Any()
     private val identifiedLock = Any()
@@ -114,7 +111,7 @@ public class PostHog private constructor(
 
                 legacyPreferences(config, config.serializer)
 
-                enabled = true
+                super.enabled = true
 
                 queue.start()
 
