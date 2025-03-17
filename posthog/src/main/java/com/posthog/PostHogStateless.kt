@@ -223,7 +223,7 @@ public open class PostHogStateless protected constructor(
         return newGroups.ifEmpty { null }
     }
 
-    public override fun capture(
+    public override fun captureStateless(
         event: String,
         distinctId: String,
         properties: Map<String, Any>?,
@@ -309,7 +309,7 @@ public open class PostHogStateless protected constructor(
         return config?.optOut ?: true
     }
 
-    public override fun alias(
+    public override fun aliasStateless(
         distinctId: String,
         alias: String,
     ) {
@@ -324,7 +324,7 @@ public open class PostHogStateless protected constructor(
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
 
-        capture("\$create_alias", distinctId, properties = props)
+        captureStateless("\$create_alias", distinctId, properties = props)
     }
 
     public override fun identify(
@@ -347,7 +347,7 @@ public open class PostHogStateless protected constructor(
 
         val props = mutableMapOf<String, Any>()
 
-        capture(
+        captureStateless(
             "\$identify",
             distinctId = distinctId,
             properties = props,
@@ -380,7 +380,7 @@ public open class PostHogStateless protected constructor(
         return true
     }
 
-    public override fun group(
+    public override fun groupStateless(
         distinctId: String,
         type: String,
         key: String,
@@ -401,10 +401,10 @@ public open class PostHogStateless protected constructor(
             props["\$group_set"] = it
         }
 
-        capture(GROUP_IDENTIFY, distinctId, properties = props)
+        captureStateless(GROUP_IDENTIFY, distinctId, properties = props)
     }
 
-    public override fun isFeatureEnabled(
+    public override fun isFeatureEnabledStateless(
         distinctId: String,
         key: String,
         defaultValue: Boolean,
@@ -430,11 +430,11 @@ public open class PostHogStateless protected constructor(
             // value should never be nullable anyway
             props["\$feature_flag_response"] = value ?: ""
 
-            capture("\$feature_flag_called", distinctId, properties = props)
+            captureStateless("\$feature_flag_called", distinctId, properties = props)
         }
     }
 
-    public override fun getFeatureFlag(
+    public override fun getFeatureFlagStateless(
         distinctId: String,
         key: String,
         defaultValue: Any?,
@@ -449,7 +449,7 @@ public open class PostHogStateless protected constructor(
         return value
     }
 
-    public override fun getFeatureFlagPayload(
+    public override fun getFeatureFlagPayloadStateless(
         distinctId: String,
         key: String,
         defaultValue: Any?,
@@ -523,7 +523,7 @@ public open class PostHogStateless protected constructor(
             shared.close()
         }
 
-        public override fun capture(
+        public override fun captureStateless(
             event: String,
             distinctId: String,
             properties: Map<String, Any>?,
@@ -531,7 +531,7 @@ public open class PostHogStateless protected constructor(
             userPropertiesSetOnce: Map<String, Any>?,
             groups: Map<String, String>?,
         ) {
-            shared.capture(
+            shared.captureStateless(
                 event,
                 distinctId = distinctId,
                 properties = properties,
@@ -553,23 +553,23 @@ public open class PostHogStateless protected constructor(
             )
         }
 
-        public override fun isFeatureEnabled(
+        public override fun isFeatureEnabledStateless(
             distinctId: String,
             key: String,
             defaultValue: Boolean,
-        ): Boolean = shared.isFeatureEnabled(distinctId, key, defaultValue = defaultValue)
+        ): Boolean = shared.isFeatureEnabledStateless(distinctId, key, defaultValue = defaultValue)
 
-        public override fun getFeatureFlag(
+        public override fun getFeatureFlagStateless(
             distinctId: String,
             key: String,
             defaultValue: Any?,
-        ): Any? = shared.getFeatureFlag(distinctId, key, defaultValue = defaultValue)
+        ): Any? = shared.getFeatureFlagStateless(distinctId, key, defaultValue = defaultValue)
 
-        public override fun getFeatureFlagPayload(
+        public override fun getFeatureFlagPayloadStateless(
             distinctId: String,
             key: String,
             defaultValue: Any?,
-        ): Any? = shared.getFeatureFlagPayload(distinctId, key, defaultValue = defaultValue)
+        ): Any? = shared.getFeatureFlagPayloadStateless(distinctId, key, defaultValue = defaultValue)
 
         public override fun flush() {
             shared.flush()
@@ -583,20 +583,20 @@ public open class PostHogStateless protected constructor(
             shared.optOut()
         }
 
-        public override fun group(
+        public override fun groupStateless(
             distinctId: String,
             type: String,
             key: String,
             groupProperties: Map<String, Any>?,
         ) {
-            shared.group(distinctId, type, key, groupProperties = groupProperties)
+            shared.groupStateless(distinctId, type, key, groupProperties = groupProperties)
         }
 
-        public override fun alias(
+        public override fun aliasStateless(
             distinctId: String,
             alias: String,
         ) {
-            shared.alias(distinctId, alias)
+            shared.aliasStateless(distinctId, alias)
         }
 
         public override fun isOptOut(): Boolean = shared.isOptOut()

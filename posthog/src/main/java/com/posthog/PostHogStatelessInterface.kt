@@ -12,7 +12,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
-    public fun capture(
+    public fun captureStateless(
         event: String,
         distinctId: String,
         properties: Map<String, Any>? = null,
@@ -28,7 +28,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
      */
-    public fun isFeatureEnabled(
+    public fun isFeatureEnabledStateless(
         distinctId: String,
         key: String,
         defaultValue: Boolean = false,
@@ -41,7 +41,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
-    public fun getFeatureFlag(
+    public fun getFeatureFlagStateless(
         distinctId: String,
         key: String,
         defaultValue: Any? = null,
@@ -54,7 +54,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
-    public fun getFeatureFlagPayload(
+    public fun getFeatureFlagPayloadStateless(
         distinctId: String,
         key: String,
         defaultValue: Any? = null,
@@ -68,7 +68,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param key the Group key
      * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
-    public fun group(
+    public fun groupStateless(
         distinctId: String,
         type: String,
         key: String,
@@ -81,7 +81,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param distinctId the distinctId
      * @param alias the alias
      */
-    public fun alias(
+    public fun aliasStateless(
         distinctId: String,
         alias: String,
     )

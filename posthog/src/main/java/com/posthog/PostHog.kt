@@ -406,7 +406,7 @@ public class PostHog private constructor(
                 return
             }
 
-            super.capture(event, newDistinctId, properties, userProperties, userPropertiesSetOnce, groups)
+            super.captureStateless(event, newDistinctId, properties, userProperties, userPropertiesSetOnce, groups)
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
@@ -557,7 +557,7 @@ public class PostHog private constructor(
             preferences.setValue(GROUPS, newGroups)
         }
 
-        super.group(this.distinctId, type, key, groupProperties)
+        super.groupStateless(this.distinctId, type, key, groupProperties)
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
