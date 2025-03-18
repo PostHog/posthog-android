@@ -127,8 +127,4 @@ public class PostHogFake : PostHogInterface {
     override fun getSessionId(): UUID? {
         return null
     }
-
-    override fun <T : PostHogConfig> getConfig(): T? {
-        return null
-    }
 }
