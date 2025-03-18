@@ -294,8 +294,6 @@ public class PostHog private constructor(
             }
 
             props["\$is_identified"] = isIdentified
-
-            props["\$process_person_profile"] = hasPersonProcessing()
         }
 
         // Session replay should have the SDK info as well
@@ -394,7 +392,14 @@ public class PostHog private constructor(
                 return
             }
 
-            super.captureStateless(event, newDistinctId, properties, userProperties, userPropertiesSetOnce, groups)
+            super.captureStateless(
+                event,
+                newDistinctId,
+                sanitizedProperties,
+                userProperties,
+                userPropertiesSetOnce,
+                groups
+            )
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
@@ -472,7 +477,13 @@ public class PostHog private constructor(
                 isIdentified = true
             }
 
-            super.identify(distinctId, userProperties, userPropertiesSetOnce)
+            capture(
+                "\$identify",
+                distinctId = distinctId,
+                properties = props,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce
+            )
 
             if (config?.reuseAnonymousId != true) {
                 // We keep the AnonymousId to be used by decide calls and identify to link the previousId
