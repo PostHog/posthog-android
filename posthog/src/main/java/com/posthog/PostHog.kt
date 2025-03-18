@@ -3,7 +3,6 @@ package com.posthog
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
-import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
@@ -43,24 +42,16 @@ public class PostHog private constructor(
         ),
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface, PostHogStateless() {
-    private val setupLock = Any()
     private val anonymousLock = Any()
     private val identifiedLock = Any()
-    private val personProcessingLock = Any()
     private val groupsLock = Any()
 
     private val featureFlagsCalledLock = Any()
 
-    private var config: PostHogConfig? = null
-
-    private var featureFlags: PostHogFeatureFlags? = null
-    private var queue: PostHogQueue? = null
     private var replayQueue: PostHogQueue? = null
-    private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     private var isIdentifiedLoaded: Boolean = false
-    private var isPersonProcessingLoaded: Boolean = false
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {

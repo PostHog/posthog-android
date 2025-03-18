@@ -8,6 +8,37 @@ import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
+public interface PublicPostHogFeatureFlagsInterface {
+    public fun loadFeatureFlags(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, String>?,
+        onFeatureFlags: PostHogOnFeatureFlags?,
+    )
+
+    public fun isFeatureEnabled(
+        key: String,
+        defaultValue: Boolean,
+    ): Boolean
+
+    public fun getFeatureFlag(
+        key: String,
+        defaultValue: Any?,
+    ): Any?
+
+    public fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any?,
+    ): Any?
+
+    public fun getFeatureFlags(): Map<String, Any>?
+
+    public fun isSessionReplayFlagActive(): Boolean
+
+    public fun clear()
+}
+
+
 /**
  * The class responsible for calling and caching the feature flags
  * @property config the Config
@@ -18,7 +49,7 @@ internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
-) {
+) : PublicPostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
 
     private val featureFlagsLock = Any()
@@ -51,10 +82,12 @@ internal class PostHogFeatureFlags(
                     is Boolean -> {
                         value
                     }
+
                     is String -> {
                         // if its a multi-variant flag linked to "any"
                         true
                     }
+
                     else -> {
                         // disable recording if the flag does not exist/quota limited
                         false
@@ -81,7 +114,7 @@ internal class PostHogFeatureFlags(
         return recordingActive
     }
 
-    fun loadFeatureFlags(
+    override fun loadFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
@@ -164,6 +197,7 @@ internal class PostHogFeatureFlags(
                                     // sampleRate, etc
                                 }
                             }
+
                             else -> {
                                 // do nothing
                             }
@@ -257,7 +291,7 @@ internal class PostHogFeatureFlags(
         return parsedPayloads
     }
 
-    fun isFeatureEnabled(
+    override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
     ): Boolean {
@@ -299,21 +333,21 @@ internal class PostHogFeatureFlags(
         return value ?: defaultValue
     }
 
-    fun getFeatureFlag(
+    override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
     ): Any? {
         return readFeatureFlag(key, defaultValue, featureFlags)
     }
 
-    fun getFeatureFlagPayload(
+    override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
     ): Any? {
         return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
 
-    fun getFeatureFlags(): Map<String, Any>? {
+    override fun getFeatureFlags(): Map<String, Any>? {
         val flags: Map<String, Any>?
         synchronized(featureFlagsLock) {
             flags = featureFlags?.toMap()
@@ -321,9 +355,9 @@ internal class PostHogFeatureFlags(
         return flags
     }
 
-    fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
+    override fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
-    fun clear() {
+    override fun clear() {
         synchronized(featureFlagsLock) {
             featureFlags = null
             featureFlagPayloads = null

@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.PostHogOnFeatureFlags
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
@@ -15,6 +16,19 @@ import kotlin.concurrent.schedule
 import kotlin.math.max
 import kotlin.math.min
 
+
+public interface PublicPostHogQueueInterface {
+    public fun add(event: PostHogEvent)
+
+    public fun flush()
+
+    public fun start()
+
+    public fun stop()
+
+    public fun clear()
+}
+
 /**
  * The class that manages the events Queue
  * @property config the Config
@@ -27,7 +41,7 @@ internal class PostHogQueue(
     private val endpoint: PostHogApiEndpoint,
     private val storagePrefix: String?,
     private val executor: ExecutorService,
-) {
+) : PublicPostHogQueueInterface {
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()
     private val timerLock = Any()
@@ -48,7 +62,7 @@ internal class PostHogQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
-    fun add(event: PostHogEvent) {
+    override fun add(event: PostHogEvent) {
         executor.executeSafely {
             var removeFirst = false
             if (deque.size >= config.maxQueueSize) {
@@ -236,7 +250,7 @@ internal class PostHogQueue(
         }
     }
 
-    fun flush() {
+    override fun flush() {
         // only flushes if the queue is above the threshold (not empty in this case)
         if (!isAboveThreshold(1)) {
             return
@@ -286,7 +300,7 @@ internal class PostHogQueue(
         }
     }
 
-    fun start() {
+    override fun start() {
         synchronized(timerLock) {
             stopTimer()
             val timer = Timer(true)
@@ -310,13 +324,13 @@ internal class PostHogQueue(
         timer?.cancel()
     }
 
-    fun stop() {
+    override fun stop() {
         synchronized(timerLock) {
             stopTimer()
         }
     }
 
-    fun clear() {
+    override fun clear() {
         executor.executeSafely {
             val tempFiles: List<File>
             synchronized(dequeLock) {

@@ -1,17 +1,13 @@
 package com.posthog
 
+import com.posthog.internal.*
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
-import com.posthog.internal.PostHogMemoryPreferences
-import com.posthog.internal.PostHogNoOpLogger
-import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
-import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
-import com.posthog.internal.PostHogThreadFactory
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -28,17 +24,17 @@ public open class PostHogStateless protected constructor(
     @Volatile
     protected var enabled: Boolean = false
 
-    private val setupLock = Any()
-    private val optOutLock = Any()
-    private val personProcessingLock = Any()
+    protected val setupLock: Any = Any()
+    protected val optOutLock: Any = Any()
+    protected val personProcessingLock: Any = Any()
 
-    private var config: PostHogConfig? = null
+    protected var config: PostHogConfig? = null
 
-    private var featureFlags: PostHogFeatureFlags? = null
-    private var queue: PostHogQueue? = null
-    private var memoryPreferences = PostHogMemoryPreferences()
+    protected var featureFlags: PublicPostHogFeatureFlagsInterface? = null
+    protected var queue: PublicPostHogQueueInterface? = null
+    protected var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
 
-    private var isPersonProcessingLoaded: Boolean = false
+    protected var isPersonProcessingLoaded: Boolean = false
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
