@@ -265,7 +265,6 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	protected final fun getQueue ()Lcom/posthog/internal/PostHogQueueInterface;
 	protected final fun getSetupLock ()Ljava/lang/Object;
 	public fun groupStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
-	protected final fun hasPersonProcessing ()Z
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	protected final fun isEnabled ()Z
 	public fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;Z)Z
