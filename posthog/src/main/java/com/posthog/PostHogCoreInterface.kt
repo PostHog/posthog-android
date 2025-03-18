@@ -49,7 +49,4 @@ public interface PostHogCoreInterface {
      * Enables or disables the debug mode
      */
     public fun debug(enable: Boolean = true)
-
-    @PostHogInternal
-    public fun <T : PostHogConfig> getConfig(): T?
 }

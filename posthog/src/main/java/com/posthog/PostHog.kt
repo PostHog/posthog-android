@@ -934,9 +934,5 @@ public class PostHog private constructor(
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
         }
-
-        override fun <T : PostHogConfig> getConfig(): T? {
-            return shared.getConfig()
-        }
     }
 }

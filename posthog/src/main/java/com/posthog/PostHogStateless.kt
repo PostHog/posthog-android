@@ -360,12 +360,12 @@ public open class PostHogStateless protected constructor(
 
     protected fun hasPersonProcessing(): Boolean {
         return !(
-            config?.personProfiles == PersonProfiles.NEVER ||
-                (
-                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                        !isPersonProcessingEnabled
+                config?.personProfiles == PersonProfiles.NEVER ||
+                        (
+                                config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                                        !isPersonProcessingEnabled
+                                )
                 )
-        )
     }
 
     protected fun requirePersonProcessing(
@@ -481,11 +481,6 @@ public open class PostHogStateless protected constructor(
             return
         }
         config?.debug = enable
-    }
-
-    override fun <T : PostHogConfig> getConfig(): T? {
-        @Suppress("UNCHECKED_CAST")
-        return config as? T
     }
 
     public companion object : PostHogStatelessInterface {
@@ -605,10 +600,6 @@ public open class PostHogStateless protected constructor(
 
         override fun debug(enable: Boolean) {
             shared.debug(enable)
-        }
-
-        override fun <T : PostHogConfig> getConfig(): T? {
-            return shared.getConfig()
         }
     }
 }
