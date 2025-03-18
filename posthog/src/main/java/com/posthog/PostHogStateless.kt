@@ -360,12 +360,12 @@ public open class PostHogStateless protected constructor(
 
     private fun hasPersonProcessing(): Boolean {
         return !(
-                config?.personProfiles == PersonProfiles.NEVER ||
-                        (
-                                config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                                        !isPersonProcessingEnabled
-                                )
+            config?.personProfiles == PersonProfiles.NEVER ||
+                (
+                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                        !isPersonProcessingEnabled
                 )
+        )
     }
 
     protected fun requirePersonProcessing(

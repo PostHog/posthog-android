@@ -398,7 +398,7 @@ public class PostHog private constructor(
                 sanitizedProperties,
                 userProperties,
                 userPropertiesSetOnce,
-                groups
+                groups,
             )
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
@@ -482,7 +482,7 @@ public class PostHog private constructor(
                 distinctId = distinctId,
                 properties = props,
                 userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce
+                userPropertiesSetOnce = userPropertiesSetOnce,
             )
 
             if (config?.reuseAnonymousId != true) {
