@@ -2,7 +2,6 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
-import com.posthog.PostHogOnFeatureFlags
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
@@ -16,19 +15,6 @@ import kotlin.concurrent.schedule
 import kotlin.math.max
 import kotlin.math.min
 
-
-public interface PublicPostHogQueueInterface {
-    public fun add(event: PostHogEvent)
-
-    public fun flush()
-
-    public fun start()
-
-    public fun stop()
-
-    public fun clear()
-}
-
 /**
  * The class that manages the events Queue
  * @property config the Config
@@ -41,7 +27,7 @@ internal class PostHogQueue(
     private val endpoint: PostHogApiEndpoint,
     private val storagePrefix: String?,
     private val executor: ExecutorService,
-) : PublicPostHogQueueInterface {
+) : PostHogQueueInterface {
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()
     private val timerLock = Any()

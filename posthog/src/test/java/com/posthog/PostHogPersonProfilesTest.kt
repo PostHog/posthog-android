@@ -7,7 +7,6 @@ import com.posthog.internal.PostHogThreadFactory
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

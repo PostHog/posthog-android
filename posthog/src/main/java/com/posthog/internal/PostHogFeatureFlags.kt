@@ -8,37 +8,6 @@ import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
-public interface PublicPostHogFeatureFlagsInterface {
-    public fun loadFeatureFlags(
-        distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, String>?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
-    )
-
-    public fun isFeatureEnabled(
-        key: String,
-        defaultValue: Boolean,
-    ): Boolean
-
-    public fun getFeatureFlag(
-        key: String,
-        defaultValue: Any?,
-    ): Any?
-
-    public fun getFeatureFlagPayload(
-        key: String,
-        defaultValue: Any?,
-    ): Any?
-
-    public fun getFeatureFlags(): Map<String, Any>?
-
-    public fun isSessionReplayFlagActive(): Boolean
-
-    public fun clear()
-}
-
-
 /**
  * The class responsible for calling and caching the feature flags
  * @property config the Config
@@ -49,7 +18,7 @@ internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
-) : PublicPostHogFeatureFlagsInterface {
+) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
 
     private val featureFlagsLock = Any()

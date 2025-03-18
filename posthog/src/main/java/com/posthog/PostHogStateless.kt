@@ -1,13 +1,19 @@
 package com.posthog
 
-import com.posthog.internal.*
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogFeatureFlags
+import com.posthog.internal.PostHogFeatureFlagsInterface
+import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogNoOpLogger
+import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
+import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
+import com.posthog.internal.PostHogQueueInterface
+import com.posthog.internal.PostHogThreadFactory
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -25,13 +31,13 @@ public open class PostHogStateless protected constructor(
     protected var enabled: Boolean = false
 
     protected val setupLock: Any = Any()
-    protected val optOutLock: Any = Any()
+    private val optOutLock: Any = Any()
     protected val personProcessingLock: Any = Any()
 
     protected var config: PostHogConfig? = null
 
-    protected var featureFlags: PublicPostHogFeatureFlagsInterface? = null
-    protected var queue: PublicPostHogQueueInterface? = null
+    protected var featureFlags: PostHogFeatureFlagsInterface? = null
+    protected var queue: PostHogQueueInterface? = null
     protected var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
 
     protected var isPersonProcessingLoaded: Boolean = false
@@ -354,12 +360,12 @@ public open class PostHogStateless protected constructor(
 
     protected fun hasPersonProcessing(): Boolean {
         return !(
-                config?.personProfiles == PersonProfiles.NEVER ||
-                        (
-                                config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                                        !isPersonProcessingEnabled
-                                )
+            config?.personProfiles == PersonProfiles.NEVER ||
+                (
+                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                        !isPersonProcessingEnabled
                 )
+        )
     }
 
     protected fun requirePersonProcessing(
