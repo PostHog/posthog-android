@@ -120,8 +120,8 @@ internal class PostHogRemoteConfig(
                                     distinctId,
                                     anonymousId,
                                     groups,
-                                    onFeatureFlags,
                                     calledFromRemoteConfig = true,
+                                    onFeatureFlags,
                                 )
                             } else {
                                 config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
@@ -265,8 +265,8 @@ internal class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
         calledFromRemoteConfig: Boolean = false,
+        onFeatureFlags: PostHogOnFeatureFlags?,
     ) {
         // only run within the executor if not called from an executor already
         if (!calledFromRemoteConfig) {

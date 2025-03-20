@@ -61,7 +61,7 @@ internal class PostHogRemoteConfigTest {
                 false
             })
 
-        sut.loadFeatureFlags("distinctId", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("distinctId", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -105,7 +105,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -132,7 +132,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -152,7 +152,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -171,7 +171,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.awaitExecution()
 
@@ -182,7 +182,7 @@ internal class PostHogRemoteConfigTest {
                 .setBody(file.readText())
         http.enqueue(response)
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -207,7 +207,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -231,7 +231,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -284,7 +284,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -312,7 +312,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -357,7 +357,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -380,7 +380,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -403,7 +403,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -426,7 +426,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), false, null)
 
         executor.shutdownAndAwaitTermination()
 
@@ -453,7 +453,7 @@ internal class PostHogRemoteConfigTest {
         val sut = getSut(host = url.toString())
 
         // Load initial flags
-        sut.loadFeatureFlags("test_id", null, null, null)
+        sut.loadFeatureFlags("test_id", null, null, false, null)
         executor.awaitExecution()
 
         // Verify flags are loaded
@@ -472,7 +472,7 @@ internal class PostHogRemoteConfigTest {
         )
 
         // Reload flags
-        sut.loadFeatureFlags("test_id", null, null, null)
+        sut.loadFeatureFlags("test_id", null, null, false, null)
         executor.awaitExecution()
 
         // Verify flags are cleared

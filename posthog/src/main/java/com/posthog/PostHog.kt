@@ -35,9 +35,9 @@ public class PostHog private constructor(
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("PostHogReplayQueueThread"),
         ),
-    private val featureFlagsExecutor: ExecutorService =
+    private val remoteConfigExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
-            PostHogThreadFactory("PostHogFeatureFlagsThread"),
+            PostHogThreadFactory("PostHogRemoteConfigThread"),
         ),
     private val cachedEventsExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -86,7 +86,7 @@ public class PostHog private constructor(
                 val api = PostHogApi(config)
                 val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
                 val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
-                val featureFlags = PostHogRemoteConfig(config, api, featureFlagsExecutor)
+                val featureFlags = PostHogRemoteConfig(config, api, remoteConfigExecutor)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -710,8 +710,8 @@ public class PostHog private constructor(
             distinctId,
             anonymousId = anonymousId,
             groups,
-            onFeatureFlags,
             calledFromRemoteConfig = calledFromRemoteConfig,
+            onFeatureFlags,
         )
     }
 
