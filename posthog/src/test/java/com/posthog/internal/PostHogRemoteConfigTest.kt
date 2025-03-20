@@ -479,4 +479,31 @@ internal class PostHogRemoteConfigTest {
         assertNull(sut.getFeatureFlags())
         assertNull(preferences.getValue(FEATURE_FLAGS))
     }
+
+    @Test
+    fun `returns session replay enabled after remote config API call`() {
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertEquals("/s/", config?.snapshotEndpoint)
+        assertEquals(1, http.requestCount)
+
+        sut.clear()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+    }
 }
