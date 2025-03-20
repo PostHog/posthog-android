@@ -117,4 +117,37 @@ internal class PostHogApi(
             return null
         }
     }
+
+    @Throws(PostHogApiError::class, IOException::class)
+    fun loadRemoteConfig(): PostHogRemoteConfigResponse? {
+        var host = theHost
+        host =
+            when (host) {
+                "https://us.i.posthog.com" -> {
+                    "https://us-assets.i.posthog.com"
+                }
+                "https://eu.i.posthog.com" -> {
+                    "https://eu-assets.i.posthog.com"
+                }
+                else -> {
+                    host
+                }
+            }
+
+        val request =
+            Request.Builder()
+                .url("$host/array/${config.apiKey}/config")
+                .header("User-Agent", config.userAgent)
+                .get()
+                .build()
+
+        client.newCall(request).execute().use {
+            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+
+            it.body?.let { body ->
+                return config.serializer.deserialize(body.charStream().buffered())
+            }
+            return null
+        }
+    }
 }

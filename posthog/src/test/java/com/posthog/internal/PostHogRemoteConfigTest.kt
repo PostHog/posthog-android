@@ -19,7 +19,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-internal class PostHogFeatureFlagsTest {
+internal class PostHogRemoteConfigTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private val file = File("src/test/resources/json/basic-decide-no-errors.json")
@@ -31,14 +31,14 @@ internal class PostHogFeatureFlagsTest {
     private fun getSut(
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
-    ): PostHogFeatureFlags {
+    ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
                 this.networkStatus = networkStatus
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
-        return PostHogFeatureFlags(config!!, api, executor = executor)
+        return PostHogRemoteConfig(config!!, api, executor = executor)
     }
 
     @BeforeTest

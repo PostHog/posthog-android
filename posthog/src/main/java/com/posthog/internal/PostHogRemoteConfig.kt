@@ -14,20 +14,25 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property api the API
  * @property executor the Executor
  */
-internal class PostHogFeatureFlags(
+internal class PostHogRemoteConfig(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
 ) {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
+    private var isLoadingRemoteConfig = AtomicBoolean(false)
 
     private val featureFlagsLock = Any()
+    private val remoteConfigLock = Any()
 
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
     @Volatile
     private var isFeatureFlagsLoaded = false
+
+    @Volatile
+    private var isRemoteConfigLoaded = false
 
     @Volatile
     private var sessionReplayFlagActive = false
@@ -81,7 +86,7 @@ internal class PostHogFeatureFlags(
         return recordingActive
     }
 
-    fun loadFeatureFlags(
+    fun loadRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
@@ -93,102 +98,183 @@ internal class PostHogFeatureFlags(
                 return@executeSafely
             }
 
-            if (isLoadingFeatureFlags.getAndSet(true)) {
-                config.logger.log("Feature flags are being loaded already.")
+            if (isLoadingRemoteConfig.getAndSet(true)) {
+                config.logger.log("Remote Config is being loaded already.")
                 return@executeSafely
             }
 
             try {
-                val response = api.decide(distinctId, anonymousId = anonymousId, groups)
+                val response = api.loadRemoteConfig()
 
                 response?.let {
-                    synchronized(featureFlagsLock) {
-                        if (response.quotaLimited?.contains("feature_flags") == true) {
-                            config.logger.log(
-                                """Feature flags are quota limited, clearing existing flags.
-                                    Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
-                            )
-                            this.featureFlags = null
-                            this.featureFlagPayloads = null
-                            config.cachePreferences?.let { preferences ->
-                                preferences.remove(FEATURE_FLAGS)
-                                preferences.remove(FEATURE_FLAGS_PAYLOAD)
-                            }
-                            return@let
-                        }
+                    synchronized(remoteConfigLock) {
+                        processSessionRecordingConfig(it.sessionRecording)
 
-                        if (response.errorsWhileComputingFlags) {
-                            // if not all flags were computed, we upsert flags instead of replacing them
-                            this.featureFlags =
-                                (this.featureFlags ?: mapOf()) + (response.featureFlags ?: mapOf())
+                        val hasFlags = it.hasFeatureFlags ?: false
 
-                            val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
-
-                            this.featureFlagPayloads =
-                                (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
-                        } else {
-                            this.featureFlags = response.featureFlags
-
-                            val normalizedPayloads = normalizePayloads(response.featureFlagPayloads)
-                            this.featureFlagPayloads = normalizedPayloads
-                        }
-
-                        when (val sessionRecording = response.sessionRecording) {
-                            is Boolean -> {
-                                // if sessionRecording is a Boolean, its always disabled
-                                // so we don't enable sessionReplayFlagActive here
-                                sessionReplayFlagActive = sessionRecording
-
-                                if (!sessionRecording) {
-                                    config.cachePreferences?.remove(SESSION_REPLAY)
-                                } else {
-                                    // do nothing
-                                }
-                            }
-
-                            is Map<*, *> -> {
-                                @Suppress("UNCHECKED_CAST")
-                                (sessionRecording as? Map<String, Any>)?.let {
-                                    // keeps the value from config.sessionReplay since having sessionRecording
-                                    // means its enabled on the project settings, but its only enabled
-                                    // when local config.sessionReplay is also enabled
-                                    config.snapshotEndpoint = it["endpoint"] as? String
-                                        ?: config.snapshotEndpoint
-
-                                    sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
-                                    config.cachePreferences?.setValue(SESSION_REPLAY, it)
-
-                                    // TODO:
-                                    // consoleLogRecordingEnabled -> Boolean or null
-                                    // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
-                                    // sampleRate, etc
-                                }
-                            }
-                            else -> {
-                                // do nothing
+                        if (hasFlags && config.preloadFeatureFlags) {
+                            if (distinctId.isNotBlank()) {
+                                // do not process session recording from decide API
+                                // since its already cached via the remote config API
+                                loadFeatureFlags(
+                                    distinctId,
+                                    anonymousId,
+                                    groups,
+                                    onFeatureFlags,
+                                    calledFromRemoteConfig = true,
+                                )
+                            } else {
+                                config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
                             }
                         }
+
+                        isRemoteConfigLoaded = true
                     }
-                    config.cachePreferences?.let { preferences ->
-                        val flags = this.featureFlags ?: mapOf()
-                        preferences.setValue(FEATURE_FLAGS, flags)
-
-                        val payloads = this.featureFlagPayloads ?: mapOf()
-                        preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
-                    }
-                    isFeatureFlagsLoaded = true
+                } ?: run {
+                    isRemoteConfigLoaded = false
                 }
             } catch (e: Throwable) {
-                config.logger.log("Loading feature flags failed: $e")
+                config.logger.log("Loading remote config failed: $e")
             } finally {
-                try {
-                    onFeatureFlags?.loaded()
-                } catch (e: Throwable) {
-                    config.logger.log("Executing the feature flags callback failed: $e")
-                } finally {
-                    isLoadingFeatureFlags.set(false)
+                isLoadingRemoteConfig.set(false)
+            }
+        }
+    }
+
+    private fun processSessionRecordingConfig(sessionRecording: Any?) {
+        when (sessionRecording) {
+            is Boolean -> {
+                // if sessionRecording is a Boolean, its always disabled
+                // so we don't enable sessionReplayFlagActive here
+                sessionReplayFlagActive = sessionRecording
+
+                if (!sessionRecording) {
+                    config.cachePreferences?.remove(SESSION_REPLAY)
+                } else {
+                    // do nothing
                 }
             }
+
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                (sessionRecording as? Map<String, Any>)?.let {
+                    // keeps the value from config.sessionReplay since having sessionRecording
+                    // means its enabled on the project settings, but its only enabled
+                    // when local config.sessionReplay is also enabled
+                    config.snapshotEndpoint = it["endpoint"] as? String
+                        ?: config.snapshotEndpoint
+
+                    sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+                    config.cachePreferences?.setValue(SESSION_REPLAY, it)
+
+                    // TODO:
+                    // consoleLogRecordingEnabled -> Boolean or null
+                    // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
+                    // sampleRate, etc
+                }
+            }
+            else -> {
+                // do nothing
+            }
+        }
+    }
+
+    private fun executeFeatureFlags(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, String>?,
+        onFeatureFlags: PostHogOnFeatureFlags?,
+        calledFromRemoteConfig: Boolean,
+    ) {
+        if (config.networkStatus?.isConnected() == false) {
+            config.logger.log("Network isn't connected.")
+            return
+        }
+
+        if (isLoadingFeatureFlags.getAndSet(true)) {
+            config.logger.log("Feature flags are being loaded already.")
+            return
+        }
+
+        try {
+            val response = api.decide(distinctId, anonymousId = anonymousId, groups)
+
+            response?.let {
+                synchronized(featureFlagsLock) {
+                    if (it.quotaLimited?.contains("feature_flags") == true) {
+                        config.logger.log(
+                            """Feature flags are quota limited, clearing existing flags.
+                                    Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
+                        )
+                        this.featureFlags = null
+                        this.featureFlagPayloads = null
+                        config.cachePreferences?.let { preferences ->
+                            preferences.remove(FEATURE_FLAGS)
+                            preferences.remove(FEATURE_FLAGS_PAYLOAD)
+                        }
+                        return@let
+                    }
+
+                    if (it.errorsWhileComputingFlags) {
+                        // if not all flags were computed, we upsert flags instead of replacing them
+                        this.featureFlags =
+                            (this.featureFlags ?: mapOf()) + (it.featureFlags ?: mapOf())
+
+                        val normalizedPayloads = normalizePayloads(it.featureFlagPayloads)
+
+                        this.featureFlagPayloads =
+                            (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+                    } else {
+                        this.featureFlags = it.featureFlags
+
+                        val normalizedPayloads = normalizePayloads(it.featureFlagPayloads)
+                        this.featureFlagPayloads = normalizedPayloads
+                    }
+
+                    // only process and cache session recording config from decide API
+                    // if not yet done by the remote config API
+                    if (!calledFromRemoteConfig) {
+                        processSessionRecordingConfig(it.sessionRecording)
+                    }
+                }
+                config.cachePreferences?.let { preferences ->
+                    val flags = this.featureFlags ?: mapOf()
+                    preferences.setValue(FEATURE_FLAGS, flags)
+
+                    val payloads = this.featureFlagPayloads ?: mapOf()
+                    preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
+                }
+                isFeatureFlagsLoaded = true
+            } ?: run {
+                isFeatureFlagsLoaded = false
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Loading feature flags failed: $e")
+        } finally {
+            try {
+                onFeatureFlags?.loaded()
+            } catch (e: Throwable) {
+                config.logger.log("Executing the feature flags callback failed: $e")
+            } finally {
+                isLoadingFeatureFlags.set(false)
+            }
+        }
+    }
+
+    fun loadFeatureFlags(
+        distinctId: String,
+        anonymousId: String?,
+        groups: Map<String, String>?,
+        onFeatureFlags: PostHogOnFeatureFlags?,
+        calledFromRemoteConfig: Boolean = false,
+    ) {
+        // only run within the executor if not called from an executor already
+        if (!calledFromRemoteConfig) {
+            executor.executeSafely {
+                executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig)
+            }
+        } else {
+            executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig)
         }
     }
 
@@ -328,12 +414,17 @@ internal class PostHogFeatureFlags(
             featureFlags = null
             featureFlagPayloads = null
             sessionReplayFlagActive = false
+            isFeatureFlagsLoaded = false
 
             config.cachePreferences?.let { preferences ->
                 preferences.remove(FEATURE_FLAGS)
                 preferences.remove(FEATURE_FLAGS_PAYLOAD)
                 preferences.remove(SESSION_REPLAY)
             }
+        }
+
+        synchronized(remoteConfigLock) {
+            isRemoteConfigLoaded = false
         }
     }
 }
