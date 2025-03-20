@@ -218,6 +218,13 @@ public open class PostHogConfig(
     }
 
     public companion object {
-        public const val DEFAULT_HOST: String = "https://us.i.posthog.com"
+        public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"
+        public const val DEFAULT_US_ASSETS_HOST: String = "https://us-assets.i.posthog.com"
+
+        // flutter uses it
+        public const val DEFAULT_HOST: String = DEFAULT_US_HOST
+
+        public const val DEFAULT_EU_HOST: String = "https://eu.i.posthog.com"
+        public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
     }
 }

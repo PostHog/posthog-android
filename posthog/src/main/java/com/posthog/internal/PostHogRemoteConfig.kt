@@ -104,7 +104,7 @@ internal class PostHogRemoteConfig(
             }
 
             try {
-                val response = api.loadRemoteConfig()
+                val response = api.remoteConfig()
 
                 response?.let {
                     synchronized(remoteConfigLock) {

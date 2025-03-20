@@ -1,6 +1,10 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogConfig.Companion.DEFAULT_EU_ASSETS_HOST
+import com.posthog.PostHogConfig.Companion.DEFAULT_EU_HOST
+import com.posthog.PostHogConfig.Companion.DEFAULT_US_ASSETS_HOST
+import com.posthog.PostHogConfig.Companion.DEFAULT_US_HOST
 import com.posthog.PostHogEvent
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -17,10 +21,14 @@ import java.io.OutputStream
 internal class PostHogApi(
     private val config: PostHogConfig,
 ) {
+    private companion object {
+        private const val APP_JSON_UTF_8 = "application/json; charset=utf-8"
+    }
+
     private val mediaType by lazy {
         try {
             // can throw IllegalArgumentException
-            "application/json; charset=utf-8".toMediaType()
+            APP_JSON_UTF_8.toMediaType()
         } catch (ignored: Throwable) {
             null
         }
@@ -119,15 +127,15 @@ internal class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    fun loadRemoteConfig(): PostHogRemoteConfigResponse? {
+    fun remoteConfig(): PostHogRemoteConfigResponse? {
         var host = theHost
         host =
             when (host) {
-                "https://us.i.posthog.com" -> {
-                    "https://us-assets.i.posthog.com"
+                DEFAULT_US_HOST -> {
+                    DEFAULT_US_ASSETS_HOST
                 }
-                "https://eu.i.posthog.com" -> {
-                    "https://eu-assets.i.posthog.com"
+                DEFAULT_EU_HOST -> {
+                    DEFAULT_EU_ASSETS_HOST
                 }
                 else -> {
                     host
@@ -138,6 +146,7 @@ internal class PostHogApi(
             Request.Builder()
                 .url("$host/array/${config.apiKey}/config")
                 .header("User-Agent", config.userAgent)
+                .header("Content-Type", APP_JSON_UTF_8)
                 .get()
                 .build()
 

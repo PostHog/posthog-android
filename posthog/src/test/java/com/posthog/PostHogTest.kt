@@ -194,6 +194,83 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `preload remote config if enabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), remoteConfig = true, preloadFeatureFlags = false)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        assertEquals(1, http.requestCount)
+        assertEquals("/array/${API_KEY}/config", request.path)
+
+        sut.close()
+    }
+
+    @Test
+    fun `preload remote config and flags if enabled`() {
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseText = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseText),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), remoteConfig = true)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val remoteConfigRequest = http.takeRequest()
+
+        assertEquals(2, http.requestCount)
+        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
+
+        val decideApiRequest = http.takeRequest()
+        assertEquals("/decide/?v=3", decideApiRequest.path)
+
+        sut.close()
+    }
+
+    @Test
+    fun `preload remote config but no flags`() {
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
+        val responseText = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseText),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), remoteConfig = true)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val remoteConfigRequest = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
+
+        sut.close()
+    }
+
+    @Test
     fun `isFeatureEnabled returns value after reloaded`() {
         val http =
             mockHttp(
