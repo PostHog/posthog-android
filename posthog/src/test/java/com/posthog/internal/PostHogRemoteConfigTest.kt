@@ -506,4 +506,27 @@ internal class PostHogRemoteConfigTest {
 
         assertFalse(sut.isSessionReplayFlagActive())
     }
+
+    @Test
+    fun `do not preload flags if distinct id is blank`() {
+        val file = File("src/test/resources/json/basic-remote-config.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadRemoteConfig(" ", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        sut.clear()
+    }
 }

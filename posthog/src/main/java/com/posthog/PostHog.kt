@@ -131,10 +131,11 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
-                if (reloadFeatureFlags && config.remoteConfig) {
-                    loadRemoteConfigRequest(config.onFeatureFlags)
-                } else if (reloadFeatureFlags && config.preloadFeatureFlags) {
-                    loadFeatureFlagsRequest(config.onFeatureFlags)
+                if (reloadFeatureFlags) {
+                    when {
+                        config.remoteConfig -> loadRemoteConfigRequest(config.onFeatureFlags)
+                        config.preloadFeatureFlags -> loadFeatureFlagsRequest(config.onFeatureFlags)
+                    }
                 }
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
