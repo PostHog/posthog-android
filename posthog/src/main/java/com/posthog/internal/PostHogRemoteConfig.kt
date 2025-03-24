@@ -116,13 +116,7 @@ internal class PostHogRemoteConfig(
                             if (distinctId.isNotBlank()) {
                                 // do not process session recording from decide API
                                 // since its already cached via the remote config API
-                                loadFeatureFlags(
-                                    distinctId,
-                                    anonymousId,
-                                    groups,
-                                    calledFromRemoteConfig = true,
-                                    onFeatureFlags,
-                                )
+                                executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig = true)
                             } else {
                                 config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
                             }
@@ -265,16 +259,10 @@ internal class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        calledFromRemoteConfig: Boolean = false,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        onFeatureFlags: PostHogOnFeatureFlags? = null,
     ) {
-        // only run within the executor if not called from an executor already
-        if (!calledFromRemoteConfig) {
-            executor.executeSafely {
-                executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig)
-            }
-        } else {
-            executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig)
+        executor.executeSafely {
+            executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, false)
         }
     }
 

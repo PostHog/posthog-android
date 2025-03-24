@@ -705,14 +705,11 @@ public class PostHog private constructor(
             return
         }
 
-        val calledFromRemoteConfig = config?.remoteConfig ?: false
-        // only process remote config if the remote config API is disabled
         remoteConfig?.loadFeatureFlags(
             distinctId,
             anonymousId = anonymousId,
             groups,
-            calledFromRemoteConfig = calledFromRemoteConfig,
-            onFeatureFlags,
+            onFeatureFlags = onFeatureFlags,
         )
     }
 
