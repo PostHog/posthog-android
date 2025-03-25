@@ -1,5 +1,7 @@
 ## Next
 
+## 3.13.0 - 2025-03-25
+
 - feat: use remote config API ([#233](https://github.com/PostHog/posthog-android/pull/233))
 
 ## 3.12.0 - 2025-03-10
