@@ -89,6 +89,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     implementation("com.squareup.curtains:curtains:${PosthogBuildConfig.Dependencies.CURTAINS}")
+    implementation("com.github.instacart:truetime-android:${PosthogBuildConfig.Dependencies.TRUE_TIME}")
 
     // compile only
     compileOnly("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}")
