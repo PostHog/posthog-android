@@ -7,6 +7,7 @@ import com.posthog.PostHogInterface
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
+import com.posthog.android.internal.PostHogAndroidDateProvider
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
 import com.posthog.android.internal.PostHogAppInstallIntegration
@@ -79,6 +80,7 @@ public class PostHogAndroid private constructor() {
             config.replayStoragePrefix = config.replayStoragePrefix ?: replayPath.absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
+            config.dateProvider = (config.dateProvider as? PostHogAndroidDateProvider) ?: PostHogAndroidDateProvider()
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
             // Flutter SDK sets the sdkName and sdkVersion, so this guard is not to allow
             // the values to be overwritten again
