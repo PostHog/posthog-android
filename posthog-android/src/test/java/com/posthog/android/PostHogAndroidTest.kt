@@ -5,7 +5,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
-import com.posthog.android.internal.PostHogAndroidDateProvider
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
 import com.posthog.android.internal.PostHogAppInstallIntegration
@@ -104,17 +103,6 @@ internal class PostHogAndroidTest {
         PostHogAndroid.setup(context, config)
 
         assertTrue(config.networkStatus is PostHogAndroidNetworkStatus)
-    }
-
-    @Test
-    fun `sets Android date provider`() {
-        val config = PostHogAndroidConfig(API_KEY)
-
-        mockContextAppStart(context, tmpDir)
-
-        PostHogAndroid.setup(context, config)
-
-        assertTrue(config.dateProvider is PostHogAndroidDateProvider)
     }
 
     @Test

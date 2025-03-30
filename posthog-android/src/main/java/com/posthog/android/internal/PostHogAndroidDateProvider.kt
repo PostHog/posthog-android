@@ -1,26 +1,35 @@
 package com.posthog.android.internal
 
-import com.instacart.truetime.time.TrueTimeImpl
+import android.os.Build
+import android.os.SystemClock
+import androidx.annotation.RequiresApi
 import com.posthog.internal.PostHogDateProvider
+import java.time.Instant
 import java.util.Date
 
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class PostHogAndroidDateProvider : PostHogDateProvider {
-    private val client = TrueTimeImpl()
+    private val networkTimeClock =
+        runCatching {
+            SystemClock.currentNetworkTimeClock()
+        }
 
-    init {
-        client.sync()
-    }
+    private val instant
+        get() =
+            networkTimeClock
+                .mapCatching { it.instant() }
+                .getOrDefault(Instant.now())
 
     override fun currentDate(): Date {
-        return client.now()
+        return Date.from(instant)
     }
 
     override fun addSecondsToCurrentDate(seconds: Int): Date {
-        return Date(client.now().time + (seconds * 1000))
+        return Date.from(instant.plusSeconds(seconds.toLong()))
     }
 
     override fun currentTimeMillis(): Long {
-        return client.now().time
+        return instant.toEpochMilli()
     }
 
     override fun nanoTime(): Long {
