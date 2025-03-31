@@ -27,6 +27,10 @@
 -keep class com.posthog.internal.replay.** { *; }
 -keep class com.posthog.internal.replay.** { <init>(); }
 
+# Surveys
+-keep class com.posthog.surveys.** { *; }
+-keep class com.posthog.surveys.** { <init>(); }
+
 # Prevent proguard from stripping interface information from TypeAdapter, TypeAdapterFactory,
 # JsonSerializer, JsonDeserializer instances (so they can be used in @JsonAdapter)
 -keep class * extends com.google.gson.TypeAdapter
