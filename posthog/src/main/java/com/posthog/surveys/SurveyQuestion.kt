@@ -8,7 +8,6 @@ public abstract class SurveyQuestion(
     public open val descriptionContentType: SurveyTextContentType?,
     public open val optional: Boolean?,
     public open val buttonText: String?,
-    public open val originalQuestionIndex: Int?,
     public open val branching: SurveyQuestionBranching?,
 )
 
@@ -20,9 +19,8 @@ public data class OpenSurveyQuestion(
     override val descriptionContentType: SurveyTextContentType? = null,
     override val optional: Boolean? = null,
     override val buttonText: String? = null,
-    override val originalQuestionIndex: Int? = null,
     override val branching: SurveyQuestionBranching? = null,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, originalQuestionIndex, branching)
+) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
 
 public data class LinkSurveyQuestion(
     override val question: String,
@@ -32,12 +30,12 @@ public data class LinkSurveyQuestion(
     override val descriptionContentType: SurveyTextContentType? = null,
     override val optional: Boolean? = null,
     override val buttonText: String? = null,
-    override val originalQuestionIndex: Int? = null,
     override val branching: SurveyQuestionBranching? = null,
     val link: String,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, originalQuestionIndex, branching)
+) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
 
-public data class RatingSurveyQuestion(
+// not a data class to avoid (int Integer.hashCode(int))
+public class RatingSurveyQuestion(
     override val question: String,
     override val id: String,
     override val type: SurveyQuestionType = SurveyQuestionType.RATING,
@@ -45,13 +43,12 @@ public data class RatingSurveyQuestion(
     override val descriptionContentType: SurveyTextContentType? = null,
     override val optional: Boolean? = null,
     override val buttonText: String? = null,
-    override val originalQuestionIndex: Int? = null,
     override val branching: SurveyQuestionBranching? = null,
-    val display: SurveyRatingDisplayType,
-    val scale: Int,
-    val lowerBoundLabel: String,
-    val upperBoundLabel: String,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, originalQuestionIndex, branching)
+    public val display: SurveyRatingDisplayType,
+    public val scale: Int,
+    public val lowerBoundLabel: String,
+    public val upperBoundLabel: String,
+) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
 
 public data class SingleSurveyQuestion(
     override val question: String,
@@ -61,12 +58,11 @@ public data class SingleSurveyQuestion(
     override val descriptionContentType: SurveyTextContentType? = null,
     override val optional: Boolean? = null,
     override val buttonText: String? = null,
-    override val originalQuestionIndex: Int? = null,
     override val branching: SurveyQuestionBranching? = null,
     val choices: List<String>,
     val hasOpenChoice: Boolean?,
     val shuffleOptions: Boolean?,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, originalQuestionIndex, branching)
+) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
 
 public data class MultipleSurveyQuestion(
     override val question: String,
@@ -76,9 +72,8 @@ public data class MultipleSurveyQuestion(
     override val descriptionContentType: SurveyTextContentType? = null,
     override val optional: Boolean? = null,
     override val buttonText: String? = null,
-    override val originalQuestionIndex: Int? = null,
     override val branching: SurveyQuestionBranching? = null,
     val choices: List<String>,
     val hasOpenChoice: Boolean?,
     val shuffleOptions: Boolean?,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, originalQuestionIndex, branching)
+) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)

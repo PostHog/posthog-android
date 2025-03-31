@@ -5,7 +5,7 @@ public sealed class SurveyQuestionBranching {
 
     public object End : SurveyQuestionBranching()
 
-    public data class ResponseBased(val responseValues: Map<String, Any>) : SurveyQuestionBranching()
+    public class ResponseBased(public val responseValues: Map<String, Any>) : SurveyQuestionBranching()
 
-    public data class SpecificQuestion(val index: Int) : SurveyQuestionBranching()
+    public class SpecificQuestion(public val index: Int) : SurveyQuestionBranching()
 }

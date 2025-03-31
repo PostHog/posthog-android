@@ -676,20 +676,19 @@ public final class com/posthog/surveys/EventCondition {
 }
 
 public final class com/posthog/surveys/LinkSurveyQuestion : com/posthog/surveys/SurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun component10 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lcom/posthog/surveys/SurveyQuestionType;
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Lcom/posthog/surveys/SurveyTextContentType;
 	public final fun component6 ()Ljava/lang/Boolean;
 	public final fun component7 ()Ljava/lang/String;
-	public final fun component8 ()Ljava/lang/Integer;
-	public final fun component9 ()Lcom/posthog/surveys/SurveyQuestionBranching;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;)Lcom/posthog/surveys/LinkSurveyQuestion;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/LinkSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/surveys/LinkSurveyQuestion;
+	public final fun component8 ()Lcom/posthog/surveys/SurveyQuestionBranching;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;)Lcom/posthog/surveys/LinkSurveyQuestion;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/LinkSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/surveys/LinkSurveyQuestion;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getBranching ()Lcom/posthog/surveys/SurveyQuestionBranching;
 	public fun getButtonText ()Ljava/lang/String;
@@ -698,7 +697,6 @@ public final class com/posthog/surveys/LinkSurveyQuestion : com/posthog/surveys/
 	public fun getId ()Ljava/lang/String;
 	public final fun getLink ()Ljava/lang/String;
 	public fun getOptional ()Ljava/lang/Boolean;
-	public fun getOriginalQuestionIndex ()Ljava/lang/Integer;
 	public fun getQuestion ()Ljava/lang/String;
 	public fun getType ()Lcom/posthog/surveys/SurveyQuestionType;
 	public fun hashCode ()I
@@ -706,22 +704,21 @@ public final class com/posthog/surveys/LinkSurveyQuestion : com/posthog/surveys/
 }
 
 public final class com/posthog/surveys/MultipleSurveyQuestion : com/posthog/surveys/SurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun component10 ()Ljava/util/List;
+	public final fun component10 ()Ljava/lang/Boolean;
 	public final fun component11 ()Ljava/lang/Boolean;
-	public final fun component12 ()Ljava/lang/Boolean;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lcom/posthog/surveys/SurveyQuestionType;
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Lcom/posthog/surveys/SurveyTextContentType;
 	public final fun component6 ()Ljava/lang/Boolean;
 	public final fun component7 ()Ljava/lang/String;
-	public final fun component8 ()Ljava/lang/Integer;
-	public final fun component9 ()Lcom/posthog/surveys/SurveyQuestionBranching;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)Lcom/posthog/surveys/MultipleSurveyQuestion;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/MultipleSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/surveys/MultipleSurveyQuestion;
+	public final fun component8 ()Lcom/posthog/surveys/SurveyQuestionBranching;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)Lcom/posthog/surveys/MultipleSurveyQuestion;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/MultipleSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/surveys/MultipleSurveyQuestion;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getBranching ()Lcom/posthog/surveys/SurveyQuestionBranching;
 	public fun getButtonText ()Ljava/lang/String;
@@ -731,7 +728,6 @@ public final class com/posthog/surveys/MultipleSurveyQuestion : com/posthog/surv
 	public final fun getHasOpenChoice ()Ljava/lang/Boolean;
 	public fun getId ()Ljava/lang/String;
 	public fun getOptional ()Ljava/lang/Boolean;
-	public fun getOriginalQuestionIndex ()Ljava/lang/Integer;
 	public fun getQuestion ()Ljava/lang/String;
 	public final fun getShuffleOptions ()Ljava/lang/Boolean;
 	public fun getType ()Lcom/posthog/surveys/SurveyQuestionType;
@@ -740,8 +736,8 @@ public final class com/posthog/surveys/MultipleSurveyQuestion : com/posthog/surv
 }
 
 public final class com/posthog/surveys/OpenSurveyQuestion : com/posthog/surveys/SurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lcom/posthog/surveys/SurveyQuestionType;
@@ -749,10 +745,9 @@ public final class com/posthog/surveys/OpenSurveyQuestion : com/posthog/surveys/
 	public final fun component5 ()Lcom/posthog/surveys/SurveyTextContentType;
 	public final fun component6 ()Ljava/lang/Boolean;
 	public final fun component7 ()Ljava/lang/String;
-	public final fun component8 ()Ljava/lang/Integer;
-	public final fun component9 ()Lcom/posthog/surveys/SurveyQuestionBranching;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;)Lcom/posthog/surveys/OpenSurveyQuestion;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/OpenSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;ILjava/lang/Object;)Lcom/posthog/surveys/OpenSurveyQuestion;
+	public final fun component8 ()Lcom/posthog/surveys/SurveyQuestionBranching;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;)Lcom/posthog/surveys/OpenSurveyQuestion;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/OpenSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;ILjava/lang/Object;)Lcom/posthog/surveys/OpenSurveyQuestion;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getBranching ()Lcom/posthog/surveys/SurveyQuestionBranching;
 	public fun getButtonText ()Ljava/lang/String;
@@ -760,7 +755,6 @@ public final class com/posthog/surveys/OpenSurveyQuestion : com/posthog/surveys/
 	public fun getDescriptionContentType ()Lcom/posthog/surveys/SurveyTextContentType;
 	public fun getId ()Ljava/lang/String;
 	public fun getOptional ()Ljava/lang/Boolean;
-	public fun getOriginalQuestionIndex ()Ljava/lang/Integer;
 	public fun getQuestion ()Ljava/lang/String;
 	public fun getType ()Lcom/posthog/surveys/SurveyQuestionType;
 	public fun hashCode ()I
@@ -768,24 +762,8 @@ public final class com/posthog/surveys/OpenSurveyQuestion : com/posthog/surveys/
 }
 
 public final class com/posthog/surveys/RatingSurveyQuestion : com/posthog/surveys/SurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Lcom/posthog/surveys/SurveyRatingDisplayType;ILjava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Lcom/posthog/surveys/SurveyRatingDisplayType;ILjava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun component10 ()Lcom/posthog/surveys/SurveyRatingDisplayType;
-	public final fun component11 ()I
-	public final fun component12 ()Ljava/lang/String;
-	public final fun component13 ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun component3 ()Lcom/posthog/surveys/SurveyQuestionType;
-	public final fun component4 ()Ljava/lang/String;
-	public final fun component5 ()Lcom/posthog/surveys/SurveyTextContentType;
-	public final fun component6 ()Ljava/lang/Boolean;
-	public final fun component7 ()Ljava/lang/String;
-	public final fun component8 ()Ljava/lang/Integer;
-	public final fun component9 ()Lcom/posthog/surveys/SurveyQuestionBranching;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Lcom/posthog/surveys/SurveyRatingDisplayType;ILjava/lang/String;Ljava/lang/String;)Lcom/posthog/surveys/RatingSurveyQuestion;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/RatingSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Lcom/posthog/surveys/SurveyRatingDisplayType;ILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/surveys/RatingSurveyQuestion;
-	public fun equals (Ljava/lang/Object;)Z
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Lcom/posthog/surveys/SurveyRatingDisplayType;ILjava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Lcom/posthog/surveys/SurveyRatingDisplayType;ILjava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun getBranching ()Lcom/posthog/surveys/SurveyQuestionBranching;
 	public fun getButtonText ()Ljava/lang/String;
 	public fun getDescription ()Ljava/lang/String;
@@ -794,32 +772,28 @@ public final class com/posthog/surveys/RatingSurveyQuestion : com/posthog/survey
 	public fun getId ()Ljava/lang/String;
 	public final fun getLowerBoundLabel ()Ljava/lang/String;
 	public fun getOptional ()Ljava/lang/Boolean;
-	public fun getOriginalQuestionIndex ()Ljava/lang/Integer;
 	public fun getQuestion ()Ljava/lang/String;
 	public final fun getScale ()I
 	public fun getType ()Lcom/posthog/surveys/SurveyQuestionType;
 	public final fun getUpperBoundLabel ()Ljava/lang/String;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/posthog/surveys/SingleSurveyQuestion : com/posthog/surveys/SurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun component10 ()Ljava/util/List;
+	public final fun component10 ()Ljava/lang/Boolean;
 	public final fun component11 ()Ljava/lang/Boolean;
-	public final fun component12 ()Ljava/lang/Boolean;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lcom/posthog/surveys/SurveyQuestionType;
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Lcom/posthog/surveys/SurveyTextContentType;
 	public final fun component6 ()Ljava/lang/Boolean;
 	public final fun component7 ()Ljava/lang/String;
-	public final fun component8 ()Ljava/lang/Integer;
-	public final fun component9 ()Lcom/posthog/surveys/SurveyQuestionBranching;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)Lcom/posthog/surveys/SingleSurveyQuestion;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/SingleSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/surveys/SingleSurveyQuestion;
+	public final fun component8 ()Lcom/posthog/surveys/SurveyQuestionBranching;
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;)Lcom/posthog/surveys/SingleSurveyQuestion;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/SingleSurveyQuestion;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;Ljava/util/List;Ljava/lang/Boolean;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/surveys/SingleSurveyQuestion;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getBranching ()Lcom/posthog/surveys/SurveyQuestionBranching;
 	public fun getButtonText ()Ljava/lang/String;
@@ -829,7 +803,6 @@ public final class com/posthog/surveys/SingleSurveyQuestion : com/posthog/survey
 	public final fun getHasOpenChoice ()Ljava/lang/Boolean;
 	public fun getId ()Ljava/lang/String;
 	public fun getOptional ()Ljava/lang/Boolean;
-	public fun getOriginalQuestionIndex ()Ljava/lang/Integer;
 	public fun getQuestion ()Ljava/lang/String;
 	public final fun getShuffleOptions ()Ljava/lang/Boolean;
 	public fun getType ()Lcom/posthog/surveys/SurveyQuestionType;
@@ -973,14 +946,13 @@ public final class com/posthog/surveys/SurveyMatchType : java/lang/Enum {
 }
 
 public abstract class com/posthog/surveys/SurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Integer;Lcom/posthog/surveys/SurveyQuestionBranching;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionType;Ljava/lang/String;Lcom/posthog/surveys/SurveyTextContentType;Ljava/lang/Boolean;Ljava/lang/String;Lcom/posthog/surveys/SurveyQuestionBranching;)V
 	public fun getBranching ()Lcom/posthog/surveys/SurveyQuestionBranching;
 	public fun getButtonText ()Ljava/lang/String;
 	public fun getDescription ()Ljava/lang/String;
 	public fun getDescriptionContentType ()Lcom/posthog/surveys/SurveyTextContentType;
 	public fun getId ()Ljava/lang/String;
 	public fun getOptional ()Ljava/lang/Boolean;
-	public fun getOriginalQuestionIndex ()Ljava/lang/Integer;
 	public fun getQuestion ()Ljava/lang/String;
 	public fun getType ()Lcom/posthog/surveys/SurveyQuestionType;
 }
@@ -998,24 +970,12 @@ public final class com/posthog/surveys/SurveyQuestionBranching$Next : com/postho
 
 public final class com/posthog/surveys/SurveyQuestionBranching$ResponseBased : com/posthog/surveys/SurveyQuestionBranching {
 	public fun <init> (Ljava/util/Map;)V
-	public final fun component1 ()Ljava/util/Map;
-	public final fun copy (Ljava/util/Map;)Lcom/posthog/surveys/SurveyQuestionBranching$ResponseBased;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/SurveyQuestionBranching$ResponseBased;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/surveys/SurveyQuestionBranching$ResponseBased;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getResponseValues ()Ljava/util/Map;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/posthog/surveys/SurveyQuestionBranching$SpecificQuestion : com/posthog/surveys/SurveyQuestionBranching {
 	public fun <init> (I)V
-	public final fun component1 ()I
-	public final fun copy (I)Lcom/posthog/surveys/SurveyQuestionBranching$SpecificQuestion;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/SurveyQuestionBranching$SpecificQuestion;IILjava/lang/Object;)Lcom/posthog/surveys/SurveyQuestionBranching$SpecificQuestion;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getIndex ()I
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/posthog/surveys/SurveyQuestionBranchingType : java/lang/Enum {
