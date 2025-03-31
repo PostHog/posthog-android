@@ -17,12 +17,9 @@ internal class PostHogPersonProfilesTest {
     val tmpDir = TemporaryFolder()
 
     private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
-    private val replayQueueExecutor =
-        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
-    private val featureFlagsExecutor =
-        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlags"))
-    private val cachedEventsExecutor =
-        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
+    private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
+    private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
+    private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
@@ -49,7 +46,7 @@ internal class PostHogPersonProfilesTest {
             config,
             queueExecutor,
             replayQueueExecutor,
-            featureFlagsExecutor,
+            remoteConfigExecutor,
             cachedEventsExecutor,
             false,
         )
@@ -131,7 +128,6 @@ internal class PostHogPersonProfilesTest {
         queueExecutor.shutdownAndAwaitTermination()
 
         val request = http.takeRequest()
-        assertNotNull(request)
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
