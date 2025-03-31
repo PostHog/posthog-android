@@ -8,5 +8,5 @@ public data class SurveyConditions(
     val deviceTypesMatchType: SurveyMatchType?,
     val seenSurveyWaitPeriodInDays: Int?,
     val events: SurveyEventConditions?,
-    val actions: SurveyActionsConditions?,
+    // TODO: actions
 )

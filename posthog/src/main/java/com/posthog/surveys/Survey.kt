@@ -10,6 +10,7 @@ public data class Survey(
     val name: String,
     val type: SurveyType,
     val questions: List<SurveyQuestion>,
+    val description: String?,
     val featureFlagKeys: List<SurveyFeatureFlagKeyValue>?,
     val linkedFlagKey: String?,
     val targetingFlagKey: String?,
