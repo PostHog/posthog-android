@@ -3,7 +3,7 @@ package com.posthog.internal
 import com.posthog.PostHogOnFeatureFlags
 
 public interface PostHogFeatureFlagsInterface {
-    public fun loadFeatureFlags(
+    public fun loadRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,

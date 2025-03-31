@@ -2,8 +2,6 @@ package com.posthog
 
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
-import com.posthog.internal.PostHogFeatureFlags
-import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
@@ -50,10 +48,7 @@ public class PostHog private constructor(
 
     private val featureFlagsCalledLock = Any()
 
-    private var config: PostHogConfig? = null
-
     private var remoteConfig: PostHogRemoteConfig? = null
-    private var queue: PostHogQueue? = null
     private var replayQueue: PostHogQueue? = null
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
@@ -76,7 +71,8 @@ public class PostHog private constructor(
                 config.cachePreferences = cachePreferences
                 val api = PostHogApi(config)
                 val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
+                val replayQueue =
+                    PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
                 val featureFlags = PostHogRemoteConfig(config, api, remoteConfigExecutor)
 
                 // no need to lock optOut here since the setup is locked already

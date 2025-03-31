@@ -1,19 +1,12 @@
 package com.posthog
 
+import com.posthog.internal.*
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
-import com.posthog.internal.PostHogFeatureFlags
-import com.posthog.internal.PostHogFeatureFlagsInterface
-import com.posthog.internal.PostHogMemoryPreferences
-import com.posthog.internal.PostHogNoOpLogger
-import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
-import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
-import com.posthog.internal.PostHogQueueInterface
-import com.posthog.internal.PostHogThreadFactory
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -58,7 +51,7 @@ public open class PostHogStateless protected constructor(
                 config.cachePreferences = memoryPreferences
                 val api = PostHogApi(config)
                 val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val featureFlags = PostHogFeatureFlags(config, api, featureFlagsExecutor)
+                val remoteConfig = PostHogRemoteConfig(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -72,7 +65,7 @@ public open class PostHogStateless protected constructor(
 
                 this.config = config
                 this.queue = queue
-                this.featureFlags = featureFlags
+                this.featureFlags = remoteConfig
 
                 enabled = true
 
@@ -360,12 +353,12 @@ public open class PostHogStateless protected constructor(
 
     private fun hasPersonProcessing(): Boolean {
         return !(
-            config?.personProfiles == PersonProfiles.NEVER ||
-                (
-                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                        !isPersonProcessingEnabled
+                config?.personProfiles == PersonProfiles.NEVER ||
+                        (
+                                config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                                        !isPersonProcessingEnabled
+                                )
                 )
-        )
     }
 
     protected fun requirePersonProcessing(
