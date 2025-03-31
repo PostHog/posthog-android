@@ -102,4 +102,47 @@ internal class PostHogApiTest {
         assertEquals("Client Error", exc.message)
         assertNotNull(exc.body)
     }
+
+    @Test
+    fun `remote config returns successful response`() {
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val response = sut.remoteConfig()
+
+        val request = http.takeRequest()
+
+        assertNotNull(response)
+        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
+        assertEquals("GET", request.method)
+        assertEquals("/array/${API_KEY}/config", request.path)
+        assertEquals("gzip", request.headers["Accept-Encoding"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+    }
+
+    @Test
+    fun `remote config throws if not successful`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.remoteConfig()
+            }
+        assertEquals(400, exc.statusCode)
+        assertEquals("Client Error", exc.message)
+        assertNotNull(exc.body)
+    }
 }

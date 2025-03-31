@@ -45,4 +45,26 @@
             column="17"/>
     </issue>
 
+    <issue
+        id="GradleDependency"
+        message="A newer version of org.codehaus.mojo:animal-sniffer-annotations than 1.23 is available: 1.24"
+        errorLine1="    compileOnly(&quot;org.codehaus.mojo:animal-sniffer-annotations:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_ANNOTATION}&quot;)"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="94"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.squareup.okhttp3:mockwebserver than 4.11.0 is available: 4.12.0"
+        errorLine1="    testImplementation(&quot;com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="109"
+            column="24"/>
+    </issue>
+
 </issues>

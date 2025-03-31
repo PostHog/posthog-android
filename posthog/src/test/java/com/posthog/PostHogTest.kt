@@ -28,7 +28,7 @@ internal class PostHogTest {
 
     private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
     private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
-    private val featureFlagsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlags"))
+    private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
@@ -46,6 +46,7 @@ internal class PostHogTest {
         sendFeatureFlagEvent: Boolean = true,
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
+        remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     ): PostHogInterface {
@@ -63,12 +64,13 @@ internal class PostHogTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
+                this.remoteConfig = remoteConfig
             }
         return PostHog.withInternal(
             config,
             queueExecutor,
             replayQueueExecutor,
-            featureFlagsExecutor,
+            remoteConfigExecutor,
             cachedEventsExecutor,
             reloadFeatureFlags,
         )
@@ -162,7 +164,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString())
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
@@ -184,9 +186,86 @@ internal class PostHogTest {
             reloaded = true
         }
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertTrue(reloaded)
+
+        sut.close()
+    }
+
+    @Test
+    fun `preload remote config if enabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), remoteConfig = true, preloadFeatureFlags = false)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        assertEquals(1, http.requestCount)
+        assertEquals("/array/${API_KEY}/config", request.path)
+
+        sut.close()
+    }
+
+    @Test
+    fun `preload remote config and flags if enabled`() {
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseText = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseText),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), remoteConfig = true)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val remoteConfigRequest = http.takeRequest()
+
+        assertEquals(2, http.requestCount)
+        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
+
+        val decideApiRequest = http.takeRequest()
+        assertEquals("/decide/?v=3", decideApiRequest.path)
+
+        sut.close()
+    }
+
+    @Test
+    fun `preload remote config but no flags`() {
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
+        val responseText = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseText),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(responseDecideApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), remoteConfig = true)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val remoteConfigRequest = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
 
         sut.close()
     }
@@ -205,7 +284,7 @@ internal class PostHogTest {
 
         sut.reloadFeatureFlags()
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz"))
 
@@ -226,7 +305,7 @@ internal class PostHogTest {
 
         sut.reloadFeatureFlags()
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
 
@@ -254,7 +333,7 @@ internal class PostHogTest {
 
         sut.reloadFeatureFlags()
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         // remove from the http queue
         http.takeRequest()
@@ -312,7 +391,7 @@ internal class PostHogTest {
 
         sut.reloadFeatureFlags()
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         // remove from the http queue
         http.takeRequest()
@@ -357,7 +436,7 @@ internal class PostHogTest {
 
         sut.reloadFeatureFlags()
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertTrue(sut.getFeatureFlagPayload("thePayload") as Boolean)
 
@@ -371,7 +450,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertEquals(0, http.requestCount)
 
@@ -1113,7 +1192,7 @@ internal class PostHogTest {
 
         sut.reloadFeatureFlags()
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         // remove from the http queue
         http.takeRequest()
@@ -1292,7 +1371,7 @@ internal class PostHogTest {
 
         sut.reset()
 
-        featureFlagsExecutor.shutdownAndAwaitTermination()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
