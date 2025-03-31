@@ -871,18 +871,30 @@ public final class com/posthog/surveys/SurveyAppearance {
 
 public final class com/posthog/surveys/SurveyAppearancePosition : java/lang/Enum {
 	public static final field CENTER Lcom/posthog/surveys/SurveyAppearancePosition;
+	public static final field Companion Lcom/posthog/surveys/SurveyAppearancePosition$Companion;
 	public static final field LEFT Lcom/posthog/surveys/SurveyAppearancePosition;
 	public static final field RIGHT Lcom/posthog/surveys/SurveyAppearancePosition;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyAppearancePosition;
 	public static fun values ()[Lcom/posthog/surveys/SurveyAppearancePosition;
 }
 
+public final class com/posthog/surveys/SurveyAppearancePosition$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyAppearancePosition;
+}
+
 public final class com/posthog/surveys/SurveyAppearanceWidgetType : java/lang/Enum {
 	public static final field BUTTON Lcom/posthog/surveys/SurveyAppearanceWidgetType;
+	public static final field Companion Lcom/posthog/surveys/SurveyAppearanceWidgetType$Companion;
 	public static final field SELECTOR Lcom/posthog/surveys/SurveyAppearanceWidgetType;
 	public static final field TAB Lcom/posthog/surveys/SurveyAppearanceWidgetType;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyAppearanceWidgetType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyAppearanceWidgetType;
+}
+
+public final class com/posthog/surveys/SurveyAppearanceWidgetType$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyAppearanceWidgetType;
 }
 
 public final class com/posthog/surveys/SurveyConditions {
@@ -935,14 +947,20 @@ public final class com/posthog/surveys/SurveyFeatureFlagKeyValue {
 }
 
 public final class com/posthog/surveys/SurveyMatchType : java/lang/Enum {
+	public static final field Companion Lcom/posthog/surveys/SurveyMatchType$Companion;
 	public static final field EXACT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field IS_NOT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field I_CONTAINS Lcom/posthog/surveys/SurveyMatchType;
 	public static final field NOT_I_CONTAINS Lcom/posthog/surveys/SurveyMatchType;
 	public static final field NOT_REGEX Lcom/posthog/surveys/SurveyMatchType;
 	public static final field REGEX Lcom/posthog/surveys/SurveyMatchType;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyMatchType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyMatchType;
+}
+
+public final class com/posthog/surveys/SurveyMatchType$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyMatchType;
 }
 
 public abstract class com/posthog/surveys/SurveyQuestion {
@@ -979,43 +997,73 @@ public final class com/posthog/surveys/SurveyQuestionBranching$SpecificQuestion 
 }
 
 public final class com/posthog/surveys/SurveyQuestionBranchingType : java/lang/Enum {
+	public static final field Companion Lcom/posthog/surveys/SurveyQuestionBranchingType$Companion;
 	public static final field END Lcom/posthog/surveys/SurveyQuestionBranchingType;
 	public static final field NEXT_QUESTION Lcom/posthog/surveys/SurveyQuestionBranchingType;
 	public static final field RESPONSE_BASED Lcom/posthog/surveys/SurveyQuestionBranchingType;
 	public static final field SPECIFIC_QUESTION Lcom/posthog/surveys/SurveyQuestionBranchingType;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyQuestionBranchingType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyQuestionBranchingType;
 }
 
+public final class com/posthog/surveys/SurveyQuestionBranchingType$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyQuestionBranchingType;
+}
+
 public final class com/posthog/surveys/SurveyQuestionType : java/lang/Enum {
+	public static final field Companion Lcom/posthog/surveys/SurveyQuestionType$Companion;
 	public static final field LINK Lcom/posthog/surveys/SurveyQuestionType;
 	public static final field MULTIPLE_CHOICE Lcom/posthog/surveys/SurveyQuestionType;
 	public static final field OPEN Lcom/posthog/surveys/SurveyQuestionType;
 	public static final field RATING Lcom/posthog/surveys/SurveyQuestionType;
 	public static final field SINGLE_CHOICE Lcom/posthog/surveys/SurveyQuestionType;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyQuestionType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyQuestionType;
 }
 
+public final class com/posthog/surveys/SurveyQuestionType$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyQuestionType;
+}
+
 public final class com/posthog/surveys/SurveyRatingDisplayType : java/lang/Enum {
+	public static final field Companion Lcom/posthog/surveys/SurveyRatingDisplayType$Companion;
 	public static final field EMOJI Lcom/posthog/surveys/SurveyRatingDisplayType;
 	public static final field NUMBER Lcom/posthog/surveys/SurveyRatingDisplayType;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyRatingDisplayType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyRatingDisplayType;
 }
 
+public final class com/posthog/surveys/SurveyRatingDisplayType$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyRatingDisplayType;
+}
+
 public final class com/posthog/surveys/SurveyTextContentType : java/lang/Enum {
+	public static final field Companion Lcom/posthog/surveys/SurveyTextContentType$Companion;
 	public static final field HTML Lcom/posthog/surveys/SurveyTextContentType;
 	public static final field TEXT Lcom/posthog/surveys/SurveyTextContentType;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyTextContentType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyTextContentType;
 }
 
+public final class com/posthog/surveys/SurveyTextContentType$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyTextContentType;
+}
+
 public final class com/posthog/surveys/SurveyType : java/lang/Enum {
 	public static final field API Lcom/posthog/surveys/SurveyType;
+	public static final field Companion Lcom/posthog/surveys/SurveyType$Companion;
 	public static final field POPOVER Lcom/posthog/surveys/SurveyType;
 	public static final field WIDGET Lcom/posthog/surveys/SurveyType;
+	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyType;
+}
+
+public final class com/posthog/surveys/SurveyType$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyType;
 }
 
