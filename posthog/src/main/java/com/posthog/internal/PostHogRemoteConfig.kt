@@ -1,12 +1,12 @@
 package com.posthog.internal
 
-import Survey
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
+import com.posthog.surveys.Survey
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 

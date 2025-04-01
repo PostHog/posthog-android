@@ -1,9 +1,6 @@
+package com.posthog.surveys
+
 import com.google.gson.annotations.SerializedName
-import com.posthog.surveys.SurveyAppearance
-import com.posthog.surveys.SurveyConditions
-import com.posthog.surveys.SurveyFeatureFlagKeyValue
-import com.posthog.surveys.SurveyQuestion
-import com.posthog.surveys.SurveyType
 import java.util.Date
 
 public data class Survey(

@@ -60,6 +60,14 @@ internal class PostHogSharedPreferences(
         }
     }
 
+    private fun getStringSet(list: Collection<*>): Set<*>? {
+        list.takeIf { listData -> listData.all { it is String } }?.let { items ->
+            return items.toSet()
+        } ?: run {
+            return null
+        }
+    }
+
     override fun setValue(
         key: String,
         value: Any,
@@ -90,15 +98,20 @@ internal class PostHogSharedPreferences(
                 is Collection<*> -> {
                     when (value) {
                         is Set<*> -> {
-                            @Suppress("UNCHECKED_CAST")
-                            (value.toSet() as? Set<String>)?.let {
-                                edit.putStringSet(key, it)
+                            getStringSet(value)?.let {
+                                @Suppress("UNCHECKED_CAST")
+                                edit.putStringSet(key, it as Set<String>)
                             } ?: run {
                                 serializeObject(key, value, edit)
                             }
                         }
                         is List<*> -> {
-                            serializeObject(key, value, edit)
+                            getStringSet(value)?.let {
+                                @Suppress("UNCHECKED_CAST")
+                                edit.putStringSet(key, it as Set<String>)
+                            } ?: run {
+                                serializeObject(key, value, edit)
+                            }
                         }
                         else -> {
                             serializeObject(key, value, edit)
@@ -106,9 +119,9 @@ internal class PostHogSharedPreferences(
                     }
                 }
                 is Array<*> -> {
-                    @Suppress("UNCHECKED_CAST")
-                    (value.toSet() as? Set<String>)?.let {
-                        edit.putStringSet(key, it)
+                    getStringSet(value.toList())?.let {
+                        @Suppress("UNCHECKED_CAST")
+                        edit.putStringSet(key, it as Set<String>)
                     } ?: run {
                         serializeObject(key, value, edit)
                     }
