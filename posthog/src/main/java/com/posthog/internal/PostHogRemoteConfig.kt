@@ -166,40 +166,35 @@ internal class PostHogRemoteConfig(
 
         when (surveys) {
             is Boolean -> {
-                // if surveys is a boolean, its always false
+                // If surveys is a boolean, it's always false
                 clearSurveys()
             }
+
             is Collection<*> -> {
-                (surveys as? List<*>)?.let { surveysData ->
-                    if (surveysData.isNotEmpty()) {
-                        try {
-                            config.serializer.deserializeList<Survey>(surveysData)?.let {
-                                if (it.isNotEmpty()) {
-                                    this.surveys = it
-                                    hasSurveys = true
-                                    config.cachePreferences?.setValue(SURVEYS, surveysData)
-                                } else {
-                                    // that means there's no surveys, so we clear the surveys
-                                    clearSurveys()
-                                }
-                            } ?: run {
-                                // that means the response is broken, so we clear the surveys
-                                clearSurveys()
-                            }
-                        } catch (e: Throwable) {
-                            clearSurveys()
-                            config.logger.log("Error deserializing surveys: $e")
-                        }
-                    } else {
-                        // that means there's no surveys, so we clear the surveys
-                        clearSurveys()
-                    }
-                } ?: run {
-                    // that means the response is broken, so we clear the surveys
+                val surveysData = surveys as? List<*>
+
+                if (surveysData.isNullOrEmpty()) {
                     clearSurveys()
+                    return
                 }
-            } else -> {
-                // that means the response is broken, so we clear the surveys
+
+                try {
+                    val deserialized = config.serializer.deserializeList<Survey>(surveysData)
+                    if (deserialized.isNullOrEmpty()) {
+                        clearSurveys()
+                        return
+                    }
+
+                    this.surveys = deserialized
+                    hasSurveys = true
+                    config.cachePreferences?.setValue(SURVEYS, surveysData)
+                } catch (e: Throwable) {
+                    clearSurveys()
+                    config.logger.log("Error deserializing surveys: $e")
+                }
+            }
+
+            else -> {
                 clearSurveys()
             }
         }
