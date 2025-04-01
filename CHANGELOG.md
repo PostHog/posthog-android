@@ -1,5 +1,9 @@
 ## Next
 
+## 3.13.1 - 2025-04-01
+
+- fix: add remote config response to proguard rules ([#233](https://github.com/PostHog/posthog-android/pull/233))
+
 ## 3.13.0 - 2025-03-25
 
 - feat: use remote config API ([#233](https://github.com/PostHog/posthog-android/pull/233))
