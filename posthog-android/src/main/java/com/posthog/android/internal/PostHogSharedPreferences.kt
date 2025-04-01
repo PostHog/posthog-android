@@ -88,11 +88,21 @@ internal class PostHogSharedPreferences(
                     edit.putInt(key, value)
                 }
                 is Collection<*> -> {
-                    @Suppress("UNCHECKED_CAST")
-                    (value.toSet() as? Set<String>)?.let {
-                        edit.putStringSet(key, it)
-                    } ?: run {
-                        serializeObject(key, value, edit)
+                    when (value) {
+                        is Set<*> -> {
+                            @Suppress("UNCHECKED_CAST")
+                            (value.toSet() as? Set<String>)?.let {
+                                edit.putStringSet(key, it)
+                            } ?: run {
+                                serializeObject(key, value, edit)
+                            }
+                        }
+                        is List<*> -> {
+                            serializeObject(key, value, edit)
+                        }
+                        else -> {
+                            serializeObject(key, value, edit)
+                        }
                     }
                 }
                 is Array<*> -> {

@@ -1,4 +1,4 @@
-package com.posthog.internal
+package com.posthog.internal.replay
 
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
@@ -6,14 +6,13 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.posthog.PostHogConfig
-import com.posthog.internal.replay.RRMouseInteraction
 import java.lang.reflect.Type
 
-internal class GsonRRMouseInteractionsSerializer(private val config: PostHogConfig) :
-    JsonSerializer<RRMouseInteraction>,
-    JsonDeserializer<RRMouseInteraction> {
+internal class GsonRRIncrementalSourceSerializer(private val config: PostHogConfig) :
+    JsonSerializer<RRIncrementalSource>,
+    JsonDeserializer<RRIncrementalSource> {
     override fun serialize(
-        src: RRMouseInteraction,
+        src: RRIncrementalSource,
         typeOfSrc: Type,
         context: JsonSerializationContext,
     ): JsonElement {
@@ -24,9 +23,9 @@ internal class GsonRRMouseInteractionsSerializer(private val config: PostHogConf
         json: JsonElement,
         typeOfT: Type,
         context: JsonDeserializationContext,
-    ): RRMouseInteraction? {
+    ): RRIncrementalSource? {
         return try {
-            RRMouseInteraction.fromValue(json.asInt)
+            RRIncrementalSource.fromValue(json.asInt)
         } catch (e: Throwable) {
             config.logger.log("${json.asInt} isn't a known type: $e.")
             null

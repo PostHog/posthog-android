@@ -1,10 +1,12 @@
 package com.posthog.internal
 
+import Survey
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
+import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -28,6 +30,8 @@ internal class PostHogRemoteConfig(
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
+    private var surveys: List<Survey>? = null
+
     @Volatile
     private var isFeatureFlagsLoaded = false
 
@@ -37,8 +41,12 @@ internal class PostHogRemoteConfig(
     @Volatile
     private var sessionReplayFlagActive = false
 
+    @Volatile
+    private var hasSurveys = false
+
     init {
         preloadSessionReplayFlag()
+        preloadSurveys()
     }
 
     private fun isRecordingActive(
@@ -109,6 +117,7 @@ internal class PostHogRemoteConfig(
                 response?.let {
                     synchronized(remoteConfigLock) {
                         processSessionRecordingConfig(it.sessionRecording)
+                        processSurveys(it.surveys)
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
@@ -135,18 +144,76 @@ internal class PostHogRemoteConfig(
         }
     }
 
+    private fun clearSurveys(surveys: Boolean) {
+        if (surveys) {
+            return
+        }
+        hasSurveys = false
+        config.cachePreferences?.remove(SURVEYS)
+    }
+
+    private fun clearSessionRecording(sessionRecording: Boolean) {
+        if (sessionRecording) {
+            return
+        }
+        sessionReplayFlagActive = false
+        config.cachePreferences?.remove(SESSION_REPLAY)
+    }
+
+    private fun processSurveys(surveys: Any?) {
+        if (!config.surveys) {
+            // if surveys is disabled, we clear the surveys
+            clearSurveys(false)
+            return
+        }
+
+        when (surveys) {
+            is Boolean -> {
+                // if surveys is a boolean, its always false
+                clearSurveys(surveys)
+            }
+            is Collection<*> -> {
+                (surveys as? List<*>)?.let { surveysData ->
+                    if (surveysData.isNotEmpty()) {
+                        try {
+                            config.serializer.deserializeList<Survey>(surveysData)?.let {
+                                if (it.isNotEmpty()) {
+                                    this.surveys = it
+                                    hasSurveys = true
+                                    config.cachePreferences?.setValue(SURVEYS, surveysData)
+                                } else {
+                                    // that means there's no surveys, so we clear the surveys
+                                    clearSurveys(false)
+                                }
+                            } ?: run {
+                                // that means the response is broken, so we clear the surveys
+                                clearSurveys(false)
+                            }
+                        } catch (e: Throwable) {
+                            clearSurveys(false)
+                            config.logger.log("Error deserializing surveys: $e")
+                        }
+                    } else {
+                        // that means there's no surveys, so we clear the surveys
+                        clearSurveys(false)
+                    }
+                } ?: run {
+                    // that means the response is broken, so we clear the surveys
+                    clearSurveys(false)
+                }
+            } else -> {
+                // that means the response is broken, so we clear the surveys
+                clearSurveys(false)
+            }
+        }
+    }
+
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
-                sessionReplayFlagActive = sessionRecording
-
-                if (!sessionRecording) {
-                    config.cachePreferences?.remove(SESSION_REPLAY)
-                } else {
-                    // do nothing
-                }
+                clearSessionRecording(sessionRecording)
             }
 
             is Map<*, *> -> {
@@ -165,6 +232,9 @@ internal class PostHogRemoteConfig(
                     // consoleLogRecordingEnabled -> Boolean or null
                     // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
                     // sampleRate, etc
+                } ?: run {
+                    // that means the response is broken, so we clear the session recording
+                    clearSessionRecording(false)
                 }
             }
             else -> {
@@ -263,6 +333,38 @@ internal class PostHogRemoteConfig(
     ) {
         executor.executeSafely {
             executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, false)
+        }
+    }
+
+    private fun preloadSurveys() {
+        synchronized(remoteConfigLock) {
+            try {
+                @Suppress("UNCHECKED_CAST")
+                (config.cachePreferences?.getValue(SURVEYS) as? List<Map<String, Any>>?)?.let { surveysData ->
+                    if (surveysData.isNotEmpty()) {
+                        config.serializer.deserializeList<Survey>(surveysData)?.let { surveys ->
+                            if (surveys.isNotEmpty()) {
+                                this.surveys = surveys
+                                hasSurveys = true
+                            } else {
+                                clearSurveys(false)
+                            }
+                        } ?: run {
+                            // that means the response is broken, so we clear the surveys
+                            clearSurveys(false)
+                        }
+                    } else {
+                        // that means the response is broken, so we clear the surveys
+                        clearSurveys(false)
+                    }
+                } ?: run {
+                    // that means the response is broken, so we clear the surveys
+                    clearSurveys(false)
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Error deserializing surveys: $e")
+                clearSurveys(false)
+            }
         }
     }
 
@@ -413,6 +515,10 @@ internal class PostHogRemoteConfig(
 
         synchronized(remoteConfigLock) {
             isRemoteConfigLoaded = false
+
+            hasSurveys = false
+            config.cachePreferences?.remove(SURVEYS)
+            surveys = null
         }
     }
 }
