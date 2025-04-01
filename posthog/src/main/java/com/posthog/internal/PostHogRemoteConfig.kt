@@ -149,10 +149,7 @@ internal class PostHogRemoteConfig(
         config.cachePreferences?.remove(SURVEYS)
     }
 
-    private fun clearSessionRecording(sessionRecording: Boolean) {
-        if (sessionRecording) {
-            return
-        }
+    private fun clearSessionRecording() {
         sessionReplayFlagActive = false
         config.cachePreferences?.remove(SESSION_REPLAY)
     }
@@ -205,7 +202,7 @@ internal class PostHogRemoteConfig(
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
-                clearSessionRecording(sessionRecording)
+                clearSessionRecording()
             }
 
             is Map<*, *> -> {
@@ -226,7 +223,7 @@ internal class PostHogRemoteConfig(
                     // sampleRate, etc
                 } ?: run {
                     // that means the response is broken, so we clear the session recording
-                    clearSessionRecording(false)
+                    clearSessionRecording()
                 }
             }
             else -> {
