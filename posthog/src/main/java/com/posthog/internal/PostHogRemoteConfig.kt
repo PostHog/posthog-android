@@ -330,29 +330,27 @@ internal class PostHogRemoteConfig(
 
     private fun preloadSurveys() {
         synchronized(remoteConfigLock) {
+            if (!config.surveys) {
+                clearSurveys()
+                return
+            }
+
             try {
                 @Suppress("UNCHECKED_CAST")
-                (config.cachePreferences?.getValue(SURVEYS) as? List<Map<String, Any>>?)?.let { surveysData ->
-                    if (surveysData.isNotEmpty()) {
-                        config.serializer.deserializeList<Survey>(surveysData)?.let { surveys ->
-                            if (surveys.isNotEmpty()) {
-                                this.surveys = surveys
-                                hasSurveys = true
-                            } else {
-                                clearSurveys()
-                            }
-                        } ?: run {
-                            // that means the response is broken, so we clear the surveys
-                            clearSurveys()
-                        }
-                    } else {
-                        // that means the response is broken, so we clear the surveys
-                        clearSurveys()
-                    }
-                } ?: run {
-                    // that means the response is broken, so we clear the surveys
+                val surveysData = config.cachePreferences?.getValue(SURVEYS) as? List<Map<String, Any>>?
+                if (surveysData.isNullOrEmpty()) {
                     clearSurveys()
+                    return
                 }
+
+                val surveys = config.serializer.deserializeList<Survey>(surveysData)
+                if (surveys.isNullOrEmpty()) {
+                    clearSurveys()
+                    return
+                }
+
+                this.surveys = surveys
+                hasSurveys = true
             } catch (e: Throwable) {
                 config.logger.log("Error deserializing surveys: $e")
                 clearSurveys()
