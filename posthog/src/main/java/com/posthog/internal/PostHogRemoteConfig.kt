@@ -5,6 +5,8 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
+import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
+import com.posthog.surveys.Survey
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -28,6 +30,8 @@ internal class PostHogRemoteConfig(
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
+    private var surveys: List<Survey>? = null
+
     @Volatile
     private var isFeatureFlagsLoaded = false
 
@@ -37,8 +41,12 @@ internal class PostHogRemoteConfig(
     @Volatile
     private var sessionReplayFlagActive = false
 
+    @Volatile
+    private var hasSurveys = false
+
     init {
         preloadSessionReplayFlag()
+        preloadSurveys()
     }
 
     private fun isRecordingActive(
@@ -109,6 +117,7 @@ internal class PostHogRemoteConfig(
                 response?.let {
                     synchronized(remoteConfigLock) {
                         processSessionRecordingConfig(it.sessionRecording)
+                        processSurveys(it.surveys)
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
@@ -135,18 +144,65 @@ internal class PostHogRemoteConfig(
         }
     }
 
+    private fun clearSurveys() {
+        hasSurveys = false
+        config.cachePreferences?.remove(SURVEYS)
+    }
+
+    private fun clearSessionRecording() {
+        sessionReplayFlagActive = false
+        config.cachePreferences?.remove(SESSION_REPLAY)
+    }
+
+    private fun processSurveys(surveys: Any?) {
+        if (!config.surveys) {
+            // if surveys is disabled, we clear the surveys
+            clearSurveys()
+            return
+        }
+
+        when (surveys) {
+            is Boolean -> {
+                // If surveys is a boolean, it's always false
+                clearSurveys()
+            }
+
+            is Collection<*> -> {
+                val surveysData = surveys as? List<*>
+
+                if (surveysData.isNullOrEmpty()) {
+                    clearSurveys()
+                    return
+                }
+
+                try {
+                    val deserialized = config.serializer.deserializeList<Survey>(surveysData)
+                    if (deserialized.isNullOrEmpty()) {
+                        clearSurveys()
+                        return
+                    }
+
+                    this.surveys = deserialized
+                    hasSurveys = true
+                    config.cachePreferences?.setValue(SURVEYS, surveysData)
+                } catch (e: Throwable) {
+                    clearSurveys()
+                    config.logger.log("Error deserializing surveys: $e")
+                }
+            }
+
+            else -> {
+                clearSurveys()
+            }
+        }
+    }
+
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
-                sessionReplayFlagActive = sessionRecording
-
-                if (!sessionRecording) {
-                    config.cachePreferences?.remove(SESSION_REPLAY)
-                } else {
-                    // do nothing
-                }
+                clearSessionRecording()
             }
 
             is Map<*, *> -> {
@@ -165,6 +221,9 @@ internal class PostHogRemoteConfig(
                     // consoleLogRecordingEnabled -> Boolean or null
                     // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
                     // sampleRate, etc
+                } ?: run {
+                    // that means the response is broken, so we clear the session recording
+                    clearSessionRecording()
                 }
             }
             else -> {
@@ -263,6 +322,36 @@ internal class PostHogRemoteConfig(
     ) {
         executor.executeSafely {
             executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, false)
+        }
+    }
+
+    private fun preloadSurveys() {
+        synchronized(remoteConfigLock) {
+            if (!config.surveys) {
+                clearSurveys()
+                return
+            }
+
+            try {
+                @Suppress("UNCHECKED_CAST")
+                val surveysData = config.cachePreferences?.getValue(SURVEYS) as? List<Map<String, Any>>?
+                if (surveysData.isNullOrEmpty()) {
+                    clearSurveys()
+                    return
+                }
+
+                val surveys = config.serializer.deserializeList<Survey>(surveysData)
+                if (surveys.isNullOrEmpty()) {
+                    clearSurveys()
+                    return
+                }
+
+                this.surveys = surveys
+                hasSurveys = true
+            } catch (e: Throwable) {
+                config.logger.log("Error deserializing surveys: $e")
+                clearSurveys()
+            }
         }
     }
 
@@ -413,6 +502,10 @@ internal class PostHogRemoteConfig(
 
         synchronized(remoteConfigLock) {
             isRemoteConfigLoaded = false
+
+            hasSurveys = false
+            config.cachePreferences?.remove(SURVEYS)
+            surveys = null
         }
     }
 }

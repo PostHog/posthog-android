@@ -2,5 +2,5 @@ package com.posthog.surveys
 
 public data class SurveyEventConditions(
     val repeatedActivation: Boolean?,
-    val values: List<EventCondition>,
+    val values: List<SurveyEventCondition>,
 )

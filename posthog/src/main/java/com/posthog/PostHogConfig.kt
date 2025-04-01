@@ -138,6 +138,12 @@ public open class PostHogConfig(
      * - `IDENTIFIED_ONLY` (default): we will only process persons when you call `identify`, `alias`, and `group`, Anonymous users won't get person profiles.
      */
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
+    /**
+     * Enable Surveys for Android
+     * Requires Surveys to be enabled in the PostHog Project Settings
+     * Defaults to true
+     */
+    public var surveys: Boolean = true,
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
