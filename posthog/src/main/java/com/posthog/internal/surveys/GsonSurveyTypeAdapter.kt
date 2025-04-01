@@ -1,4 +1,4 @@
-package com.posthog.internal
+package com.posthog.internal.surveys
 
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
@@ -6,12 +6,14 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.posthog.PostHogConfig
-import com.posthog.internal.replay.RREventType
+import com.posthog.surveys.SurveyType
 import java.lang.reflect.Type
 
-internal class GsonRREventTypeSerializer(private val config: PostHogConfig) : JsonSerializer<RREventType>, JsonDeserializer<RREventType> {
+internal class GsonSurveyTypeAdapter(private val config: PostHogConfig) :
+    JsonSerializer<SurveyType>,
+    JsonDeserializer<SurveyType> {
     override fun serialize(
-        src: RREventType,
+        src: SurveyType,
         typeOfSrc: Type,
         context: JsonSerializationContext,
     ): JsonElement {
@@ -22,11 +24,11 @@ internal class GsonRREventTypeSerializer(private val config: PostHogConfig) : Js
         json: JsonElement,
         typeOfT: Type,
         context: JsonDeserializationContext,
-    ): RREventType? {
+    ): SurveyType? {
         return try {
-            RREventType.fromValue(json.asInt)
+            return SurveyType.fromValue(json.asString)
         } catch (e: Throwable) {
-            config.logger.log("${json.asInt} isn't a known type: $e.")
+            config.logger.log("${json.asString} isn't a known type: $e.")
             null
         }
     }

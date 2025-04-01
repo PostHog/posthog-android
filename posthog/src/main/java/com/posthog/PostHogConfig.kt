@@ -141,6 +141,12 @@ public open class PostHogConfig(
      */
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     /**
+     * Enable Surveys for Android
+     * Requires Surveys to be enabled in the PostHog Project Settings
+     * Defaults to true
+     */
+    public var surveys: Boolean = true,
+
      * Configures an optional HTTP proxy for the PostHog API client.
      *
      * When set, all requests made will be routed through the specified proxy server.

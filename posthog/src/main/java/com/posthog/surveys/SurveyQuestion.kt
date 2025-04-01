@@ -1,79 +1,38 @@
 package com.posthog.surveys
 
-public abstract class SurveyQuestion(
-    public open val question: String,
-    public open val id: String,
-    public open val type: SurveyQuestionType,
-    public open val description: String?,
-    public open val descriptionContentType: SurveyTextContentType?,
-    public open val optional: Boolean?,
-    public open val buttonText: String?,
-    public open val branching: SurveyQuestionBranching?,
-)
+public open class SurveyQuestion {
+    public val question: String? = null
+    public val id: String? = null
+    public val type: SurveyQuestionType? = null
+    public val description: String? = null
+    public val descriptionContentType: SurveyTextContentType? = null
+    public val optional: Boolean? = null
+    public val buttonText: String? = null
+    public val branching: SurveyQuestionBranching? = null
+}
 
-public data class OpenSurveyQuestion(
-    override val question: String,
-    override val id: String,
-    override val type: SurveyQuestionType = SurveyQuestionType.OPEN,
-    override val description: String? = null,
-    override val descriptionContentType: SurveyTextContentType? = null,
-    override val optional: Boolean? = null,
-    override val buttonText: String? = null,
-    override val branching: SurveyQuestionBranching? = null,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
+public class OpenSurveyQuestion : SurveyQuestion()
 
 public data class LinkSurveyQuestion(
-    override val question: String,
-    override val id: String,
-    override val type: SurveyQuestionType = SurveyQuestionType.LINK,
-    override val description: String? = null,
-    override val descriptionContentType: SurveyTextContentType? = null,
-    override val optional: Boolean? = null,
-    override val buttonText: String? = null,
-    override val branching: SurveyQuestionBranching? = null,
-    val link: String,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
+    val link: String?,
+) : SurveyQuestion()
 
 // not a data class to avoid (int Integer.hashCode(int))
 public class RatingSurveyQuestion(
-    override val question: String,
-    override val id: String,
-    override val type: SurveyQuestionType = SurveyQuestionType.RATING,
-    override val description: String? = null,
-    override val descriptionContentType: SurveyTextContentType? = null,
-    override val optional: Boolean? = null,
-    override val buttonText: String? = null,
-    override val branching: SurveyQuestionBranching? = null,
-    public val display: SurveyRatingDisplayType,
-    public val scale: Int,
-    public val lowerBoundLabel: String,
-    public val upperBoundLabel: String,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
+    public val display: SurveyRatingDisplayType?,
+    public val scale: Int?,
+    public val lowerBoundLabel: String?,
+    public val upperBoundLabel: String?,
+) : SurveyQuestion()
 
 public data class SingleSurveyQuestion(
-    override val question: String,
-    override val id: String,
-    override val type: SurveyQuestionType = SurveyQuestionType.SINGLE_CHOICE,
-    override val description: String? = null,
-    override val descriptionContentType: SurveyTextContentType? = null,
-    override val optional: Boolean? = null,
-    override val buttonText: String? = null,
-    override val branching: SurveyQuestionBranching? = null,
-    val choices: List<String>,
+    val choices: List<String>?,
     val hasOpenChoice: Boolean?,
     val shuffleOptions: Boolean?,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
+) : SurveyQuestion()
 
 public data class MultipleSurveyQuestion(
-    override val question: String,
-    override val id: String,
-    override val type: SurveyQuestionType = SurveyQuestionType.MULTIPLE_CHOICE,
-    override val description: String? = null,
-    override val descriptionContentType: SurveyTextContentType? = null,
-    override val optional: Boolean? = null,
-    override val buttonText: String? = null,
-    override val branching: SurveyQuestionBranching? = null,
-    val choices: List<String>,
+    val choices: List<String>?,
     val hasOpenChoice: Boolean?,
     val shuffleOptions: Boolean?,
-) : SurveyQuestion(question, id, type, description, descriptionContentType, optional, buttonText, branching)
+) : SurveyQuestion()
