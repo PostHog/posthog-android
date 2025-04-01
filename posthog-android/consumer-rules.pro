@@ -23,6 +23,9 @@
 -keep class com.posthog.internal.PostHogDecideResponse { *; }
 -keep class com.posthog.internal.PostHogDecideResponse { <init>(); }
 
+-keep class com.posthog.internal.PostHogRemoteConfigResponse { *; }
+-keep class com.posthog.internal.PostHogRemoteConfigResponse { <init>(); }
+
 # Session Replay
 -keep class com.posthog.internal.replay.** { *; }
 -keep class com.posthog.internal.replay.** { <init>(); }
