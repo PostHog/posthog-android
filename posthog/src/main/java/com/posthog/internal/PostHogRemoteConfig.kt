@@ -144,10 +144,7 @@ internal class PostHogRemoteConfig(
         }
     }
 
-    private fun clearSurveys(surveys: Boolean) {
-        if (surveys) {
-            return
-        }
+    private fun clearSurveys() {
         hasSurveys = false
         config.cachePreferences?.remove(SURVEYS)
     }
@@ -163,14 +160,14 @@ internal class PostHogRemoteConfig(
     private fun processSurveys(surveys: Any?) {
         if (!config.surveys) {
             // if surveys is disabled, we clear the surveys
-            clearSurveys(false)
+            clearSurveys()
             return
         }
 
         when (surveys) {
             is Boolean -> {
                 // if surveys is a boolean, its always false
-                clearSurveys(surveys)
+                clearSurveys()
             }
             is Collection<*> -> {
                 (surveys as? List<*>)?.let { surveysData ->
@@ -183,27 +180,27 @@ internal class PostHogRemoteConfig(
                                     config.cachePreferences?.setValue(SURVEYS, surveysData)
                                 } else {
                                     // that means there's no surveys, so we clear the surveys
-                                    clearSurveys(false)
+                                    clearSurveys()
                                 }
                             } ?: run {
                                 // that means the response is broken, so we clear the surveys
-                                clearSurveys(false)
+                                clearSurveys()
                             }
                         } catch (e: Throwable) {
-                            clearSurveys(false)
+                            clearSurveys()
                             config.logger.log("Error deserializing surveys: $e")
                         }
                     } else {
                         // that means there's no surveys, so we clear the surveys
-                        clearSurveys(false)
+                        clearSurveys()
                     }
                 } ?: run {
                     // that means the response is broken, so we clear the surveys
-                    clearSurveys(false)
+                    clearSurveys()
                 }
             } else -> {
                 // that means the response is broken, so we clear the surveys
-                clearSurveys(false)
+                clearSurveys()
             }
         }
     }
@@ -347,23 +344,23 @@ internal class PostHogRemoteConfig(
                                 this.surveys = surveys
                                 hasSurveys = true
                             } else {
-                                clearSurveys(false)
+                                clearSurveys()
                             }
                         } ?: run {
                             // that means the response is broken, so we clear the surveys
-                            clearSurveys(false)
+                            clearSurveys()
                         }
                     } else {
                         // that means the response is broken, so we clear the surveys
-                        clearSurveys(false)
+                        clearSurveys()
                     }
                 } ?: run {
                     // that means the response is broken, so we clear the surveys
-                    clearSurveys(false)
+                    clearSurveys()
                 }
             } catch (e: Throwable) {
                 config.logger.log("Error deserializing surveys: $e")
-                clearSurveys(false)
+                clearSurveys()
             }
         }
     }
