@@ -49,9 +49,9 @@ public class PostHogSurveysIntegration(private val context: Context) : PostHogIn
 
             // TODO: add support for seen and activated surveys
 
-            if (survey.linkedFlagKey == null &&
-                survey.targetingFlagKey == null &&
-                survey.internalTargetingFlagKey == null &&
+            if (survey.linkedFlagKey.isNullOrEmpty() &&
+                survey.targetingFlagKey.isNullOrEmpty() &&
+                survey.internalTargetingFlagKey.isNullOrEmpty() &&
                 survey.featureFlagKeys.isNullOrEmpty()
             ) {
                 return@filter true
@@ -63,7 +63,7 @@ public class PostHogSurveysIntegration(private val context: Context) : PostHogIn
             val targetingFlagCheck = survey.targetingFlagKey?.let { postHog.isFeatureEnabled(it) } ?: true
             val internalTargetingFlagKey = survey.internalTargetingFlagKey
             val internalTargetingFlagCheck =
-                if (internalTargetingFlagKey != null) {
+                if (!internalTargetingFlagKey.isNullOrEmpty()) {
                     postHog.isFeatureEnabled(internalTargetingFlagKey)
                 } else {
                     true
