@@ -203,6 +203,7 @@ internal class PostHogRemoteConfig(
     private fun clearSurveys() {
         hasSurveys = false
         config.cachePreferences?.remove(SURVEYS)
+        surveys = null
     }
 
     private fun clearSessionRecording() {
@@ -607,9 +608,7 @@ internal class PostHogRemoteConfig(
         synchronized(remoteConfigLock) {
             isRemoteConfigLoaded = false
 
-            hasSurveys = false
-            config.cachePreferences?.remove(SURVEYS)
-            surveys = null
+            clearSurveys()
         }
     }
 }
