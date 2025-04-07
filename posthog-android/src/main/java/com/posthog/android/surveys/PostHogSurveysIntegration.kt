@@ -7,6 +7,7 @@ import com.posthog.android.internal.getDeviceType
 import com.posthog.android.internal.isMatchingRegex
 import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyMatchType
+import com.posthog.surveys.SurveyType
 
 public class PostHogSurveysIntegration(private val context: Context) : PostHogIntegration {
     private val surveyValidationMap: Map<SurveyMatchType, (List<String>, String) -> Boolean> =
@@ -41,13 +42,23 @@ public class PostHogSurveysIntegration(private val context: Context) : PostHogIn
         return surveyValidationMap[matchType]?.invoke(deviceTypes, deviceType) ?: true
     }
 
+    private fun canActivateRepeatedly(survey: Survey): Boolean {
+        if (survey.type == SurveyType.WIDGET) {
+            return true
+        }
+
+        return survey.conditions?.events?.repeatedActivation ?: true
+    }
+
     private fun getActiveMatchingSurveys(surveys: List<Survey>): List<Survey> {
         return surveys.filter { survey ->
             if (survey.startDate == null || survey.endDate != null) return@filter false
 
             if (!doesSurveyDeviceTypesMatch(survey)) return@filter false
 
-            // TODO: add support for seen and activated surveys
+            // TODO: add support for seen surveys
+
+            if (!canActivateRepeatedly(survey)) return@filter false
 
             if (survey.linkedFlagKey.isNullOrEmpty() &&
                 survey.targetingFlagKey.isNullOrEmpty() &&
