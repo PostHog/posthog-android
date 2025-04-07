@@ -58,8 +58,6 @@ public class PostHogSurveysIntegration(private val context: Context) : PostHogIn
 
             // TODO: add support for seen surveys
 
-            if (!canActivateRepeatedly(survey)) return@filter false
-
             if (survey.linkedFlagKey.isNullOrEmpty() &&
                 survey.targetingFlagKey.isNullOrEmpty() &&
                 survey.internalTargetingFlagKey.isNullOrEmpty() &&
@@ -70,15 +68,17 @@ public class PostHogSurveysIntegration(private val context: Context) : PostHogIn
 
             val postHog = postHog ?: return@filter false
 
+            val overrideInternalTargetingFlagCheck = canActivateRepeatedly(survey)
             val linkedFlagCheck = survey.linkedFlagKey?.let { postHog.isFeatureEnabled(it) } ?: true
             val targetingFlagCheck = survey.targetingFlagKey?.let { postHog.isFeatureEnabled(it) } ?: true
             val internalTargetingFlagKey = survey.internalTargetingFlagKey
             val internalTargetingFlagCheck =
-                if (!internalTargetingFlagKey.isNullOrEmpty()) {
-                    postHog.isFeatureEnabled(internalTargetingFlagKey)
-                } else {
-                    true
-                }
+                overrideInternalTargetingFlagCheck ||
+                    if (!internalTargetingFlagKey.isNullOrEmpty()) {
+                        postHog.isFeatureEnabled(internalTargetingFlagKey)
+                    } else {
+                        true
+                    }
 
             val flagsCheck =
                 survey.featureFlagKeys?.all { keyVal ->
