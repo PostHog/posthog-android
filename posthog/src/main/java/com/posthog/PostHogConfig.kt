@@ -143,9 +143,9 @@ public open class PostHogConfig(
     /**
      * Enable Surveys for Android
      * Requires Surveys to be enabled in the PostHog Project Settings
-     * Defaults to true
+     * Defaults to false
      */
-    public var surveys: Boolean = true,
+    public var surveys: Boolean = false,
 
      * Configures an optional HTTP proxy for the PostHog API client.
      *
