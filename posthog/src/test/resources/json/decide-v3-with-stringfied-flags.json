@@ -13,7 +13,7 @@
     "enable_collect_everything": true
   },
   "featureFlagPayloads": {
-    "theString": "theString",
+    "theString": "\"theString\"",
     "theInteger": "123",
     "theDouble": "123.5",
     "theObject": "{\"key\":\"value\"}",
