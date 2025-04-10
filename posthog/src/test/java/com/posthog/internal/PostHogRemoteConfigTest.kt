@@ -2,9 +2,6 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
-import com.posthog.awaitExecution
-import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
-import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
@@ -15,8 +12,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogRemoteConfigTest {

@@ -5,7 +5,6 @@ import com.posthog.PostHogConfig
 import com.posthog.awaitExecution
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
-import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
