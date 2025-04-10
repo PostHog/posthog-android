@@ -69,7 +69,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `load flags from decide api and call the onFeatureFlags callback`() {
+    fun `load flags from decide api and call the onFeatureFlags callback - v3`() {
         val http =
             mockHttp(
                 response =
@@ -94,7 +94,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `clear the loaded feature flags`() {
+    fun `clear the loaded feature flags -v3`() {
         val http =
             mockHttp(
                 response =
@@ -121,7 +121,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `returns all feature flags`() {
+    fun `returns all feature flags - v3`() {
         val http =
             mockHttp(
                 response =
@@ -141,7 +141,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `returns default value if given`() {
+    fun `returns default value if given - v3`() {
         val http =
             mockHttp(
                 response =
@@ -160,7 +160,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `merge feature flags if there are errors`() {
+    fun `merge feature flags if there are errors - v3`() {
         val http =
             mockHttp(
                 response =
@@ -194,7 +194,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `returns flag enabled if multivariant`() {
+    fun `returns flag enabled if multivariant - v3`() {
         val file = File("src/test/resources/json/basic-decide-v3-with-non-active-flags.json")
 
         val http =
@@ -218,7 +218,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `getFeatureFlagPayload returns non strigified JSON`() {
+    fun `getFeatureFlagPayload returns non strigified JSON - v3`() {
         val file = File("src/test/resources/json/decide-v3-with-stringfied-flags.json")
 
         val http =
@@ -253,7 +253,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `cache feature flags after loading from the network`() {
+    fun `cache feature flags after loading from the network - v3`() {
         // preload items
         preferences.setValue(FEATURE_FLAGS, mapOf("foo" to true))
         preferences.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("foo" to true))
@@ -273,7 +273,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `load feature flags from cache if not loaded from the network yet`() {
+    fun `load feature flags from cache if not loaded from the network yet - v3`() {
         val http =
             mockHttp(
                 response =
@@ -436,7 +436,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `clear flags when quota limited`() {
+    fun `clear flags when quota limited - v3`() {
         val http =
             mockHttp(
                 response =
