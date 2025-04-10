@@ -25,7 +25,15 @@
   "featureFlags": {
     "4535-funnel-bar-viz": true,
     "IAmInactive": false,
-    "splashScreenName": "SplashV2"
+    "splashScreenName": "SplashV2",
+    "theString": true,
+    "theInteger": true,
+    "theDouble": true,
+    "theObject": true,
+    "theArray": true,
+    "theBoolean": true,
+    "theNull": true,
+    "theBroken": true
   },
   "sessionRecording": false,
   "siteApps": [

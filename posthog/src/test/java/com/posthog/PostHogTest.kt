@@ -33,7 +33,7 @@ internal class PostHogTest {
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
-    private val file = File("src/test/resources/json/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/basic-decide-v3-no-errors.json")
     private val responseDecideApi = file.readText()
 
     fun getSut(
@@ -314,7 +314,7 @@ internal class PostHogTest {
 
     @Test
     fun `getFeatureFlag captures feature flag event if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-decide-v3-with-non-active-flags.json")
         val responseDecideApi = file.readText()
 
         val http =
@@ -372,7 +372,7 @@ internal class PostHogTest {
 
     @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-decide-v3-with-non-active-flags.json")
         val responseDecideApi = file.readText()
 
         val http =
@@ -438,7 +438,7 @@ internal class PostHogTest {
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlagPayload("thePayload") as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz") as Boolean)
 
         sut.close()
     }
@@ -1173,7 +1173,7 @@ internal class PostHogTest {
 
     @Test
     fun `do not send feature flags called event twice`() {
-        val file = File("src/test/resources/json/basic-decide-no-errors.json")
+        val file = File("src/test/resources/json/basic-decide-v3-no-errors.json")
         val responseDecideApi = file.readText()
 
         val http =

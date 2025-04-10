@@ -1,7 +1,7 @@
 {
   "autocaptureExceptions": false,
   "toolbarParams": {},
-  "errorsWhileComputingFlags": false,
+  "errorsWhileComputingFlags": true,
   "capturePerformance": true,
   "autocapture_opt_out": false,
   "isAuthenticated": false,
@@ -13,10 +13,10 @@
     "enable_collect_everything": true
   },
   "featureFlagPayloads": {
-    "thePayload": true
+    "foo": "true"
   },
   "featureFlags": {
-    "4535-funnel-bar-viz": true
+    "foo": true
   },
   "sessionRecording": false,
   "siteApps": [

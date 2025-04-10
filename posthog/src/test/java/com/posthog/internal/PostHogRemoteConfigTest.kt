@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
 internal class PostHogRemoteConfigTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
-    private val file = File("src/test/resources/json/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/basic-decide-v3-no-errors.json")
     private val responseDecideApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
@@ -88,7 +88,7 @@ internal class PostHogRemoteConfigTest {
         executor.shutdownAndAwaitTermination()
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
-        assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertFalse(sut.isSessionReplayFlagActive())
         assertTrue(callback)
     }
@@ -175,7 +175,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.awaitExecution()
 
-        val file = File("src/test/resources/json/basic-decide-with-errors.json")
+        val file = File("src/test/resources/json/basic-decide-v3-with-errors.json")
 
         val response =
             MockResponse()
@@ -189,13 +189,13 @@ internal class PostHogRemoteConfigTest {
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlag("foo", defaultValue = false) as Boolean)
 
-        assertTrue(sut.getFeatureFlagPayload("thePayload", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false) as Boolean)
     }
 
     @Test
     fun `returns flag enabled if multivariant`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-decide-v3-with-non-active-flags.json")
 
         val http =
             mockHttp(
@@ -219,7 +219,7 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `getFeatureFlagPayload returns non strigified JSON`() {
-        val file = File("src/test/resources/json/decide-with-stringfied-flags.json")
+        val file = File("src/test/resources/json/decide-v3-with-stringfied-flags.json")
 
         val http =
             mockHttp(
@@ -295,7 +295,7 @@ internal class PostHogRemoteConfigTest {
         val payloads = preferences.getValue(FEATURE_FLAGS_PAYLOAD) as? Map<String, Any?>
 
         assertTrue(flags?.get("4535-funnel-bar-viz") as Boolean)
-        assertTrue(payloads?.get("thePayload") as Boolean)
+        assertTrue(payloads?.get("4535-funnel-bar-viz") as Boolean)
     }
 
     @Test

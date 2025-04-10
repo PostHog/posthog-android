@@ -13,10 +13,12 @@
     "enable_collect_everything": true
   },
   "featureFlagPayloads": {
-    "thePayload": true
+    "4535-funnel-bar-viz": "true"
   },
   "featureFlags": {
-    "4535-funnel-bar-viz": true
+    "4535-funnel-bar-viz": true,
+    "IAmInactive": false,
+    "splashScreenName": "SplashV2"
   },
   "sessionRecording": false,
   "siteApps": [
