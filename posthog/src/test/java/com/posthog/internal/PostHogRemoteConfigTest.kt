@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
 internal class PostHogRemoteConfigTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
-    private val file = File("src/test/resources/json/basic-decide-v3-no-errors.json")
+    private val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
     private val responseDecideApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
@@ -175,7 +175,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.awaitExecution()
 
-        val file = File("src/test/resources/json/basic-decide-v3-with-errors.json")
+        val file = File("src/test/resources/json/decide-v3/basic-decide-with-errors.json")
 
         val response =
             MockResponse()
@@ -195,7 +195,7 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns flag enabled if multivariant - v3`() {
-        val file = File("src/test/resources/json/basic-decide-v3-with-non-active-flags.json")
+        val file = File("src/test/resources/json/decide-v3/basic-decide-with-non-active-flags.json")
 
         val http =
             mockHttp(
@@ -219,7 +219,7 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `getFeatureFlagPayload returns non strigified JSON - v3`() {
-        val file = File("src/test/resources/json/decide-v3-with-stringfied-flags.json")
+        val file = File("src/test/resources/json/decide-v3/decide-with-stringfied-flags.json")
 
         val http =
             mockHttp(
