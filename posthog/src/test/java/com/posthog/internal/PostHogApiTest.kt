@@ -60,8 +60,8 @@ internal class PostHogApiTest {
     }
 
     @Test
-    fun `decide returns successful response`() {
-        val file = File("src/test/resources/json/basic-decide-no-errors.json")
+    fun `decide returns successful response - v3`() {
+        val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
         val responseDecideApi = file.readText()
 
         val http =
