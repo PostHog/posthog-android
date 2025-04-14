@@ -217,7 +217,7 @@ internal class PostHogFeatureFlagsV3Test {
     }
 
     @Test
-    fun `getFeatureFlagPayload returns non strigified JSON`() {
+    fun `getFeatureFlagPayload returns non stringified JSON`() {
         val file = File("src/test/resources/json/decide-v3/decide-with-stringfied-flags.json")
 
         val http =

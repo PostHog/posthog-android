@@ -1,6 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.internal.PostHogDecideResponse
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
@@ -27,6 +28,9 @@ internal class PostHogRemoteConfig(
 
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
+    // Decide v4 flags. These will later supersede featureFlags and featureFlagPayloads
+    // But for now, we need to support both for back compatibility
+    private var flags: Map<String, Any>? = null
 
     @Volatile
     private var isFeatureFlagsLoaded = false
@@ -202,6 +206,7 @@ internal class PostHogRemoteConfig(
                         )
                         this.featureFlags = null
                         this.featureFlagPayloads = null
+                        this.flags = null
                         config.cachePreferences?.let { preferences ->
                             preferences.remove(FEATURE_FLAGS)
                             preferences.remove(FEATURE_FLAGS_PAYLOAD)
@@ -209,19 +214,20 @@ internal class PostHogRemoteConfig(
                         return@let
                     }
 
-                    if (it.errorsWhileComputingFlags) {
+                    val normalizedResponse = normalizeDecideResponse(it)
+
+                    if (normalizedResponse.errorsWhileComputingFlags) {
                         // if not all flags were computed, we upsert flags instead of replacing them
                         this.featureFlags =
-                            (this.featureFlags ?: mapOf()) + (it.featureFlags ?: mapOf())
+                            (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
 
-                        val normalizedPayloads = normalizePayloads(it.featureFlagPayloads)
+                        val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
 
                         this.featureFlagPayloads =
                             (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
                     } else {
-                        this.featureFlags = it.featureFlags
-
-                        val normalizedPayloads = normalizePayloads(it.featureFlagPayloads)
+                        this.featureFlags = normalizedResponse.featureFlags
+                        val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
@@ -329,6 +335,18 @@ internal class PostHogRemoteConfig(
             }
         }
         return parsedPayloads
+    }
+
+    private fun normalizeDecideResponse(decideResponse: PostHogDecideResponse): PostHogDecideResponse {
+        val flags = decideResponse.flags
+        config.logger.log("Feature flags: $flags")
+        if (flags != null) {
+            return decideResponse.copy(
+                featureFlags = flags.mapValues { (_, value) -> value.variant ?: value.enabled },
+                featureFlagPayloads = flags.mapValues { (_, value) -> value.metadata.payload }
+            )
+        }
+        return decideResponse
     }
 
     fun isFeatureEnabled(
