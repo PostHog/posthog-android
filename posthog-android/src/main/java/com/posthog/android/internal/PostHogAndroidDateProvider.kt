@@ -4,7 +4,7 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import com.posthog.internal.PostHogDateProvider
-import java.time.Instant
+import java.util.Calendar
 import java.util.Date
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -14,22 +14,19 @@ internal class PostHogAndroidDateProvider : PostHogDateProvider {
             SystemClock.currentNetworkTimeClock()
         }
 
-    private val instant
-        get() =
-            networkTimeClock
-                .mapCatching { it.instant() }
-                .getOrDefault(Instant.now())
-
     override fun currentDate(): Date {
-        return Date.from(instant)
+        return Date(currentTimeMillis())
     }
 
     override fun addSecondsToCurrentDate(seconds: Int): Date {
-        return Date.from(instant.plusSeconds(seconds.toLong()))
+        return Date(currentTimeMillis() + seconds * 1000)
     }
 
     override fun currentTimeMillis(): Long {
-        return instant.toEpochMilli()
+        val cal = Calendar.getInstance()
+        return networkTimeClock
+            .mapCatching { it.millis() }
+            .getOrDefault(cal.timeInMillis)
     }
 
     override fun nanoTime(): Long {

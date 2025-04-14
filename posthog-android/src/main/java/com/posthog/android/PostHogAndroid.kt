@@ -17,6 +17,7 @@ import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.android.replay.internal.PostHogLogCatIntegration
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
 import java.io.File
 
@@ -70,7 +71,8 @@ public class PostHogAndroid private constructor() {
             context: Context,
             config: T,
         ) {
-            config.logger = if (config.logger is PostHogNoOpLogger) PostHogAndroidLogger(config) else config.logger
+            config.logger =
+                if (config.logger is PostHogNoOpLogger) PostHogAndroidLogger(config) else config.logger
             config.context = config.context ?: PostHogAndroidContext(context, config)
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
@@ -83,7 +85,9 @@ public class PostHogAndroid private constructor() {
             config.cachePreferences = preferences
             // Defaults to PostHogDeviceDateProvider when api < 33
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                config.dateProvider = (config.dateProvider as? PostHogAndroidDateProvider) ?: PostHogAndroidDateProvider()
+                if (config.dateProvider is PostHogDeviceDateProvider) {
+                    config.dateProvider = PostHogAndroidDateProvider()
+                }
             }
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
             // Flutter SDK sets the sdkName and sdkVersion, so this guard is not to allow
@@ -98,7 +102,12 @@ public class PostHogAndroid private constructor() {
             config.addIntegration(PostHogLogCatIntegration(config))
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
-                    config.addIntegration(PostHogActivityLifecycleCallbackIntegration(context, config))
+                    config.addIntegration(
+                        PostHogActivityLifecycleCallbackIntegration(
+                            context,
+                            config,
+                        ),
+                    )
                 }
             }
             if (config.captureApplicationLifecycleEvents) {
