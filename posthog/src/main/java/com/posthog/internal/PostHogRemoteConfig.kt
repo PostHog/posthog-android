@@ -1,13 +1,12 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
-import com.posthog.internal.PostHogDecideResponse
 import com.posthog.PostHogOnFeatureFlags
-import com.posthog.internal.PostHogPreferences.Companion.FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
-import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
+import com.posthog.internal.PostHogPreferences.Companion.FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -30,6 +29,7 @@ internal class PostHogRemoteConfig(
 
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
+
     // Decide v4 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
     private var flags: Map<String, Any>? = null
@@ -365,10 +365,11 @@ internal class PostHogRemoteConfig(
         if (flags != null) {
             // This is a v4 response. This means that `featureFlags` and `featureFlagPayloads`
             // are not populated. We need to populate them with the values from the flags property.
-            val newResponse = decideResponse.copy(
-                featureFlags = flags.mapValues { (_, value) -> value.variant ?: value.enabled },
-                featureFlagPayloads = flags.mapValues { (_, value) -> value.metadata.payload }
-            )
+            val newResponse =
+                decideResponse.copy(
+                    featureFlags = flags.mapValues { (_, value) -> value.variant ?: value.enabled },
+                    featureFlagPayloads = flags.mapValues { (_, value) -> value.metadata.payload },
+                )
             synchronized(featureFlagsLock) {
                 // Store the requestId in the cache.
                 this.requestId = newResponse.requestId
