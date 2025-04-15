@@ -1,5 +1,7 @@
 ## Next
 
+- feat: add `$feature_flag_id`, `$feature_flag_version`, `$feature_flag_reason` and `$feature_flag_request_id` properties to `$feature_flag_called` event ([#243](https://github.com/PostHog/posthog-android/pull/243))
+
 ## 3.13.1 - 2025-04-01
 
 - fix: add remote config response to proguard rules ([#238](https://github.com/PostHog/posthog-android/pull/238))
