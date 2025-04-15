@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.internal.PostHogDecideResponse
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.internal.PostHogPreferences.Companion.FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
@@ -210,6 +211,7 @@ internal class PostHogRemoteConfig(
                         this.featureFlagPayloads = null
                         this.flags = null
                         config.cachePreferences?.let { preferences ->
+                            preferences.remove(FLAGS)
                             preferences.remove(FEATURE_FLAGS)
                             preferences.remove(FEATURE_FLAGS_PAYLOAD)
                         }
@@ -220,6 +222,8 @@ internal class PostHogRemoteConfig(
 
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // if not all flags were computed, we upsert flags instead of replacing them
+                        this.flags = (this.flags ?: mapOf()) + (normalizedResponse.flags ?: mapOf())
+
                         this.featureFlags =
                             (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
 
@@ -228,6 +232,7 @@ internal class PostHogRemoteConfig(
                         this.featureFlagPayloads =
                             (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
                     } else {
+                        this.flags = normalizedResponse.flags
                         this.featureFlags = normalizedResponse.featureFlags
                         val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                         this.featureFlagPayloads = normalizedPayloads
@@ -240,8 +245,11 @@ internal class PostHogRemoteConfig(
                     }
                 }
                 config.cachePreferences?.let { preferences ->
-                    val flags = this.featureFlags ?: mapOf()
-                    preferences.setValue(FEATURE_FLAGS, flags)
+                    val flags = this.flags ?: mapOf()
+                    preferences.setValue(FLAGS, flags)
+
+                    val featureFlags = this.featureFlags ?: mapOf()
+                    preferences.setValue(FEATURE_FLAGS, featureFlags)
 
                     val payloads = this.featureFlagPayloads ?: mapOf()
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
@@ -295,8 +303,16 @@ internal class PostHogRemoteConfig(
 
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
+
             @Suppress("UNCHECKED_CAST")
             val flags =
+                preferences.getValue(
+                    FLAGS,
+                    mapOf<String, Any>(),
+                ) as? Map<String, Any> ?: mapOf()
+
+            @Suppress("UNCHECKED_CAST")
+            val featureFlags =
                 preferences.getValue(
                     FEATURE_FLAGS,
                     mapOf<String, Any>(),
@@ -313,7 +329,8 @@ internal class PostHogRemoteConfig(
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
 
             synchronized(featureFlagsLock) {
-                this.featureFlags = flags
+                this.flags = flags
+                this.featureFlags = featureFlags
                 this.featureFlagPayloads = payloads
                 this.requestId = cachedRequestId
                 isFeatureFlagsLoaded = true
@@ -436,6 +453,16 @@ internal class PostHogRemoteConfig(
         }
         synchronized(featureFlagsLock) {
             return requestId
+        }
+    }
+
+    fun getFlagDetails(key: String): FeatureFlag? {
+        if (!isFeatureFlagsLoaded) {
+            loadFeatureFlagsFromCache()
+        }
+
+        synchronized(featureFlagsLock) {
+            return flags?.get(key) as? FeatureFlag
         }
     }
 

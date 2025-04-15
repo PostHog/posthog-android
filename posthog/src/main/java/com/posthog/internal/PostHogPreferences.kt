@@ -31,6 +31,7 @@ public interface PostHogPreferences {
         internal const val IS_IDENTIFIED = "isIdentified"
         internal const val PERSON_PROCESSING = "personProcessingEnabled"
         internal const val OPT_OUT = "opt-out"
+        internal const val FLAGS = "flags"
         internal const val FEATURE_FLAGS = "featureFlags"
         internal const val FEATURE_FLAGS_PAYLOAD = "featureFlagsPayload"
         internal const val FEATURE_FLAG_REQUEST_ID = "feature_flag_request_id"
@@ -54,6 +55,7 @@ public interface PostHogPreferences {
                 BUILD,
                 STRINGIFIED_KEYS,
                 FEATURE_FLAG_REQUEST_ID,
+                FLAGS,
             )
     }
 }

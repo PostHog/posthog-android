@@ -358,6 +358,9 @@ internal class PostHogTest {
         assertEquals(false, theEvent.properties!!["\$feature/IAmInactive"])
         assertEquals("SplashV2", theEvent.properties!!["\$feature/splashScreenName"])
         assertEquals("171d83c3-4ac2-4bff-961d-efe3a0c3539c", theEvent.properties!!["\$feature_flag_request_id"])
+        assertEquals(4535, theEvent.properties!!["\$feature_flag_id"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_version"])
+        assertEquals("Matched condition set 3", theEvent.properties!!["\$feature_flag_reason"])
 
         @Suppress("UNCHECKED_CAST")
         val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
