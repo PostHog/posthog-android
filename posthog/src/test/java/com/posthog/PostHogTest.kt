@@ -168,7 +168,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/decide/?v=3", request.path)
+        assertEquals("/decide/?v=4", request.path)
 
         sut.close()
     }
@@ -236,7 +236,7 @@ internal class PostHogTest {
         assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
 
         val decideApiRequest = http.takeRequest()
-        assertEquals("/decide/?v=3", decideApiRequest.path)
+        assertEquals("/decide/?v=4", decideApiRequest.path)
 
         sut.close()
     }
@@ -1379,7 +1379,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/decide/?v=3", request.path)
+        assertEquals("/decide/?v=4", request.path)
 
         sut.close()
     }

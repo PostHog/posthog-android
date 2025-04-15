@@ -112,7 +112,7 @@ internal class PostHogApi(
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
         val request =
-            makeRequest("$theHost/decide/?v=3") {
+            makeRequest("$theHost/decide/?v=4") {
                 config.serializer.serialize(decideRequest, it.bufferedWriter())
             }
 
