@@ -6,6 +6,7 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -31,6 +32,7 @@ internal class PostHogRemoteConfig(
     // Decide v4 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
     private var flags: Map<String, Any>? = null
+    private var requestId: String? = null
 
     @Volatile
     private var isFeatureFlagsLoaded = false
@@ -307,10 +309,13 @@ internal class PostHogRemoteConfig(
                     mapOf<String, Any?>(),
                 ) as? Map<String, Any?> ?: mapOf()
 
+            @Suppress("UNCHECKED_CAST")
+            val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
+
             synchronized(featureFlagsLock) {
                 this.featureFlags = flags
                 this.featureFlagPayloads = payloads
-
+                this.requestId = cachedRequestId
                 isFeatureFlagsLoaded = true
             }
         }
@@ -341,10 +346,20 @@ internal class PostHogRemoteConfig(
         val flags = decideResponse.flags
         config.logger.log("Feature flags: $flags")
         if (flags != null) {
-            return decideResponse.copy(
+            // This is a v4 response. This means that `featureFlags` and `featureFlagPayloads`
+            // are not populated. We need to populate them with the values from the flags property.
+            val newResponse = decideResponse.copy(
                 featureFlags = flags.mapValues { (_, value) -> value.variant ?: value.enabled },
                 featureFlagPayloads = flags.mapValues { (_, value) -> value.metadata.payload }
             )
+            synchronized(featureFlagsLock) {
+                // Store the requestId in the cache.
+                this.requestId = newResponse.requestId
+                this.requestId?.let { requestId ->
+                    config.cachePreferences?.setValue(FEATURE_FLAG_REQUEST_ID, requestId as Any)
+                }
+            }
+            return newResponse
         }
         return decideResponse
     }
@@ -415,17 +430,28 @@ internal class PostHogRemoteConfig(
 
     fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
+    fun getRequestId(): String? {
+        if (!isFeatureFlagsLoaded) {
+            loadFeatureFlagsFromCache()
+        }
+        synchronized(featureFlagsLock) {
+            return requestId
+        }
+    }
+
     fun clear() {
         synchronized(featureFlagsLock) {
             featureFlags = null
             featureFlagPayloads = null
             sessionReplayFlagActive = false
             isFeatureFlagsLoaded = false
+            requestId = null
 
             config.cachePreferences?.let { preferences ->
                 preferences.remove(FEATURE_FLAGS)
                 preferences.remove(FEATURE_FLAGS_PAYLOAD)
                 preferences.remove(SESSION_REPLAY)
+                preferences.remove(FEATURE_FLAG_REQUEST_ID)
             }
         }
 

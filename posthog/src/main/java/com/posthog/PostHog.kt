@@ -757,10 +757,13 @@ public class PostHog private constructor(
         }
 
         if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
+            val requestId = remoteConfig?.getRequestId()
+
             val props = mutableMapOf<String, Any>()
             props["\$feature_flag"] = key
             // value should never be nullabe anyway
             props["\$feature_flag_response"] = value ?: ""
+            props["\$feature_flag_request_id"] = requestId ?: ""
 
             capture("\$feature_flag_called", properties = props)
         }

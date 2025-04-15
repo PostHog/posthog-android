@@ -18,6 +18,7 @@ internal data class PostHogDecideResponse(
     val featureFlagPayloads: Map<String, Any?>?,
     val flags: Map<String, FeatureFlag>? = null,
     val quotaLimited: List<String>? = null,
+    val requestId: String?,
 ) : PostHogRemoteConfigResponse()
 
 /**
