@@ -27,7 +27,7 @@ internal data class PostHogDecideResponse(
  * @property enabled whether the feature flag is enabled
  * @property variant the variant of the feature flag
  * @property metadata the metadata of the feature flag
- * @property evaluationReason the reason the feature flag was evaluated
+ * @property reason the reason the feature flag was evaluated
  */
 @IgnoreJRERequirement
 internal data class FeatureFlag(
@@ -35,7 +35,7 @@ internal data class FeatureFlag(
     val enabled: Boolean,
     val variant: String?,
     val metadata: FeatureFlagMetadata,
-    val evaluationReason: EvaluationReason?,
+    val reason: EvaluationReason?,
 )
 
 /**
@@ -53,6 +53,7 @@ internal data class FeatureFlagMetadata(
 
 @IgnoreJRERequirement
 internal data class EvaluationReason(
-    val code: Int,
+    val code: String?,
     val description: String?,
+    val condition_index: Int?,
 )
