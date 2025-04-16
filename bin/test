@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#/ Usage: bin/test [<configuration>]
-#/ Description: Runs all the tests for the target frameworks: netstandard2.1 and net8.0
+#/ Usage: bin/test
+#/ Description: Runs all the tests for this project
 source bin/helpers/_utils.sh
 set_source_and_root_dir
 
