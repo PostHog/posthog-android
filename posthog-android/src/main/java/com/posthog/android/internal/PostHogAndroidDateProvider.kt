@@ -4,7 +4,6 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import com.posthog.internal.PostHogDateProvider
-import java.util.Calendar
 import java.util.Date
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -23,10 +22,9 @@ internal class PostHogAndroidDateProvider : PostHogDateProvider {
     }
 
     override fun currentTimeMillis(): Long {
-        val cal = Calendar.getInstance()
         return networkTimeClock
             .mapCatching { it.millis() }
-            .getOrDefault(cal.timeInMillis)
+            .getOrDefault(System.currentTimeMillis())
     }
 
     override fun nanoTime(): Long {
