@@ -361,7 +361,6 @@ internal class PostHogRemoteConfig(
 
     private fun normalizeDecideResponse(decideResponse: PostHogDecideResponse): PostHogDecideResponse {
         val flags = decideResponse.flags
-        config.logger.log("Feature flags: $flags")
         if (flags != null) {
             // This is a v4 response. This means that `featureFlags` and `featureFlagPayloads`
             // are not populated. We need to populate them with the values from the flags property.
