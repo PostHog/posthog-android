@@ -37,7 +37,7 @@ class NormalActivity : ComponentActivity() {
 //            finish()
             // Check if the "enable_network_request" feature flag is enabled
             val isNetworkRequestEnabled = com.posthog.PostHog.isFeatureEnabled("enable_network_request", false)
-            
+
             if (isNetworkRequestEnabled) {
                 // Make the network request
                 Thread {
@@ -47,7 +47,7 @@ class NormalActivity : ComponentActivity() {
                                 .url("https://google.com")
                                 .build(),
                         ).execute().closeQuietly()
-                        
+
                         // Show success message on the main thread
                         runOnUiThread {
                             Toast.makeText(this, "Network request successful!", Toast.LENGTH_SHORT).show()
