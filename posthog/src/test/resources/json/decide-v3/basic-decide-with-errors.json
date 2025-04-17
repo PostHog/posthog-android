@@ -1,7 +1,7 @@
 {
   "autocaptureExceptions": false,
   "toolbarParams": {},
-  "errorsWhileComputingFlags": false,
+  "errorsWhileComputingFlags": true,
   "capturePerformance": true,
   "autocapture_opt_out": false,
   "isAuthenticated": false,
@@ -13,19 +13,10 @@
     "enable_collect_everything": true
   },
   "featureFlagPayloads": {
-    "theString": "theString",
-    "theInteger": "123",
-    "theDouble": "123.5",
-    "theObject": "{\"key\":\"value\"}",
-    "theArray": "[1, \"2\", 3.5]",
-    "theBoolean": "true",
-    "theNull": null,
-    "theBroken": "[1, 2"
+    "foo": "true"
   },
   "featureFlags": {
-    "4535-funnel-bar-viz": true,
-    "IAmInactive": false,
-    "splashScreenName": "SplashV2"
+    "foo": true
   },
   "sessionRecording": false,
   "siteApps": [
