@@ -2,6 +2,7 @@ package com.posthog.android.sample
 
 import android.os.Bundle
 import android.widget.Button
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.posthog.PostHogOkHttpInterceptor
 import okhttp3.OkHttpClient
@@ -22,6 +23,7 @@ class NormalActivity : ComponentActivity() {
 //        webview.loadUrl("https://www.google.com")
 
         val button = findViewById<Button>(R.id.button)
+//        val editText = findViewById<EditText>(R.id.editText)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)
         button.setOnClickListener {
 //            Log.e("MyApp", "Clicked on button ${button.text}")
@@ -33,13 +35,34 @@ class NormalActivity : ComponentActivity() {
 //            }
 //            startActivity(Intent(this, NothingActivity::class.java))
 //            finish()
-            Thread {
-                client.newCall(
-                    okhttp3.Request.Builder()
-                        .url("https://google.com")
-                        .build(),
-                ).execute().closeQuietly()
-            }.start()
+            // Check if the "enable_network_request" feature flag is enabled
+            val isNetworkRequestEnabled = com.posthog.PostHog.isFeatureEnabled("enable_network_request", false)
+            
+            if (isNetworkRequestEnabled) {
+                // Make the network request
+                Thread {
+                    try {
+                        client.newCall(
+                            okhttp3.Request.Builder()
+                                .url("https://google.com")
+                                .build(),
+                        ).execute().closeQuietly()
+                        
+                        // Show success message on the main thread
+                        runOnUiThread {
+                            Toast.makeText(this, "Network request successful!", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        // Show error message on the main thread
+                        runOnUiThread {
+                            Toast.makeText(this, "Network request failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }.start()
+            } else {
+                // Show message that feature is disabled
+                Toast.makeText(this, "Network requests are disabled by feature flag: `enable_network_request`", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }
