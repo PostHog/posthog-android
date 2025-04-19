@@ -36,7 +36,7 @@ class NormalActivity : ComponentActivity() {
 //            startActivity(Intent(this, NothingActivity::class.java))
 //            finish()
             // Check if the "enable_network_request" feature flag is enabled
-            val isNetworkRequestEnabled = com.posthog.PostHog.isFeatureEnabled("enable_network_request", false)
+            val isNetworkRequestEnabled = PostHog.isFeatureEnabled("enable_network_request", false)
 
             if (isNetworkRequestEnabled) {
                 // Make the network request
