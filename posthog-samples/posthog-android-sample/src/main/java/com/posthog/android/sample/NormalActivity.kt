@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import com.posthog.PostHog
 import com.posthog.PostHogOkHttpInterceptor
 import okhttp3.OkHttpClient
 import okhttp3.internal.closeQuietly
