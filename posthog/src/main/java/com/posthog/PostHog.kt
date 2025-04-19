@@ -757,12 +757,22 @@ public class PostHog private constructor(
         }
 
         if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
-            val props = mutableMapOf<String, Any>()
-            props["\$feature_flag"] = key
-            // value should never be nullabe anyway
-            props["\$feature_flag_response"] = value ?: ""
+            remoteConfig?.let {
+                val flagDetails = it.getFlagDetails(key)
+                val requestId = it.getRequestId()
 
-            capture("\$feature_flag_called", properties = props)
+                val props = mutableMapOf<String, Any>()
+                props["\$feature_flag"] = key
+                // value should never be nullabe anyway
+                props["\$feature_flag_response"] = value ?: ""
+                props["\$feature_flag_request_id"] = requestId ?: ""
+                flagDetails?.let {
+                    props["\$feature_flag_id"] = it.metadata.id
+                    props["\$feature_flag_version"] = it.metadata.version
+                    props["\$feature_flag_reason"] = it.reason?.description ?: ""
+                }
+                capture("\$feature_flag_called", properties = props)
+            }
         }
     }
 

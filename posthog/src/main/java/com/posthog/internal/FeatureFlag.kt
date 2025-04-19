@@ -1,0 +1,20 @@
+package com.posthog.internal
+
+import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
+
+/**
+ * The feature flag data structure for calling the decide API v4. This is what each flag in "flags" will be.
+ * @property key the key of the feature flag
+ * @property enabled whether the feature flag is enabled
+ * @property variant the variant of the feature flag
+ * @property metadata the metadata of the feature flag
+ * @property reason the reason the feature flag was evaluated
+ */
+@IgnoreJRERequirement
+internal data class FeatureFlag(
+    val key: String,
+    val enabled: Boolean,
+    val variant: String?,
+    val metadata: FeatureFlagMetadata,
+    val reason: EvaluationReason?,
+)

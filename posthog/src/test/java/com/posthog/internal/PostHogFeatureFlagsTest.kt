@@ -18,10 +18,10 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-internal class PostHogFeatureFlagsV3Test {
+internal class PostHogFeatureFlagsTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
-    private val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/basic-decide-no-errors.json")
     private val responseDecideApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
@@ -174,7 +174,7 @@ internal class PostHogFeatureFlagsV3Test {
 
         executor.awaitExecution()
 
-        val file = File("src/test/resources/json/decide-v3/basic-decide-with-errors.json")
+        val file = File("src/test/resources/json/basic-decide-with-errors.json")
 
         val response =
             MockResponse()
@@ -194,7 +194,7 @@ internal class PostHogFeatureFlagsV3Test {
 
     @Test
     fun `returns flag enabled if multivariant`() {
-        val file = File("src/test/resources/json/decide-v3/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
 
         val http =
             mockHttp(
@@ -218,7 +218,7 @@ internal class PostHogFeatureFlagsV3Test {
 
     @Test
     fun `getFeatureFlagPayload returns non stringified JSON`() {
-        val file = File("src/test/resources/json/decide-v3/decide-with-stringfied-flags.json")
+        val file = File("src/test/resources/json/decide-with-stringfied-flags.json")
 
         val http =
             mockHttp(
