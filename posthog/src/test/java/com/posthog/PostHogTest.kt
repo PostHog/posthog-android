@@ -376,7 +376,7 @@ internal class PostHogTest {
 
     @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
-        val file = File("src/test/resources/json/decide-v3/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
         val responseDecideApi = file.readText()
 
         val http =
@@ -422,6 +422,58 @@ internal class PostHogTest {
 
         assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
         assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `isFeatureEnabled captures feature flag variant response if enabled`() {
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val responseDecideApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        assertTrue(sut.isFeatureEnabled("splashScreenName"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+
+        assertEquals("SplashV2", theEvent.properties!!["\$feature/splashScreenName"])
+
+        @Suppress("UNCHECKED_CAST")
+        val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
+        assertTrue(theFlags.contains("splashScreenName"))
+
+        assertEquals("splashScreenName", theEvent.properties!!["\$feature_flag"])
+        assertEquals("SplashV2", theEvent.properties!!["\$feature_flag_response"])
 
         sut.close()
     }
