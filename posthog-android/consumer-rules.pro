@@ -23,6 +23,15 @@
 -keep class com.posthog.internal.PostHogDecideResponse { *; }
 -keep class com.posthog.internal.PostHogDecideResponse { <init>(); }
 
+-keep class com.posthog.internal.FeatureFlag { *; }
+-keep class com.posthog.internal.FeatureFlag { <init>(); }
+
+-keep class com.posthog.internal.FeatureFlagMetadata { *; }
+-keep class com.posthog.internal.FeatureFlagMetadata { <init>(); }
+
+-keep class com.posthog.internal.EvaluationReason { *; }
+-keep class com.posthog.internal.EvaluationReason { <init>(); }
+
 -keep class com.posthog.internal.PostHogRemoteConfigResponse { *; }
 -keep class com.posthog.internal.PostHogRemoteConfigResponse { <init>(); }
 

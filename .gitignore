@@ -12,7 +12,6 @@
 *.class
 
 # Generated files
-bin/
 gen/
 
 # Gradle files
@@ -34,7 +33,6 @@ proguard/
 *.pydevproject
 .metadata
 .gradle
-bin/
 tmp/
 *.tmp
 *.bak
@@ -156,3 +154,8 @@ gradle-app.setting
 
 # eclipse
 .project/
+
+# Ignore bin directories in subdirectories
+**/bin/
+# But keep the root bin directory
+!/bin/
