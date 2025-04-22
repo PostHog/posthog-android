@@ -1,5 +1,7 @@
 ## Next
 
+- feat: use network time instead of device time ([#235](https://github.com/PostHog/posthog-android/pull/235))
+
 ## 3.14.0 - 2025-04-21
 
 - feat: add `$feature_flag_id`, `$feature_flag_version`, `$feature_flag_reason` and `$feature_flag_request_id` properties to `$feature_flag_called` event ([#243](https://github.com/PostHog/posthog-android/pull/243))

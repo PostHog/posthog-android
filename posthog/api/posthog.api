@@ -267,6 +267,14 @@ public abstract interface class com/posthog/internal/PostHogDateProvider {
 	public abstract fun nanoTime ()J
 }
 
+public final class com/posthog/internal/PostHogDeviceDateProvider : com/posthog/internal/PostHogDateProvider {
+	public fun <init> ()V
+	public fun addSecondsToCurrentDate (I)Ljava/util/Date;
+	public fun currentDate ()Ljava/util/Date;
+	public fun currentTimeMillis ()J
+	public fun nanoTime ()J
+}
+
 public abstract interface class com/posthog/internal/PostHogLogger {
 	public abstract fun isEnabled ()Z
 	public abstract fun log (Ljava/lang/String;)V
