@@ -1,0 +1,42 @@
+{
+  "autocaptureExceptions": false,
+  "toolbarParams": {},
+  "errorsWhileComputingFlags": true,
+  "capturePerformance": true,
+  "autocapture_opt_out": false,
+  "isAuthenticated": false,
+  "supportedCompression": [
+    "gzip",
+    "gzip-js"
+  ],
+  "config": {
+    "enable_collect_everything": true
+  },
+  "flags": {
+    "foo": {
+      "key": "foo",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 1,
+        "version": 2,
+        "payload": "true"
+      }
+    }
+  },
+  "sessionRecording": false,
+  "siteApps": [
+    {
+      "id": 21039.0,
+      "url": "/site_app/21039/EOsOSePYNyTzHkZ3f4mjrjUap8Hy8o2vUTAc6v1ZMFP/576ac89bc8aed72a21d9b19221c2c626/"
+    }
+  ],
+  "editorParams": {
+
+  }
+}

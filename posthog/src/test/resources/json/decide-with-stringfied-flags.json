@@ -1,0 +1,177 @@
+{
+  "autocaptureExceptions": false,
+  "toolbarParams": {},
+  "errorsWhileComputingFlags": false,
+  "capturePerformance": true,
+  "autocapture_opt_out": false,
+  "isAuthenticated": false,
+  "supportedCompression": [
+    "gzip",
+    "gzip-js"
+  ],
+  "config": {
+    "enable_collect_everything": true
+  },
+  "flags": {
+    "4535-funnel-bar-viz": {
+      "key": "4535-funnel-bar-viz",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 4535,
+        "version": 2,
+        "payload": "true"
+      }
+    },
+    "theString": {
+      "key": "theString",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 1,
+        "version": 2,
+        "payload": "\"theString\""
+      }
+    },
+    "theInteger": {
+      "key": "theInteger",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 2,
+        "version": 2,
+        "payload": "123"  
+      }
+    },
+    "theDouble": {
+      "key": "theDouble",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 3,
+        "version": 2,
+        "payload": "123.5"
+      }
+    },
+    "theObject": {
+      "key": "theObject",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 4,
+        "version": 2,
+        "payload": "{\"key\":\"value\"}"
+      }
+    },
+    "theArray": {
+      "key": "theArray",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 5,
+        "version": 2,
+        "payload": "[1, \"2\", 3.5]"
+      }
+    },
+    "theBoolean": {
+      "key": "theBoolean",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 6,
+        "version": 2,
+        "payload": "true"
+      }
+    },
+    "theNull": {
+      "key": "theNull",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 7,
+        "version": 2,
+        "payload": null
+      }
+    },
+    "theBroken": {
+      "key": "theBroken",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 8,
+        "version": 2,
+        "payload": "[1, 2"
+      }
+    },
+    "IAmInactive": {
+      "key": "IAmInactive",
+      "enabled": false,
+      "variant": null,
+      "reason": {
+        "code": "no_condition_match",
+        "description": "No conditions matched",
+        "condition_index": null
+      },
+      "metadata": {
+        "id": 9,
+        "version": 2,
+        "payload": null
+      }
+    }
+  },
+  "sessionRecording": false,
+  "siteApps": [
+    {
+      "id": 21039.0,
+      "url": "/site_app/21039/EOsOSePYNyTzHkZ3f4mjrjUap8Hy8o2vUTAc6v1ZMFP/576ac89bc8aed72a21d9b19221c2c626/"
+    }
+  ],
+  "editorParams": {
+
+  }
+}
