@@ -3,6 +3,7 @@
 ## 3.14.1 - 2025-04-23
 
 - fix: Send correct `$feature_flag_response` for the `$feature_flag_called` event when calling `isFeatureEnabled` ([#244](https://github.com/PostHog/posthog-android/pull/244))
+- feat: use network time instead of device time ([#235](https://github.com/PostHog/posthog-android/pull/235))
 
 ## 3.14.0 - 2025-04-21
 
