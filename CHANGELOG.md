@@ -1,6 +1,6 @@
 ## Next
 
-## 3.14.1 - 2025-04-21
+## 3.14.1 - 2025-04-23
 
 - fix: Send correct `$feature_flag_response` for the `$feature_flag_called` event when calling `isFeatureEnabled` ([#244](https://github.com/PostHog/posthog-android/pull/244))
 
