@@ -381,31 +381,6 @@ internal class PostHogRemoteConfig(
         return decideResponse
     }
 
-    fun isFeatureEnabled(
-        key: String,
-        defaultValue: Boolean,
-    ): Boolean {
-        if (!isFeatureFlagsLoaded) {
-            loadFeatureFlagsFromCache()
-        }
-        val value: Any?
-
-        synchronized(featureFlagsLock) {
-            value = featureFlags?.get(key)
-        }
-
-        return if (value != null) {
-            if (value is Boolean) {
-                value
-            } else {
-                // if its multivariant flag, its enabled by default
-                true
-            }
-        } else {
-            defaultValue
-        }
-    }
-
     private fun readFeatureFlag(
         key: String,
         defaultValue: Any?,

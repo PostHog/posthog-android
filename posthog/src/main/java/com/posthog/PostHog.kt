@@ -731,7 +731,7 @@ public class PostHog private constructor(
         key: String,
         defaultValue: Boolean,
     ): Boolean {
-        var value = getFeatureFlag(key, defaultValue)
+        val value = getFeatureFlag(key, defaultValue)
 
         if (value is Boolean) {
             return value

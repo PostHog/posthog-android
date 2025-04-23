@@ -210,10 +210,10 @@ internal class PostHogFeatureFlagsTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.isFeatureEnabled("4535-funnel-bar-viz", defaultValue = false))
-        assertFalse(sut.isFeatureEnabled("IAmInactive", defaultValue = true))
-        assertTrue(sut.isFeatureEnabled("splashScreenName", defaultValue = false))
-        assertTrue(sut.isFeatureEnabled("IDontExist", defaultValue = true))
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        assertFalse(sut.getFeatureFlag("IAmInactive", defaultValue = true) as Boolean)
+        assertTrue(sut.getFeatureFlag("splashScreenName", defaultValue = false) as Boolean)
+        assertTrue(sut.getFeatureFlag("IDontExist", defaultValue = true) as Boolean)
     }
 
     @Test
@@ -267,7 +267,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isFeatureEnabled("foo", defaultValue = false))
+        assertTrue(sut.getFeatureFlag("foo", defaultValue = false) as Boolean)
         assertTrue(sut.getFeatureFlagPayload("foo", defaultValue = false) as Boolean)
     }
 
