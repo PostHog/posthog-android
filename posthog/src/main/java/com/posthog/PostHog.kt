@@ -731,14 +731,17 @@ public class PostHog private constructor(
         key: String,
         defaultValue: Boolean,
     ): Boolean {
-        if (!isEnabled()) {
-            return defaultValue
+        val value = getFeatureFlag(key, defaultValue)
+
+        if (value is Boolean) {
+            return value
         }
-        val value = remoteConfig?.isFeatureEnabled(key, defaultValue) ?: defaultValue
 
-        sendFeatureFlagCalled(key, value)
+        if (value is String) {
+            return value.isNotEmpty()
+        }
 
-        return value
+        return false
     }
 
     private fun sendFeatureFlagCalled(
