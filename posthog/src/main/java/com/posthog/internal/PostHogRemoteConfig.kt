@@ -381,14 +381,17 @@ internal class PostHogRemoteConfig(
         return decideResponse
     }
 
+    private fun loadFeatureFlagsFromCacheIfNeeded() {
+        if (!isFeatureFlagsLoaded) {
+            loadFeatureFlagsFromCache()
+        }
+    }
+
     private fun readFeatureFlag(
         key: String,
         defaultValue: Any?,
         flags: Map<String, Any?>?,
     ): Any? {
-        if (!isFeatureFlagsLoaded) {
-            loadFeatureFlagsFromCache()
-        }
         val value: Any?
 
         synchronized(featureFlagsLock) {
@@ -402,6 +405,9 @@ internal class PostHogRemoteConfig(
         key: String,
         defaultValue: Any?,
     ): Any? {
+        // since we pass featureFlags as a value, we need to load it from cache if needed
+        loadFeatureFlagsFromCacheIfNeeded()
+
         return readFeatureFlag(key, defaultValue, featureFlags)
     }
 
@@ -409,6 +415,9 @@ internal class PostHogRemoteConfig(
         key: String,
         defaultValue: Any?,
     ): Any? {
+        // since we pass featureFlags as a value, we need to load it from cache if needed
+        loadFeatureFlagsFromCacheIfNeeded()
+
         return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
 

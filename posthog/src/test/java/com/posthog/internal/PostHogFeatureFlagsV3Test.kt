@@ -212,7 +212,7 @@ internal class PostHogFeatureFlagsV3Test {
 
         assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         assertFalse(sut.getFeatureFlag("IAmInactive", defaultValue = true) as Boolean)
-        assertTrue(sut.getFeatureFlag("splashScreenName", defaultValue = false) as Boolean)
+        assertNotNull(sut.getFeatureFlag("splashScreenName", defaultValue = false) as String)
         assertTrue(sut.getFeatureFlag("IDontExist", defaultValue = true) as Boolean)
     }
 
