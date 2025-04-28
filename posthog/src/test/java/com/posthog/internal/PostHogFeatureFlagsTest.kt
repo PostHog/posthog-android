@@ -22,7 +22,7 @@ internal class PostHogFeatureFlagsTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private val file = File("src/test/resources/json/basic-decide-no-errors.json")
-    private val responseDecideApi = file.readText()
+    private val responseFlagsApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
     private var config: PostHogConfig? = null
@@ -51,7 +51,7 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -68,12 +68,12 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `load flags from decide api and call the onFeatureFlags callback`() {
+    fun `load flags from flags api and call the onFeatureFlags callback`() {
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -98,7 +98,7 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -125,7 +125,7 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -145,7 +145,7 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -164,7 +164,7 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -277,7 +277,7 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 

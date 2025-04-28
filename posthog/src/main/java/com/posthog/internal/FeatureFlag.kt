@@ -3,7 +3,7 @@ package com.posthog.internal
 import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
 /**
- * The feature flag data structure for calling the decide API v4. This is what each flag in "flags" will be.
+ * The feature flag data structure for calling the /flags API v2. This is what each flag in "flags" will be.
  * @property key the key of the feature flag
  * @property enabled whether the feature flag is enabled
  * @property variant the variant of the feature flag
