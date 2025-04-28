@@ -104,16 +104,16 @@ internal class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    fun decide(
+    fun flags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-    ): PostHogDecideResponse? {
-        val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
+    ): PostHogFlagsResponse? {
+        val flagsRequest = PostHogFlagsRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
         val request =
-            makeRequest("$theHost/decide/?v=4") {
-                config.serializer.serialize(decideRequest, it.bufferedWriter())
+            makeRequest("$theHost/flags/?v=2") {
+                config.serializer.serialize(flagsRequest, it.bufferedWriter())
             }
 
         client.newCall(request).execute().use {

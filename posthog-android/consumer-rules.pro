@@ -17,11 +17,11 @@
 -keep class com.posthog.internal.PostHogBatchEvent { *; }
 -keep class com.posthog.internal.PostHogBatchEvent { <init>(); }
 
--keep class com.posthog.internal.PostHogDecideRequest { *; }
--keep class com.posthog.internal.PostHogDecideRequest { <init>(); }
+-keep class com.posthog.internal.PostHogFlagsRequest { *; }
+-keep class com.posthog.internal.PostHogFlagsRequest { <init>(); }
 
--keep class com.posthog.internal.PostHogDecideResponse { *; }
--keep class com.posthog.internal.PostHogDecideResponse { <init>(); }
+-keep class com.posthog.internal.PostHogFlagsResponse { *; }
+-keep class com.posthog.internal.PostHogFlagsResponse { <init>(); }
 
 -keep class com.posthog.internal.FeatureFlag { *; }
 -keep class com.posthog.internal.FeatureFlag { <init>(); }

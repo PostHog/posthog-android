@@ -30,7 +30,7 @@ internal class PostHogRemoteConfig(
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
-    // Decide v4 flags. These will later supersede featureFlags and featureFlagPayloads
+    // /flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
     private var flags: Map<String, Any>? = null
     private var requestId: String? = null
@@ -121,7 +121,7 @@ internal class PostHogRemoteConfig(
 
                         if (hasFlags && config.preloadFeatureFlags) {
                             if (distinctId.isNotBlank()) {
-                                // do not process session recording from decide API
+                                // do not process session recording from flags API
                                 // since its already cached via the remote config API
                                 executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig = true)
                             } else {
@@ -198,7 +198,7 @@ internal class PostHogRemoteConfig(
         }
 
         try {
-            val response = api.decide(distinctId, anonymousId = anonymousId, groups)
+            val response = api.flags(distinctId, anonymousId = anonymousId, groups)
 
             response?.let {
                 synchronized(featureFlagsLock) {
@@ -218,7 +218,7 @@ internal class PostHogRemoteConfig(
                         return@let
                     }
 
-                    val normalizedResponse = normalizeDecideResponse(it)
+                    val normalizedResponse = normalizeFlagsResponse(it)
 
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // if not all flags were computed, we upsert flags instead of replacing them
@@ -238,7 +238,7 @@ internal class PostHogRemoteConfig(
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
-                    // only process and cache session recording config from decide API
+                    // only process and cache session recording config from flags API
                     // if not yet done by the remote config API
                     if (!calledFromRemoteConfig) {
                         processSessionRecordingConfig(it.sessionRecording)
@@ -359,13 +359,13 @@ internal class PostHogRemoteConfig(
         return parsedPayloads
     }
 
-    private fun normalizeDecideResponse(decideResponse: PostHogDecideResponse): PostHogDecideResponse {
-        val flags = decideResponse.flags
+    private fun normalizeFlagsResponse(flagsResponse: PostHogFlagsResponse): PostHogFlagsResponse {
+        val flags = flagsResponse.flags
         if (flags != null) {
             // This is a v4 response. This means that `featureFlags` and `featureFlagPayloads`
             // are not populated. We need to populate them with the values from the flags property.
             val newResponse =
-                decideResponse.copy(
+                flagsResponse.copy(
                     featureFlags = flags.mapValues { (_, value) -> value.variant ?: value.enabled },
                     featureFlagPayloads = flags.mapValues { (_, value) -> value.metadata.payload },
                 )
@@ -378,7 +378,7 @@ internal class PostHogRemoteConfig(
             }
             return newResponse
         }
-        return decideResponse
+        return flagsResponse
     }
 
     private fun loadFeatureFlagsFromCacheIfNeeded() {

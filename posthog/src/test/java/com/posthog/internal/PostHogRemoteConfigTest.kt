@@ -18,7 +18,7 @@ internal class PostHogRemoteConfigTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
-    private val responseDecideApi = file.readText()
+    private val responseFlagsApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
     private var config: PostHogConfig? = null
@@ -76,7 +76,7 @@ internal class PostHogRemoteConfigTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
