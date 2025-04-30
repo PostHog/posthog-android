@@ -137,6 +137,14 @@ internal class PostHogRemoteConfig(
                                 isFeatureFlagsLoaded = true
                                 clearFlags()
                             }
+
+                            // if we don't load the feature flags (because there are none), we need to call the callback
+                            // because the app might be waiting for it.
+                            try {
+                                onFeatureFlags?.loaded()
+                            } catch (e: Throwable) {
+                                config.logger.log("Executing the feature flags callback failed: $e")
+                            }
                         }
 
                         isRemoteConfigLoaded = true
