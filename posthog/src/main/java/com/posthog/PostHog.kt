@@ -467,6 +467,11 @@ public class PostHog private constructor(
         }
     }
 
+    /**
+     * Because we use UUIDv7
+     * we can convert a session id into the session start timestamp
+     * and then use that to enforce the maximum session length
+     */
     private fun enforceMaxSessionLength(buildProperties: Map<String, Any>): Map<String, Any> {
         val sessionId = buildProperties["\$session_id"] ?: return buildProperties
 
