@@ -4,6 +4,8 @@ import com.posthog.PostHogInternal
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.UUID
 
+public const val MAX_SESSION_AGE_MILLIS: Int = 24 * 60 * 60 * 60
+
 /**
  * Class that manages the Session ID
  */
@@ -16,10 +18,10 @@ public object PostHogSessionManager {
 
     private var sessionId = sessionIdNone
 
-    public fun startSession() {
+    public fun startSession(sessionStartTime: Long? = null) {
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
-                sessionId = TimeBasedEpochGenerator.generate()
+                sessionId = TimeBasedEpochGenerator.generate(sessionStartTime ?: System.currentTimeMillis())
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.internal.MAX_SESSION_AGE_MILLIS
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogMemoryPreferences
@@ -432,7 +433,7 @@ public class PostHog private constructor(
             }
 
             val mergedProperties =
-                buildProperties(
+                enforceMaxSessionLength(buildProperties(
                     newDistinctId,
                     properties = properties,
                     userProperties = userProperties,
@@ -442,7 +443,7 @@ public class PostHog private constructor(
                     appendSharedProps = !snapshotEvent,
                     // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
-                )
+                ))
 
             // sanitize the properties or fallback to the original properties
             val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
@@ -464,6 +465,30 @@ public class PostHog private constructor(
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
+    }
+
+    private fun enforceMaxSessionLength(buildProperties: Map<String, Any>): Map<String, Any> {
+        val sessionId = buildProperties["\$session_id"] ?: return buildProperties
+
+        val sessionStartTimestamp =
+            TimeBasedEpochGenerator.getTimestampFromUuid(UUID.fromString(sessionId.toString()))
+                ?: return buildProperties
+
+        val currentTimeMillis =
+            config?.dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+        val sessionAge = currentTimeMillis - sessionStartTimestamp
+        if (sessionAge > MAX_SESSION_AGE_MILLIS) {
+            // rotate session
+            // update properties
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession(currentTimeMillis)
+            val newSessionId = PostHogSessionManager.getActiveSessionId().toString()
+            val newProps = buildProperties.toMutableMap()
+            newProps["\$session_id"] = newSessionId
+            newProps["\$window_id"] = newSessionId
+            return newProps
+        }
+        return buildProperties
     }
 
     public override fun optIn() {

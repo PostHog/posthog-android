@@ -29,10 +29,10 @@ internal class FakePostHogDateProvider : PostHogDateProvider {
     }
 
     override fun currentTimeMillis(): Long {
-        return System.currentTimeMillis()
+        return currentDate?.time ?: System.currentTimeMillis()
     }
 
     override fun nanoTime(): Long {
-        return System.nanoTime()
+        return currentDate?.time?.times(1000000) ?: System.nanoTime()
     }
 }

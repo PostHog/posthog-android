@@ -1,6 +1,9 @@
 package com.posthog
 
+import com.posthog.internal.FakePostHogDateProvider
 import com.posthog.internal.PostHogBatchEvent
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPrintLogger
@@ -12,6 +15,7 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.Date
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -49,6 +53,7 @@ internal class PostHogTest {
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+        dateProvider: PostHogDateProvider = PostHogDeviceDateProvider(),
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -65,6 +70,7 @@ internal class PostHogTest {
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
                 this.remoteConfig = remoteConfig
+                this.dateProvider = dateProvider
             }
         return PostHog.withInternal(
             config,
@@ -1443,6 +1449,67 @@ internal class PostHogTest {
         val sut = getSut(url.toString())
 
         assertTrue(config.logger is PostHogPrintLogger)
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset session id after 24 hours`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val fakePostHogDateProvider = FakePostHogDateProvider()
+        fakePostHogDateProvider.setCurrentDate(Date())
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, dateProvider = fakePostHogDateProvider)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        queueExecutor.awaitExecution()
+
+        var request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        var content = request.body.unGzip()
+        var batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        var theEvent = batch.batch.first()
+        val currentSessionId = theEvent.properties!!["\$session_id"]
+        assertNotNull(currentSessionId)
+
+        // jump forward by 24 hours
+        val oneDayLater = Date(fakePostHogDateProvider.currentDate().time + (24 * 60 * 60 * 1000))
+        fakePostHogDateProvider.setCurrentDate(oneDayLater)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        request = http.takeRequest()
+
+        assertEquals(2, http.requestCount)
+        content = request.body.unGzip()
+        batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        theEvent = batch.batch.first()
+        val newSessionId = theEvent.properties!!["\$session_id"]
+        assertNotNull(newSessionId)
+
+        assertTrue(currentSessionId != newSessionId)
 
         sut.close()
     }
