@@ -433,17 +433,19 @@ public class PostHog private constructor(
             }
 
             val mergedProperties =
-                enforceMaxSessionLength(buildProperties(
-                    newDistinctId,
-                    properties = properties,
-                    userProperties = userProperties,
-                    userPropertiesSetOnce = userPropertiesSetOnce,
-                    groups = groups,
-                    // only append shared props if not a snapshot event
-                    appendSharedProps = !snapshotEvent,
-                    // only append groups if not a group identify event and not a snapshot
-                    appendGroups = !groupIdentify,
-                ))
+                enforceMaxSessionLength(
+                    buildProperties(
+                        newDistinctId,
+                        properties = properties,
+                        userProperties = userProperties,
+                        userPropertiesSetOnce = userPropertiesSetOnce,
+                        groups = groups,
+                        // only append shared props if not a snapshot event
+                        appendSharedProps = !snapshotEvent,
+                        // only append groups if not a group identify event and not a snapshot
+                        appendGroups = !groupIdentify,
+                    ),
+                )
 
             // sanitize the properties or fallback to the original properties
             val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties

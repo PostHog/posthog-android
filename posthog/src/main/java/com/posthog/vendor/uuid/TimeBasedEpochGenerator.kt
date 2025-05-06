@@ -165,10 +165,10 @@ internal object TimeBasedEpochGenerator {
 
         // Split the UUID into its components
         val parts = uuid.toString().split("-")
-        
+
         // The first part and first 4 chars of second part contain the high bits of the timestamp
         val highBitsHex = parts[0] + parts[1].substring(0, 4)
-        
+
         // Convert the high bits from hex to decimal
         // The UUID v7 timestamp is the number of milliseconds since Unix epoch
         return highBitsHex.toLong(16)
