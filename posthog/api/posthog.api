@@ -348,7 +348,12 @@ public final class com/posthog/internal/PostHogSessionManager {
 	public final fun getActiveSessionId ()Ljava/util/UUID;
 	public final fun isSessionActive ()Z
 	public final fun setSessionId (Ljava/util/UUID;)V
-	public final fun startSession ()V
+	public final fun startSession (Ljava/lang/Long;)V
+	public static synthetic fun startSession$default (Lcom/posthog/internal/PostHogSessionManager;Ljava/lang/Long;ILjava/lang/Object;)V
+}
+
+public final class com/posthog/internal/PostHogSessionManagerKt {
+	public static final field MAX_SESSION_AGE_MILLIS I
 }
 
 public final class com/posthog/internal/PostHogThreadFactory : java/util/concurrent/ThreadFactory {
