@@ -21,7 +21,11 @@ public object PostHogSessionManager {
     public fun startSession(sessionStartTime: Long? = null) {
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
-                sessionId = TimeBasedEpochGenerator.generate(sessionStartTime ?: System.currentTimeMillis())
+                sessionId = if (sessionStartTime != null) {
+                    TimeBasedEpochGenerator.generate(sessionStartTime)
+                } else {
+                    TimeBasedEpochGenerator.generate()
+                }
             }
         }
     }
