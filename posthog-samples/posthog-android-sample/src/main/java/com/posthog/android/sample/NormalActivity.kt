@@ -15,6 +15,8 @@ class NormalActivity : ComponentActivity() {
             .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
             .build()
 
+    var resume = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -27,6 +29,12 @@ class NormalActivity : ComponentActivity() {
 //        val editText = findViewById<EditText>(R.id.editText)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)
         button.setOnClickListener {
+            if (PostHog.isSessionReplayActive()) {
+                PostHog.stopSessionReplay()
+            } else {
+                PostHog.startSessionReplay(resumeCurrent = resume)
+                resume = !resume
+            }
 //            Log.e("MyApp", "Clicked on button ${button.text}")
 //            button.text = "Test: ${(0..10).random()}"
 //            if (imvAndroid.visibility == View.VISIBLE) {
