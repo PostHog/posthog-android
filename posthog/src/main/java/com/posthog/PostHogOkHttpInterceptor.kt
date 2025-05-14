@@ -13,7 +13,7 @@ public class PostHogOkHttpInterceptor(
     @JvmOverloads
     public constructor(captureNetworkTelemetry: Boolean = true) : this(captureNetworkTelemetry, null)
 
-    private val isSessionReplayEnabled: Boolean
+    private val isSessionReplayActive: Boolean
         get() = postHog?.isSessionReplayActive() ?: PostHog.isSessionReplayActive()
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -35,7 +35,7 @@ public class PostHogOkHttpInterceptor(
         response: Response,
     ) {
         // do not capture network logs if session replay is disabled
-        if (!captureNetworkTelemetry || !isSessionReplayEnabled) {
+        if (!captureNetworkTelemetry || !isSessionReplayActive) {
             return
         }
         val url = request.url.toString()
