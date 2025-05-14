@@ -62,7 +62,7 @@ internal class PostHogApi(
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
-            if (!it.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
         }
     }
 
