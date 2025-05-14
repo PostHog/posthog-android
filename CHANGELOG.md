@@ -1,6 +1,6 @@
 ## Next
 
-- feat: log request and payload requests if debug is enabled
+- feat: log request and payload requests if debug is enabled ([#249](https://github.com/PostHog/posthog-android/pull/249))
 
 ## 3.14.1 - 2025-04-23
 
