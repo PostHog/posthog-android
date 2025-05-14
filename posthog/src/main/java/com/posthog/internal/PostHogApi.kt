@@ -50,11 +50,12 @@ internal class PostHogApi(
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
 
+        val url = "$theHost/batch"
         val request =
-            makeRequest("$theHost/batch") {
+            makeRequest(url) {
                 batch.sentAt = config.dateProvider.currentDate()
 
-                logRequest(batch)
+                logRequest(batch, url)
 
                 config.serializer.serialize(batch, it.bufferedWriter())
             }
@@ -72,11 +73,12 @@ internal class PostHogApi(
             it.apiKey = config.apiKey
         }
 
-        logRequest(events)
+        val url = "$theHost${config.snapshotEndpoint}"
+        logRequest(events, url)
 
         // sent_at isn't supported by the snapshot endpoint
         val request =
-            makeRequest("$theHost${config.snapshotEndpoint}") {
+            makeRequest(url) {
                 config.serializer.serialize(events, it.bufferedWriter())
             }
 
@@ -117,10 +119,11 @@ internal class PostHogApi(
     ): PostHogDecideResponse? {
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
-        logRequest(decideRequest)
+        val url = "$theHost/decide/?v=4"
+        logRequest(decideRequest, url)
 
         val request =
-            makeRequest("$theHost/decide/?v=4") {
+            makeRequest(url) {
                 config.serializer.serialize(decideRequest, it.bufferedWriter())
             }
 
@@ -183,7 +186,7 @@ internal class PostHogApi(
                     } catch (e: Throwable) {
                         return response // can't read body, return original
                     }
-                config.logger.log("Response: $content")
+                config.logger.log("Response ${response.request.url}: $content")
 
                 // Rebuild the body so the response can still be used
                 val newBody = content.toByteArray().toResponseBody(mediaType)
@@ -195,11 +198,14 @@ internal class PostHogApi(
         return response
     }
 
-    private fun logRequest(body: Any) {
+    private fun logRequest(
+        body: Any,
+        url: String,
+    ) {
         if (config.debug) {
             try {
                 config.serializer.serializeObject(body)?.let {
-                    config.logger.log("Request: $it")
+                    config.logger.log("Request $url}: $it")
                 }
             } catch (e: Throwable) {
                 // ignore
