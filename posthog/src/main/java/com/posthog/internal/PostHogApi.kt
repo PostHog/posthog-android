@@ -10,7 +10,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
-import okhttp3.ResponseBody
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
 import java.io.IOException
 import java.io.OutputStream
@@ -59,12 +60,9 @@ internal class PostHogApi(
             }
 
         client.newCall(request).execute().use {
-            val responseBody = it.body
-            responseBody?.let {
-                logResponse(responseBody)
-            }
+            val response = logResponse(it)
 
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            if (!it.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
         }
     }
 
@@ -83,12 +81,9 @@ internal class PostHogApi(
             }
 
         client.newCall(request).execute().use {
-            val responseBody = it.body
-            responseBody?.let {
-                logResponse(responseBody)
-            }
+            val response = logResponse(it)
 
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
         }
     }
 
@@ -130,16 +125,12 @@ internal class PostHogApi(
             }
 
         client.newCall(request).execute().use {
-            val responseBody = it.body
-            responseBody?.let {
-                logResponse(responseBody)
-            }
+            val response = logResponse(it)
 
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
 
-            responseBody?.let {
-                logResponse(responseBody)
-                return config.serializer.deserialize(responseBody.charStream().buffered())
+            response.body?.let { body ->
+                return config.serializer.deserialize(body.charStream().buffered())
             }
             return null
         }
@@ -170,30 +161,38 @@ internal class PostHogApi(
                 .build()
 
         client.newCall(request).execute().use {
-            val responseBody = it.body
-            responseBody?.let {
-                logResponse(responseBody)
-            }
+            val response = logResponse(it)
 
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
 
-            responseBody?.let {
-                logResponse(responseBody)
-                return config.serializer.deserialize(responseBody.charStream().buffered())
+            response.body?.let { body ->
+                return config.serializer.deserialize(body.charStream().buffered())
             }
             return null
         }
     }
 
-    private fun logResponse(body: ResponseBody) {
+    private fun logResponse(response: Response): Response {
         if (config.debug) {
             try {
-                val bodyStr = body.string()
-                config.logger.log("Response: $bodyStr")
+                val responseBody = response.body ?: return response
+                val mediaType = responseBody.contentType()
+                val content =
+                    try {
+                        responseBody.string()
+                    } catch (e: Throwable) {
+                        return response // can't read body, return original
+                    }
+                config.logger.log("Response: $content")
+
+                // Rebuild the body so the response can still be used
+                val newBody = content.toByteArray().toResponseBody(mediaType)
+                return response.newBuilder().body(newBody).build()
             } catch (e: Throwable) {
                 // ignore
             }
         }
+        return response
     }
 
     private fun logRequest(body: Any) {
