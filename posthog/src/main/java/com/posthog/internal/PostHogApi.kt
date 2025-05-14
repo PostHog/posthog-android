@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import okio.BufferedSink
 import java.io.IOException
 import java.io.OutputStream
@@ -51,10 +52,18 @@ internal class PostHogApi(
         val request =
             makeRequest("$theHost/batch") {
                 batch.sentAt = config.dateProvider.currentDate()
+
+                logRequest(batch)
+
                 config.serializer.serialize(batch, it.bufferedWriter())
             }
 
         client.newCall(request).execute().use {
+            val responseBody = it.body
+            responseBody?.let {
+                logResponse(responseBody)
+            }
+
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
         }
     }
@@ -65,10 +74,7 @@ internal class PostHogApi(
             it.apiKey = config.apiKey
         }
 
-//        // for easy debugging
-//        config.serializer.serializeObject(events)?.let {
-//            print("rrweb events: $it")
-//        }
+        logRequest(events)
 
         // sent_at isn't supported by the snapshot endpoint
         val request =
@@ -77,6 +83,11 @@ internal class PostHogApi(
             }
 
         client.newCall(request).execute().use {
+            val responseBody = it.body
+            responseBody?.let {
+                logResponse(responseBody)
+            }
+
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
         }
     }
@@ -111,16 +122,24 @@ internal class PostHogApi(
     ): PostHogDecideResponse? {
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
+        logRequest(decideRequest)
+
         val request =
             makeRequest("$theHost/decide/?v=4") {
                 config.serializer.serialize(decideRequest, it.bufferedWriter())
             }
 
         client.newCall(request).execute().use {
+            val responseBody = it.body
+            responseBody?.let {
+                logResponse(responseBody)
+            }
+
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
 
-            it.body?.let { body ->
-                return config.serializer.deserialize(body.charStream().buffered())
+            responseBody?.let {
+                logResponse(responseBody)
+                return config.serializer.deserialize(responseBody.charStream().buffered())
             }
             return null
         }
@@ -151,12 +170,41 @@ internal class PostHogApi(
                 .build()
 
         client.newCall(request).execute().use {
+            val responseBody = it.body
+            responseBody?.let {
+                logResponse(responseBody)
+            }
+
             if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
 
-            it.body?.let { body ->
-                return config.serializer.deserialize(body.charStream().buffered())
+            responseBody?.let {
+                logResponse(responseBody)
+                return config.serializer.deserialize(responseBody.charStream().buffered())
             }
             return null
+        }
+    }
+
+    private fun logResponse(body: ResponseBody) {
+        if (config.debug) {
+            try {
+                val bodyStr = body.string()
+                config.logger.log("Response: $bodyStr")
+            } catch (e: Throwable) {
+                // ignore
+            }
+        }
+    }
+
+    private fun logRequest(body: Any) {
+        if (config.debug) {
+            try {
+                config.serializer.serializeObject(body)?.let {
+                    config.logger.log("Request: $it")
+                }
+            } catch (e: Throwable) {
+                // ignore
+            }
         }
     }
 }
