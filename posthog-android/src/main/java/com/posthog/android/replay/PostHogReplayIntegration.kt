@@ -356,6 +356,10 @@ public class PostHogReplayIntegration(
             }
 
             isSessionReplayActive = false
+
+            // clear to help GC
+            clear()
+            decorViews.clear()
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
         }

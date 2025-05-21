@@ -203,8 +203,6 @@ public class PostHog private constructor(
                             it.uninstall()
 
                             if (it is PostHogSessionReplayHandler) {
-                                it.stop()
-                                it.clear()
                                 sessionReplayHandler = null
                             }
                         } catch (e: Throwable) {
