@@ -1294,13 +1294,17 @@ public class PostHogReplayIntegration(
 
     override fun start(resumeCurrent: Boolean) {
         if (!resumeCurrent) {
-            // clear state so it starts with a full snapshot again
-            decorViews.entries.forEach {
-                resetViewSnapshotStates(it.value)
-            }
+            clear()
         }
 
         isSessionReplayActive = true
+    }
+
+    override fun clear() {
+        // clear state so it starts with a full snapshot again
+        decorViews.entries.forEach {
+            resetViewSnapshotStates(it.value)
+        }
     }
 
     override fun stop() {

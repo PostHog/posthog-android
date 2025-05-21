@@ -202,7 +202,11 @@ public class PostHog private constructor(
                         try {
                             it.uninstall()
 
-                            sessionReplayHandler = null
+                            if (it is PostHogSessionReplayHandler) {
+                                it.stop()
+                                it.clear()
+                                sessionReplayHandler = null
+                            }
                         } catch (e: Throwable) {
                             config.logger
                                 .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
@@ -963,6 +967,8 @@ public class PostHog private constructor(
                 it.start(true)
             } else {
                 endSession()
+                // clear the session replay state with previous session id
+                it.clear()
                 startSession()
                 it.start(false)
             }
@@ -983,6 +989,8 @@ public class PostHog private constructor(
             }
 
             it.stop()
+            // clear the session replay state with previous session id
+            it.clear()
         } ?: run {
             config?.logger?.log("Session replay isn't installed.")
         }
