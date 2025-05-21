@@ -1,5 +1,9 @@
 ## Next
 
+## 3.15.0 - 2025-05-14
+
+- feat: log request and payload requests if debug is enabled ([#249](https://github.com/PostHog/posthog-android/pull/249))
+
 ## 3.14.1 - 2025-04-23
 
 - fix: Send correct `$feature_flag_response` for the `$feature_flag_called` event when calling `isFeatureEnabled` ([#244](https://github.com/PostHog/posthog-android/pull/244))
