@@ -62,6 +62,7 @@ import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.replay.RRCustomEvent
 import com.posthog.internal.replay.RREvent
 import com.posthog.internal.replay.RRFullSnapshotEvent
@@ -93,7 +94,7 @@ public class PostHogReplayIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
-) : PostHogIntegration {
+) : PostHogIntegration, PostHogSessionReplayHandler {
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
     private val passwordInputTypes =
@@ -117,8 +118,8 @@ public class PostHogReplayIntegration(
             color = Color.BLACK
         }
 
-    private val isSessionReplayEnabled: Boolean
-        get() = postHog?.isSessionReplayActive() ?: false
+    @Volatile
+    private var isSessionReplayActive: Boolean = false
 
     // flutter captures snapshots, so we don't need to capture them here
     private val isNativeSdk: Boolean
@@ -149,7 +150,7 @@ public class PostHogReplayIntegration(
                                         config.dateProvider,
                                         config.sessionReplayConfig.throttleDelayMs,
                                     ) {
-                                        if (!isSessionReplayEnabled || !isNativeSdk) {
+                                        if (!isActive() || !isNativeSdk) {
                                             return@onNextDraw
                                         }
                                         val timestamp = config.dateProvider.currentTimeMillis()
@@ -179,7 +180,7 @@ public class PostHogReplayIntegration(
                 } else {
                     window.peekDecorView()?.let { decorView ->
                         decorViews[decorView]?.let { status ->
-                            cleanSessionState(decorView, status)
+                            clearViewListeners(decorView, status)
                         }
                     }
                 }
@@ -232,7 +233,7 @@ public class PostHogReplayIntegration(
 
                 executor.submit {
                     try {
-                        if (!isSessionReplayEnabled) {
+                        if (!isActive()) {
                             return@submit
                         }
                         when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
@@ -290,7 +291,14 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun cleanSessionState(
+    private fun resetViewSnapshotStates(status: ViewTreeSnapshotStatus) {
+        status.sentFullSnapshot = false
+        status.sentMetaEvent = false
+        status.keyboardVisible = false
+        status.lastSnapshot = null
+    }
+
+    private fun clearViewListeners(
         view: View,
         status: ViewTreeSnapshotStatus,
     ) {
@@ -344,8 +352,14 @@ public class PostHogReplayIntegration(
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
             decorViews.entries.forEach {
-                cleanSessionState(it.key, it.value)
+                clearViewListeners(it.key, it.value)
             }
+
+            isSessionReplayActive = false
+
+            // clear to help GC
+            clearSnapshotStates()
+            decorViews.clear()
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
         }
@@ -1280,6 +1294,29 @@ public class PostHogReplayIntegration(
     @SuppressLint("AnnotateVersionCheck")
     private fun isSupported(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+    }
+
+    override fun start(resumeCurrent: Boolean) {
+        if (!resumeCurrent) {
+            clearSnapshotStates()
+        }
+
+        isSessionReplayActive = true
+    }
+
+    private fun clearSnapshotStates() {
+        // clear state so it starts with a full snapshot again
+        decorViews.entries.forEach {
+            resetViewSnapshotStates(it.value)
+        }
+    }
+
+    override fun stop() {
+        isSessionReplayActive = false
+    }
+
+    override fun isActive(): Boolean {
+        return isSessionReplayActive
     }
 
     internal companion object {

@@ -21,6 +21,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -64,6 +65,8 @@ public class PostHog private constructor(
     private var replayQueue: PostHogQueue? = null
     private var memoryPreferences = PostHogMemoryPreferences()
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
+
+    private var sessionReplayHandler: PostHogSessionReplayHandler? = null
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
@@ -125,6 +128,16 @@ public class PostHog private constructor(
                 config.integrations.forEach {
                     try {
                         it.install(this)
+
+                        if (it is PostHogSessionReplayHandler) {
+                            sessionReplayHandler = it
+
+                            // resume because we just created the session id above with
+                            // the startSession call
+                            if (isSessionReplayConfigEnabled()) {
+                                startSessionReplay(resumeCurrent = true)
+                            }
+                        }
                     } catch (e: Throwable) {
                         config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
                     }
@@ -188,6 +201,10 @@ public class PostHog private constructor(
                     config.integrations.forEach {
                         try {
                             it.uninstall()
+
+                            if (it is PostHogSessionReplayHandler) {
+                                sessionReplayHandler = null
+                            }
                         } catch (e: Throwable) {
                             config.logger
                                 .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
@@ -345,13 +362,13 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        val isSessionReplayFlagActive = isSessionReplayFlagActive()
+        val isSessionReplayActive = isSessionReplayActive()
 
         PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
             val tempSessionId = sessionId.toString()
             props["\$session_id"] = tempSessionId
             // only Session replay needs $window_id
-            if (!appendSharedProps && isSessionReplayFlagActive) {
+            if (!appendSharedProps && isSessionReplayActive) {
                 // Session replay requires $window_id, so we set as the same as $session_id.
                 // the backend might fallback to $session_id if $window_id is not present next.
                 props["\$window_id"] = tempSessionId
@@ -365,7 +382,7 @@ public class PostHog private constructor(
         // only Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
-        if (!appendSharedProps && isSessionReplayFlagActive && propDistinctId.isNullOrBlank()) {
+        if (!appendSharedProps && isSessionReplayActive && propDistinctId.isNullOrBlank()) {
             // distinctId is already validated hence not empty or blank
             props["distinct_id"] = distinctId
         }
@@ -910,15 +927,67 @@ public class PostHog private constructor(
         return PostHogSessionManager.isSessionActive()
     }
 
+    private fun isSessionReplayConfigEnabled(): Boolean {
+        return config?.sessionReplay == true
+    }
+
     // this is used in cases where we know the session is already active
     // so we spare another locker
-    private fun isSessionReplayFlagActive(): Boolean {
-        return config?.sessionReplay == true && remoteConfig?.isSessionReplayFlagActive() == true
+    private fun isSessionReplayFlagEnabled(): Boolean {
+        return remoteConfig?.isSessionReplayFlagActive() == true
     }
 
     override fun isSessionReplayActive(): Boolean {
-        // not checking isEnabled() here because isSessionActive already does that anyway
-        return isSessionReplayFlagActive() && isSessionActive()
+        if (!isEnabled()) {
+            return false
+        }
+
+        return sessionReplayHandler?.isActive() == true && isSessionActive()
+    }
+
+    override fun startSessionReplay(resumeCurrent: Boolean) {
+        if (!isEnabled()) {
+            return
+        }
+
+        if (!isSessionReplayFlagEnabled()) {
+            config?.logger?.log("Could not start recording. Session replay feature flag is disabled.")
+            return
+        }
+
+        sessionReplayHandler?.let {
+            // already active
+            if (it.isActive()) {
+                return
+            }
+
+            if (resumeCurrent) {
+                it.start(true)
+            } else {
+                endSession()
+                startSession()
+                it.start(false)
+            }
+        } ?: run {
+            config?.logger?.log("Could not start recording. Session replay isn't installed.")
+        }
+    }
+
+    override fun stopSessionReplay() {
+        if (!isEnabled()) {
+            return
+        }
+
+        sessionReplayHandler?.let {
+            // already inactive
+            if (!it.isActive()) {
+                return
+            }
+
+            it.stop()
+        } ?: run {
+            config?.logger?.log("Session replay isn't installed.")
+        }
     }
 
     override fun getSessionId(): UUID? {
@@ -1109,6 +1178,14 @@ public class PostHog private constructor(
 
         override fun isSessionReplayActive(): Boolean {
             return shared.isSessionReplayActive()
+        }
+
+        override fun startSessionReplay(resumeCurrent: Boolean) {
+            shared.startSessionReplay(resumeCurrent)
+        }
+
+        override fun stopSessionReplay() {
+            shared.stopSessionReplay()
         }
 
         override fun getSessionId(): UUID? {

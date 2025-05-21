@@ -88,7 +88,7 @@ internal class PostHogRemoteConfig(
         // val linkedFlag = sessionRecording["linkedFlag"] as? String,
         //    featureFlags[linkedFlag] != nil
         // is also a valid check but since we cannot check the value of the flag,
-        // we consider session recording is active
+        // we consider session replay is active
 
         return recordingActive
     }
@@ -121,7 +121,7 @@ internal class PostHogRemoteConfig(
 
                         if (hasFlags && config.preloadFeatureFlags) {
                             if (distinctId.isNotBlank()) {
-                                // do not process session recording from decide API
+                                // do not process session replay from decide API
                                 // since its already cached via the remote config API
                                 executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig = true)
                             } else {
@@ -238,7 +238,7 @@ internal class PostHogRemoteConfig(
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
-                    // only process and cache session recording config from decide API
+                    // only process and cache session replay config from decide API
                     // if not yet done by the remote config API
                     if (!calledFromRemoteConfig) {
                         processSessionRecordingConfig(it.sessionRecording)
