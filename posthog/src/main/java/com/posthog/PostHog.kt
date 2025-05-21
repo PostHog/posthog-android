@@ -950,7 +950,7 @@ public class PostHog private constructor(
             return
         }
 
-        if (isSessionReplayFlagEnabled()) {
+        if (!isSessionReplayFlagEnabled()) {
             config?.logger?.log("Could not start recording. Session replay feature flag is disabled.")
             return
         }
@@ -965,8 +965,6 @@ public class PostHog private constructor(
                 it.start(true)
             } else {
                 endSession()
-                // clear the session replay state with previous session id
-                it.clear()
                 startSession()
                 it.start(false)
             }
@@ -987,8 +985,6 @@ public class PostHog private constructor(
             }
 
             it.stop()
-            // clear the session replay state with previous session id
-            it.clear()
         } ?: run {
             config?.logger?.log("Session replay isn't installed.")
         }

@@ -6,8 +6,6 @@ import com.posthog.PostHogInternal
 public interface PostHogSessionReplayHandler {
     public fun start(resumeCurrent: Boolean)
 
-    public fun clear()
-
     public fun stop()
 
     public fun isActive(): Boolean

@@ -358,7 +358,7 @@ public class PostHogReplayIntegration(
             isSessionReplayActive = false
 
             // clear to help GC
-            clear()
+            clearSnapshotStates()
             decorViews.clear()
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
@@ -1298,13 +1298,13 @@ public class PostHogReplayIntegration(
 
     override fun start(resumeCurrent: Boolean) {
         if (!resumeCurrent) {
-            clear()
+            clearSnapshotStates()
         }
 
         isSessionReplayActive = true
     }
 
-    override fun clear() {
+    private fun clearSnapshotStates() {
         // clear state so it starts with a full snapshot again
         decorViews.entries.forEach {
             resetViewSnapshotStates(it.value)

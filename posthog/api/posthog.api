@@ -368,7 +368,6 @@ public final class com/posthog/internal/PostHogUtilsKt {
 }
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
-	public abstract fun clear ()V
 	public abstract fun isActive ()Z
 	public abstract fun start (Z)V
 	public abstract fun stop ()V
