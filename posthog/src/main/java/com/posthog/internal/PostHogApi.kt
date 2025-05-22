@@ -10,6 +10,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
 import java.io.IOException
 import java.io.OutputStream
@@ -48,14 +50,20 @@ internal class PostHogApi(
     fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
 
+        val url = "$theHost/batch"
         val request =
-            makeRequest("$theHost/batch") {
+            makeRequest(url) {
                 batch.sentAt = config.dateProvider.currentDate()
+
+                logRequest(batch, url)
+
                 config.serializer.serialize(batch, it.bufferedWriter())
             }
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            val response = logResponse(it)
+
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
         }
     }
 
@@ -65,19 +73,19 @@ internal class PostHogApi(
             it.apiKey = config.apiKey
         }
 
-//        // for easy debugging
-//        config.serializer.serializeObject(events)?.let {
-//            print("rrweb events: $it")
-//        }
+        val url = "$theHost${config.snapshotEndpoint}"
+        logRequest(events, url)
 
         // sent_at isn't supported by the snapshot endpoint
         val request =
-            makeRequest("$theHost${config.snapshotEndpoint}") {
+            makeRequest(url) {
                 config.serializer.serialize(events, it.bufferedWriter())
             }
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            val response = logResponse(it)
+
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
         }
     }
 
@@ -111,15 +119,20 @@ internal class PostHogApi(
     ): PostHogDecideResponse? {
         val decideRequest = PostHogDecideRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
+        val url = "$theHost/decide/?v=4"
+        logRequest(decideRequest, url)
+
         val request =
-            makeRequest("$theHost/decide/?v=4") {
+            makeRequest(url) {
                 config.serializer.serialize(decideRequest, it.bufferedWriter())
             }
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            val response = logResponse(it)
 
-            it.body?.let { body ->
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
+
+            response.body?.let { body ->
                 return config.serializer.deserialize(body.charStream().buffered())
             }
             return null
@@ -151,12 +164,52 @@ internal class PostHogApi(
                 .build()
 
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) throw PostHogApiError(it.code, it.message, it.body)
+            val response = logResponse(it)
 
-            it.body?.let { body ->
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
+
+            response.body?.let { body ->
                 return config.serializer.deserialize(body.charStream().buffered())
             }
             return null
+        }
+    }
+
+    private fun logResponse(response: Response): Response {
+        if (config.debug) {
+            try {
+                val responseBody = response.body ?: return response
+                val mediaType = responseBody.contentType()
+                val content =
+                    try {
+                        responseBody.string()
+                    } catch (e: Throwable) {
+                        return response // can't read body, return original
+                    }
+                config.logger.log("Response ${response.request.url}: $content")
+
+                // Rebuild the body so the response can still be used
+                val newBody = content.toByteArray().toResponseBody(mediaType)
+                return response.newBuilder().body(newBody).build()
+            } catch (e: Throwable) {
+                // ignore
+            }
+        }
+        return response
+    }
+
+    private fun logRequest(
+        body: Any,
+        url: String,
+    ) {
+        if (config.debug) {
+            try {
+                config.serializer.serializeObject(body)?.let {
+                    config.logger.log("Request $url}: $it")
+                }
+            } catch (e: Throwable) {
+                // ignore
+            }
         }
     }
 }
