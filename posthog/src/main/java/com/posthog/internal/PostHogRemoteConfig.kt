@@ -336,7 +336,6 @@ internal class PostHogRemoteConfig(
                     mapOf<String, Any?>(),
                 ) as? Map<String, Any?> ?: mapOf()
 
-            @Suppress("UNCHECKED_CAST")
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
 
             synchronized(featureFlagsLock) {
@@ -443,18 +442,14 @@ internal class PostHogRemoteConfig(
     fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
     fun getRequestId(): String? {
-        if (!isFeatureFlagsLoaded) {
-            loadFeatureFlagsFromCache()
-        }
+        loadFeatureFlagsFromCacheIfNeeded()
         synchronized(featureFlagsLock) {
             return requestId
         }
     }
 
     fun getFlagDetails(key: String): FeatureFlag? {
-        if (!isFeatureFlagsLoaded) {
-            loadFeatureFlagsFromCache()
-        }
+        loadFeatureFlagsFromCacheIfNeeded()
 
         synchronized(featureFlagsLock) {
             return flags?.get(key) as? FeatureFlag
