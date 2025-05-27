@@ -1,5 +1,7 @@
 ## Next
 
+## 3.16.0 - 2025-05-27
+
 - chore: manual start and stop session replay ([#248](https://github.com/PostHog/posthog-android/pull/248))
 
 ## 3.15.1 - 2025-05-27
