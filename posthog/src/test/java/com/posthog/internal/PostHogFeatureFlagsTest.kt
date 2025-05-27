@@ -343,6 +343,45 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `clear cached flags when there are no no server side flags`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse().setBody(
+                        """
+                        {
+                            "featureFlags": {"flag1": true},
+                            "featureFlagPayloads": {"flag1": "payload1"}
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
+        val responseText = file.readText()
+
+        http.enqueue(MockResponse().setBody(responseText))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        // Load initial flags
+        sut.loadFeatureFlags("test_id", null, null)
+        executor.awaitExecution()
+
+        assertNotNull(preferences.getValue(FEATURE_FLAGS))
+        assertTrue(sut.getFeatureFlag("flag1", defaultValue = false) as Boolean)
+
+        // Load initial flags
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap(), null)
+
+        executor.shutdownAndAwaitTermination()
+
+        assertNull(preferences.getValue(FEATURE_FLAGS))
+        assertFalse(sut.getFeatureFlag("flag1", defaultValue = false) as Boolean)
+    }
+
+    @Test
     fun `do not preload flags if distinct id is blank`() {
         val file = File("src/test/resources/json/basic-remote-config.json")
 
