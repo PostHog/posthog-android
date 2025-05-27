@@ -6,6 +6,7 @@ import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
@@ -1443,6 +1444,52 @@ internal class PostHogTest {
         val sut = getSut(url.toString())
 
         assertTrue(config.logger is PostHogPrintLogger)
+
+        sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString())
+
+        sut.close()
+
+        assertFalse(sut.isSessionReplayActive())
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if sessionReplayHandler returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(false))
+
+        assertFalse(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if PostHogSessionManager returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(true))
+
+        PostHogSessionManager.endSession()
+
+        assertFalse(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns true if session is running`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(true))
+
+        assertTrue(sut.isSessionReplayActive())
 
         sut.close()
     }
