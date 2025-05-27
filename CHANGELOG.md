@@ -1,5 +1,11 @@
 ## Next
 
+- chore: manual start and stop session replay ([#248](https://github.com/PostHog/posthog-android/pull/248))
+
+## 3.15.1 - 2025-05-27
+
+- fix: clear feature flags cache when flags were cleared up server side ([#246](https://github.com/PostHog/posthog-android/pull/246)) 
+
 ## 3.15.0 - 2025-05-14
 
 - feat: log request and payload requests if debug is enabled ([#249](https://github.com/PostHog/posthog-android/pull/249))

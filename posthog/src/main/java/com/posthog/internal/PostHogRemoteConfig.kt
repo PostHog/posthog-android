@@ -119,13 +119,31 @@ internal class PostHogRemoteConfig(
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
-                        if (hasFlags && config.preloadFeatureFlags) {
-                            if (distinctId.isNotBlank()) {
-                                // do not process session replay from decide API
-                                // since its already cached via the remote config API
-                                executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig = true)
-                            } else {
-                                config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+                        if (hasFlags) {
+                            if (config.preloadFeatureFlags) {
+                                if (distinctId.isNotBlank()) {
+                                    // do not process session replay from decide API
+                                    // since its already cached via the remote config API
+                                    executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig = true)
+                                } else {
+                                    config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+                                }
+                            }
+                        } else {
+                            // clear cache since there are no active flags on the server side
+                            synchronized(featureFlagsLock) {
+                                // we didn't call the API but we should there are no active flags
+                                // because remote config API returned hasFeatureFlags=false
+                                isFeatureFlagsLoaded = true
+                                clearFlags()
+                            }
+
+                            // if we don't load the feature flags (because there are none), we need to call the callback
+                            // because the app might be waiting for it.
+                            try {
+                                onFeatureFlags?.loaded()
+                            } catch (e: Throwable) {
+                                config.logger.log("Executing the feature flags callback failed: $e")
                             }
                         }
 
@@ -207,14 +225,7 @@ internal class PostHogRemoteConfig(
                             """Feature flags are quota limited, clearing existing flags.
                                     Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
                         )
-                        this.featureFlags = null
-                        this.featureFlagPayloads = null
-                        this.flags = null
-                        config.cachePreferences?.let { preferences ->
-                            preferences.remove(FLAGS)
-                            preferences.remove(FEATURE_FLAGS)
-                            preferences.remove(FEATURE_FLAGS_PAYLOAD)
-                        }
+                        clearFlags()
                         return@let
                     }
 
@@ -325,7 +336,6 @@ internal class PostHogRemoteConfig(
                     mapOf<String, Any?>(),
                 ) as? Map<String, Any?> ?: mapOf()
 
-            @Suppress("UNCHECKED_CAST")
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
 
             synchronized(featureFlagsLock) {
@@ -432,38 +442,43 @@ internal class PostHogRemoteConfig(
     fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
     fun getRequestId(): String? {
-        if (!isFeatureFlagsLoaded) {
-            loadFeatureFlagsFromCache()
-        }
+        loadFeatureFlagsFromCacheIfNeeded()
         synchronized(featureFlagsLock) {
             return requestId
         }
     }
 
     fun getFlagDetails(key: String): FeatureFlag? {
-        if (!isFeatureFlagsLoaded) {
-            loadFeatureFlagsFromCache()
-        }
+        loadFeatureFlagsFromCacheIfNeeded()
 
         synchronized(featureFlagsLock) {
             return flags?.get(key) as? FeatureFlag
         }
     }
 
+    private fun clearFlags() {
+        // call this method after synchronized(featureFlagsLock)
+        this.featureFlags = null
+        this.featureFlagPayloads = null
+        this.flags = null
+        this.requestId = null
+
+        config.cachePreferences?.let { preferences ->
+            preferences.remove(FLAGS)
+            preferences.remove(FEATURE_FLAGS)
+            preferences.remove(FEATURE_FLAGS_PAYLOAD)
+            preferences.remove(FEATURE_FLAG_REQUEST_ID)
+        }
+    }
+
     fun clear() {
         synchronized(featureFlagsLock) {
-            featureFlags = null
-            featureFlagPayloads = null
             sessionReplayFlagActive = false
             isFeatureFlagsLoaded = false
-            requestId = null
 
-            config.cachePreferences?.let { preferences ->
-                preferences.remove(FEATURE_FLAGS)
-                preferences.remove(FEATURE_FLAGS_PAYLOAD)
-                preferences.remove(SESSION_REPLAY)
-                preferences.remove(FEATURE_FLAG_REQUEST_ID)
-            }
+            clearFlags()
+
+            config.cachePreferences?.remove(SESSION_REPLAY)
         }
 
         synchronized(remoteConfigLock) {
