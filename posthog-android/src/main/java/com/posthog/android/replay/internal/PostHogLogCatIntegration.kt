@@ -17,7 +17,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
     private var logcatThread: Thread? = null
 
-    private val isSessionReplayEnabled: Boolean
+    private val isSessionReplayActive: Boolean
         get() = postHog?.isSessionReplayActive() ?: false
 
     private var postHog: PostHogInterface? = null
@@ -53,7 +53,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                                 line = it.readLine()
 
                                 // do not capture console logs if session replay is disabled
-                                if (!isSessionReplayEnabled) {
+                                if (!isSessionReplayActive) {
                                     continue
                                 }
 

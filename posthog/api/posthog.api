@@ -34,6 +34,8 @@ public final class com/posthog/PostHog : com/posthog/PostHogInterface {
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
 	public fun startSession ()V
+	public fun startSessionReplay (Z)V
+	public fun stopSessionReplay ()V
 	public fun unregister (Ljava/lang/String;)V
 }
 
@@ -65,6 +67,8 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
 	public fun startSession ()V
+	public fun startSessionReplay (Z)V
+	public fun stopSessionReplay ()V
 	public fun unregister (Ljava/lang/String;)V
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHogInterface;
 }
@@ -216,6 +220,8 @@ public abstract interface class com/posthog/PostHogInterface {
 	public abstract fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun setup (Lcom/posthog/PostHogConfig;)V
 	public abstract fun startSession ()V
+	public abstract fun startSessionReplay (Z)V
+	public abstract fun stopSessionReplay ()V
 	public abstract fun unregister (Ljava/lang/String;)V
 }
 
@@ -229,6 +235,7 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZILjava/lang/Object;)Z
 	public static synthetic fun reloadFeatureFlags$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public static synthetic fun screen$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+	public static synthetic fun startSessionReplay$default (Lcom/posthog/PostHogInterface;ZILjava/lang/Object;)V
 }
 
 public abstract interface annotation class com/posthog/PostHogInternal : java/lang/annotation/Annotation {
@@ -358,6 +365,12 @@ public final class com/posthog/internal/PostHogThreadFactory : java/util/concurr
 
 public final class com/posthog/internal/PostHogUtilsKt {
 	public static final fun interruptSafely (Ljava/lang/Thread;)V
+}
+
+public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
+	public abstract fun isActive ()Z
+	public abstract fun start (Z)V
+	public abstract fun stop ()V
 }
 
 public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {
