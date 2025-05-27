@@ -1,5 +1,7 @@
 ## Next
 
+## 3.15.1 - 2025-05-27
+
 - fix: clear feature flags cache when flags were cleared up server side ([#246](https://github.com/PostHog/posthog-android/pull/246)) 
 
 ## 3.15.0 - 2025-05-14
