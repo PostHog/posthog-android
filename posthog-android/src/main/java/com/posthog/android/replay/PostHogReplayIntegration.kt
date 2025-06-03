@@ -25,6 +25,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.text.InputType
 import android.util.TypedValue
+import android.view.Choreographer
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.PixelCopy
@@ -126,6 +127,25 @@ public class PostHogReplayIntegration(
         get() = (config.sdkName != "posthog-flutter")
 
     private var postHog: PostHogInterface? = null
+
+    @Volatile
+    private var lastFrameTimeNanos: Long = config.dateProvider.nanoTime()
+
+    private val frameCallback =
+        object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                lastFrameTimeNanos = frameTimeNanos
+                Choreographer.getInstance().postFrameCallback(this) // continue monitoring
+            }
+        }
+
+    private fun startFrameMonitoring() {
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+    }
+
+    private fun stopFrameMonitoring() {
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+    }
 
     private fun addView(
         view: View,
@@ -338,11 +358,20 @@ public class PostHogReplayIntegration(
             addView(view)
         }
 
+        startFrameMonitoring()
+
         try {
             Curtains.onRootViewsChangedListeners += onRootViewsChangedListener
         } catch (e: Throwable) {
             config.logger.log("Session Replay setup failed: $e.")
         }
+    }
+
+    private fun isUserInteractingOrAnimating(
+        beforePixelCopyTimeNanos: Long,
+        afterPixelCopyTimeNanos: Long,
+    ): Boolean {
+        return lastFrameTimeNanos in beforePixelCopyTimeNanos..afterPixelCopyTimeNanos
     }
 
     override fun uninstall() {
@@ -360,6 +389,8 @@ public class PostHogReplayIntegration(
             // clear to help GC
             clearSnapshotStates()
             decorViews.clear()
+
+            stopFrameMonitoring()
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
         }
@@ -726,9 +757,6 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(displayMetrics.density)
         var base64: String? = null
 
-        val maskableWidgets = mutableListOf<Rect>()
-        findMaskableWidgets(this, maskableWidgets)
-
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         val latch = CountDownLatch(1)
         val thread = HandlerThread("PostHogReplayScreenshot")
@@ -739,10 +767,30 @@ public class PostHogReplayIntegration(
 
         try {
             var success = true
+            val beforePixelCopyTimeNanos = config.dateProvider.nanoTime()
             PixelCopy.request(window, bitmap, { copyResult ->
                 if (copyResult != PixelCopy.SUCCESS) {
                     success = false
                     bitmap.recycle()
+                } else {
+                    val maskableWidgets = mutableListOf<Rect>()
+                    findMaskableWidgets(view, maskableWidgets)
+                    val afterPixelCopyTimeNanos = config.dateProvider.nanoTime()
+
+                    if (maskableWidgets.isNotEmpty()) {
+                        if (!isUserInteractingOrAnimating(beforePixelCopyTimeNanos, afterPixelCopyTimeNanos)) {
+                            val canvas = Canvas(bitmap)
+
+                            maskableWidgets.forEach {
+                                canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                            }
+                        } else {
+                            // if the user is interacting or animating, we don't mask the widgets
+                            // and drop the screenshot because the masking would not be accurate
+                            // and we may leak sensitive information
+                            success = false
+                        }
+                    }
                 }
                 latch.countDown()
             }, handler)
@@ -751,12 +799,6 @@ public class PostHogReplayIntegration(
             latch.await(1000, TimeUnit.MILLISECONDS)
 
             if (success) {
-                val canvas = Canvas(bitmap)
-
-                maskableWidgets.forEach {
-                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
-                }
-
                 base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
