@@ -89,7 +89,6 @@ import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -128,10 +127,12 @@ public class PostHogReplayIntegration(
 
     private var postHog: PostHogInterface? = null
 
-    private val isOnDrawnCalled = AtomicBoolean(false)
+//    private val isOnDrawnCalled = AtomicBoolean(false)
+    @Volatile
+    private var isOnDrawnCalled: Boolean = false
 
     private fun onDrawCallback() {
-        isOnDrawnCalled.set(true)
+        isOnDrawnCalled = true
     }
 
     private fun addView(
@@ -745,17 +746,17 @@ public class PostHogReplayIntegration(
 
         try {
             // reset the isOnDrawnCalled since we are about to take a screenshot
-            isOnDrawnCalled.set(false)
+            isOnDrawnCalled = false
             PixelCopy.request(window, bitmap, { copyResult ->
                 if (copyResult != PixelCopy.SUCCESS) {
                     bitmap.recycle()
                     config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                     success = false
                 } else {
-                    val maskableWidgets = mutableListOf<Rect>()
-                    findMaskableWidgets(view, maskableWidgets)
+                    if (!isOnDrawnCalled) {
+                        val maskableWidgets = mutableListOf<Rect>()
+                        findMaskableWidgets(view, maskableWidgets)
 
-                    if (!isOnDrawnCalled.get()) {
                         val canvas = Canvas(bitmap)
 
                         maskableWidgets.forEach {
@@ -771,7 +772,7 @@ public class PostHogReplayIntegration(
                     }
                 }
                 // reset the isOnDrawnCalled since we've taken the screenshot
-                isOnDrawnCalled.set(false)
+                isOnDrawnCalled = false
                 latch.countDown()
             }, handler)
         } catch (e: Throwable) {
@@ -792,7 +793,7 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
-            isOnDrawnCalled.set(false)
+            isOnDrawnCalled = false
             thread.quit()
             bitmap.recycle()
         }
