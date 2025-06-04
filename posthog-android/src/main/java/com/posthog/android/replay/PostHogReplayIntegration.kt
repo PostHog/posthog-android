@@ -127,7 +127,6 @@ public class PostHogReplayIntegration(
 
     private var postHog: PostHogInterface? = null
 
-//    private val isOnDrawnCalled = AtomicBoolean(false)
     @Volatile
     private var isOnDrawnCalled: Boolean = false
 
@@ -365,6 +364,7 @@ public class PostHogReplayIntegration(
             }
 
             isSessionReplayActive = false
+            isOnDrawnCalled = false
 
             // clear to help GC
             clearSnapshotStates()
@@ -638,9 +638,8 @@ public class PostHogReplayIntegration(
                         continue
                     }
 
-                    val result = findMaskableWidgets(viewChild, maskableWidgets)
-
-                    if (!result) {
+                    if (!findMaskableWidgets(viewChild, maskableWidgets)) {
+                        // do not continue if the screen has changed
                         return false
                     }
                 }
@@ -1371,6 +1370,7 @@ public class PostHogReplayIntegration(
 
     override fun stop() {
         isSessionReplayActive = false
+        isOnDrawnCalled = false
     }
 
     override fun isActive(): Boolean {
