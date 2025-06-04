@@ -89,6 +89,7 @@ import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -127,6 +128,12 @@ public class PostHogReplayIntegration(
 
     private var postHog: PostHogInterface? = null
 
+    private val isOnDrawnCalled = AtomicBoolean(false)
+
+    private fun onDrawCallback() {
+        isOnDrawnCalled.set(true)
+    }
+
     private fun addView(
         view: View,
         added: Boolean = true,
@@ -149,6 +156,7 @@ public class PostHogReplayIntegration(
                                         mainHandler,
                                         config.dateProvider,
                                         config.sessionReplayConfig.throttleDelayMs,
+                                        ::onDrawCallback,
                                     ) {
                                         if (!isActive() || !isNativeSdk) {
                                             return@onNextDraw
@@ -726,42 +734,63 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(displayMetrics.density)
         var base64: String? = null
 
-        val maskableWidgets = mutableListOf<Rect>()
-        findMaskableWidgets(this, maskableWidgets)
-
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         val latch = CountDownLatch(1)
+        var success = true
         val thread = HandlerThread("PostHogReplayScreenshot")
         thread.start()
 
         // unfortunately we cannot use the Looper.myLooper() because it will be null
         val handler = Handler(thread.looper)
 
-        try {
-            var success = true
-            PixelCopy.request(window, bitmap, { copyResult ->
-                if (copyResult != PixelCopy.SUCCESS) {
-                    success = false
-                    bitmap.recycle()
-                }
-                latch.countDown()
-            }, handler)
+        mainHandler.handler.post {
+            try {
+                // reset the isOnDrawnCalled since we are about to take a screenshot
+                isOnDrawnCalled.set(false)
+                PixelCopy.request(window, bitmap, { copyResult ->
+                    if (copyResult != PixelCopy.SUCCESS) {
+                        config.logger.log("Session Replay PixelCopy failed: $copyResult.")
+                        success = false
+                    } else {
+                        val maskableWidgets = mutableListOf<Rect>()
+                        findMaskableWidgets(view, maskableWidgets)
 
+                        if (!isOnDrawnCalled.get()) {
+                            val canvas = Canvas(bitmap)
+
+                            maskableWidgets.forEach {
+                                canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                            }
+                        } else {
+                            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+                            // if isOnDrawnCalled is true, it means that the view has already been drawn
+                            // again, so we don't need to draw the maskable widgets otherwise
+                            // they might be out of sync (leaking possible PII)
+                            success = false
+                        }
+                    }
+                    // reset the isOnDrawnCalled since we've taken the screenshot
+                    isOnDrawnCalled.set(false)
+                    latch.countDown()
+                }, handler)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay PixelCopy failed: $e.")
+                latch.countDown()
+                success = false
+            }
+        }
+
+        try {
             // await for 1s max
             latch.await(1000, TimeUnit.MILLISECONDS)
 
             if (success) {
-                val canvas = Canvas(bitmap)
-
-                maskableWidgets.forEach {
-                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
-                }
-
                 base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
-            config.logger.log("Session Replay PixelCopy failed: $e.")
+            config.logger.log("Session Replay PixelCopy request failed: $e.")
         } finally {
+            isOnDrawnCalled.set(false)
             thread.quit()
             bitmap.recycle()
         }
