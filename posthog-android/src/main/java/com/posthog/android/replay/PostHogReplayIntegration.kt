@@ -772,9 +772,8 @@ public class PostHogReplayIntegration(
                 } else {
                     if (!isOnDrawnCalled) {
                         val maskableWidgets = mutableListOf<Rect>()
-                        val result = findMaskableWidgets(view, maskableWidgets)
 
-                        if (result) {
+                        if (findMaskableWidgets(view, maskableWidgets)) {
                             val canvas = Canvas(bitmap)
 
                             maskableWidgets.forEach {
