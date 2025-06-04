@@ -788,7 +788,7 @@ public class PostHogReplayIntegration(
                 base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
-            config.logger.log("Session Replay PixelCopy request failed: $e.")
+            config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
             isOnDrawnCalled.set(false)
             thread.quit()
