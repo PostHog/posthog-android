@@ -743,41 +743,43 @@ public class PostHogReplayIntegration(
         // unfortunately we cannot use the Looper.myLooper() because it will be null
         val handler = Handler(thread.looper)
 
-        mainHandler.handler.post {
-            try {
-                // reset the isOnDrawnCalled since we are about to take a screenshot
-                isOnDrawnCalled.set(false)
-                PixelCopy.request(window, bitmap, { copyResult ->
-                    if (copyResult != PixelCopy.SUCCESS) {
-                        config.logger.log("Session Replay PixelCopy failed: $copyResult.")
-                        success = false
-                    } else {
-                        val maskableWidgets = mutableListOf<Rect>()
-                        findMaskableWidgets(view, maskableWidgets)
+        try {
+            // reset the isOnDrawnCalled since we are about to take a screenshot
+            isOnDrawnCalled.set(false)
+            PixelCopy.request(window, bitmap, { copyResult ->
+                if (copyResult != PixelCopy.SUCCESS) {
+                    bitmap.recycle()
+                    config.logger.log("Session Replay PixelCopy failed: $copyResult.")
+                    success = false
+                } else {
+                    val maskableWidgets = mutableListOf<Rect>()
+                    findMaskableWidgets(view, maskableWidgets)
 
-                        if (!isOnDrawnCalled.get()) {
-                            val canvas = Canvas(bitmap)
+                    if (!isOnDrawnCalled.get()) {
+                        val canvas = Canvas(bitmap)
 
-                            maskableWidgets.forEach {
-                                canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
-                            }
-                        } else {
-                            config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                            // if isOnDrawnCalled is true, it means that the view has already been drawn
-                            // again, so we don't need to draw the maskable widgets otherwise
-                            // they might be out of sync (leaking possible PII)
-                            success = false
+                        maskableWidgets.forEach {
+                            canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
                         }
+                    } else {
+                        bitmap.recycle()
+                        config.logger.log("Session Replay screenshot discarded due to screen changes.")
+                        // if isOnDrawnCalled is true, it means that the view has already been drawn
+                        // again, so we don't need to draw the maskable widgets otherwise
+                        // they might be out of sync (leaking possible PII)
+                        success = false
                     }
-                    // reset the isOnDrawnCalled since we've taken the screenshot
-                    isOnDrawnCalled.set(false)
-                    latch.countDown()
-                }, handler)
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay PixelCopy failed: $e.")
+                }
+                // reset the isOnDrawnCalled since we've taken the screenshot
+                isOnDrawnCalled.set(false)
                 latch.countDown()
-                success = false
-            }
+            }, handler)
+        } catch (e: Throwable) {
+            bitmap.recycle()
+            thread.quit()
+            success = false
+            config.logger.log("Session Replay PixelCopy failed: $e.")
+            latch.countDown()
         }
 
         try {
