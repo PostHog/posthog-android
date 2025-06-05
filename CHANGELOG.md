@@ -1,4 +1,11 @@
 ## Next
+## 3.18.0 - 2025-06-06
+
+- feat: add proxy to `PostHogConfig` ([#256](https://github.com/PostHog/posthog-android/issues/256))
+  ```kotlin
+    val config = PostHogAndroidConfig()
+    config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080)
+  ```
 
 - test: testing release automation after sonatype migration
 
