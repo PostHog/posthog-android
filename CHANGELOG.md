@@ -1,5 +1,9 @@
 ## Next
 
+## 3.17.0 - 2025-06-05
+
+- chore: do not capture screenshot during screen changes ([#254](https://github.com/PostHog/posthog-android/pull/254))
+
 ## 3.16.0 - 2025-05-27
 
 - chore: manual start and stop session replay ([#248](https://github.com/PostHog/posthog-android/pull/248))
