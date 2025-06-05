@@ -1,5 +1,13 @@
 ## Next
 
+## 3.18.0 - 2025-06-06
+
+- feat: add proxy to `PostHogConfig` ([#255](https://github.com/PostHog/posthog-android/issues/255))
+  ```kotlin
+    val config = PosthogBuildConfig()
+    config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080)
+  ```
+
 ## 3.17.0 - 2025-06-05
 
 - chore: do not capture screenshot during screen changes ([#254](https://github.com/PostHog/posthog-android/pull/254))
