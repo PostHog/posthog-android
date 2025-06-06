@@ -112,7 +112,7 @@ internal class PostHogApi(
         val flagsRequest = PostHogFlagsRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
         val request =
-            makeRequest("$theHost/flags/?v=2") {
+            makeRequest("$theHost/flags/?v=2&config=true") {
                 config.serializer.serialize(flagsRequest, it.bufferedWriter())
             }
 
