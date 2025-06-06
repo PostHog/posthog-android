@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 internal class PostHogRemoteConfigTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
-    private val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/flags-v1/basic-decide-no-errors.json")
     private val responseFlagsApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 

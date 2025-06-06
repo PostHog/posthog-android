@@ -35,7 +35,7 @@ internal class PostHogTest {
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
-    private val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/flags-v1/basic-decide-no-errors.json")
     private val responseFlagsApi = file.readText()
 
     fun getSut(
