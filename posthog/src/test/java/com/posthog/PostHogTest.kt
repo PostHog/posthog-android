@@ -35,7 +35,7 @@ internal class PostHogTest {
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
-    private val file = File("src/test/resources/json/flags-v1/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
     private val responseFlagsApi = file.readText()
 
     fun getSut(
@@ -316,7 +316,7 @@ internal class PostHogTest {
 
     @Test
     fun `getFeatureFlag captures feature flag event if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
         val http =
@@ -378,7 +378,7 @@ internal class PostHogTest {
 
     @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
         val http =
@@ -430,7 +430,7 @@ internal class PostHogTest {
 
     @Test
     fun `isFeatureEnabled captures feature flag variant response if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
         val http =
@@ -1231,7 +1231,7 @@ internal class PostHogTest {
 
     @Test
     fun `do not send feature flags called event twice`() {
-        val file = File("src/test/resources/json/basic-decide-no-errors.json")
+        val file = File("src/test/resources/json/basic-flags-no-errors.json")
         val responseFlagsApi = file.readText()
 
         val http =

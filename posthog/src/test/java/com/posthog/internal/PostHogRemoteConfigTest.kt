@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 internal class PostHogRemoteConfigTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
-    private val file = File("src/test/resources/json/flags-v1/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
     private val responseFlagsApi = file.readText()
     private val preferences = PostHogMemoryPreferences()
 
@@ -42,8 +42,8 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `returns session replay enabled after decide API call`() {
-        val file = File("src/test/resources/json/basic-decide-recording.json")
+    fun `returns session replay enabled after flags API call`() {
+        val file = File("src/test/resources/json/basic-flags-recording.json")
 
         val http =
             mockHttp(
@@ -88,7 +88,7 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns isSessionReplayFlagActive true if bool linked flag is enabled`() {
-        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-enabled.json")
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
 
         val http =
             mockHttp(
@@ -111,7 +111,7 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns isSessionReplayFlagActive false if bool linked flag is disabled`() {
-        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-disabled.json")
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-disabled.json")
 
         val http =
             mockHttp(
@@ -134,7 +134,7 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns isSessionReplayFlagActive true if multi variant linked flag is a match`() {
-        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-variant-match.json")
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-match.json")
 
         val http =
             mockHttp(
@@ -157,7 +157,7 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns isSessionReplayFlagActive false if multi variant linked flag is not a match`() {
-        val file = File("src/test/resources/json/basic-decide-recording-bool-linked-variant-not-match.json")
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-not-match.json")
 
         val http =
             mockHttp(

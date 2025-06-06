@@ -61,7 +61,7 @@ internal class PostHogApiTest {
 
     @Test
     fun `flags returns successful response - v3`() {
-        val file = File("src/test/resources/json/flags-v1/basic-decide-no-errors.json")
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
         val responseFlagsApi = file.readText()
 
         val http =
