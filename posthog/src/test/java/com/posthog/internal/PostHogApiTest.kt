@@ -60,8 +60,8 @@ internal class PostHogApiTest {
     }
 
     @Test
-    fun `decide returns successful response`() {
-        val file = File("src/test/resources/json/basic-decide-no-errors.json")
+    fun `decide returns successful response - v3`() {
+        val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
         val responseDecideApi = file.readText()
 
         val http =
@@ -81,7 +81,7 @@ internal class PostHogApiTest {
         assertNotNull(response)
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
         assertEquals("POST", request.method)
-        assertEquals("/decide/?v=3", request.path)
+        assertEquals("/decide/?v=4", request.path)
         assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])

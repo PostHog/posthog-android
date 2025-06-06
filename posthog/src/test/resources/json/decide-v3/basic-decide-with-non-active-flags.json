@@ -12,22 +12,13 @@
   "config": {
     "enable_collect_everything": true
   },
-  "flags": {
-    "4535-funnel-bar-viz": {
-      "key": "4535-funnel-bar-viz",
-      "enabled": true,
-      "variant": null,
-      "reason": {
-        "code": "condition_match",
-        "description": "Matched condition set 3",
-        "condition_index": 2
-      },
-      "metadata": {
-        "id": 4535,
-        "version": 2,
-        "payload": "true"
-      }
-    }
+  "featureFlagPayloads": {
+    "4535-funnel-bar-viz": "true"
+  },
+  "featureFlags": {
+    "4535-funnel-bar-viz": true,
+    "IAmInactive": false,
+    "splashScreenName": "SplashV2"
   },
   "sessionRecording": false,
   "siteApps": [
@@ -38,6 +29,5 @@
   ],
   "editorParams": {
 
-  },
-  "requestId": "171d83c3-4ac2-4bff-961d-efe3a0c3539c"
+  }
 }

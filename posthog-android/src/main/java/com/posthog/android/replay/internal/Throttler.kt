@@ -15,9 +15,9 @@ internal class Throttler(
     private val isThrottling = AtomicBoolean(false)
 
     /**
-     * Debounces the given [runnable] by delaying its execution until [delayNs] has passed since the last call.
+     * Throttles the given [runnable] by delaying its execution until [delayNs] has passed since the last call.
      */
-    internal fun debounce(runnable: Runnable) {
+    internal fun throttle(runnable: Runnable) {
         val currentTime = dateProvider.nanoTime()
 
         // Check if enough time has passed since the last execution

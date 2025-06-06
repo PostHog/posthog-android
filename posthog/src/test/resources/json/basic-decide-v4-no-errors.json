@@ -19,12 +19,27 @@
       "variant": null,
       "reason": {
         "code": "condition_match",
-        "description": "Matched condition set 3",
+        "description": "Matched conditions set 3",
         "condition_index": 2
       },
       "metadata": {
         "id": 4535,
         "version": 2,
+        "payload": null
+      }
+    },
+    "thePayload": {
+      "key": "thePayload",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched conditions set 1",
+        "condition_index": 0
+      },
+      "metadata": {
+        "id": 123,
+        "version": 1,
         "payload": "true"
       }
     }
@@ -38,6 +53,5 @@
   ],
   "editorParams": {
 
-  },
-  "requestId": "171d83c3-4ac2-4bff-961d-efe3a0c3539c"
+  }
 }

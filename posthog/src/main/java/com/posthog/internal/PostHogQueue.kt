@@ -108,8 +108,10 @@ internal class PostHogQueue(
     private fun isAboveThreshold(flushAt: Int): Boolean {
         if (deque.size >= flushAt) {
             return true
+        } else if (deque.size > 0) {
+            // only log if there are events in the queue
+            config.logger.log("Cannot flush the Queue yet, below the threshold: $flushAt")
         }
-        config.logger.log("Cannot flush the Queue yet, below the threshold: $flushAt")
         return false
     }
 

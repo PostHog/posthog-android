@@ -12,11 +12,22 @@
   "config": {
     "enable_collect_everything": true
   },
-  "featureFlagPayloads": {
-    "foo": true
-  },
-  "featureFlags": {
-    "foo": true
+  "flags": {
+    "foo": {
+      "key": "foo",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 3",
+        "condition_index": 2
+      },
+      "metadata": {
+        "id": 1,
+        "version": 2,
+        "payload": "true"
+      }
+    }
   },
   "sessionRecording": false,
   "siteApps": [

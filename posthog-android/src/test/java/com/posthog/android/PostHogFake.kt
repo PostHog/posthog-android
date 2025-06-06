@@ -124,6 +124,12 @@ public class PostHogFake : PostHogInterface {
         return false
     }
 
+    override fun startSessionReplay(resumeCurrent: Boolean) {
+    }
+
+    override fun stopSessionReplay() {
+    }
+
     override fun getSessionId(): UUID? {
         return null
     }

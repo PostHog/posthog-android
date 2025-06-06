@@ -3,9 +3,11 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
@@ -33,7 +35,7 @@ internal class PostHogTest {
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
-    private val file = File("src/test/resources/json/basic-decide-no-errors.json")
+    private val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
     private val responseDecideApi = file.readText()
 
     fun getSut(
@@ -168,7 +170,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/decide/?v=3", request.path)
+        assertEquals("/decide/?v=4", request.path)
 
         sut.close()
     }
@@ -236,7 +238,7 @@ internal class PostHogTest {
         assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
 
         val decideApiRequest = http.takeRequest()
-        assertEquals("/decide/?v=3", decideApiRequest.path)
+        assertEquals("/decide/?v=4", decideApiRequest.path)
 
         sut.close()
     }
@@ -357,6 +359,10 @@ internal class PostHogTest {
         assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
         assertEquals(false, theEvent.properties!!["\$feature/IAmInactive"])
         assertEquals("SplashV2", theEvent.properties!!["\$feature/splashScreenName"])
+        assertEquals("171d83c3-4ac2-4bff-961d-efe3a0c3539c", theEvent.properties!!["\$feature_flag_request_id"])
+        assertEquals(4535, theEvent.properties!!["\$feature_flag_id"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_version"])
+        assertEquals("Matched condition set 3", theEvent.properties!!["\$feature_flag_reason"])
 
         @Suppress("UNCHECKED_CAST")
         val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
@@ -423,6 +429,58 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `isFeatureEnabled captures feature flag variant response if enabled`() {
+        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
+        val responseDecideApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseDecideApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        assertTrue(sut.isFeatureEnabled("splashScreenName"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+
+        assertEquals("SplashV2", theEvent.properties!!["\$feature/splashScreenName"])
+
+        @Suppress("UNCHECKED_CAST")
+        val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
+        assertTrue(theFlags.contains("splashScreenName"))
+
+        assertEquals("splashScreenName", theEvent.properties!!["\$feature_flag"])
+        assertEquals("SplashV2", theEvent.properties!!["\$feature_flag_response"])
+
+        sut.close()
+    }
+
+    @Test
     fun `getFeatureFlagPayload returns the value after reloaded`() {
         val http =
             mockHttp(
@@ -438,7 +496,7 @@ internal class PostHogTest {
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlagPayload("thePayload") as Boolean)
+        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz") as Boolean)
 
         sut.close()
     }
@@ -1375,7 +1433,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/decide/?v=3", request.path)
+        assertEquals("/decide/?v=4", request.path)
 
         sut.close()
     }
@@ -1389,5 +1447,155 @@ internal class PostHogTest {
         assertTrue(config.logger is PostHogPrintLogger)
 
         sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString())
+
+        sut.close()
+
+        assertFalse(sut.isSessionReplayActive())
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if sessionReplayHandler returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(false))
+
+        assertFalse(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if PostHogSessionManager returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(true))
+
+        PostHogSessionManager.endSession()
+
+        assertFalse(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns true if session is running`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(true))
+
+        assertTrue(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `startSessionReplay does nothing if disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+        val sut = getSut(url.toString(), integration = integration)
+
+        sut.close()
+
+        sut.startSessionReplay()
+
+        assertFalse(integration.startCalled)
+    }
+
+    @Test
+    fun `startSessionReplay does nothing if isSessionReplayFlagEnabled returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, integration = integration)
+
+        sut.startSessionReplay()
+
+        assertFalse(integration.startCalled)
+    }
+
+    @Test
+    fun `startSessionReplay does nothing if sessionReplayHandler returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        sut.startSessionReplay()
+
+        assertFalse(integration.startCalled)
+    }
+
+    @Test
+    fun `startSessionReplay starts session with resumeCurrent`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        val currentSessionId = sut.getSessionId()
+
+        sut.startSessionReplay()
+
+        assertEquals(currentSessionId, sut.getSessionId())
+        assertTrue(integration.startCalled)
+        assertTrue(integration.resumeCurrent == true)
+    }
+
+    @Test
+    fun `startSessionReplay starts session with resumeCurrent false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        val currentSessionId = sut.getSessionId()
+
+        sut.startSessionReplay(resumeCurrent = false)
+
+        assertNotEquals(currentSessionId, sut.getSessionId())
+        assertTrue(integration.startCalled)
+        assertTrue(integration.resumeCurrent == false)
+    }
+
+    @Test
+    fun `stopSessionReplay stops session if active`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        sut.startSessionReplay()
+        sut.stopSessionReplay()
+
+        assertTrue(integration.stopCalled)
     }
 }
