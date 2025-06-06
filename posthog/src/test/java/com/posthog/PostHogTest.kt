@@ -3,9 +3,11 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
@@ -1445,5 +1447,155 @@ internal class PostHogTest {
         assertTrue(config.logger is PostHogPrintLogger)
 
         sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString())
+
+        sut.close()
+
+        assertFalse(sut.isSessionReplayActive())
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if sessionReplayHandler returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(false))
+
+        assertFalse(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns false if PostHogSessionManager returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(true))
+
+        PostHogSessionManager.endSession()
+
+        assertFalse(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `isSessionReplayActive returns true if session is running`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), integration = PostHogSessionReplayHandlerFake(true))
+
+        assertTrue(sut.isSessionReplayActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `startSessionReplay does nothing if disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+        val sut = getSut(url.toString(), integration = integration)
+
+        sut.close()
+
+        sut.startSessionReplay()
+
+        assertFalse(integration.startCalled)
+    }
+
+    @Test
+    fun `startSessionReplay does nothing if isSessionReplayFlagEnabled returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, integration = integration)
+
+        sut.startSessionReplay()
+
+        assertFalse(integration.startCalled)
+    }
+
+    @Test
+    fun `startSessionReplay does nothing if sessionReplayHandler returns false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        sut.startSessionReplay()
+
+        assertFalse(integration.startCalled)
+    }
+
+    @Test
+    fun `startSessionReplay starts session with resumeCurrent`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        val currentSessionId = sut.getSessionId()
+
+        sut.startSessionReplay()
+
+        assertEquals(currentSessionId, sut.getSessionId())
+        assertTrue(integration.startCalled)
+        assertTrue(integration.resumeCurrent == true)
+    }
+
+    @Test
+    fun `startSessionReplay starts session with resumeCurrent false`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        val currentSessionId = sut.getSessionId()
+
+        sut.startSessionReplay(resumeCurrent = false)
+
+        assertNotEquals(currentSessionId, sut.getSessionId())
+        assertTrue(integration.startCalled)
+        assertTrue(integration.resumeCurrent == false)
+    }
+
+    @Test
+    fun `stopSessionReplay stops session if active`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        val sessionReplayConfig = emptyMap<String, String>()
+        myPrefs.setValue(SESSION_REPLAY, sessionReplayConfig)
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        sut.startSessionReplay()
+        sut.stopSessionReplay()
+
+        assertTrue(integration.stopCalled)
     }
 }

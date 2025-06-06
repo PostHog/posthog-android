@@ -198,6 +198,23 @@ public interface PostHogInterface {
     public fun isSessionReplayActive(): Boolean
 
     /**
+     * Starts session replay.
+     * This method will be NoOp if session replay is disabled in your project settings
+     *
+     * Android only.
+     *
+     * @param resumeCurrent Whether to resume session replay of current session (true) or start a new session (false).
+     */
+    public fun startSessionReplay(resumeCurrent: Boolean = true)
+
+    /**
+     * Stops the current session replay if one is in progress.
+     *
+     * Android only.
+     */
+    public fun stopSessionReplay()
+
+    /**
      * Returns the session Id if a session is active
      */
     public fun getSessionId(): UUID?
