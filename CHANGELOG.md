@@ -1,5 +1,7 @@
 ## Next
 
+- use /flags instead of /decide ([#245](https://github.com/PostHog/posthog-android/pull/245))
+
 ## 3.17.0 - 2025-06-05
 
 - chore: do not capture screenshot during screen changes ([#254](https://github.com/PostHog/posthog-android/pull/254))
