@@ -18,7 +18,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-internal class PostHogFeatureFlagsV3Test {
+internal class PostHogFeatureFlagsV1Test {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
