@@ -30,7 +30,7 @@ internal class PostHogRemoteConfig(
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
-    // /flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
+    // Flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
     private var flags: Map<String, Any>? = null
     private var requestId: String? = null

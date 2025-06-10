@@ -119,7 +119,11 @@ internal class PostHogApi(
     ): PostHogFlagsResponse? {
         val flagsRequest = PostHogFlagsRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
 
-        val url = "$theHost/flags/?v=2&config=true"
+        val url = if (config.remoteConfig) {
+            "$theHost/flags/?v=2"
+        } else {
+            "$theHost/flags/?v=2&config=true"
+        }
         logRequest(flagsRequest, url)
 
         val request =
