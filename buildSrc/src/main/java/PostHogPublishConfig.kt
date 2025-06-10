@@ -123,10 +123,12 @@ fun NexusPublishExtension.postHogConfig() {
     repositories {
         sonatype {
             stagingProfileId.set("1dbefd58b2cdd")
-            val sonatypeUsername = System.getenv("OSSRH_USERNAME")
-            val sonatypePassword = System.getenv("OSSRH_PASSWORD")
+            // created using manoel at posthog.com
+            val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
+            val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
             if (sonatypeUsername != null) username.set(sonatypeUsername)
             if (sonatypePassword != null) password.set(sonatypePassword)
+            // https://central.sonatype.org/news/20250326_ossrh_sunset/
             nexusUrl.set(URI("https://ossrh-staging-api.central.sonatype.com/service/local/"))
             snapshotRepositoryUrl.set(URI("https://central.sonatype.com/repository/maven-snapshots/"))
         }
