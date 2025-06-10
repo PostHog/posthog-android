@@ -7,6 +7,7 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.kotlin.dsl.findByType
 import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.dokka.gradle.DokkaTask
+import java.net.URI
 
 object PostHogPublishConfig {
     val versionNameProperty = "versionName"
@@ -126,6 +127,8 @@ fun NexusPublishExtension.postHogConfig() {
             val sonatypePassword = System.getenv("OSSRH_PASSWORD")
             if (sonatypeUsername != null) username.set(sonatypeUsername)
             if (sonatypePassword != null) password.set(sonatypePassword)
+            nexusUrl.set(URI("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+            snapshotRepositoryUrl.set(URI("https://central.sonatype.com/repository/maven-snapshots/"))
         }
     }
 }
