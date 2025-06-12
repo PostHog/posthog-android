@@ -1,7 +1,7 @@
 ## Next
 
 - test: testing release automation after sonatype migration
-- feat: add proxy to `PostHogConfig` ([#256](https://github.com/PostHog/posthog-android/issues/256))
+- feat: add proxy to `PostHogConfig` ([#260](https://github.com/PostHog/posthog-android/issues/260))
     - Thanks @MamboBryan
   
 ```kotlin
