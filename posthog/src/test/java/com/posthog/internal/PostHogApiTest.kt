@@ -6,15 +6,20 @@ import com.posthog.PostHogConfig
 import com.posthog.generateEvent
 import com.posthog.mockHttp
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
 import java.io.File
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 internal class PostHogApiTest {
-    private fun getSut(host: String): PostHogApi {
+    private fun getSut(host: String, proxy: Proxy? = null): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
+        config.proxy = proxy
         return PostHogApi(config)
     }
 
@@ -144,5 +149,31 @@ internal class PostHogApiTest {
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)
         assertNotNull(exc.body)
+    }
+
+    @Test
+    fun `client uses configured proxy for requests`() {
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseApi = file.readText()
+
+        val hostname = "localhost"
+        val port = 6375
+        val proxyAddress = InetSocketAddress(hostname, port)
+        val proxy = Proxy(Proxy.Type.HTTP, proxyAddress)
+
+        val server = MockWebServer()
+        val inetAddress = InetAddress.getByName(hostname)
+        server.start(inetAddress, port)
+        server.enqueue(MockResponse().setBody(responseApi))
+
+        val url = server.url("/")
+        val sut = getSut(host = url.toString(), proxy = proxy)
+        val response = sut.remoteConfig()
+        val request = server.takeRequest()
+
+        assertNotNull(response)
+        assertEquals(port, request.requestUrl?.port)
+        assertEquals(hostname, request.requestUrl?.host)
+        server.shutdown()
     }
 }
