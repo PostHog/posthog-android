@@ -2,13 +2,10 @@ package com.posthog.android.sample
 
 import android.app.Application
 import android.os.StrictMode
-import com.posthog.PostHog
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.PostHogPropertiesSanitizer
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
-import java.net.InetSocketAddress
-import java.net.Proxy
 
 class MyApp : Application() {
     override fun onCreate() {
@@ -55,15 +52,5 @@ class MyApp : Application() {
             StrictMode.setThreadPolicy(threadPolicyBuilder.build())
             StrictMode.setVmPolicy(vmPolicyBuilder.build())
         }
-
-        // web
-        PostHog.identify("distinct_id_used_web")
-        PostHog.alias("distinct_id_used_mobile")
-
-        // mobile
-        PostHog.identify("distinct_id_used_mobile")
-
-        val config = PostHogAndroidConfig("...")
-        config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com", 8080))
     }
 }
