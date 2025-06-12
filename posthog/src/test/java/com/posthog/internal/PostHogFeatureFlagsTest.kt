@@ -373,7 +373,7 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(sut.getFeatureFlag("flag1", defaultValue = false) as Boolean)
 
         // Load initial flags
-        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
 
         executor.shutdownAndAwaitTermination()
 
@@ -395,7 +395,7 @@ internal class PostHogFeatureFlagsTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadRemoteConfig(" ", anonymousId = "anonId", emptyMap(), null)
+        sut.loadRemoteConfig(" ", anonymousId = "anonId", emptyMap())
 
         executor.shutdownAndAwaitTermination()
 

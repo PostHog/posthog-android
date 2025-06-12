@@ -192,7 +192,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap(), null)
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
 
         executor.shutdownAndAwaitTermination()
 

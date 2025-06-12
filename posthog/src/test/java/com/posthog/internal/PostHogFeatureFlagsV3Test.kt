@@ -356,7 +356,7 @@ internal class PostHogFeatureFlagsV3Test {
 
         val sut = getSut(host = url.toString())
 
-        sut.loadRemoteConfig(" ", anonymousId = "anonId", emptyMap(), null)
+        sut.loadRemoteConfig(" ", anonymousId = "anonId", emptyMap())
 
         executor.shutdownAndAwaitTermination()
 
