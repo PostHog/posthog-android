@@ -17,7 +17,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 internal class PostHogApiTest {
-    private fun getSut(host: String, proxy: Proxy? = null): PostHogApi {
+    private fun getSut(
+        host: String,
+        proxy: Proxy? = null,
+    ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
         return PostHogApi(config)
