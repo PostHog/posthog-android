@@ -238,7 +238,7 @@ internal class PostHogTest {
         assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
 
         val flagsApiRequest = http.takeRequest()
-        assertEquals("/flags/?v=2", flagsApiRequest.path)
+        assertEquals("/flags/?v=2&config=true", flagsApiRequest.path)
 
         sut.close()
     }
