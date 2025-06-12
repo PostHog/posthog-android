@@ -1,5 +1,7 @@
 ## Next
 
+- fix: start session replay after remote config and feature flags are executed during first app start ([#261](https://github.com/PostHog/posthog-android/pull/261))
+
 ## 3.18.0 - 2025-06-12
 
 - feat: add proxy to `PostHogConfig` ([#260](https://github.com/PostHog/posthog-android/issues/260))
