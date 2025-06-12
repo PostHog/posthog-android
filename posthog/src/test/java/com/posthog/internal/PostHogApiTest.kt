@@ -3,24 +3,25 @@ package com.posthog.internal
 import com.posthog.API_KEY
 import com.posthog.BuildConfig
 import com.posthog.PostHogConfig
-import com.posthog.PostHogEvent
 import com.posthog.generateEvent
 import com.posthog.mockHttp
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
 import java.io.File
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.net.ProxySelector
-import javax.net.ssl.SSLException
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 internal class PostHogApiTest {
-    private fun getSut(host: String, proxy: Proxy? = null): PostHogApi {
+    private fun getSut(
+        host: String,
+        proxy: Proxy? = null,
+    ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
         return PostHogApi(config)
@@ -143,28 +144,25 @@ internal class PostHogApiTest {
         val file = File("src/test/resources/json/basic-remote-config.json")
         val responseApi = file.readText()
 
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(responseApi),
-            )
-
         val hostname = "localhost"
-        val port = 8080
+        val port = 6375
         val proxyAddress = InetSocketAddress(hostname, port)
         val proxy = Proxy(Proxy.Type.HTTP, proxyAddress)
 
-        val url = http.url("/")
+        val server = MockWebServer()
+        val inetAddress = InetAddress.getByName(hostname)
+        server.start(inetAddress, port)
+        server.enqueue(MockResponse().setBody(responseApi))
 
-        val sut = getSut(host = url.toString(), proxy)
-        val exception = try {
-            sut.remoteConfig()
-            null
-        } catch (e: Exception) {
-            e
-        }
-        assertNotNull(exception)
+        val url = server.url("/")
+        val sut = getSut(host = url.toString(), proxy = proxy)
+        val response = sut.remoteConfig()
+        val request = server.takeRequest(1, TimeUnit.SECONDS)
+
+        assertNotNull(response)
+        assertEquals(port, request?.requestUrl?.port)
+        assertEquals(hostname, request?.requestUrl?.host)
+        server.shutdown()
     }
 
     @Test
@@ -182,5 +180,4 @@ internal class PostHogApiTest {
         assertEquals("Client Error", exc.message)
         assertNotNull(exc.body)
     }
-
 }
