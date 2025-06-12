@@ -1,5 +1,7 @@
 ## Next
 
+- use /flags instead of /decide ([#245](https://github.com/PostHog/posthog-android/pull/245))
+
 ## 3.18.0 - 2025-06-12
 
 - feat: add proxy to `PostHogConfig` ([#260](https://github.com/PostHog/posthog-android/issues/260))

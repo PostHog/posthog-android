@@ -68,35 +68,35 @@ internal class PostHogApiTest {
     }
 
     @Test
-    fun `decide returns successful response - v3`() {
-        val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
-        val responseDecideApi = file.readText()
+    fun `flags returns successful response - v3`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
 
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        val response = sut.decide("distinctId", anonymousId = "anonId", emptyMap())
+        val response = sut.flags("distinctId", anonymousId = "anonId", emptyMap())
 
         val request = http.takeRequest()
 
         assertNotNull(response)
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
         assertEquals("POST", request.method)
-        assertEquals("/decide/?v=4", request.path)
+        assertEquals("/flags/?v=2&config=true", request.path)
         assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
     }
 
     @Test
-    fun `decide throws if not successful`() {
+    fun `flags throws if not successful`() {
         val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
         val url = http.url("/")
 
@@ -104,7 +104,7 @@ internal class PostHogApiTest {
 
         val exc =
             assertThrows(PostHogApiError::class.java) {
-                sut.decide("distinctId", anonymousId = "anonId", emptyMap())
+                sut.flags("distinctId", anonymousId = "anonId", emptyMap())
             }
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)

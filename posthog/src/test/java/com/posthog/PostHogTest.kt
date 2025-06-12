@@ -35,8 +35,8 @@ internal class PostHogTest {
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
-    private val file = File("src/test/resources/json/decide-v3/basic-decide-no-errors.json")
-    private val responseDecideApi = file.readText()
+    private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+    private val responseFlagsApi = file.readText()
 
     fun getSut(
         host: String,
@@ -170,7 +170,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/decide/?v=4", request.path)
+        assertEquals("/flags/?v=2&config=true", request.path)
 
         sut.close()
     }
@@ -224,7 +224,7 @@ internal class PostHogTest {
             )
         http.enqueue(
             MockResponse()
-                .setBody(responseDecideApi),
+                .setBody(responseFlagsApi),
         )
         val url = http.url("/")
 
@@ -237,8 +237,8 @@ internal class PostHogTest {
         assertEquals(2, http.requestCount)
         assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
 
-        val decideApiRequest = http.takeRequest()
-        assertEquals("/decide/?v=4", decideApiRequest.path)
+        val flagsApiRequest = http.takeRequest()
+        assertEquals("/flags/?v=2&config=true", flagsApiRequest.path)
 
         sut.close()
     }
@@ -256,7 +256,7 @@ internal class PostHogTest {
             )
         http.enqueue(
             MockResponse()
-                .setBody(responseDecideApi),
+                .setBody(responseFlagsApi),
         )
         val url = http.url("/")
 
@@ -278,7 +278,7 @@ internal class PostHogTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -299,7 +299,7 @@ internal class PostHogTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -316,14 +316,14 @@ internal class PostHogTest {
 
     @Test
     fun `getFeatureFlag captures feature flag event if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
-        val responseDecideApi = file.readText()
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
 
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
@@ -378,14 +378,14 @@ internal class PostHogTest {
 
     @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
-        val responseDecideApi = file.readText()
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
 
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
@@ -430,14 +430,14 @@ internal class PostHogTest {
 
     @Test
     fun `isFeatureEnabled captures feature flag variant response if enabled`() {
-        val file = File("src/test/resources/json/basic-decide-with-non-active-flags.json")
-        val responseDecideApi = file.readText()
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
 
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
@@ -486,7 +486,7 @@ internal class PostHogTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         val url = http.url("/")
 
@@ -1231,14 +1231,14 @@ internal class PostHogTest {
 
     @Test
     fun `do not send feature flags called event twice`() {
-        val file = File("src/test/resources/json/basic-decide-no-errors.json")
-        val responseDecideApi = file.readText()
+        val file = File("src/test/resources/json/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
 
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseDecideApi),
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
@@ -1433,7 +1433,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/decide/?v=4", request.path)
+        assertEquals("/flags/?v=2&config=true", request.path)
 
         sut.close()
     }
