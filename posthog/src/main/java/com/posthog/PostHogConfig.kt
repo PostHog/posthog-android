@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogSerializer
+import java.net.Proxy
 import java.util.UUID
 
 /**
@@ -138,6 +139,22 @@ public open class PostHogConfig(
      * - `IDENTIFIED_ONLY` (default): we will only process persons when you call `identify`, `alias`, and `group`, Anonymous users won't get person profiles.
      */
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
+    /**
+     * Configures an optional HTTP proxy for the PostHog API client.
+     *
+     * When set, all requests made will be routed through the specified proxy server.
+     *
+     * Example:
+     * ```
+     * val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080))
+     * ```
+     * - `type`: Type representing the proxy type
+     * - `hostname`: The hostname or IP address of the proxy server.
+     * - `port`: The port number on which the proxy server is listening.
+     *
+     * Default: `null` (no proxy).
+     */
+    public var proxy: Proxy? = null,
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

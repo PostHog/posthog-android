@@ -1,6 +1,13 @@
 ## Next
 
 - test: testing release automation after sonatype migration
+- feat: add proxy to `PostHogConfig` ([#260](https://github.com/PostHog/posthog-android/issues/260))
+    - Thanks @MamboBryan
+  
+```kotlin
+val config = PostHogAndroidConfig("...")
+config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080))
+```
 
 ## 3.17.0 - 2025-06-05
 
