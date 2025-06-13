@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
+import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
@@ -63,6 +64,7 @@ internal class PostHogRemoteConfigTest {
         assertEquals("/b/", config?.snapshotEndpoint)
 
         sut.clear()
+        http.shutdown()
 
         assertFalse(sut.isSessionReplayFlagActive())
     }
@@ -84,6 +86,9 @@ internal class PostHogRemoteConfigTest {
 
         assertTrue(sut.isSessionReplayFlagActive())
         assertEquals("/b/", config?.snapshotEndpoint)
+
+        sut.clear()
+        http.shutdown()
     }
 
     @Test
@@ -107,6 +112,7 @@ internal class PostHogRemoteConfigTest {
         assertTrue(sut.isSessionReplayFlagActive())
 
         sut.clear()
+        http.shutdown()
     }
 
     @Test
@@ -130,6 +136,7 @@ internal class PostHogRemoteConfigTest {
         assertFalse(sut.isSessionReplayFlagActive())
 
         sut.clear()
+        http.shutdown()
     }
 
     @Test
@@ -153,6 +160,7 @@ internal class PostHogRemoteConfigTest {
         assertTrue(sut.isSessionReplayFlagActive())
 
         sut.clear()
+        http.shutdown()
     }
 
     @Test
@@ -176,6 +184,7 @@ internal class PostHogRemoteConfigTest {
         assertFalse(sut.isSessionReplayFlagActive())
 
         sut.clear()
+        http.shutdown()
     }
 
     @Test
@@ -201,7 +210,60 @@ internal class PostHogRemoteConfigTest {
         assertEquals(1, http.requestCount)
 
         sut.clear()
+        http.shutdown()
 
         assertFalse(sut.isSessionReplayFlagActive())
+    }
+
+    private fun testFlagsCallback(pathname: String) {
+        val file = File(pathname)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+        var called = false
+        var calledInternal = false
+
+        val onFeatureFlags: PostHogOnFeatureFlags =
+            PostHogOnFeatureFlags {
+                called = true
+            }
+
+        val internalOnFeatureFlags: PostHogOnFeatureFlags =
+            PostHogOnFeatureFlags {
+                calledInternal = true
+            }
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadRemoteConfig(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            internalOnFeatureFlags = internalOnFeatureFlags,
+            onFeatureFlags = onFeatureFlags,
+        )
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(called)
+        assertTrue(calledInternal)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `on feature flag callbacks are called after remote config API call`() {
+        testFlagsCallback("src/test/resources/json/basic-remote-config-no-flags.json")
+    }
+
+    @Test
+    fun `on feature flag callbacks are called after flag API call`() {
+        testFlagsCallback("src/test/resources/json/basic-remote-config.json")
     }
 }
