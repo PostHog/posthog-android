@@ -1,6 +1,6 @@
 ## Next
 
-- fix: make a defensive MotionEvent copy to avoid native crashes ([#245](https://github.com/PostHog/posthog-android/pull/245)) 
+- fix: make a defensive MotionEvent copy to avoid native crashes ([#262](https://github.com/PostHog/posthog-android/pull/262)) 
 - use /flags instead of /decide ([#245](https://github.com/PostHog/posthog-android/pull/245))
 
 ## 3.18.0 - 2025-06-12
