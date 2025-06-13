@@ -44,7 +44,8 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
 
         return if (body == null ||
             originalRequest.header("Content-Encoding") != null ||
-            body is MultipartBody
+            body is MultipartBody ||
+            originalRequest.url.pathSegments.any { it == "flags" } // Don't gzip batch requests
         ) {
             chain.proceed(originalRequest)
         } else {
@@ -52,7 +53,7 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
                 try {
                     originalRequest.newBuilder()
                         .header("Content-Encoding", "gzip")
-//                        .method(originalRequest.method, forceContentLength(gzip(body)))
+                        .method(originalRequest.method, forceContentLength(gzip(body)))
                         .build()
                 } catch (e: Throwable) {
                     config.logger.log("Failed to gzip the request body: $e.")
