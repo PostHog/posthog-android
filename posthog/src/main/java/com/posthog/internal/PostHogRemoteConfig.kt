@@ -81,7 +81,7 @@ internal class PostHogRemoteConfig(
                 recordingActive = value == variant
             } else {
                 // disable recording if the flag does not exist/quota limited
-                // recordingActive = false
+                recordingActive = false
             }
         }
         // check for multi flag variant (any)
