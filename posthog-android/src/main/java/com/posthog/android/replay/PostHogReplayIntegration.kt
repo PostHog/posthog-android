@@ -238,23 +238,32 @@ public class PostHogReplayIntegration(
 
             try {
                 val state = dispatch(motionEvent)
+                try {
+                    // 1. prevent MotionEvent Object Is Recycled or Invalid
+                    // 2. pointerCount Changed Between Checks and Access (since we call on a background thread)
+                    val safeMotionEvent = MotionEvent.obtain(motionEvent)
 
-                executor.submit {
-                    try {
-                        if (!isActive()) {
-                            return@submit
-                        }
-                        when (motionEvent.action.and(MotionEvent.ACTION_MASK)) {
-                            MotionEvent.ACTION_DOWN -> {
-                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchStart)
+                    executor.submit {
+                        try {
+                            if (!isActive()) {
+                                return@submit
                             }
-                            MotionEvent.ACTION_UP -> {
-                                generateMouseInteractions(timestamp, motionEvent, RRMouseInteraction.TouchEnd)
+                            when (safeMotionEvent.action.and(MotionEvent.ACTION_MASK)) {
+                                MotionEvent.ACTION_DOWN -> {
+                                    generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchStart)
+                                }
+                                MotionEvent.ACTION_UP -> {
+                                    generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchEnd)
+                                }
                             }
+                        } catch (e: Throwable) {
+                            config.logger.log("Executor#OnTouchEventListener $safeMotionEvent failed: $e.")
+                        } finally {
+                            safeMotionEvent.recycle()
                         }
-                    } catch (e: Throwable) {
-                        config.logger.log("Executor#OnTouchEventListener $motionEvent failed: $e.")
                     }
+                } catch (e: Throwable) {
+                    // does nothing
                 }
                 state
             } catch (e: Throwable) {
