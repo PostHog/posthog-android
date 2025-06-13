@@ -618,7 +618,7 @@ public class PostHog private constructor(
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
-                reloadFeatureFlags()
+                reloadFeatureFlags(config?.onFeatureFlags)
             }
             // we need to make sure the user props update is for the same user
             // otherwise they have to reset and identify again
@@ -706,7 +706,7 @@ public class PostHog private constructor(
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
-            loadFeatureFlagsRequest()
+            loadFeatureFlagsRequest(internalOnFeatureFlags = internalOnFeatureFlagsLoaded, onFeatureFlags = config?.onFeatureFlags)
         }
     }
 
@@ -714,7 +714,7 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return
         }
-        loadFeatureFlagsRequest(onFeatureFlags = onFeatureFlags)
+        loadFeatureFlagsRequest(internalOnFeatureFlags = internalOnFeatureFlagsLoaded, onFeatureFlags = onFeatureFlags)
     }
 
     private fun loadFeatureFlagsRequest(
@@ -875,7 +875,7 @@ public class PostHog private constructor(
         // reload flags as anon user
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags) {
-            reloadFeatureFlags()
+            reloadFeatureFlags(config?.onFeatureFlags)
         }
     }
 
