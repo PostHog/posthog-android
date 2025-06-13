@@ -353,7 +353,6 @@ public class PostHog private constructor(
             }
 
             props["\$is_identified"] = isIdentified
-
             props["\$process_person_profile"] = hasPersonProcessing()
         }
 
@@ -607,7 +606,7 @@ public class PostHog private constructor(
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
-                reloadFeatureFlags()
+                reloadFeatureFlags(config?.onFeatureFlags)
             }
             // we need to make sure the user props update is for the same user
             // otherwise they have to reset and identify again
@@ -857,7 +856,7 @@ public class PostHog private constructor(
         // reload flags as anon user
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags) {
-            reloadFeatureFlags()
+            reloadFeatureFlags(config?.onFeatureFlags)
         }
     }
 
