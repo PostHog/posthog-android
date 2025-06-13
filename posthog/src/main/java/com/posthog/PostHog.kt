@@ -595,7 +595,7 @@ public class PostHog private constructor(
             )
 
             if (config?.reuseAnonymousId != true) {
-                // We keep the AnonymousId to be used by decide calls and identify to link the previousId
+                // We keep the AnonymousId to be used by flags calls and identify to link the previousId
                 if (previousDistinctId.isNotBlank()) {
                     this.anonymousId = previousDistinctId
                 } else {

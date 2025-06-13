@@ -1,9 +1,9 @@
 package com.posthog.internal
 
 /**
- * The decide data structure for calling the decide API
+ * The data structure for calling the flags API
  */
-internal class PostHogDecideRequest(
+internal class PostHogFlagsRequest(
     apiKey: String,
     distinctId: String,
     anonymousId: String?,
