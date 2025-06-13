@@ -97,7 +97,8 @@ internal class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
+        onFeatureFlags: PostHogOnFeatureFlags? = null,
     ) {
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
@@ -124,7 +125,14 @@ internal class PostHogRemoteConfig(
                                 if (distinctId.isNotBlank()) {
                                     // do not process session replay from flags API
                                     // since its already cached via the remote config API
-                                    executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, calledFromRemoteConfig = true)
+                                    executeFeatureFlags(
+                                        distinctId,
+                                        anonymousId,
+                                        groups,
+                                        internalOnFeatureFlags = internalOnFeatureFlags,
+                                        onFeatureFlags = onFeatureFlags,
+                                        calledFromRemoteConfig = true,
+                                    )
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
                                 }
@@ -141,6 +149,7 @@ internal class PostHogRemoteConfig(
                             // if we don't load the feature flags (because there are none), we need to call the callback
                             // because the app might be waiting for it.
                             try {
+                                internalOnFeatureFlags?.loaded()
                                 onFeatureFlags?.loaded()
                             } catch (e: Throwable) {
                                 config.logger.log("Executing the feature flags callback failed: $e")
@@ -202,6 +211,7 @@ internal class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
+        internalOnFeatureFlags: PostHogOnFeatureFlags?,
         onFeatureFlags: PostHogOnFeatureFlags?,
         calledFromRemoteConfig: Boolean,
     ) {
@@ -273,6 +283,7 @@ internal class PostHogRemoteConfig(
             config.logger.log("Loading feature flags failed: $e")
         } finally {
             try {
+                internalOnFeatureFlags?.loaded()
                 onFeatureFlags?.loaded()
             } catch (e: Throwable) {
                 config.logger.log("Executing the feature flags callback failed: $e")
@@ -286,10 +297,18 @@ internal class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
+        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
         onFeatureFlags: PostHogOnFeatureFlags? = null,
     ) {
         executor.executeSafely {
-            executeFeatureFlags(distinctId, anonymousId, groups, onFeatureFlags, false)
+            executeFeatureFlags(
+                distinctId,
+                anonymousId,
+                groups,
+                internalOnFeatureFlags = internalOnFeatureFlags,
+                onFeatureFlags = onFeatureFlags,
+                false,
+            )
         }
     }
 

@@ -1,6 +1,7 @@
 ## Next
 
-- fix: make a defensive MotionEvent copy to avoid native crashes ([#262](https://github.com/PostHog/posthog-android/pull/262)) 
+- fix: start session replay after remote config and feature flags are executed during first app start ([#261](https://github.com/PostHog/posthog-android/pull/261))
+- fix: make a defensive MotionEvent copy to avoid native crashes ([#262](https://github.com/PostHog/posthog-android/pull/262))
 - use /flags instead of /decide ([#245](https://github.com/PostHog/posthog-android/pull/245))
 
 ## 3.18.0 - 2025-06-12

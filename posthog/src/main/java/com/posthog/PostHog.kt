@@ -71,6 +71,17 @@ public class PostHog private constructor(
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
 
+    // this is called if the feature flags are loaded for the first time and recording isn't started yet
+    private val internalOnFeatureFlagsLoaded =
+        PostHogOnFeatureFlags {
+            sessionReplayHandler?.let {
+                if (isSessionReplayConfigEnabled()) {
+                    // start will bail if session replay is already active anyway
+                    startSessionReplay(resumeCurrent = true)
+                }
+            }
+        }
+
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
             try {
@@ -146,8 +157,8 @@ public class PostHog private constructor(
                 // only because of testing in isolation, this flag is always enabled
                 if (reloadFeatureFlags) {
                     when {
-                        config.remoteConfig -> loadRemoteConfigRequest(config.onFeatureFlags)
-                        config.preloadFeatureFlags -> loadFeatureFlagsRequest(config.onFeatureFlags)
+                        config.remoteConfig -> loadRemoteConfigRequest(internalOnFeatureFlagsLoaded, config.onFeatureFlags)
+                        config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
                     }
                 }
             } catch (e: Throwable) {
@@ -607,7 +618,7 @@ public class PostHog private constructor(
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
-                reloadFeatureFlags()
+                reloadFeatureFlags(config?.onFeatureFlags)
             }
             // we need to make sure the user props update is for the same user
             // otherwise they have to reset and identify again
@@ -695,7 +706,7 @@ public class PostHog private constructor(
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
-            loadFeatureFlagsRequest(null)
+            reloadFeatureFlags(config?.onFeatureFlags)
         }
     }
 
@@ -703,10 +714,13 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return
         }
-        loadFeatureFlagsRequest(onFeatureFlags)
+        loadFeatureFlagsRequest(internalOnFeatureFlags = internalOnFeatureFlagsLoaded, onFeatureFlags = onFeatureFlags)
     }
 
-    private fun loadFeatureFlagsRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
+    private fun loadFeatureFlagsRequest(
+        internalOnFeatureFlags: PostHogOnFeatureFlags,
+        onFeatureFlags: PostHogOnFeatureFlags? = null,
+    ) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
 
@@ -726,11 +740,15 @@ public class PostHog private constructor(
             distinctId,
             anonymousId = anonymousId,
             groups,
+            internalOnFeatureFlags = internalOnFeatureFlags,
             onFeatureFlags = onFeatureFlags,
         )
     }
 
-    private fun loadRemoteConfigRequest(onFeatureFlags: PostHogOnFeatureFlags?) {
+    private fun loadRemoteConfigRequest(
+        internalOnFeatureFlags: PostHogOnFeatureFlags?,
+        onFeatureFlags: PostHogOnFeatureFlags?,
+    ) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
 
@@ -741,7 +759,7 @@ public class PostHog private constructor(
             anonymousId = this.anonymousId
         }
 
-        remoteConfig?.loadRemoteConfig(distinctId, anonymousId = anonymousId, groups, onFeatureFlags)
+        remoteConfig?.loadRemoteConfig(distinctId, anonymousId = anonymousId, groups, internalOnFeatureFlags, onFeatureFlags)
     }
 
     public override fun isFeatureEnabled(
@@ -857,7 +875,7 @@ public class PostHog private constructor(
         // reload flags as anon user
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags) {
-            reloadFeatureFlags()
+            reloadFeatureFlags(config?.onFeatureFlags)
         }
     }
 
@@ -951,7 +969,9 @@ public class PostHog private constructor(
         }
 
         if (!isSessionReplayFlagEnabled()) {
-            config?.logger?.log("Could not start recording. Session replay feature flag is disabled.")
+            config?.logger?.log(
+                "Could not start recording. Session replay is disabled, or remote config and feature flags are still being executed.",
+            )
             return
         }
 
