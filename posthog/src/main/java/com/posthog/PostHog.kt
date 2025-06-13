@@ -158,7 +158,7 @@ public class PostHog private constructor(
                 if (reloadFeatureFlags) {
                     when {
                         config.remoteConfig -> loadRemoteConfigRequest(internalOnFeatureFlagsLoaded, config.onFeatureFlags)
-                        config.preloadFeatureFlags -> loadFeatureFlagsRequest(internalOnFeatureFlagsLoaded, config.onFeatureFlags)
+                        config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
                     }
                 }
             } catch (e: Throwable) {
@@ -706,7 +706,7 @@ public class PostHog private constructor(
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
-            loadFeatureFlagsRequest(internalOnFeatureFlags = internalOnFeatureFlagsLoaded, onFeatureFlags = config?.onFeatureFlags)
+            reloadFeatureFlags(config?.onFeatureFlags)
         }
     }
 
@@ -718,7 +718,7 @@ public class PostHog private constructor(
     }
 
     private fun loadFeatureFlagsRequest(
-        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: PostHogOnFeatureFlags,
         onFeatureFlags: PostHogOnFeatureFlags? = null,
     ) {
         @Suppress("UNCHECKED_CAST")
