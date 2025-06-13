@@ -48,18 +48,18 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
         ) {
             chain.proceed(originalRequest)
         } else {
-            val compressedRequest =
-                try {
-                    originalRequest.newBuilder()
-                        .header("Content-Encoding", "gzip")
-                        .method(originalRequest.method, forceContentLength(gzip(body)))
-                        .build()
-                } catch (e: Throwable) {
-                    config.logger.log("Failed to gzip the request body: $e.")
-
-                    originalRequest
-                }
-            chain.proceed(compressedRequest)
+//            val compressedRequest =
+//                try {
+//                    originalRequest.newBuilder()
+//                        .header("Content-Encoding", "gzip")
+//                        .method(originalRequest.method, forceContentLength(gzip(body)))
+//                        .build()
+//                } catch (e: Throwable) {
+//                    config.logger.log("Failed to gzip the request body: $e.")
+//
+//                    originalRequest
+//                }
+            chain.proceed(originalRequest)
         }
     }
 
