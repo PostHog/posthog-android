@@ -44,7 +44,8 @@ internal class GzipRequestInterceptor(private val config: PostHogConfig) : Inter
 
         return if (body == null ||
             originalRequest.header("Content-Encoding") != null ||
-            body is MultipartBody
+            body is MultipartBody ||
+            originalRequest.url.pathSegments.any { it == "flags" } // Don't gzip flags requests
         ) {
             chain.proceed(originalRequest)
         } else {
