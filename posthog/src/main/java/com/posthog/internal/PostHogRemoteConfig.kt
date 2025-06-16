@@ -131,7 +131,6 @@ internal class PostHogRemoteConfig(
                                         groups,
                                         internalOnFeatureFlags = internalOnFeatureFlags,
                                         onFeatureFlags = onFeatureFlags,
-                                        calledFromRemoteConfig = true,
                                     )
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
@@ -213,7 +212,6 @@ internal class PostHogRemoteConfig(
         groups: Map<String, String>?,
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
         onFeatureFlags: PostHogOnFeatureFlags?,
-        calledFromRemoteConfig: Boolean,
     ) {
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Network isn't connected.")
@@ -259,11 +257,8 @@ internal class PostHogRemoteConfig(
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
-                    // only process and cache session replay config from flags API
-                    // if not yet done by the remote config API
-                    if (!calledFromRemoteConfig) {
-                        processSessionRecordingConfig(it.sessionRecording)
-                    }
+                    // since flags might have changed, we need to check if session recording is active again
+                    processSessionRecordingConfig(it.sessionRecording)
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -307,7 +302,6 @@ internal class PostHogRemoteConfig(
                 groups,
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
-                false,
             )
         }
     }
