@@ -1,5 +1,9 @@
 ## Next
 
+## 3.19.1 - 2025-06-16
+
+- test: release using new sonatype server
+
 ## 3.19.0 - 2025-06-16
 
 - fix: start session replay after remote config and feature flags are executed during first app start ([#261](https://github.com/PostHog/posthog-android/pull/261))
