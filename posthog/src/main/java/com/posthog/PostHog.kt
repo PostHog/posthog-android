@@ -449,49 +449,56 @@ public class PostHog private constructor(
                 return
             }
 
-            var snapshotEvent = false
-            if (event == "\$snapshot") {
-                snapshotEvent = true
-            }
-
+            var isSnapshotEvent = event == "\$snapshot"
             var groupIdentify = false
             if (event == GROUP_IDENTIFY) {
                 groupIdentify = true
             }
 
-            val mergedProperties =
-                buildProperties(
-                    newDistinctId,
-                    properties = properties,
-                    userProperties = userProperties,
-                    userPropertiesSetOnce = userPropertiesSetOnce,
-                    groups = groups,
-                    // only append shared props if not a snapshot event
-                    appendSharedProps = !snapshotEvent,
-                    // only append groups if not a group identify event and not a snapshot
-                    appendGroups = !groupIdentify,
-                )
+            val mergedProperties = buildProperties(
+                newDistinctId,
+                properties = properties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groups = groups,
+                // only append shared props if not a snapshot event
+                appendSharedProps = !isSnapshotEvent,
+                // only append groups if not a group identify event and not a snapshot
+                appendGroups = !groupIdentify,
+            )
 
-            // sanitize the properties or fallback to the original properties
-            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
-
-            val postHogEvent =
-                PostHogEvent(
-                    event,
-                    newDistinctId,
-                    properties = sanitizedProperties,
-                )
-
-            // Replay has its own queue
-            if (snapshotEvent) {
-                replayQueue?.add(postHogEvent)
+            val postHogEvent = buildEvent(event, newDistinctId, mergedProperties)
+            if(postHogEvent == null){
+                config?.logger?.log("Event dropped: $event")
                 return
             }
-
-            queue?.add(postHogEvent)
+            // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
+            isSnapshotEvent = postHogEvent.event == "\$snapshot"
+            // if this is a $snapshot event and $session_id is missing, don't process then event
+            if(isSnapshotEvent && properties?.getOrDefault("\$session_id", null) == null){
+                config?.logger?.log("Event dropped, because snapshot and session_id are missing")
+                return
+            }
+            // Replay has its own queue
+            if (isSnapshotEvent) {
+                replayQueue?.add(postHogEvent)
+            }else{
+                queue?.add(postHogEvent)
+            }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
+    }
+
+    private fun buildEvent(event:String, distinctId:String, properties: Map<String, Any>):PostHogEvent?{
+        // sanitize the properties or fallback to the original properties
+        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
+        val postHogEvent = PostHogEvent(
+            event,
+            distinctId,
+            properties = sanitizedProperties,
+        )
+        return config?.beforeSendBlock?.invoke(postHogEvent)
     }
 
     public override fun optIn() {

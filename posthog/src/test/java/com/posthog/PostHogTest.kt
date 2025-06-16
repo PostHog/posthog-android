@@ -51,6 +51,7 @@ internal class PostHogTest {
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+        beforeSendBlock: (PostHogEvent) -> PostHogEvent? = { it }
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -67,6 +68,7 @@ internal class PostHogTest {
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
                 this.remoteConfig = remoteConfig
+                this.beforeSendBlock = beforeSendBlock
             }
         return PostHog.withInternal(
             config,
