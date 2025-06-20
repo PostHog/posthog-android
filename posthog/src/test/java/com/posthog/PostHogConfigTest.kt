@@ -4,6 +4,7 @@ import com.posthog.internal.PostHogNoOpLogger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -23,6 +24,11 @@ internal class PostHogConfigTest {
     @Test
     fun `optOut is disabled by default`() {
         assertFalse(config.optOut)
+    }
+
+    @Test
+    fun `beforeSendBlock is null by default`() {
+        assertNotNull(config.beforeSendBlock)
     }
 
     @Test
