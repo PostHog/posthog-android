@@ -51,7 +51,7 @@ internal class PostHogTest {
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
-        beforeSendBlock: (PostHogEvent) -> PostHogEvent? = { it }
+        beforeSendBlock: Array<(PostHogEvent) -> PostHogEvent?> = emptyArray()
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {

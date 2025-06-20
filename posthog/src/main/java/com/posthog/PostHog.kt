@@ -468,8 +468,14 @@ public class PostHog private constructor(
             )
 
             val postHogEvent = buildEvent(event, newDistinctId, mergedProperties)
-            if(postHogEvent == null){
-                config?.logger?.log("Event dropped: $event")
+            if (postHogEvent == null) {
+                val originalMessage = "PostHog event $event was dropped"
+                val message = if (PostHogEventName.isUnsafeEditable(event)) {
+                    "$originalMessage. This can cause unexpected behavior."
+                } else {
+                    originalMessage
+                }
+                config?.logger?.log(message)
                 return
             }
             // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
@@ -482,7 +488,7 @@ public class PostHog private constructor(
             // Replay has its own queue
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
-            }else{
+            } else {
                 queue?.add(postHogEvent)
             }
         } catch (e: Throwable) {
@@ -490,15 +496,32 @@ public class PostHog private constructor(
         }
     }
 
-    private fun buildEvent(event:String, distinctId:String, properties: Map<String, Any>):PostHogEvent?{
+    private fun buildEvent(
+        event: String,
+        distinctId: String,
+        properties: Map<String, Any>
+    ): PostHogEvent? {
         // sanitize the properties or fallback to the original properties
-        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
+        val sanitizedProperties =
+            config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
         val postHogEvent = PostHogEvent(
             event,
             distinctId,
             properties = sanitizedProperties,
         )
-        return config?.beforeSendBlock?.invoke(postHogEvent)
+
+        return if (config?.beforeSendBlock?.firstOrNull {
+                if (it.invoke(postHogEvent) == null) {
+                    config?.logger?.log("Event ${event} was rejected in beforeSend function")
+                    true
+                } else {
+                    false
+                }
+            } != null) {
+            null
+        } else {
+            postHogEvent
+        }
     }
 
     public override fun optIn() {

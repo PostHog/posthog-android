@@ -107,7 +107,7 @@ public open class PostHogConfig(
      * Hook that allows to sanitize the event
      * The hook is called before the event is cached or sent over the wire
      */
-    public var beforeSendBlock: (PostHogEvent) -> PostHogEvent? = { it },
+    public var beforeSendBlock: Array<(PostHogEvent) -> PostHogEvent?> = emptyArray(),
     /**
      * Hook that allows for modification of the default mechanism for
      * generating anonymous id (which as of now is just random UUID v7)
