@@ -43,7 +43,7 @@ internal class PostHogBeforeSendBlock {
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
-        beforeSendBlock: Array<(PostHogEvent) -> PostHogEvent?> = emptyArray()
+        beforeSendBlock: PostHogBlockEvents? = null
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -60,7 +60,9 @@ internal class PostHogBeforeSendBlock {
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
                 this.remoteConfig = remoteConfig
-                this.beforeSendBlock = beforeSendBlock
+                if(beforeSendBlock!= null){
+                    addBeforeSendBlock(beforeSendBlock)
+                }
             }
         return PostHog.withInternal(
             config,
@@ -115,13 +117,15 @@ internal class PostHogBeforeSendBlock {
         val url = http.url("/")
 
         for (model in listEvents){
-            val sut = getSut(url.toString(), beforeSendBlock = arrayOf({
-                if(it.event == model.targetKey){
-                    null
-                }else{
-                    it
+            val sut = getSut(url.toString(), beforeSendBlock = object : PostHogBlockEvents{
+                override fun checkBlockEvent(event: PostHogEvent): PostHogEvent? {
+                    return if(event.event == model.targetKey){
+                        null
+                    }else{
+                        event
+                    }
                 }
-            }))
+            })
 
             model.trigger(sut)
             sut.capture(

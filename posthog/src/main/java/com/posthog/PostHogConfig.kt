@@ -102,12 +102,8 @@ public open class PostHogConfig(
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire
      */
+    //Deprecated("Use beforeSendBlockList instead")
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
-    /**
-     * Hook that allows to sanitize the event
-     * The hook is called before the event is cached or sent over the wire
-     */
-    public var beforeSendBlock: Array<(PostHogEvent) -> PostHogEvent?> = emptyArray(),
     /**
      * Hook that allows for modification of the default mechanism for
      * generating anonymous id (which as of now is just random UUID v7)
@@ -206,6 +202,45 @@ public open class PostHogConfig(
 
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()
+
+    /**
+     * Hook that allows to sanitize the event
+     * The hook is called before the event is cached or sent over the wire
+     */
+    private val beforeSendBlockList: MutableList<PostHogBlockEvents> = mutableListOf()
+    private val beforeSendBlockLock = Any()
+
+    /**
+     * The beforeSendBlock list
+     */
+    public val beforeSendBlock: List<PostHogBlockEvents>
+        get() {
+            val list: List<PostHogBlockEvents>
+            synchronized(beforeSendBlockLock) {
+                list = beforeSendBlockList.toList()
+            }
+            return list
+        }
+
+    /**
+     * Adds a new beforeSendBlock
+     * @param beforeSendBlock the beforeSendBlockList
+     */
+    public fun addBeforeSendBlock(postHogBlock: PostHogBlockEvents) {
+        synchronized(beforeSendBlockLock) {
+            beforeSendBlockList.add(postHogBlock)
+        }
+    }
+
+    /**
+     * Removes the beforeSendBlock
+     * @param beforeSendBlock the beforeSendBlockList
+     */
+    public fun removeBeforeSendBlock(postHogBlock: PostHogBlockEvents) {
+        synchronized(beforeSendBlockLock) {
+            beforeSendBlockList.remove(postHogBlock)
+        }
+    }
 
     /**
      * The integrations list

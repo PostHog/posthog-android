@@ -511,7 +511,7 @@ public class PostHog private constructor(
         )
 
         return if (config?.beforeSendBlock?.firstOrNull {
-                if (it.invoke(postHogEvent) == null) {
+                if (it.checkBlockEvent(postHogEvent) == null) {
                     config?.logger?.log("Event ${event} was rejected in beforeSend function")
                     true
                 } else {
