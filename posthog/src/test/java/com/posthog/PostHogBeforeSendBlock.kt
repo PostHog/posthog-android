@@ -9,25 +9,27 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 internal class PostHogBeforeSendBlock {
-
     @get:Rule
     val tmpDir = TemporaryFolder()
 
     private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
-    private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("TestReplayQueue")
-    )
-    private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("TestRemoteConfig")
-    )
-    private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(
-        PostHogThreadFactory("TestCachedEvents")
-    )
+    private val replayQueueExecutor =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("TestReplayQueue"),
+        )
+    private val remoteConfigExecutor =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("TestRemoteConfig"),
+        )
+    private val cachedEventsExecutor =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("TestCachedEvents"),
+        )
     private lateinit var config: PostHogConfig
 
     data class BeforeSendTestEventModel(
         val targetKey: String,
-        val trigger:(PostHogInterface) -> Unit
+        val trigger: (PostHogInterface) -> Unit,
     )
 
     fun getSut(
@@ -42,7 +44,7 @@ internal class PostHogBeforeSendBlock {
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        beforeSendBlock: PostHogBeforeSend? = null
+        beforeSendBlock: PostHogBeforeSend? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -58,8 +60,8 @@ internal class PostHogBeforeSendBlock {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.remoteConfig = remoteConfig
-                if(beforeSendBlock!= null){
-                    addBeforeSendBlock(beforeSendBlock)
+                if (beforeSendBlock != null) {
+                    addBeforeSend(beforeSendBlock)
                 }
             }
         return PostHog.withInternal(
@@ -72,58 +74,72 @@ internal class PostHogBeforeSendBlock {
         )
     }
 
-    private val listEvents = listOf(
-        BeforeSendTestEventModel(
-            targetKey = "test_event",
-            trigger = {
-                it.capture("test_event")
-            }),
-        BeforeSendTestEventModel(
-            targetKey = "\$screen",
-            trigger = {
-                it.screen("screen")
-            }),
-        BeforeSendTestEventModel(
-            targetKey = "\$snapshot",
-            trigger = {
-                it.capture("\$snapshot")
-            }),
-        BeforeSendTestEventModel(
-            targetKey = "\$identify",
-            trigger = {
-                it.identify(distinctId = "user_id")
-            }),
-        BeforeSendTestEventModel(
-            targetKey = "\$groupidentify",
-            trigger = {
-                it.group("type", "key")
-            }),
-        BeforeSendTestEventModel(
-            targetKey = "\$create_alias",
-            trigger = {
-                it.alias("alias")
-            }),
-        BeforeSendTestEventModel(
-            targetKey = "\$feature_flag_called",
-            trigger = {
-                it.getFeatureFlag("key")
-            }))
+    private val listEvents =
+        listOf(
+            BeforeSendTestEventModel(
+                targetKey = "test_event",
+                trigger = {
+                    it.capture("test_event")
+                },
+            ),
+            BeforeSendTestEventModel(
+                targetKey = "\$screen",
+                trigger = {
+                    it.screen("screen")
+                },
+            ),
+            BeforeSendTestEventModel(
+                targetKey = "\$snapshot",
+                trigger = {
+                    it.capture("\$snapshot")
+                },
+            ),
+            BeforeSendTestEventModel(
+                targetKey = "\$identify",
+                trigger = {
+                    it.identify(distinctId = "user_id")
+                },
+            ),
+            BeforeSendTestEventModel(
+                targetKey = "\$groupidentify",
+                trigger = {
+                    it.group("type", "key")
+                },
+            ),
+            BeforeSendTestEventModel(
+                targetKey = "\$create_alias",
+                trigger = {
+                    it.alias("alias")
+                },
+            ),
+            BeforeSendTestEventModel(
+                targetKey = "\$feature_flag_called",
+                trigger = {
+                    it.getFeatureFlag("key")
+                },
+            ),
+        )
 
     @Test
     fun `drop events`() {
         val http = mockHttp()
         val url = http.url("/")
 
-        for (model in listEvents){
-            val sut = getSut(url.toString(), beforeSendBlock = object : PostHogBeforeSend{
-                override fun run(event: PostHogEvent): PostHogEvent? {
-                    return if(event.event == model.targetKey){
-                        null
-                    }else{
-                        event
-                    }
-                }
-            })
+        for (model in listEvents) {
+            val sut =
+                getSut(
+                    url.toString(),
+                    beforeSendBlock =
+                        object : PostHogBeforeSend {
+                            override fun run(event: PostHogEvent): PostHogEvent? {
+                                return if (event.event == model.targetKey) {
+                                    null
+                                } else {
+                                    event
+                                }
+                            }
+                        },
+                )
 
             model.trigger(sut)
             sut.capture(
@@ -132,7 +148,8 @@ internal class PostHogBeforeSendBlock {
                 props,
                 userProperties = userProps,
                 userPropertiesSetOnce = userPropsOnce,
-                groups = groups)
+                groups = groups,
+            )
 
             queueExecutor.shutdownAndAwaitTermination()
             assertEquals(1, http.requestCount)

@@ -207,38 +207,38 @@ public open class PostHogConfig(
      * Hook that allows to sanitize the event
      * The hook is called before the event is cached or sent over the wire
      */
-    private val beforeSendList: MutableList<PostHogBeforeSend> = mutableListOf()
+    private val beforeSend: MutableList<PostHogBeforeSend> = mutableListOf()
     private val beforeSendLock = Any()
 
     /**
      * The beforeSendBlock list
      */
-    public val beforeSendBlock: List<PostHogBeforeSend>
+    public val beforeSendList: List<PostHogBeforeSend>
         get() {
             val list: List<PostHogBeforeSend>
             synchronized(beforeSendLock) {
-                list = beforeSendList.toList()
+                list = beforeSend.toList()
             }
             return list
         }
 
     /**
-     * Adds a new beforeSendBlock
-     * @param beforeSendBlock the beforeSendBlockList
+     * Adds a new PostHogBeforeSend
+     * @param beforeSend the beforeSendBlockList
      */
-    public fun addBeforeSendBlock(postHogBlock: PostHogBeforeSend) {
+    public fun addBeforeSend(beforeSend: PostHogBeforeSend) {
         synchronized(beforeSendLock) {
-            beforeSendList.add(postHogBlock)
+            this.beforeSend.add(beforeSend)
         }
     }
 
     /**
-     * Removes the beforeSendBlock
-     * @param beforeSendBlock the beforeSendBlockList
+     * Removes the PostHogBeforeSend
+     * @param beforeSend the beforeSend
      */
-    public fun removeBeforeSendBlock(postHogBlock: PostHogBeforeSend) {
+    public fun removeBeforeSendBlock(beforeSend: PostHogBeforeSend) {
         synchronized(beforeSendLock) {
-            beforeSendList.remove(postHogBlock)
+            this.beforeSend.remove(beforeSend)
         }
     }
 

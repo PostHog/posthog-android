@@ -455,33 +455,35 @@ public class PostHog private constructor(
                 groupIdentify = true
             }
 
-            val mergedProperties = buildProperties(
-                newDistinctId,
-                properties = properties,
-                userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce,
-                groups = groups,
-                // only append shared props if not a snapshot event
-                appendSharedProps = !isSnapshotEvent,
-                // only append groups if not a group identify event and not a snapshot
-                appendGroups = !groupIdentify,
-            )
+            val mergedProperties =
+                buildProperties(
+                    newDistinctId,
+                    properties = properties,
+                    userProperties = userProperties,
+                    userPropertiesSetOnce = userPropertiesSetOnce,
+                    groups = groups,
+                    // only append shared props if not a snapshot event
+                    appendSharedProps = !isSnapshotEvent,
+                    // only append groups if not a group identify event and not a snapshot
+                    appendGroups = !groupIdentify,
+                )
 
             val postHogEvent = buildEvent(event, newDistinctId, mergedProperties)
             if (postHogEvent == null) {
                 val originalMessage = "PostHog event $event was dropped"
-                val message = if (PostHogEventName.isUnsafeEditable(event)) {
-                    "$originalMessage. This can cause unexpected behavior."
-                } else {
-                    originalMessage
-                }
+                val message =
+                    if (PostHogEventName.isUnsafeEditable(event)) {
+                        "$originalMessage. This can cause unexpected behavior."
+                    } else {
+                        originalMessage
+                    }
                 config?.logger?.log(message)
                 return
             }
             // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
             isSnapshotEvent = postHogEvent.event == "\$snapshot"
             // if this is a $snapshot event and $session_id is missing, don't process then event
-            if(isSnapshotEvent && properties?.getOrDefault("\$session_id", null) == null){
+            if (isSnapshotEvent && properties?.getOrDefault("\$session_id", null) == null) {
                 config?.logger?.log("Event dropped, because snapshot and session_id are missing")
                 return
             }
@@ -499,22 +501,25 @@ public class PostHog private constructor(
     private fun buildEvent(
         event: String,
         distinctId: String,
-        properties: Map<String, Any>
+        properties: Map<String, Any>,
     ): PostHogEvent? {
         // sanitize the properties or fallback to the original properties
-        val postHogEvent = PostHogEvent(
-            event,
-            distinctId,
-            properties = properties)
+        val postHogEvent =
+            PostHogEvent(
+                event,
+                distinctId,
+                properties = properties,
+            )
 
-        return if (config?.beforeSendBlock?.firstOrNull {
+        return if (config?.beforeSendList?.firstOrNull {
                 if (it.run(postHogEvent) == null) {
-                    config?.logger?.log("Event ${event} was rejected in beforeSend function")
+                    config?.logger?.log("Event $event was rejected in beforeSend function")
                     true
                 } else {
                     false
                 }
-            } != null) {
+            } != null
+        ) {
             null
         } else {
             postHogEvent

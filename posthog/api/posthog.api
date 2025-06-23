@@ -73,6 +73,10 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHogInterface;
 }
 
+public abstract interface class com/posthog/PostHogBeforeSend {
+	public abstract fun run (Lcom/posthog/PostHogEvent;)Lcom/posthog/PostHogEvent;
+}
+
 public class com/posthog/PostHogConfig {
 	public static final field Companion Lcom/posthog/PostHogConfig$Companion;
 	public static final field DEFAULT_EU_ASSETS_HOST Ljava/lang/String;
@@ -82,8 +86,10 @@ public class com/posthog/PostHogConfig {
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;Ljava/net/Proxy;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;Ljava/net/Proxy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
+	public final fun getBeforeSendList ()Ljava/util/List;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
@@ -115,6 +121,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getSessionReplay ()Z
 	public final fun getSnapshotEndpoint ()Ljava/lang/String;
 	public final fun getStoragePrefix ()Ljava/lang/String;
+	public final fun removeBeforeSendBlock (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
@@ -181,6 +188,23 @@ public final class com/posthog/PostHogEvent {
 	public fun hashCode ()I
 	public final fun setApiKey (Ljava/lang/String;)V
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/posthog/PostHogEventName : java/lang/Enum {
+	public static final field CREATE_ALIAS Lcom/posthog/PostHogEventName;
+	public static final field Companion Lcom/posthog/PostHogEventName$Companion;
+	public static final field FEATURE_FLAG_CALLED Lcom/posthog/PostHogEventName;
+	public static final field GROUP_IDENTIFY Lcom/posthog/PostHogEventName;
+	public static final field IDENTIFY Lcom/posthog/PostHogEventName;
+	public static final field SET Lcom/posthog/PostHogEventName;
+	public static final field SNAPSHOT Lcom/posthog/PostHogEventName;
+	public final fun getEvent ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PostHogEventName;
+	public static fun values ()[Lcom/posthog/PostHogEventName;
+}
+
+public final class com/posthog/PostHogEventName$Companion {
+	public final fun isUnsafeEditable (Ljava/lang/String;)Z
 }
 
 public abstract interface annotation class com/posthog/PostHogExperimental : java/lang/annotation/Annotation {
