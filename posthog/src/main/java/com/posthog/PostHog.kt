@@ -502,16 +502,13 @@ public class PostHog private constructor(
         properties: Map<String, Any>
     ): PostHogEvent? {
         // sanitize the properties or fallback to the original properties
-        val sanitizedProperties =
-            config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
         val postHogEvent = PostHogEvent(
             event,
             distinctId,
-            properties = sanitizedProperties,
-        )
+            properties = properties)
 
         return if (config?.beforeSendBlock?.firstOrNull {
-                if (it.checkBlockEvent(postHogEvent) == null) {
+                if (it.run(postHogEvent) == null) {
                     config?.logger?.log("Event ${event} was rejected in beforeSend function")
                     true
                 } else {

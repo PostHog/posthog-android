@@ -2,6 +2,8 @@ package com.posthog.android.sample
 
 import android.app.Application
 import android.os.StrictMode
+import com.posthog.PostHogBeforeSend
+import com.posthog.PostHogEvent
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.PostHogPropertiesSanitizer
 import com.posthog.android.PostHogAndroid
@@ -30,12 +32,15 @@ class MyApp : Application() {
                 sessionReplay = true
                 preloadFeatureFlags = true
                 onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
-                propertiesSanitizer =
-                    PostHogPropertiesSanitizer { properties ->
-                        properties.apply {
-//                    remove("\$device_name")
+                addBeforeSendBlock(object : PostHogBeforeSend{
+                    override fun run(event: PostHogEvent): PostHogEvent? {
+                        return if(event.event == "test_name"){
+                            null
+                        }else{
+                            event
                         }
                     }
+                })
                 sessionReplayConfig.maskAllTextInputs = false
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true

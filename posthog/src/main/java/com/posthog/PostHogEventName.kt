@@ -1,6 +1,6 @@
 package com.posthog
 
-public enum class PostHogEventName(public val nameEvent:String){
+public enum class PostHogEventName(public val event:String){
     SNAPSHOT("\$snapshot"),
     SET("\$set"),
     IDENTIFY("\$identify"),
@@ -9,8 +9,8 @@ public enum class PostHogEventName(public val nameEvent:String){
     FEATURE_FLAG_CALLED("\$feature_flag_called");
 
     public companion object{
-        public fun isUnsafeEditable(name:String):Boolean{
-            return values().firstOrNull { it.nameEvent == name } != null
+        public fun isUnsafeEditable(event:String):Boolean{
+            return values().firstOrNull { it.event == event } != null
         }
     }
 }

@@ -102,7 +102,7 @@ public open class PostHogConfig(
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire
      */
-    //Deprecated("Use beforeSendBlockList instead")
+    @Deprecated("Use beforeSendBlockList instead")
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     /**
      * Hook that allows for modification of the default mechanism for
@@ -207,17 +207,17 @@ public open class PostHogConfig(
      * Hook that allows to sanitize the event
      * The hook is called before the event is cached or sent over the wire
      */
-    private val beforeSendBlockList: MutableList<PostHogBlockEvents> = mutableListOf()
-    private val beforeSendBlockLock = Any()
+    private val beforeSendList: MutableList<PostHogBeforeSend> = mutableListOf()
+    private val beforeSendLock = Any()
 
     /**
      * The beforeSendBlock list
      */
-    public val beforeSendBlock: List<PostHogBlockEvents>
+    public val beforeSendBlock: List<PostHogBeforeSend>
         get() {
-            val list: List<PostHogBlockEvents>
-            synchronized(beforeSendBlockLock) {
-                list = beforeSendBlockList.toList()
+            val list: List<PostHogBeforeSend>
+            synchronized(beforeSendLock) {
+                list = beforeSendList.toList()
             }
             return list
         }
@@ -226,9 +226,9 @@ public open class PostHogConfig(
      * Adds a new beforeSendBlock
      * @param beforeSendBlock the beforeSendBlockList
      */
-    public fun addBeforeSendBlock(postHogBlock: PostHogBlockEvents) {
-        synchronized(beforeSendBlockLock) {
-            beforeSendBlockList.add(postHogBlock)
+    public fun addBeforeSendBlock(postHogBlock: PostHogBeforeSend) {
+        synchronized(beforeSendLock) {
+            beforeSendList.add(postHogBlock)
         }
     }
 
@@ -236,9 +236,9 @@ public open class PostHogConfig(
      * Removes the beforeSendBlock
      * @param beforeSendBlock the beforeSendBlockList
      */
-    public fun removeBeforeSendBlock(postHogBlock: PostHogBlockEvents) {
-        synchronized(beforeSendBlockLock) {
-            beforeSendBlockList.remove(postHogBlock)
+    public fun removeBeforeSendBlock(postHogBlock: PostHogBeforeSend) {
+        synchronized(beforeSendLock) {
+            beforeSendList.remove(postHogBlock)
         }
     }
 

@@ -50,8 +50,7 @@ internal class PostHogTest {
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        propertiesSanitizer: PostHogPropertiesSanitizer? = null,
-        beforeSendBlock: PostHogBlockEvents? = null
+        beforeSendBlock: PostHogBeforeSend? = null
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -66,7 +65,6 @@ internal class PostHogTest {
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
-                this.propertiesSanitizer = propertiesSanitizer
                 this.remoteConfig = remoteConfig
                 if(beforeSendBlock!= null){
                     addBeforeSendBlock(beforeSendBlock)
@@ -1325,47 +1323,6 @@ internal class PostHogTest {
         sut.debug(false)
 
         assertFalse(config.debug)
-    }
-
-    @Test
-    fun `sanitize properties`() {
-        val http = mockHttp()
-        val url = http.url("/")
-
-        val propertiesSanitizer =
-            PostHogPropertiesSanitizer { properties ->
-                properties.apply {
-                    remove("prop")
-                }
-            }
-
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, propertiesSanitizer = propertiesSanitizer)
-
-        sut.capture(
-            EVENT,
-            DISTINCT_ID,
-            // contains "prop"
-            props,
-            userProperties = userProps,
-            userPropertiesSetOnce = userPropsOnce,
-            groups = groups,
-        )
-
-        queueExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-
-        assertEquals(1, http.requestCount)
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        assertEquals(API_KEY, batch.apiKey)
-        assertNotNull(batch.sentAt)
-
-        val theEvent = batch.batch.first()
-        assertNull(theEvent.properties!!["prop"])
-
-        sut.close()
     }
 
     @Test
