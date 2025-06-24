@@ -121,7 +121,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getSessionReplay ()Z
 	public final fun getSnapshotEndpoint ()Ljava/lang/String;
 	public final fun getStoragePrefix ()Ljava/lang/String;
-	public final fun removeBeforeSendBlock (Lcom/posthog/PostHogBeforeSend;)V
+	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
