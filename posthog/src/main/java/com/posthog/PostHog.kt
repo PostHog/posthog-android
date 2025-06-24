@@ -483,7 +483,7 @@ public class PostHog private constructor(
             // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
             isSnapshotEvent = postHogEvent.event == "\$snapshot"
             // if this is a $snapshot event and $session_id is missing, don't process then event
-            if (isSnapshotEvent && properties?.getOrDefault("\$session_id", null) == null) {
+            if (isSnapshotEvent && properties?.get("\$session_id") == null) {
                 config?.logger?.log("Event dropped, because snapshot and session_id are missing")
                 return
             }
