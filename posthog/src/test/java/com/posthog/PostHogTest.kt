@@ -50,7 +50,7 @@ internal class PostHogTest {
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        beforeSendBlock: PostHogBeforeSend? = null,
+        beforeSend: PostHogBeforeSend? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -66,8 +66,8 @@ internal class PostHogTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.remoteConfig = remoteConfig
-                if (beforeSendBlock != null) {
-                    addBeforeSend(beforeSendBlock)
+                if (beforeSend != null) {
+                    addBeforeSend(beforeSend)
                 }
             }
         return PostHog.withInternal(

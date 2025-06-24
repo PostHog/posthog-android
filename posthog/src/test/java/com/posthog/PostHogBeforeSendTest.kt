@@ -8,7 +8,7 @@ import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-internal class PostHogBeforeSendBlock {
+internal class PostHogBeforeSendTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
@@ -44,7 +44,7 @@ internal class PostHogBeforeSendBlock {
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        beforeSendBlock: PostHogBeforeSend? = null,
+        beforeSend: PostHogBeforeSend? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -60,8 +60,8 @@ internal class PostHogBeforeSendBlock {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.remoteConfig = remoteConfig
-                if (beforeSendBlock != null) {
-                    addBeforeSend(beforeSendBlock)
+                if (beforeSend != null) {
+                    addBeforeSend(beforeSend)
                 }
             }
         return PostHog.withInternal(
@@ -129,14 +129,12 @@ internal class PostHogBeforeSendBlock {
             val sut =
                 getSut(
                     url.toString(),
-                    beforeSendBlock =
-                        object : PostHogBeforeSend {
-                            override fun run(event: PostHogEvent): PostHogEvent? {
-                                return if (event.event == model.targetKey) {
-                                    null
-                                } else {
-                                    event
-                                }
+                    beforeSend =
+                        { event ->
+                            if (event.event == model.targetKey) {
+                                null
+                            } else {
+                                event
                             }
                         },
                 )

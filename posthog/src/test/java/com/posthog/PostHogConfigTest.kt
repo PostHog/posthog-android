@@ -27,7 +27,7 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `beforeSendBlock is null by default`() {
+    fun `beforeSendList is null by default`() {
         assertNotNull(config.beforeSendList)
     }
 
