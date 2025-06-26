@@ -196,6 +196,7 @@ public final class com/posthog/PostHogEventName : java/lang/Enum {
 	public static final field FEATURE_FLAG_CALLED Lcom/posthog/PostHogEventName;
 	public static final field GROUP_IDENTIFY Lcom/posthog/PostHogEventName;
 	public static final field IDENTIFY Lcom/posthog/PostHogEventName;
+	public static final field SCREEN Lcom/posthog/PostHogEventName;
 	public static final field SET Lcom/posthog/PostHogEventName;
 	public static final field SNAPSHOT Lcom/posthog/PostHogEventName;
 	public final fun getEvent ()Ljava/lang/String;

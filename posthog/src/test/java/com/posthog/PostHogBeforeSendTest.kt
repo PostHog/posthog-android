@@ -129,13 +129,16 @@ internal class PostHogBeforeSendTest {
                 getSut(
                     url.toString(),
                     listBeforeSend =
-                        listOf(PostHogBeforeSend{ event ->
-                            if (event.event == model.targetKey) {
-                                null
-                            } else {
-                                event
-                            }
-                        }))
+                        listOf(
+                            PostHogBeforeSend { event ->
+                                if (event.event == model.targetKey) {
+                                    null
+                                } else {
+                                    event
+                                }
+                            },
+                        ),
+                )
 
             model.trigger(postHogInterface)
 
@@ -151,12 +154,16 @@ internal class PostHogBeforeSendTest {
     fun `drop events with copy`() {
         val http = mockHttp()
         val url = http.url("/")
-        val postHogInterface:PostHogInterface = getSut(
-            url.toString(),
-            listBeforeSend = listOf(PostHogBeforeSend { event ->
-                event.copy(event = PostHogEventName.SCREEN.event)
-            }
-        ))
+        val postHogInterface: PostHogInterface =
+            getSut(
+                url.toString(),
+                listBeforeSend =
+                    listOf(
+                        PostHogBeforeSend { event ->
+                            event.copy(event = PostHogEventName.SCREEN.event)
+                        },
+                    ),
+            )
         postHogInterface.getFeatureFlag("key")
 
         queueExecutor.shutdownAndAwaitTermination()

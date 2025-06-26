@@ -507,16 +507,17 @@ public class PostHog private constructor(
         // sanitize the properties or fallback to the original properties
         val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
         val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties)
-        var eventChecked:PostHogEvent? = null
+        var eventChecked: PostHogEvent? = null
         return if (config?.beforeSendList?.firstOrNull {
-            eventChecked = it.run(postHogEvent)
-            if (eventChecked == null) {
-                config?.logger?.log("Event $event was rejected in beforeSend function")
-                true
-            } else {
-                false
-            }
-        } != null) {
+                eventChecked = it.run(postHogEvent)
+                if (eventChecked == null) {
+                    config?.logger?.log("Event $event was rejected in beforeSend function")
+                    true
+                } else {
+                    false
+                }
+            } != null
+        ) {
             null
         } else {
             eventChecked
