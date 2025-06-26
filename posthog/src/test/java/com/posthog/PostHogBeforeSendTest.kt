@@ -44,7 +44,7 @@ internal class PostHogBeforeSendTest {
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        beforeSend: PostHogBeforeSend? = null,
+        listBeforeSend: List<PostHogBeforeSend>? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -60,8 +60,8 @@ internal class PostHogBeforeSendTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.remoteConfig = remoteConfig
-                if (beforeSend != null) {
-                    addBeforeSend(beforeSend)
+                listBeforeSend?.map {
+                    addBeforeSend(it)
                 }
             }
         return PostHog.withInternal(
@@ -83,37 +83,37 @@ internal class PostHogBeforeSendTest {
                 },
             ),
             BeforeSendTestEventModel(
-                targetKey = "\$screen",
+                targetKey = PostHogEventName.SCREEN.event,
                 trigger = {
                     it.screen("screen")
                 },
             ),
             BeforeSendTestEventModel(
-                targetKey = "\$snapshot",
+                targetKey = PostHogEventName.SNAPSHOT.event,
                 trigger = {
-                    it.capture("\$snapshot")
+                    it.capture(PostHogEventName.SNAPSHOT.event)
                 },
             ),
             BeforeSendTestEventModel(
-                targetKey = "\$identify",
+                targetKey = PostHogEventName.IDENTIFY.event,
                 trigger = {
                     it.identify(distinctId = "user_id")
                 },
             ),
             BeforeSendTestEventModel(
-                targetKey = "\$groupidentify",
+                targetKey = PostHogEventName.GROUP_IDENTIFY.event,
                 trigger = {
                     it.group("type", "key")
                 },
             ),
             BeforeSendTestEventModel(
-                targetKey = "\$create_alias",
+                targetKey = PostHogEventName.CREATE_ALIAS.event,
                 trigger = {
                     it.alias("alias")
                 },
             ),
             BeforeSendTestEventModel(
-                targetKey = "\$feature_flag_called",
+                targetKey = PostHogEventName.FEATURE_FLAG_CALLED.event,
                 trigger = {
                     it.getFeatureFlag("key")
                 },
@@ -122,36 +122,47 @@ internal class PostHogBeforeSendTest {
 
     @Test
     fun `drop events`() {
-        val http = mockHttp()
-        val url = http.url("/")
-
         for (model in listEvents) {
-            val sut =
+            val http = mockHttp()
+            val url = http.url("/")
+            val postHogInterface =
                 getSut(
                     url.toString(),
-                    beforeSend =
-                        { event ->
+                    listBeforeSend =
+                        listOf(PostHogBeforeSend{ event ->
                             if (event.event == model.targetKey) {
                                 null
                             } else {
                                 event
                             }
-                        },
-                )
+                        }))
 
-            model.trigger(sut)
-            sut.capture(
-                "single_not_drop_event",
-                DISTINCT_ID,
-                props,
-                userProperties = userProps,
-                userPropertiesSetOnce = userPropsOnce,
-                groups = groups,
-            )
+            model.trigger(postHogInterface)
 
             queueExecutor.shutdownAndAwaitTermination()
-            assertEquals(1, http.requestCount)
-            sut.close()
+            replayQueueExecutor.shutdownAndAwaitTermination()
+
+            assertEquals(0, http.requestCount)
+            postHogInterface.close()
         }
+    }
+
+    @Test
+    fun `drop events with copy`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val postHogInterface:PostHogInterface = getSut(
+            url.toString(),
+            listBeforeSend = listOf(PostHogBeforeSend { event ->
+                event.copy(event = PostHogEventName.SCREEN.event)
+            }
+        ))
+        postHogInterface.getFeatureFlag("key")
+
+        queueExecutor.shutdownAndAwaitTermination()
+        replayQueueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+        postHogInterface.close()
     }
 }

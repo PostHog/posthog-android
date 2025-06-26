@@ -38,6 +38,7 @@ internal class PostHogTest {
     private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
     private val responseFlagsApi = file.readText()
 
+    @Suppress("DEPRECATION")
     fun getSut(
         host: String,
         flushAt: Int = 1,
@@ -50,6 +51,7 @@ internal class PostHogTest {
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
+        propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
     ): PostHogInterface {
         config =
@@ -65,6 +67,7 @@ internal class PostHogTest {
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
+                this.propertiesSanitizer = propertiesSanitizer
                 this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
@@ -1323,6 +1326,48 @@ internal class PostHogTest {
         sut.debug(false)
 
         assertFalse(config.debug)
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `sanitize properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val propertiesSanitizer =
+            PostHogPropertiesSanitizer { properties ->
+                properties.apply {
+                    remove("prop")
+                }
+            }
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, propertiesSanitizer = propertiesSanitizer)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            // contains "prop"
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertEquals(API_KEY, batch.apiKey)
+        assertNotNull(batch.sentAt)
+
+        val theEvent = batch.batch.first()
+        assertNull(theEvent.properties!!["prop"])
+
+        sut.close()
     }
 
     @Test
