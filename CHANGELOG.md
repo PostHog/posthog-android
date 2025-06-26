@@ -1,5 +1,8 @@
 ## Next
 
+- feat: add support for beforeSend function to edit or drop events ([#266](https://github.com/PostHog/posthog-android/pull/266))
+    - Thanks @KopeikinaDarya 
+
 ## 3.19.1 - 2025-06-16
 
 - test: release using new sonatype server
