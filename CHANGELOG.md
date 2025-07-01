@@ -1,6 +1,6 @@
 ## Next
 
-- fix: enable gzip for /flags endpoint  ([#245](https://github.com/PostHog/posthog-android/pull/245)) and ([#264](https://github.com/PostHog/posthog-android/pull/264))
+- fix: enable gzip for /flags endpoint  ([#268](https://github.com/PostHog/posthog-android/pull/245)) and ([#268](https://github.com/PostHog/posthog-android/pull/264))
 
 ## 3.19.1 - 2025-06-16
 
