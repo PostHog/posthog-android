@@ -14,7 +14,6 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 
 internal class PostHogApiTest {
