@@ -91,11 +91,9 @@ internal class PostHogApiTest {
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
         assertEquals("POST", request.method)
         assertEquals("/flags/?v=2&config=true", request.path)
+        assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
-
-        // /flags endpoint is disabled for gzip compression
-        assertNotEquals("gzip", request.headers["Content-Encoding"])
     }
 
     @Test
