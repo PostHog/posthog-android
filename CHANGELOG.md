@@ -1,5 +1,7 @@
 ## Next
 
+- fix: enable gzip for /flags endpoint  ([#268](https://github.com/PostHog/posthog-android/pull/245)) and ([#268](https://github.com/PostHog/posthog-android/pull/264))
+
 ## 3.19.1 - 2025-06-16
 
 - test: release using new sonatype server
