@@ -3,6 +3,10 @@
 - feat: add support for beforeSend function to edit or drop events ([#266](https://github.com/PostHog/posthog-android/pull/266))
     - Thanks @KopeikinaDarya 
 
+## 3.19.2 - 2025-07-10
+
+- fix: enable gzip for /flags endpoint  ([#268](https://github.com/PostHog/posthog-android/pull/245)) and ([#268](https://github.com/PostHog/posthog-android/pull/264))
+
 ## 3.19.1 - 2025-06-16
 
 - test: release using new sonatype server
