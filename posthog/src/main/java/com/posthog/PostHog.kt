@@ -312,7 +312,7 @@ public class PostHog private constructor(
         groups: Map<String, String>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
-    ): Map<String, Any> {
+    ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
         if (appendSharedProps) {
@@ -502,11 +502,11 @@ public class PostHog private constructor(
     private fun buildEvent(
         event: String,
         distinctId: String,
-        properties: Map<String, Any>,
+        properties: MutableMap<String, Any>,
     ): PostHogEvent? {
         // sanitize the properties or fallback to the original properties
-        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
-        val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties.toMutableMap())
+        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties)?.toMutableMap() ?: properties
+        val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties)
         var eventChecked: PostHogEvent? = postHogEvent
 
         val beforeSendList = config?.beforeSendList ?: emptyList()

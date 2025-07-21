@@ -3,7 +3,7 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.lifecycle:lifecycle-process than 2.6.2 is available: 2.9.1"
+        message="A newer version of androidx.lifecycle:lifecycle-process than 2.6.2 is available: 2.9.2"
         errorLine1="    implementation(&quot;androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -14,7 +14,7 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.lifecycle:lifecycle-common-java8 than 2.6.2 is available: 2.9.1"
+        message="A newer version of androidx.lifecycle:lifecycle-common-java8 than 2.6.2 is available: 2.9.2"
         errorLine1="    implementation(&quot;androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -54,17 +54,6 @@
             file="build.gradle.kts"
             line="94"
             column="17"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of org.jetbrains.kotlin:kotlin-test-junit than 1.8.22 is available: 1.9.25"
-        errorLine1="    testImplementation(&quot;org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}&quot;)"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="build.gradle.kts"
-            line="108"
-            column="24"/>
     </issue>
 
 </issues>
