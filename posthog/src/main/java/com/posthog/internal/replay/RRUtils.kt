@@ -1,6 +1,7 @@
 package com.posthog.internal.replay
 
 import com.posthog.PostHog
+import com.posthog.PostHogEventName
 import com.posthog.PostHogInterface
 import com.posthog.PostHogInternal
 
@@ -12,7 +13,7 @@ public fun List<RREvent>.capture() {
             "\$snapshot_data" to this,
             "\$snapshot_source" to "mobile",
         )
-    PostHog.capture("\$snapshot", properties = properties)
+    PostHog.capture(PostHogEventName.SNAPSHOT.event, properties = properties)
 }
 
 @PostHogInternal
@@ -25,7 +26,7 @@ public fun List<RREvent>.capture(postHog: PostHogInterface? = null) {
 
     // its not guaranteed that the posthog instance is set
     if (postHog != null) {
-        postHog.capture("\$snapshot", properties = properties)
+        postHog.capture(PostHogEventName.SNAPSHOT.event, properties = properties)
     } else {
         this.capture()
     }

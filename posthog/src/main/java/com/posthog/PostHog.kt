@@ -507,21 +507,24 @@ public class PostHog private constructor(
         // sanitize the properties or fallback to the original properties
         val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
         val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties)
-        var eventChecked: PostHogEvent? = null
-        return if (config?.beforeSendList?.firstOrNull {
-                eventChecked = it.run(postHogEvent)
+        var eventChecked: PostHogEvent? = postHogEvent
+
+        val beforeSendList = config?.beforeSendList ?: emptyList()
+
+        for (beforeSend in beforeSendList) {
+            try {
+                eventChecked = beforeSend.run(postHogEvent)
                 if (eventChecked == null) {
                     config?.logger?.log("Event $event was rejected in beforeSend function")
-                    true
-                } else {
-                    false
+                    return null
                 }
-            } != null
-        ) {
-            null
-        } else {
-            eventChecked
+            } catch (e: Throwable) {
+                config?.logger?.log("Error in beforeSend function: $e")
+                return null
+            }
         }
+
+        return eventChecked
     }
 
     public override fun optIn() {

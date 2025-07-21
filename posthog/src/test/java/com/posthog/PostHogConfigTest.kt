@@ -4,7 +4,6 @@ import com.posthog.internal.PostHogNoOpLogger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -27,8 +26,8 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `beforeSendList is null by default`() {
-        assertNotNull(config.beforeSendList)
+    fun `beforeSendList is empty by default`() {
+        assertTrue(config.beforeSendList.isEmpty())
     }
 
     @Test
