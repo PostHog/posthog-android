@@ -20,7 +20,7 @@ public data class PostHogEvent(
     val event: String,
     @SerializedName("distinct_id")
     val distinctId: String,
-    val properties: Map<String, Any>? = null,
+    val properties: MutableMap<String, Any>? = null,
     // refactor to use PostHogDateProvider
     val timestamp: Date = Date(),
     val uuid: UUID? = TimeBasedEpochGenerator.generate(),

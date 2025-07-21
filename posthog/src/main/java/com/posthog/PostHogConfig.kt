@@ -102,6 +102,7 @@ public open class PostHogConfig(
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire
      */
+    @Deprecated("Use beforeSendList instead")
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     /**
      * Hook that allows for modification of the default mechanism for
@@ -201,6 +202,45 @@ public open class PostHogConfig(
 
     private val integrationsList: MutableList<PostHogIntegration> = mutableListOf()
     private val integrationLock = Any()
+
+    /**
+     * Hook that allows to sanitize the event
+     * The hook is called before the event is cached or sent over the wire
+     */
+    private val beforeSend: MutableList<PostHogBeforeSend> = mutableListOf()
+    private val beforeSendLock = Any()
+
+    /**
+     * The beforeSend list
+     */
+    public val beforeSendList: List<PostHogBeforeSend>
+        get() {
+            val list: List<PostHogBeforeSend>
+            synchronized(beforeSendLock) {
+                list = beforeSend.toList()
+            }
+            return list
+        }
+
+    /**
+     * Adds a new PostHogBeforeSend
+     * @param beforeSend the beforeSend
+     */
+    public fun addBeforeSend(beforeSend: PostHogBeforeSend) {
+        synchronized(beforeSendLock) {
+            this.beforeSend.add(beforeSend)
+        }
+    }
+
+    /**
+     * Removes the PostHogBeforeSend
+     * @param beforeSend the beforeSend
+     */
+    public fun removeBeforeSend(beforeSend: PostHogBeforeSend) {
+        synchronized(beforeSendLock) {
+            this.beforeSend.remove(beforeSend)
+        }
+    }
 
     /**
      * The integrations list

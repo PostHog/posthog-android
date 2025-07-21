@@ -26,6 +26,11 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `beforeSendList is empty by default`() {
+        assertTrue(config.beforeSendList.isEmpty())
+    }
+
+    @Test
     fun `sendFeatureFlagEvent is enabled by default`() {
         assertTrue(config.sendFeatureFlagEvent)
     }

@@ -38,6 +38,7 @@ internal class PostHogTest {
     private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
     private val responseFlagsApi = file.readText()
 
+    @Suppress("DEPRECATION")
     fun getSut(
         host: String,
         flushAt: Int = 1,
@@ -51,6 +52,7 @@ internal class PostHogTest {
         remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+        beforeSend: PostHogBeforeSend? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -67,6 +69,9 @@ internal class PostHogTest {
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
                 this.remoteConfig = remoteConfig
+                if (beforeSend != null) {
+                    addBeforeSend(beforeSend)
+                }
             }
         return PostHog.withInternal(
             config,
@@ -1323,6 +1328,7 @@ internal class PostHogTest {
         assertFalse(config.debug)
     }
 
+    @Suppress("DEPRECATION")
     @Test
     fun `sanitize properties`() {
         val http = mockHttp()

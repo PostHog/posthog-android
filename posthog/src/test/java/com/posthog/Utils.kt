@@ -62,7 +62,7 @@ public fun generateEvent(
     return PostHogEvent(
         eventName ?: EVENT,
         distinctId = DISTINCT_ID,
-        properties = props,
+        properties = props.toMutableMap(),
         timestamp = date,
         uuid = givenUuuid ?: uuid,
     )

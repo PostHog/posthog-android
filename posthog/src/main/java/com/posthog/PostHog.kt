@@ -312,7 +312,7 @@ public class PostHog private constructor(
         groups: Map<String, String>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
-    ): Map<String, Any> {
+    ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
         if (appendSharedProps) {
@@ -449,11 +449,7 @@ public class PostHog private constructor(
                 return
             }
 
-            var snapshotEvent = false
-            if (event == "\$snapshot") {
-                snapshotEvent = true
-            }
-
+            var isSnapshotEvent = event == "\$snapshot"
             var groupIdentify = false
             if (event == GROUP_IDENTIFY) {
                 groupIdentify = true
@@ -467,31 +463,68 @@ public class PostHog private constructor(
                     userPropertiesSetOnce = userPropertiesSetOnce,
                     groups = groups,
                     // only append shared props if not a snapshot event
-                    appendSharedProps = !snapshotEvent,
+                    appendSharedProps = !isSnapshotEvent,
                     // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
                 )
 
-            // sanitize the properties or fallback to the original properties
-            val sanitizedProperties = config?.propertiesSanitizer?.sanitize(mergedProperties.toMutableMap()) ?: mergedProperties
-
-            val postHogEvent =
-                PostHogEvent(
-                    event,
-                    newDistinctId,
-                    properties = sanitizedProperties,
-                )
-
-            // Replay has its own queue
-            if (snapshotEvent) {
-                replayQueue?.add(postHogEvent)
+            val postHogEvent = buildEvent(event, newDistinctId, mergedProperties)
+            if (postHogEvent == null) {
+                val originalMessage = "PostHog event $event was dropped"
+                val message =
+                    if (PostHogEventName.isUnsafeEditable(event)) {
+                        "$originalMessage. This can cause unexpected behavior."
+                    } else {
+                        originalMessage
+                    }
+                config?.logger?.log(message)
                 return
             }
-
-            queue?.add(postHogEvent)
+            // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
+            isSnapshotEvent = postHogEvent.event == "\$snapshot"
+            // if this is a $snapshot event and $session_id is missing, don't process then event
+            if (isSnapshotEvent && properties?.get("\$session_id") == null) {
+                config?.logger?.log("Event dropped, because snapshot and session_id are missing")
+                return
+            }
+            // Replay has its own queue
+            if (isSnapshotEvent) {
+                replayQueue?.add(postHogEvent)
+            } else {
+                queue?.add(postHogEvent)
+            }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun buildEvent(
+        event: String,
+        distinctId: String,
+        properties: MutableMap<String, Any>,
+    ): PostHogEvent? {
+        // sanitize the properties or fallback to the original properties
+        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties)?.toMutableMap() ?: properties
+        val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties)
+        var eventChecked: PostHogEvent? = postHogEvent
+
+        val beforeSendList = config?.beforeSendList ?: emptyList()
+
+        for (beforeSend in beforeSendList) {
+            try {
+                eventChecked = beforeSend.run(postHogEvent)
+                if (eventChecked == null) {
+                    config?.logger?.log("Event $event was rejected in beforeSend function")
+                    return null
+                }
+            } catch (e: Throwable) {
+                config?.logger?.log("Error in beforeSend function: $e")
+                return null
+            }
+        }
+
+        return eventChecked
     }
 
     public override fun optIn() {
