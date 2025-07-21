@@ -1,6 +1,8 @@
 package com.posthog
 
+import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -25,6 +27,7 @@ internal class PostHogBeforeSendTest {
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("TestCachedEvents"),
         )
+    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
     data class BeforeSendTestEventModel(
@@ -170,6 +173,38 @@ internal class PostHogBeforeSendTest {
         replayQueueExecutor.shutdownAndAwaitTermination()
 
         assertEquals(1, http.requestCount)
+        postHogInterface.close()
+    }
+
+    @Test
+    fun `mutate event properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val postHogInterface: PostHogInterface =
+            getSut(
+                url.toString(),
+                listBeforeSend =
+                    listOf(
+                        PostHogBeforeSend { event ->
+                            event.properties?.toMutableMap()?.set("key", "value")
+                            event
+                        },
+                    ),
+            )
+        postHogInterface.getFeatureFlag("key")
+
+        queueExecutor.shutdownAndAwaitTermination()
+        replayQueueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals("value", theEvent.properties?.get("key"))
+
         postHogInterface.close()
     }
 }
