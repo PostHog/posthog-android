@@ -186,8 +186,7 @@ internal class PostHogBeforeSendTest {
                 listBeforeSend =
                     listOf(
                         PostHogBeforeSend { event ->
-                            event.properties?.toMutableMap()?.set("key", "value")
-                            event
+                            event.copy(properties = event.properties?.plus("key" to "value"))
                         },
                     ),
             )
