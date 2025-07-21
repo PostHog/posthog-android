@@ -506,7 +506,7 @@ public class PostHog private constructor(
     ): PostHogEvent? {
         // sanitize the properties or fallback to the original properties
         val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties.toMutableMap()) ?: properties
-        val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties)
+        val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties.toMutableMap())
         var eventChecked: PostHogEvent? = postHogEvent
 
         val beforeSendList = config?.beforeSendList ?: emptyList()
