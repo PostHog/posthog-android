@@ -1,5 +1,7 @@
 ## Next
 
+## 3.20.0 - 2025-07-33
+
 - feat: add support for beforeSend function to edit or drop events ([#266](https://github.com/PostHog/posthog-android/pull/266))
     - Thanks @KopeikinaDarya 
 
