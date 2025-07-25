@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import com.posthog.PersonProfiles.ALWAYS
 import com.posthog.PostHogInterface
+import com.posthog.PostHogOnErrorFeatureFlags
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
@@ -26,10 +27,12 @@ class NormalActivity : ComponentActivity() {
         preloadFeatureFlags = true
         debug = BuildConfig.DEBUG
         personProfiles = ALWAYS
+
+        onErrorLoadedFlags = PostHogOnErrorFeatureFlags{
+            Log.d("PosthogTest", "onFeatureFlags error = $it")
+        }
         onFeatureFlags = PostHogOnFeatureFlags {
-            postHog?.let {
-                Log.d("PosthogTest", "onFeatureFlags = $it")
-            }
+            Log.d("PosthogTest", "onFeatureFlags loaded")
         }
     }
 

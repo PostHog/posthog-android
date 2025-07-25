@@ -92,6 +92,7 @@ public open class PostHogConfig(
      * Defaults to no callback
      */
     public var onFeatureFlags: PostHogOnFeatureFlags? = null,
+    public var onErrorLoadedFlags: PostHogOnErrorFeatureFlags? = null,
     /**
      * Enable Recording of Session Replays for Android
      * Requires Record user sessions to be enabled in the PostHog Project Settings

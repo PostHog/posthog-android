@@ -214,7 +214,6 @@ internal class PostHogQueue(
             }
         } catch (e: PostHogApiError) {
             deleteFiles = deleteFilesIfAPIError(e, config)
-
             throw e
         } catch (e: IOException) {
             // no connection should try again

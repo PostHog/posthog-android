@@ -161,6 +161,7 @@ internal class PostHogRemoteConfig(
                     isRemoteConfigLoaded = false
                 }
             } catch (e: Throwable) {
+                config.onErrorLoadedFlags?.error(e)
                 config.logger.log("Loading remote config failed: $e")
             } finally {
                 isLoadingRemoteConfig.set(false)
