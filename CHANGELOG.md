@@ -1,6 +1,10 @@
 ## Next
 
-## 3.20.0 - 2025-07-33
+## 3.20.1 - 2025-07-25
+
+- fix: call PostHogOnFeatureFlags if remote config fails ([#268](https://github.com/PostHog/posthog-android/pull/245)) 
+
+## 3.20.0 - 2025-07-23
 
 - feat: add support for beforeSend function to edit or drop events ([#266](https://github.com/PostHog/posthog-android/pull/266))
     - Thanks @KopeikinaDarya 
