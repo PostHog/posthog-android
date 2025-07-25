@@ -2,7 +2,7 @@
 
 ## 3.20.1 - 2025-07-25
 
-- fix: call PostHogOnFeatureFlags if remote config fails ([#268](https://github.com/PostHog/posthog-android/pull/245)) 
+- fix: call PostHogOnFeatureFlags if remote config fails ([#270](https://github.com/PostHog/posthog-android/pull/270)) 
 
 ## 3.20.0 - 2025-07-23
 
