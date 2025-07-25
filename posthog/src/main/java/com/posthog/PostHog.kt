@@ -741,6 +741,7 @@ public class PostHog private constructor(
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
             reloadFeatureFlags(config?.onFeatureFlags)
         }
+
     }
 
     public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
