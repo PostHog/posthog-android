@@ -39,9 +39,6 @@ internal class PostHogRemoteConfig(
     private var isFeatureFlagsLoaded = false
 
     @Volatile
-    private var isRemoteConfigLoaded = false
-
-    @Volatile
     private var sessionReplayFlagActive = false
 
     init {
@@ -93,6 +90,20 @@ internal class PostHogRemoteConfig(
         return recordingActive
     }
 
+    private fun runOnFeatureFlagsCallbacks(
+        internalOnFeatureFlags: PostHogOnFeatureFlags?,
+        onFeatureFlags: PostHogOnFeatureFlags?,
+    ) {
+        // if we don't load the feature flags (because there are none), we need to call the callback
+        // because the app might be waiting for it.
+        try {
+            internalOnFeatureFlags?.loaded()
+            onFeatureFlags?.loaded()
+        } catch (e: Throwable) {
+            config.logger.log("Executing the feature flags callback failed: $e")
+        }
+    }
+
     fun loadRemoteConfig(
         distinctId: String,
         anonymousId: String?,
@@ -103,6 +114,10 @@ internal class PostHogRemoteConfig(
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
                 config.logger.log("Network isn't connected.")
+                runOnFeatureFlagsCallbacks(
+                    internalOnFeatureFlags = internalOnFeatureFlags,
+                    onFeatureFlags = onFeatureFlags,
+                )
                 return@executeSafely
             }
 
@@ -134,6 +149,10 @@ internal class PostHogRemoteConfig(
                                     )
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+                                    runOnFeatureFlagsCallbacks(
+                                        internalOnFeatureFlags = internalOnFeatureFlags,
+                                        onFeatureFlags = onFeatureFlags,
+                                    )
                                 }
                             }
                         } else {
@@ -145,22 +164,23 @@ internal class PostHogRemoteConfig(
                                 clearFlags()
                             }
 
-                            // if we don't load the feature flags (because there are none), we need to call the callback
-                            // because the app might be waiting for it.
-                            try {
-                                internalOnFeatureFlags?.loaded()
-                                onFeatureFlags?.loaded()
-                            } catch (e: Throwable) {
-                                config.logger.log("Executing the feature flags callback failed: $e")
-                            }
+                            runOnFeatureFlagsCallbacks(
+                                internalOnFeatureFlags = internalOnFeatureFlags,
+                                onFeatureFlags = onFeatureFlags,
+                            )
                         }
-
-                        isRemoteConfigLoaded = true
                     }
                 } ?: run {
-                    isRemoteConfigLoaded = false
+                    runOnFeatureFlagsCallbacks(
+                        internalOnFeatureFlags = internalOnFeatureFlags,
+                        onFeatureFlags = onFeatureFlags,
+                    )
                 }
             } catch (e: Throwable) {
+                runOnFeatureFlagsCallbacks(
+                    internalOnFeatureFlags = internalOnFeatureFlags,
+                    onFeatureFlags = onFeatureFlags,
+                )
                 config.logger.log("Loading remote config failed: $e")
             } finally {
                 isLoadingRemoteConfig.set(false)
@@ -215,6 +235,10 @@ internal class PostHogRemoteConfig(
     ) {
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Network isn't connected.")
+            runOnFeatureFlagsCallbacks(
+                internalOnFeatureFlags = internalOnFeatureFlags,
+                onFeatureFlags = onFeatureFlags,
+            )
             return
         }
 
@@ -277,14 +301,11 @@ internal class PostHogRemoteConfig(
         } catch (e: Throwable) {
             config.logger.log("Loading feature flags failed: $e")
         } finally {
-            try {
-                internalOnFeatureFlags?.loaded()
-                onFeatureFlags?.loaded()
-            } catch (e: Throwable) {
-                config.logger.log("Executing the feature flags callback failed: $e")
-            } finally {
-                isLoadingFeatureFlags.set(false)
-            }
+            runOnFeatureFlagsCallbacks(
+                internalOnFeatureFlags = internalOnFeatureFlags,
+                onFeatureFlags = onFeatureFlags,
+            )
+            isLoadingFeatureFlags.set(false)
         }
     }
 
@@ -492,10 +513,6 @@ internal class PostHogRemoteConfig(
             clearFlags()
 
             config.cachePreferences?.remove(SESSION_REPLAY)
-        }
-
-        synchronized(remoteConfigLock) {
-            isRemoteConfigLoaded = false
         }
     }
 }
