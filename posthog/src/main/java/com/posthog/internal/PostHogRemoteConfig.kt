@@ -39,9 +39,6 @@ internal class PostHogRemoteConfig(
     private var isFeatureFlagsLoaded = false
 
     @Volatile
-    private var isRemoteConfigLoaded = false
-
-    @Volatile
     private var sessionReplayFlagActive = false
 
     init {
@@ -172,15 +169,12 @@ internal class PostHogRemoteConfig(
                                 onFeatureFlags = onFeatureFlags,
                             )
                         }
-
-                        isRemoteConfigLoaded = true
                     }
                 } ?: run {
                     runOnFeatureFlagsCallbacks(
                         internalOnFeatureFlags = internalOnFeatureFlags,
                         onFeatureFlags = onFeatureFlags,
                     )
-                    isRemoteConfigLoaded = false
                 }
             } catch (e: Throwable) {
                 runOnFeatureFlagsCallbacks(
@@ -519,10 +513,6 @@ internal class PostHogRemoteConfig(
             clearFlags()
 
             config.cachePreferences?.remove(SESSION_REPLAY)
-        }
-
-        synchronized(remoteConfigLock) {
-            isRemoteConfigLoaded = false
         }
     }
 }
