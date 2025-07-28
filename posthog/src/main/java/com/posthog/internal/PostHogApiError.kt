@@ -9,10 +9,10 @@ import java.lang.RuntimeException
  * @property message the exception message
  * @property message the OkHttp response body, the source might be closed already
  */
-internal class PostHogApiError(
-    val statusCode: Int,
+public class PostHogApiError(
+    public val statusCode: Int,
     override val message: String,
-    val body: ResponseBody?,
+    public val body: ResponseBody?,
 ) : RuntimeException(message) {
     override fun toString(): String {
         return "PostHogApiError(statusCode=$statusCode, message='$message')"

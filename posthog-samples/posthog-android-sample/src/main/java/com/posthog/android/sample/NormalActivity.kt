@@ -10,6 +10,7 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.replay.PostHogSessionReplayConfig
+import com.posthog.internal.PostHogApiError
 
 class NormalActivity : ComponentActivity() {
 
@@ -28,8 +29,10 @@ class NormalActivity : ComponentActivity() {
         debug = BuildConfig.DEBUG
         personProfiles = ALWAYS
 
-        onErrorLoadedFlags = PostHogOnErrorFeatureFlags{
-            Log.d("PosthogTest", "onFeatureFlags error = $it")
+        onErrorLoadedFlags = PostHogOnErrorFeatureFlags {
+            (it as? PostHogApiError)?.let {
+                Log.d("PosthogTest", "onFeatureFlags error = $it")
+            }
         }
         onFeatureFlags = PostHogOnFeatureFlags {
             Log.d("PosthogTest", "onFeatureFlags loaded")
