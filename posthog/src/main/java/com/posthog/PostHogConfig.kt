@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogSerializer
+import com.posthog.surveys.PostHogSurveysConfig
 import java.net.Proxy
 import java.util.UUID
 
@@ -162,7 +163,13 @@ public open class PostHogConfig(
      * Default: `null` (no proxy).
      */
     public var proxy: Proxy? = null,
-) {
+
+    /**
+     * Configuration for PostHog Surveys feature.
+     */
+    public var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
+
+    ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
 
