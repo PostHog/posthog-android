@@ -1067,6 +1067,11 @@ public class PostHog private constructor(
         return config as? T
     }
 
+    @PostHogInternal
+    internal fun getRemoteConfig(): PostHogRemoteConfig? {
+        return remoteConfig
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared

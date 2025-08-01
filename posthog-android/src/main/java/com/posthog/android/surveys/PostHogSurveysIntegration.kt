@@ -59,6 +59,7 @@ public class PostHogSurveysIntegration(
     private val deviceType: String = "Mobile"
 
     private var postHog: PostHogInterface? = null
+    private var config: PostHogConfig? = null
     
     // Survey seen tracking
     private val surveySeenKeyPrefix = "seenSurvey_"
@@ -71,9 +72,14 @@ public class PostHogSurveysIntegration(
     // Event activation tracking
     private val eventActivatedSurveys = mutableSetOf<String>()
     private val eventsToSurveys = mutableMapOf<String, List<String>>()
+    
+    // Survey response tracking
+    private val currentSurveyResponses = mutableMapOf<String, PostHogSurveyResponse>()
+    private var activeSurveyCompleted = false
 
     public override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
+        this.config = postHog.getConfig() as? PostHogConfig
     }
     
     /**
@@ -82,7 +88,6 @@ public class PostHogSurveysIntegration(
      * @return The surveys delegate from PostHogConfig.surveysConfig
      */
     private fun getSurveysDelegate(): PostHogSurveysDelegate {
-        val config = postHog?.getConfig() as? PostHogConfig
         return config?.surveysConfig?.surveysDelegate ?: PostHogSurveysDefaultDelegate(config)
     }
 
@@ -107,6 +112,8 @@ public class PostHogSurveysIntegration(
     }
 
     private fun getActiveMatchingSurveys(surveys: List<Survey>): List<Survey> {
+        val postHog = postHog ?: return emptyList()
+
         return surveys.filter { survey ->
             // 1. Filter out inactive surveys (must have start date and no end date)
             if (survey.startDate == null || survey.endDate != null) return@filter false
@@ -117,38 +124,31 @@ public class PostHogSurveysIntegration(
             // 3. Filter out seen surveys (unless they can activate repeatedly)
             if (getSurveySeen(survey)) return@filter false
 
-            if (survey.linkedFlagKey.isNullOrEmpty() &&
-                survey.targetingFlagKey.isNullOrEmpty() &&
-                survey.internalTargetingFlagKey.isNullOrEmpty() &&
-                survey.featureFlagKeys.isNullOrEmpty()
-            ) {
-                return@filter true
-            }
-
-            val postHog = postHog ?: return@filter false
-
-            val overrideInternalTargetingFlagCheck = canActivateRepeatedly(survey)
-            val linkedFlagCheck = survey.linkedFlagKey?.let { postHog.isFeatureEnabled(it) } ?: true
-            val targetingFlagCheck = survey.targetingFlagKey?.let { postHog.isFeatureEnabled(it) } ?: true
-            val internalTargetingFlagKey = survey.internalTargetingFlagKey
-            val internalTargetingFlagCheck =
-                overrideInternalTargetingFlagCheck ||
-                    if (!internalTargetingFlagKey.isNullOrEmpty()) {
-                        postHog.isFeatureEnabled(internalTargetingFlagKey)
-                    } else {
-                        true
-                    }
-
-            val flagsCheck =
-                survey.featureFlagKeys?.all { keyVal ->
-                    val key = keyVal.key
-                    val value = keyVal.value
-                    key.isEmpty() || value.isNullOrEmpty() || postHog.isFeatureEnabled(value)
-                } ?: true
-
-            val featureFlagsMatch = linkedFlagCheck && targetingFlagCheck && internalTargetingFlagCheck && flagsCheck
+            // 4. Check feature flags (collect all non-empty keys and verify they're enabled)
+            val allKeys = mutableListOf<String>()
             
-            // 4. For event-based surveys, check if they have been activated by the event
+            // Linked flag key
+            survey.linkedFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
+            
+            // Targeting flag key
+            survey.targetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
+            
+            // Internal targeting flag key (only if survey cannot activate repeatedly)
+            if (!canActivateRepeatedly(survey)) {
+                survey.internalTargetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
+            }
+            
+            // Feature flag keys
+            survey.featureFlagKeys?.forEach { keyVal ->
+                if (keyVal.key.isNotEmpty() && !keyVal.value.isNullOrEmpty()) {
+                    allKeys.add(keyVal.value)
+                }
+            }
+            
+            // All collected flag keys must be enabled
+            val featureFlagsMatch = allKeys.all { postHog.isFeatureEnabled(it) }
+            
+            // 5. For event-based surveys, check if they have been activated by the event
             val eventActivationCheck = if (hasEvents(survey)) {
                 isSurveyEventActivated(survey)
             } else {
@@ -166,73 +166,93 @@ public class PostHogSurveysIntegration(
      * 1. Converting the internal survey model to a display model
      * 2. Setting up callbacks for survey events (shown, response, closed)
      * 3. Calling the delegate to render the survey UI
-     * 4. Sending appropriate analytics events
-     * 5. Handling survey navigation logic
      *
      * @param survey The survey to show
      */
     public fun showSurvey(survey: Survey) {
-        val postHog = postHog ?: return
+        // Check if we can show a survey (no active survey)
+        if (!canShowNextSurvey()) {
+            config?.logger?.log("Cannot show survey - another survey is already active")
+            return
+        }
+
         val displaySurvey = PostHogDisplaySurvey.toDisplaySurvey(survey)
+        
+        // Clear previous survey responses
+        currentSurveyResponses.clear()
         
         // Store the original survey for branching logic
         val originalSurvey = survey
         
-        // Create callbacks for the delegate
-        val onSurveyShown: OnPostHogSurveyShown = { shownSurvey ->
-            // Send survey shown event
-            postHog.capture(
-                event = "survey shown",
-                properties = mapOf(
-                    "survey_id" to shownSurvey.id,
-                    "survey_name" to shownSurvey.name
-                )
-            )
-        }
-        
-        val onSurveyResponse: OnPostHogSurveyResponse = { responseSurvey, questionIndex, response ->
-            if (questionIndex < 0 || questionIndex >= responseSurvey.questions.size) {
-                PostHogNextSurveyQuestion(
-                    questionIndex = questionIndex,
-                    isSurveyCompleted = false
-                )
+        // Setup callbacks for delegate call
+        val onSurveyShown: OnPostHogSurveyShown = { _ ->
+            // Validate that this survey matches the currently active survey
+            val currentActiveSurvey = activeSurvey
+            if (currentActiveSurvey != null && originalSurvey.id == currentActiveSurvey.id) {
+                sendSurveyShownEvent(currentActiveSurvey)
+                
+                // Clear up event-activated surveys if this survey has events
+                if (hasEvents(currentActiveSurvey)) {
+                    eventActivatedSurveys.remove(currentActiveSurvey.id)
+                }
             } else {
-//                val displayQuestion = responseSurvey.questions[questionIndex]
-                
-                // Find the original survey question to get its type for event properties
-//                val originalQuestion = originalSurvey.questions.getOrNull(questionIndex)
-//                val questionType = originalQuestion?.type?.value ?: ""
-//                val questionText = originalQuestion?.question ?: displayQuestion.question
-                
-                // Send survey response event
-//                postHog.capture(
-//                    event = "survey response",
-//                    properties = mapOf(
-//                        "survey_id" to responseSurvey.id,
-//                        "survey_name" to responseSurvey.name,
-//                        "question" to questionText,
-//                        "question_type" to questionType,
-//                        "survey_response" to response.toResponseValue()
-//                    )
-//                )
-                
-                // Determine next question
-                getNextQuestion(responseSurvey, originalSurvey, questionIndex, response)
+                config?.logger?.log("Received a show event for a non-active survey: ${originalSurvey.id}")
             }
         }
         
-        val onSurveyClosed: OnPostHogSurveyClosed = { closedSurvey ->
-            // Send survey closed event
-            postHog.capture(
-                event = "survey closed",
-                properties = mapOf(
-                    "survey_id" to closedSurvey.id,
-                    "survey_name" to closedSurvey.name
-                )
-            )
+        val onSurveyResponse: OnPostHogSurveyResponse = { responseSurvey, questionIndex, response ->
+            // Get current active survey
+            val currentActiveSurvey = activeSurvey
             
-            // Clear the active survey to allow the next survey to be shown
+            // Validate that this survey matches the currently active survey
+            if (currentActiveSurvey == null || responseSurvey.id != currentActiveSurvey.id) {
+                config?.logger?.log("Received a response event for a non-active survey")
+                null
+            } else {
+                // Calculate next question based on current response
+                val nextQuestion = getNextQuestion(responseSurvey, originalSurvey, questionIndex, response)
+                
+                // Store the response for survey completion tracking
+                currentSurveyResponses["question_${questionIndex}"] = response
+                
+                // Mark survey as having received responses
+                activeSurveyCompleted = nextQuestion.isSurveyCompleted
+                
+                // Send completion event if survey is finished
+                if (nextQuestion.isSurveyCompleted) {
+                    sendSurveySentEvent(originalSurvey, currentSurveyResponses)
+                }
+                
+                nextQuestion
+            }
+        }
+        
+        val onSurveyClosed: OnPostHogSurveyClosed = { _ ->
+            // Get current active survey and completion state
+            val currentActiveSurvey = activeSurvey
+            
+            // Validate that this survey matches the currently active survey
+            if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
+                config?.logger?.log("Received a close event for a non-active survey")
+                return@OnPostHogSurveyClosed
+            }
+            
+            // Send survey dismissed event if survey was not completed
+            if (!activeSurveyCompleted) {
+                sendSurveyDismissedEvent(originalSurvey)
+            }
+            
+            // Mark survey as seen
+            setSurveySeen(originalSurvey)
+            
+            // Clear active survey
             clearActiveSurvey()
+            
+            // Show next survey in queue after a short delay
+            Thread {
+                Thread.sleep(750)
+                showNextSurvey()
+            }.start()
         }
         
         // Call the delegate to render the survey
@@ -267,7 +287,7 @@ public class PostHogSurveysIntegration(
      * @param originalSurvey The original survey containing branching logic
      * @param currentIndex The index of the current question
      * @param response The user's response to the current question
-     * @return The next question state or null if there's an error
+     * @return The next question state
      */
     private fun getNextQuestion(
         displaySurvey: PostHogDisplaySurvey,
@@ -275,91 +295,204 @@ public class PostHogSurveysIntegration(
         currentIndex: Int,
         response: PostHogSurveyResponse
     ): PostHogNextSurveyQuestion {
-        if (currentIndex < 0 || currentIndex >= displaySurvey.questions.size) {
+        val originalQuestion = originalSurvey.questions.getOrNull(currentIndex)
+        val nextQuestionIndex = minOf(currentIndex + 1, originalSurvey.questions.size - 1)
+        
+        // If no branching is defined, check if we're at the last question
+        val branching = originalQuestion?.branching
+        if (branching == null) {
             return PostHogNextSurveyQuestion(
                 questionIndex = currentIndex,
-                isSurveyCompleted = true
+                isSurveyCompleted = currentIndex == originalSurvey.questions.size - 1
             )
         }
         
-        val originalQuestion = originalSurvey.questions.getOrNull(currentIndex)
-        val branching = originalQuestion?.branching
-        
-        // If no branching is defined, go to the next question
-        if (branching == null) {
-            val nextIndex = currentIndex + 1
-            return PostHogNextSurveyQuestion(
-                questionIndex = nextIndex,
-                isSurveyCompleted = nextIndex >= displaySurvey.questions.size
-            )
-        }
-        
-        // Handle branching logic based on the branching type
-        val nextIndex = when (branching) {
+        return when (branching) {
             is com.posthog.surveys.SurveyQuestionBranching.End -> {
-                // End the survey
-                originalSurvey.questions.size
-            }
-            is com.posthog.surveys.SurveyQuestionBranching.SpecificQuestion -> {
-                // Go to a specific question
-                val targetIndex = branching.index
-                if (targetIndex < 0 || targetIndex >= originalSurvey.questions.size) {
-                    // Invalid target index, go to the next question
-                    currentIndex + 1
-                } else {
-                    targetIndex
-                }
+                PostHogNextSurveyQuestion(
+                    questionIndex = currentIndex,
+                    isSurveyCompleted = true
+                )
             }
             is com.posthog.surveys.SurveyQuestionBranching.Next -> {
-                // Go to the next question
-                currentIndex + 1
+                PostHogNextSurveyQuestion(
+                    questionIndex = nextQuestionIndex,
+                    isSurveyCompleted = nextQuestionIndex >= originalSurvey.questions.size
+                )
+            }
+            is com.posthog.surveys.SurveyQuestionBranching.SpecificQuestion -> {
+                val targetIndex = minOf(branching.index, originalSurvey.questions.size - 1)
+                PostHogNextSurveyQuestion(
+                    questionIndex = targetIndex,
+                    isSurveyCompleted = targetIndex >= originalSurvey.questions.size
+                )
             }
             is com.posthog.surveys.SurveyQuestionBranching.ResponseBased -> {
-                // Determine the next question based on the response
-                val responseValue = when (response) {
-                    is PostHogSurveyResponse.Text -> {
-                        // Text responses don't have response-based branching
-                        null
-                    }
-                    is PostHogSurveyResponse.Rating -> {
-                        response.rating.toString()
-                    }
-                    is PostHogSurveyResponse.SingleChoice -> {
-                        response.selectedChoice?.toString()
-                    }
-                    is PostHogSurveyResponse.MultipleChoice -> {
-                        // For multiple choice, we only use the first selected choice for branching
-                        if (response.selectedChoices?.isNotEmpty() == true) {
-                            response.selectedChoices?.first()
-                        } else {
-                            null
-                        }
-                    }
-                    is PostHogSurveyResponse.Link -> {
-                        // Link responses don't have response-based branching
-                        null
-                    }
-                }
-                
-                if (responseValue != null && branching.responseValues.containsKey(responseValue)) {
-                    val targetIndex = branching.responseValues[responseValue] as? Int
-                    if (targetIndex != null && targetIndex >= 0 && targetIndex < originalSurvey.questions.size) {
-                        targetIndex
-                    } else {
-                        // Invalid target index, go to the next question
-                        currentIndex + 1
-                    }
-                } else {
-                    // No matching branch, go to the next question
-                    currentIndex + 1
+                getResponseBasedNextQuestion(
+                    originalSurvey,
+                    originalQuestion,
+                    currentIndex,
+                    response,
+                    branching.responseValues
+                ) ?: PostHogNextSurveyQuestion(
+                    questionIndex = nextQuestionIndex,
+                    isSurveyCompleted = nextQuestionIndex >= originalSurvey.questions.size
+                )
+            }
+        }
+    }
+    
+    /**
+     * Returns next question index based on response value, implementing iOS-style response mapping.
+     */
+    private fun getResponseBasedNextQuestion(
+        survey: Survey,
+        question: com.posthog.surveys.SurveyQuestion?,
+        currentIndex: Int,
+        response: PostHogSurveyResponse,
+        responseValues: Map<String, Any>
+    ): PostHogNextSurveyQuestion? {
+        if (question == null) {
+            config?.logger?.log("Got response based branching, but missing the actual question.")
+            return null
+        }
+        
+        return when (response) {
+            is PostHogSurveyResponse.SingleChoice -> {
+                handleSingleChoiceResponseBranching(question, response, responseValues, survey.questions.size)
+            }
+            is PostHogSurveyResponse.Rating -> {
+                handleRatingResponseBranching(question, response, responseValues, survey.questions.size)
+            }
+            else -> {
+                config?.logger?.log("Got response based branching for an unsupported question type.")
+                null
+            }
+        }
+    }
+    
+    /**
+     * Handles single choice response branching with choice index mapping.
+     */
+    private fun handleSingleChoiceResponseBranching(
+        question: com.posthog.surveys.SurveyQuestion,
+        response: PostHogSurveyResponse.SingleChoice,
+        responseValues: Map<String, Any>,
+        totalQuestions: Int
+    ): PostHogNextSurveyQuestion? {
+        if (question !is com.posthog.surveys.SingleSurveyQuestion) {
+            return null
+        }
+        
+        val selectedChoice = response.selectedChoice
+        var responseIndex = question.choices?.indexOf(selectedChoice ?: "") ?: -1
+        
+        // If the response is not found in the choices, it might be an open choice (always last)
+        if (responseIndex == -1 && question.hasOpenChoice == true) {
+            responseIndex = (question.choices?.size ?: 0) - 1
+        }
+        
+        if (responseIndex >= 0) {
+            val nextIndex = responseValues[responseIndex.toString()]
+            if (nextIndex != null) {
+                return processBranchingStep(nextIndex, totalQuestions)
+            }
+        }
+        
+        config?.logger?.log("Could not find response index for specific question.")
+        return null
+    }
+    
+    /**
+     * Handles rating response branching with rating bucket logic.
+     */
+    private fun handleRatingResponseBranching(
+        question: com.posthog.surveys.SurveyQuestion,
+        response: PostHogSurveyResponse.Rating,
+        responseValues: Map<String, Any>,
+        totalQuestions: Int
+    ): PostHogNextSurveyQuestion? {
+        if (question !is com.posthog.surveys.RatingSurveyQuestion) {
+            return null
+        }
+        
+        val scale = question.scale
+        if (scale != null) {
+            val ratingBucket = getRatingBucketForResponseValue(scale, response.rating)
+            if (ratingBucket != null) {
+                val nextIndex = responseValues[ratingBucket]
+                if (nextIndex != null) {
+                    return processBranchingStep(nextIndex, totalQuestions)
                 }
             }
         }
         
-        return PostHogNextSurveyQuestion(
-            questionIndex = nextIndex,
-            isSurveyCompleted = nextIndex >= displaySurvey.questions.size
-        )
+        config?.logger?.log("Could not get response bucket for rating question.")
+        return null
+    }
+    
+    /**
+     * Processes a branching step result, handling both Int indices and "end" string values.
+     */
+    private fun processBranchingStep(nextIndex: Any, totalQuestions: Int): PostHogNextSurveyQuestion? {
+        return when {
+            nextIndex is Int -> {
+                val safeIndex = minOf(nextIndex, totalQuestions - 1)
+                PostHogNextSurveyQuestion(
+                    questionIndex = safeIndex,
+                    isSurveyCompleted = safeIndex >= totalQuestions
+                )
+            }
+            nextIndex is String && nextIndex.lowercase() == "end" -> {
+                PostHogNextSurveyQuestion(
+                    questionIndex = totalQuestions - 1,
+                    isSurveyCompleted = true
+                )
+            }
+            else -> null
+        }
+    }
+    
+    /**
+     * Gets the response bucket for a given rating response value, given the scale.
+     * For example, for a scale of 3, the buckets are "negative", "neutral" and "positive".
+     */
+    private fun getRatingBucketForResponseValue(scale: Int, value: Int): String? {
+        return when (scale) {
+            3 -> {
+                when (value) {
+                    in 0..0 -> "negative"
+                    in 1..1 -> "neutral"
+                    in 2..2 -> "positive"
+                    else -> null
+                }
+            }
+            5 -> {
+                when (value) {
+                    in 0..1 -> "negative"
+                    in 2..2 -> "neutral"
+                    in 3..4 -> "positive"
+                    else -> null
+                }
+            }
+            7 -> {
+                when (value) {
+                    in 0..2 -> "negative"
+                    in 3..3 -> "neutral"
+                    in 4..6 -> "positive"
+                    else -> null
+                }
+            }
+            10 -> {
+                when (value) {
+                    in 0..6 -> "negative"
+                    in 7..8 -> "neutral"
+                    in 9..10 -> "positive"
+                    else -> null
+                }
+            }
+            else -> null
+        }
     }
     
     // Active survey tracking
@@ -390,13 +523,21 @@ public class PostHogSurveysIntegration(
      * 4. Tracks the active survey state
      */
     public fun showNextSurvey() {
-//        val postHog = postHog ?: return
-        
         if (!canShowNextSurvey()) {
             return
         }
-
-        // TODO:
+        
+        // Get surveys from PostHog remote config
+        val surveys = (postHog as? com.posthog.PostHog)?.getRemoteConfig()?.getSurveys() ?: emptyList()
+        val activeSurveys = getActiveMatchingSurveys(surveys)
+        
+        // Find the first survey that can be rendered
+        val surveyToShow = activeSurveys.firstOrNull()
+        
+        if (surveyToShow != null) {
+            // Use the existing showSurvey method which handles all the logic
+            showSurvey(surveyToShow)
+        }
     }
     
     /**
@@ -413,6 +554,8 @@ public class PostHogSurveysIntegration(
      */
     private fun clearActiveSurvey() {
         activeSurvey = null
+        activeSurveyCompleted = false
+        currentSurveyResponses.clear()
     }
     
     /**
@@ -474,47 +617,6 @@ public class PostHogSurveysIntegration(
             showNextSurvey()
         }
     }
-    
-    // Activity lifecycle management
-    // Note: In a real Android app, you would implement Activity.LifecycleCallbacks here
-    // and register them with the Application to automatically trigger onAppBecameActive()
-    
-    /**
-     * Registers the lifecycle observer with the application context.
-     * This method should be called by the host application to enable automatic
-     * survey triggering when the app becomes active.
-     * 
-     * Usage in Application class:
-     * ```kotlin
-     * class MyApplication : Application() {
-     *     override fun onCreate() {
-     *         super.onCreate()
-     *         val surveysIntegration = PostHogSurveysIntegration(this)
-     *         surveysIntegration.start()
-     *         surveysIntegration.registerWithApplicationLifecycle(this)
-     *     }
-     * }
-     * ```
-     */
-
-//    public fun registerWithApplicationLifecycle(application: Any) {
-        // This method provides a way for the host application to register
-        // the lifecycle callbacks. The actual implementation would depend on
-        // the Android Application.registerActivityLifecycleCallbacks() method.
-        // 
-        // In a real implementation, this would be:
-        // if (application is Application) {
-        //     application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-        //         override fun onActivityResumed(activity: Activity) {
-        //             activityLifecycleCallbacks.onActivityResumed()
-        //         }
-        //         override fun onActivityPaused(activity: Activity) {
-        //             activityLifecycleCallbacks.onActivityPaused()
-        //         }
-        //         // Other lifecycle methods...
-        //     })
-        // }
-//    }
     
     /**
      * Manually triggers the app became active event.

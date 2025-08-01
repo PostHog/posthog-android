@@ -583,6 +583,12 @@ internal class PostHogRemoteConfig(
         }
     }
 
+    fun getSurveys(): List<Survey>? {
+        synchronized(remoteConfigLock) {
+            return surveys
+        }
+    }
+
     private fun clearFlags() {
         // call this method after synchronized(featureFlagsLock)
         this.featureFlags = null
