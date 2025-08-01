@@ -2,7 +2,6 @@ package com.posthog.surveys
 
 /**
  * Represents a user's response to a survey question.
- * Different response types are supported based on the question type.
  */
 public sealed class PostHogSurveyResponse {
     /**
@@ -44,9 +43,8 @@ public sealed class PostHogSurveyResponse {
 
     /**
      * Creates a response value for sending to the PostHog API.
-     * This matches the Swift implementation behavior where responses are mapped to simple values.
      *
-     * @return The response value, or null if no response (like unclicked link)
+     * @return The response value if any
      */
     public fun toResponseValue(): Any? {
         return when (this) {

@@ -5,7 +5,6 @@ import com.posthog.surveys.PostHogSurveysDefaultDelegate
 
 /**
  * Configuration for PostHog Surveys feature.
- * Contains settings and delegates for survey presentation and behavior.
  */
 public class PostHogSurveysConfig {
     /**
@@ -13,7 +12,7 @@ public class PostHogSurveysConfig {
      * Handles survey rendering, response collection, and lifecycle events.
      * You can provide your own delegate for a custom survey presentation.
      *
-     * Defaults to [PostHogSurveysDefaultDelegate] which provides logging but no UI.
+     * Defaults to [PostHogSurveysDefaultDelegate] which provides logging but no UI at the moment.
      */
     public var surveysDelegate: PostHogSurveysDelegate = PostHogSurveysDefaultDelegate()
 }

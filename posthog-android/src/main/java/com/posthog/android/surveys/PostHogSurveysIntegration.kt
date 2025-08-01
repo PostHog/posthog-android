@@ -27,6 +27,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.sql.Date
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 public class PostHogSurveysIntegration(
     private val context: Context? = null
@@ -56,6 +59,18 @@ public class PostHogSurveysIntegration(
     private val deviceType: String = "Mobile"
 
     private var postHog: PostHogInterface? = null
+    
+    // Survey seen tracking
+    private val surveySeenKeyPrefix = "seenSurvey_"
+    private var seenSurveyKeys: MutableMap<String, Boolean>? = null
+    
+    companion object {
+        private const val SURVEY_SEEN_STORAGE_KEY = "surveySeen"
+    }
+    
+    // Event activation tracking
+    private val eventActivatedSurveys = mutableSetOf<String>()
+    private val eventsToSurveys = mutableMapOf<String, List<String>>()
 
     public override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
@@ -93,11 +108,14 @@ public class PostHogSurveysIntegration(
 
     private fun getActiveMatchingSurveys(surveys: List<Survey>): List<Survey> {
         return surveys.filter { survey ->
+            // 1. Filter out inactive surveys (must have start date and no end date)
             if (survey.startDate == null || survey.endDate != null) return@filter false
 
+            // 2. Filter out surveys that don't match device type
             if (!doesSurveyDeviceTypesMatch(survey)) return@filter false
 
-            // TODO: add support for seen surveys
+            // 3. Filter out seen surveys (unless they can activate repeatedly)
+            if (getSurveySeen(survey)) return@filter false
 
             if (survey.linkedFlagKey.isNullOrEmpty() &&
                 survey.targetingFlagKey.isNullOrEmpty() &&
@@ -128,7 +146,16 @@ public class PostHogSurveysIntegration(
                     key.isEmpty() || value.isNullOrEmpty() || postHog.isFeatureEnabled(value)
                 } ?: true
 
-            linkedFlagCheck && targetingFlagCheck && internalTargetingFlagCheck && flagsCheck
+            val featureFlagsMatch = linkedFlagCheck && targetingFlagCheck && internalTargetingFlagCheck && flagsCheck
+            
+            // 4. For event-based surveys, check if they have been activated by the event
+            val eventActivationCheck = if (hasEvents(survey)) {
+                isSurveyEventActivated(survey)
+            } else {
+                true
+            }
+            
+            featureFlagsMatch && eventActivationCheck
         }
     }
     
@@ -340,7 +367,7 @@ public class PostHogSurveysIntegration(
     
     // Lifecycle and throttling management
     private var lastLayoutTriggerTime: Long = 0
-    private val layoutTriggerThrottleMs: Long = 5000 // 5 seconds throttle, similar to iOS
+    private val layoutTriggerThrottleMs: Long = 5000 // 5 seconds throttle
     private var isStarted: Boolean = false
     
     // Lifecycle management - following PostHogLifecycleObserverIntegration pattern
@@ -425,7 +452,7 @@ public class PostHogSurveysIntegration(
     
     /**
      * Called when the app becomes active (foreground).
-     * This triggers showNextSurvey() similar to the iOS implementation.
+     * This triggers showNextSurvey() 
      * Should be called from Activity.onResume() or Application lifecycle callbacks.
      */
     public fun onAppBecameActive() {
@@ -496,5 +523,207 @@ public class PostHogSurveysIntegration(
      */
     public fun triggerAppBecameActive() {
         onAppBecameActive()
+    }
+
+    // Survey Event Methods
+
+    /**
+     * Sends a "survey shown" event to PostHog instance
+     */
+    private fun sendSurveyShownEvent(survey: Survey) {
+        sendSurveyEvent(
+            event = "survey shown",
+            survey = survey
+        )
+    }
+
+    /**
+     * Sends a "survey sent" event to PostHog instance
+     * Sends a survey completion event to PostHog with all collected responses
+     * @param survey The completed survey
+     * @param responses Map of collected responses for each question
+     */
+    private fun sendSurveySentEvent(survey: Survey, responses: Map<String, PostHogSurveyResponse>) {
+        val questionProperties = mutableMapOf<String, Any>(
+            "\$survey_questions" to survey.questions.map { it.question }
+        )
+        
+        // Add survey interaction property for "responded"
+        questionProperties["\$set"] = mapOf(
+            getSurveyInteractionProperty(survey, "responded") to true
+        )
+
+        // Convert responses to simple values
+        val responsesProperties = responses.mapNotNull { (key, response) ->
+            response.toResponseValue()?.let { value ->
+                key to value
+            }
+        }.toMap()
+
+        val additionalProperties = questionProperties + responsesProperties
+
+        sendSurveyEvent(
+            event = "survey sent",
+            survey = survey,
+            additionalProperties = additionalProperties
+        )
+    }
+
+    /**
+     * Sends a "survey dismissed" event to PostHog instance
+     */
+    private fun sendSurveyDismissedEvent(survey: Survey) {
+        val additionalProperties = mapOf(
+            "\$survey_questions" to survey.questions.map { it.question },
+            "\$set" to mapOf(
+                getSurveyInteractionProperty(survey, "dismissed") to true
+            )
+        )
+
+        sendSurveyEvent(
+            event = "survey dismissed",
+            survey = survey,
+            additionalProperties = additionalProperties
+        )
+    }
+
+    /**
+     * Helper method to send survey events with consistent properties
+     */
+    private fun sendSurveyEvent(
+        event: String,
+        survey: Survey,
+        additionalProperties: Map<String, Any> = emptyMap()
+    ) {
+        val postHog = postHog ?: run {
+            return
+        }
+
+        val properties = getBaseSurveyEventProperties(survey).toMutableMap()
+        properties.putAll(additionalProperties)
+
+        postHog.capture(event, properties = properties)
+    }
+
+    /**
+     * Get base properties for survey events
+     */
+    private fun getBaseSurveyEventProperties(survey: Survey): Map<String, Any> {
+        val props = mutableMapOf<String, Any>()
+        
+        props["\$survey_name"] = survey.name
+        props["\$survey_id"] = survey.id
+        
+        survey.currentIteration?.let { iteration ->
+            props["\$survey_iteration"] = iteration
+        }
+        
+        survey.currentIterationStartDate?.let { startDate ->
+            props["\$survey_iteration_start_date"] = startDate
+        }
+        
+        return props
+    }
+
+    /**
+     * Generate survey interaction property key for tracking user interactions
+     */
+    private fun getSurveyInteractionProperty(survey: Survey, property: String): String {
+        val currentIteration = survey.currentIteration
+        
+        return if (currentIteration != null && currentIteration > 0) {
+            "\$survey_${property}/${survey.id}/${currentIteration}"
+        } else {
+            "\$survey_${property}/${survey.id}"
+        }
+    }
+
+    // Seen Survey Tracking Methods
+
+    /**
+     * Returns the computed storage key for a given survey
+     */
+    private fun getSurveySeenKey(survey: Survey): String {
+        val surveySeenKey = "${surveySeenKeyPrefix}${survey.id}"
+        return if (survey.currentIteration != null && survey.currentIteration > 0) {
+            "${surveySeenKey}_${survey.currentIteration}"
+        } else {
+            surveySeenKey
+        }
+    }
+
+    /**
+     * Returns survey seen list (loads from disk if memory cache is empty)
+     */
+    private fun getSeenSurveyKeys(): Map<String, Boolean> {
+        if (seenSurveyKeys == null) {
+            val postHog = postHog
+            val config = postHog?.getConfig() as? PostHogConfig
+            @Suppress("UNCHECKED_CAST")
+            val storedKeys = config?.cachePreferences?.getValue(SURVEY_SEEN_STORAGE_KEY) as? Map<String, Boolean>
+            seenSurveyKeys = storedKeys?.toMutableMap() ?: mutableMapOf()
+        }
+        return seenSurveyKeys ?: emptyMap()
+    }
+
+    /**
+     * Checks storage for seenSurvey_ key and returns its value
+     * Note: if the survey can be repeatedly activated by its events, this value will default to false
+     */
+    private fun getSurveySeen(survey: Survey): Boolean {
+        if (canActivateRepeatedly(survey)) {
+            // if this survey can activate repeatedly, we override this return value
+            return false
+        }
+
+        val key = getSurveySeenKey(survey)
+        val seenKeys = getSeenSurveyKeys()
+        return seenKeys[key] ?: false
+    }
+
+    /**
+     * Mark a survey as seen and persist to disk
+     */
+    private fun setSurveySeen(survey: Survey) {
+        val key = getSurveySeenKey(survey)
+        val seenKeys = getSeenSurveyKeys().toMutableMap()
+        seenKeys[key] = true
+        seenSurveyKeys = seenKeys
+        
+        // Persist to disk immediately
+        val postHog = postHog
+        val config = postHog?.getConfig() as? PostHogConfig
+        config?.cachePreferences?.setValue(SURVEY_SEEN_STORAGE_KEY, seenKeys)
+    }
+
+    // Event Activation Methods
+
+    /**
+     * Checks if a survey has been previously activated by an associated event
+     */
+    private fun isSurveyEventActivated(survey: Survey): Boolean {
+        return eventActivatedSurveys.contains(survey.id)
+    }
+
+    /**
+     * Called when an event is captured to activate associated surveys
+     */
+    public fun onEvent(event: String) {
+        val activatedSurveys = eventsToSurveys[event] ?: return
+        if (activatedSurveys.isEmpty()) return
+
+        for (surveyId in activatedSurveys) {
+            eventActivatedSurveys.add(surveyId)
+        }
+
+        // Trigger survey display on main thread
+        showNextSurvey()
+    }
+
+    /**
+     * Check if a survey has events defined
+     */
+    private fun hasEvents(survey: Survey): Boolean {
+        return survey.conditions?.events?.values?.isNotEmpty() == true
     }
 }

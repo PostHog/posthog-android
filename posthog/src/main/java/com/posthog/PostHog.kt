@@ -23,6 +23,7 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
+import com.posthog.android.surveys.PostHogSurveysIntegration
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -67,6 +68,7 @@ public class PostHog private constructor(
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
+    private var surveysIntegration: PostHogSurveysIntegration? = null
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
@@ -148,6 +150,9 @@ public class PostHog private constructor(
                             if (isSessionReplayConfigEnabled()) {
                                 startSessionReplay(resumeCurrent = true)
                             }
+                        } else if (it is PostHogSurveysIntegration) {
+                            // surveys integration so we can notify it about captured events (to be improved/decoupled)
+                            surveysIntegration = it
                         }
                     } catch (e: Throwable) {
                         config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
@@ -215,6 +220,8 @@ public class PostHog private constructor(
 
                             if (it is PostHogSessionReplayHandler) {
                                 sessionReplayHandler = null
+                            } else if (it is PostHogSurveysIntegration) {
+                                surveysIntegration = null
                             }
                         } catch (e: Throwable) {
                             config.logger
@@ -488,10 +495,14 @@ public class PostHog private constructor(
                 return
             }
             // Replay has its own queue
+            if (snapshotEvent) {
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
+                return
             } else {
                 queue?.add(postHogEvent)
+	           // Notify surveys integration about the event
+     	       surveysIntegration?.onEvent(event)
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
