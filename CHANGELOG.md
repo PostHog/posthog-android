@@ -1,6 +1,6 @@
 ## Next
 
-- fix: missing session_id property for snapshot events ([#270](https://github.com/PostHog/posthog-android/pull/270))
+- fix: missing session_id property for snapshot events ([#273](https://github.com/PostHog/posthog-android/pull/273))
 
 ## 3.20.1 - 2025-07-28
 

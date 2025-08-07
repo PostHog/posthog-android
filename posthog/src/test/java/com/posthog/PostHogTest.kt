@@ -58,7 +58,8 @@ internal class PostHogTest {
             PostHogConfig(API_KEY, host).apply {
                 // for testing
                 this.flushAt = flushAt
-                this.storagePrefix = storagePrefix
+                this.storagePrefix = File(storagePrefix, "events").absolutePath
+                this.replayStoragePrefix = File(storagePrefix, "snapshots").absolutePath
                 this.optOut = optOut
                 this.preloadFeatureFlags = preloadFeatureFlags
                 if (integration != null) {
@@ -1422,6 +1423,40 @@ internal class PostHogTest {
         assertNotNull(newSessionId)
 
         assertTrue(currentSessionId != newSessionId)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capture snapshot event should set session id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capture(
+            "\$snapshot",
+            DISTINCT_ID,
+            props,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+            groups = groups,
+        )
+
+        replayQueueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<List<PostHogEvent>>(content.reader())
+
+        val theEvent = batch.first()
+        val currentSessionId = theEvent.properties!!["\$session_id"]
+        assertNotNull(currentSessionId)
+        assertEquals("\$snapshot", theEvent.event)
+
+        sut.reset()
 
         sut.close()
     }
