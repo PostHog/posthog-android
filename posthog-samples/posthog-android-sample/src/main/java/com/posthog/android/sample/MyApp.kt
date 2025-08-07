@@ -29,13 +29,13 @@ class MyApp : Application() {
                 sessionReplay = true
                 preloadFeatureFlags = true
                 onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
-                addBeforeSend { event ->
-                    if (event.event == "test_name") {
-                        null
-                    } else {
-                        event
-                    }
-                }
+//                addBeforeSend { event ->
+//                    if (event.event == "test_name") {
+//                        null
+//                    } else {
+//                        event
+//                    }
+//                }
                 sessionReplayConfig.maskAllTextInputs = false
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true

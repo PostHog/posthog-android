@@ -1,5 +1,7 @@
 ## Next
 
+- fix: missing session_id property for snapshot events ([#270](https://github.com/PostHog/posthog-android/pull/270))
+
 ## 3.20.1 - 2025-07-28
 
 - fix: call PostHogOnFeatureFlags if remote config fails ([#270](https://github.com/PostHog/posthog-android/pull/270)) 

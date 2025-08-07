@@ -449,9 +449,9 @@ public class PostHog private constructor(
                 return
             }
 
-            var isSnapshotEvent = event == "\$snapshot"
+            var isSnapshotEvent = event == PostHogEventName.SNAPSHOT.event
             var groupIdentify = false
-            if (event == GROUP_IDENTIFY) {
+            if (event == PostHogEventName.GROUP_IDENTIFY.event) {
                 groupIdentify = true
             }
 
@@ -481,10 +481,10 @@ public class PostHog private constructor(
                 return
             }
             // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
-            isSnapshotEvent = postHogEvent.event == "\$snapshot"
+            isSnapshotEvent = postHogEvent.event == PostHogEventName.SNAPSHOT.event
             // if this is a $snapshot event and $session_id is missing, don't process then event
-            if (isSnapshotEvent && properties?.get("\$session_id") == null) {
-                config?.logger?.log("Event dropped, because snapshot and session_id are missing")
+            if (isSnapshotEvent && postHogEvent.properties?.get("\$session_id") == null) {
+                config?.logger?.log("${postHogEvent.event} event dropped, because the \$session_id property is missing")
                 return
             }
             // Replay has its own queue
@@ -574,7 +574,7 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        capture("\$screen", properties = props)
+        capture(PostHogEventName.SCREEN.event, properties = props)
     }
 
     public override fun alias(alias: String) {
@@ -589,7 +589,7 @@ public class PostHog private constructor(
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
 
-        capture("\$create_alias", properties = props)
+        capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
     }
 
     public override fun identify(
@@ -632,7 +632,7 @@ public class PostHog private constructor(
             }
 
             capture(
-                "\$identify",
+                PostHogEventName.IDENTIFY.event,
                 distinctId = distinctId,
                 properties = props,
                 userProperties = userProperties,
@@ -735,7 +735,7 @@ public class PostHog private constructor(
             preferences.setValue(GROUPS, newGroups)
         }
 
-        capture(GROUP_IDENTIFY, properties = props)
+        capture(PostHogEventName.GROUP_IDENTIFY.event, properties = props)
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
@@ -1059,8 +1059,6 @@ public class PostHog private constructor(
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
-
-        private const val GROUP_IDENTIFY = "\$groupidentify"
 
         private val apiKeys = mutableSetOf<String>()
 
