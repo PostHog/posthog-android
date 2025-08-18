@@ -124,11 +124,7 @@ public class PostHogSurveysIntegration(
     }
 
     private fun canActivateRepeatedly(survey: Survey): Boolean {
-        if (survey.type == SurveyType.WIDGET) {
-            return true
-        }
-
-        return survey.conditions?.events?.repeatedActivation ?: true
+        return survey.conditions?.events?.repeatedActivation == true && hasEvents(survey)
     }
 
     /**
@@ -836,7 +832,7 @@ public class PostHogSurveysIntegration(
         }
 
         val key = getSurveySeenKey(survey)
-        val seenKeys = getSeenSurveyKeys()
+        val seenKeys = synchronized(this) { getSeenSurveyKeys() }
         return seenKeys[key] ?: false
     }
 
@@ -845,14 +841,18 @@ public class PostHogSurveysIntegration(
      */
     private fun setSurveySeen(survey: Survey) {
         val key = getSurveySeenKey(survey)
-        val seenKeys = getSeenSurveyKeys().toMutableMap()
-        seenKeys[key] = true
-        seenSurveyKeys = seenKeys
         
-        // Persist to disk immediately
-        val postHog = postHog
-        val config = postHog?.getConfig() as? PostHogConfig
-        config?.cachePreferences?.setValue(SURVEY_SEEN_STORAGE_KEY, seenKeys)
+        synchronized(this) {
+            // Ensure we're working with the current cache
+            val currentKeys = getSeenSurveyKeys().toMutableMap()
+            currentKeys[key] = true
+            seenSurveyKeys = currentKeys
+            
+            // Persist to disk immediately
+            val postHog = postHog
+            val config = postHog?.getConfig() as? PostHogConfig
+            config?.cachePreferences?.setValue(SURVEY_SEEN_STORAGE_KEY, currentKeys)
+        }
     }
 
     // Event Activation Methods
