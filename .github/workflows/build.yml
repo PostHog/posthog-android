@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Git checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 'Set up Java: ${{ matrix.java }}'
         uses: actions/setup-java@v4
