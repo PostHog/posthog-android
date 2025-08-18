@@ -51,6 +51,13 @@ internal class PostHogRemoteConfig(
     @Volatile
     private var hasSurveys = false
 
+    /**
+     * Optional callback invoked after remote config finishes loading and surveys have been processed.
+     * Use this to notify listeners that cached surveys may have changed.
+     */
+    @Volatile
+    var onRemoteConfigLoaded: (() -> Unit)? = null
+
     init {
         preloadSessionReplayFlag()
         preloadSurveys()
@@ -140,6 +147,8 @@ internal class PostHogRemoteConfig(
             try {
                 val response = api.remoteConfig()
 
+                var shouldNotifyRemoteConfigLoaded = false
+
                 response?.let {
                     synchronized(remoteConfigLock) {
                         processSessionRecordingConfig(it.sessionRecording)
@@ -181,12 +190,24 @@ internal class PostHogRemoteConfig(
                                 onFeatureFlags = onFeatureFlags,
                             )
                         }
+
+                        isRemoteConfigLoaded = true
+                        // mark to notify outside the lock
+                        shouldNotifyRemoteConfigLoaded = true
                     }
                 } ?: run {
                     runOnFeatureFlagsCallbacks(
                         internalOnFeatureFlags = internalOnFeatureFlags,
                         onFeatureFlags = onFeatureFlags,
                     )
+                }
+
+                if (shouldNotifyRemoteConfigLoaded) {
+                    try {
+                        onRemoteConfigLoaded?.invoke()
+                    } catch (e: Throwable) {
+                        config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
+                    }
                 }
             } catch (e: Throwable) {
                 runOnFeatureFlagsCallbacks(

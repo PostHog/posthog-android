@@ -22,8 +22,9 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
+import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
-import com.posthog.android.surveys.PostHogSurveysIntegration
+
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -68,7 +69,7 @@ public class PostHog private constructor(
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
-    private var surveysIntegration: PostHogSurveysIntegration? = null
+    private var surveysHandler: PostHogSurveysHandler? = null
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
@@ -128,6 +129,16 @@ public class PostHog private constructor(
                 this.replayQueue = replayQueue
                 this.remoteConfig = featureFlags
 
+                // Notify surveys integration whenever remote config finishes loading
+                featureFlags.onRemoteConfigLoaded = {
+                    try {
+                        val surveys = featureFlags.getSurveys() ?: emptyList()
+                        surveysHandler?.onSurveysLoaded(surveys)
+                    } catch (e: Throwable) {
+                        config.logger.log("Failed to notify surveys loaded: $e.")
+                    }
+                }
+
                 config.addIntegration(sendCachedEventsIntegration)
 
                 legacyPreferences(config, config.serializer)
@@ -150,9 +161,16 @@ public class PostHog private constructor(
                             if (isSessionReplayConfigEnabled()) {
                                 startSessionReplay(resumeCurrent = true)
                             }
-                        } else if (it is PostHogSurveysIntegration) {
-                            // surveys integration so we can notify it about captured events (to be improved/decoupled)
-                            surveysIntegration = it
+                        } else if (it is PostHogSurveysHandler) {
+                            // surveys integration so we can notify it about captured events
+                            surveysHandler = it
+                            // Immediately push any cached surveys from remote config
+                            try {
+                                val surveys = remoteConfig?.getSurveys() ?: emptyList()
+                                it.onSurveysLoaded(surveys)
+                            } catch (e: Throwable) {
+                                config.logger.log("Pushing cached surveys to integration failed: $e.")
+                            }
                         }
                     } catch (e: Throwable) {
                         config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
@@ -220,8 +238,8 @@ public class PostHog private constructor(
 
                             if (it is PostHogSessionReplayHandler) {
                                 sessionReplayHandler = null
-                            } else if (it is PostHogSurveysIntegration) {
-                                surveysIntegration = null
+                            } else if (it is PostHogSurveysHandler) {
+                                surveysHandler = null
                             }
                         } catch (e: Throwable) {
                             config.logger

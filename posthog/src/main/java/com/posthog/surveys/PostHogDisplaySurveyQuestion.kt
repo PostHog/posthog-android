@@ -76,6 +76,12 @@ public open class PostHogDisplaySurveyQuestion(
                             }
                         } ?: PostHogDisplaySurveyRatingType.NUMBER
                         
+                        val (scaleLower, scaleUpper) = if (question.scale == 10) {
+                            0 to 10
+                        } else {
+                            1 to (question.scale ?: 5)
+                        }
+
                         PostHogDisplayRatingQuestion(
                             question = questionText,
                             questionDescription = question.description,
@@ -83,8 +89,8 @@ public open class PostHogDisplaySurveyQuestion(
                             isOptional = isOptional,
                             buttonText = question.buttonText,
                             ratingType = ratingType,
-                            scaleLowerBound = question.scale ?: 1,
-                            scaleUpperBound = 5, // Default to 5 if not specified
+                            scaleLowerBound = scaleLower,
+                            scaleUpperBound = scaleUpper,
                             lowerBoundLabel = question.lowerBoundLabel ?: "",
                             upperBoundLabel = question.upperBoundLabel ?: ""
                         )
