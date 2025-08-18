@@ -506,33 +506,33 @@ public class PostHogSurveysIntegration(
         return when (scale) {
             3 -> {
                 when (value) {
-                    in 0..0 -> "negative"
-                    in 1..1 -> "neutral"
-                    in 2..2 -> "positive"
+                    1 -> "negative"
+                    2 -> "neutral"
+                    3 -> "positive"
                     else -> null
                 }
             }
             5 -> {
                 when (value) {
-                    in 0..1 -> "negative"
-                    in 2..2 -> "neutral"
-                    in 3..4 -> "positive"
+                    in 1..2 -> "negative"
+                    3 -> "neutral"
+                    in 4..5 -> "positive"
                     else -> null
                 }
             }
             7 -> {
                 when (value) {
-                    in 0..2 -> "negative"
-                    in 3..3 -> "neutral"
-                    in 4..6 -> "positive"
+                    in 1..3 -> "negative"
+                    4 -> "neutral"
+                    in 5..7 -> "positive"
                     else -> null
                 }
             }
             10 -> {
                 when (value) {
-                    in 0..6 -> "negative"
-                    in 7..8 -> "neutral"
-                    in 9..10 -> "positive"
+                    in 0..6 -> "detractors"  // NPS: 0-6 are detractors
+                    in 7..8 -> "passives"    // NPS: 7-8 are passives
+                    in 9..10 -> "promoters"  // NPS: 9-10 are promoters
                     else -> null
                 }
             }

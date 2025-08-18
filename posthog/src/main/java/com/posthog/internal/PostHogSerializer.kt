@@ -17,7 +17,7 @@ import com.posthog.internal.surveys.GsonSurveyAppearancePositionAdapter
 import com.posthog.internal.surveys.GsonSurveyAppearanceWidgetTypeAdapter
 import com.posthog.internal.surveys.GsonSurveyMatchTypeAdapter
 import com.posthog.internal.surveys.GsonSurveyQuestionAdapter
-import com.posthog.internal.surveys.GsonSurveyQuestionBranchingTypeAdapter
+import com.posthog.internal.surveys.GsonSurveyQuestionBranchingAdapter
 import com.posthog.internal.surveys.GsonSurveyQuestionTypeAdapter
 import com.posthog.internal.surveys.GsonSurveyRatingDisplayTypeAdapter
 import com.posthog.internal.surveys.GsonSurveyTextContentTypeAdapter
@@ -26,7 +26,8 @@ import com.posthog.surveys.SurveyAppearancePosition
 import com.posthog.surveys.SurveyAppearanceWidgetType
 import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
-import com.posthog.surveys.SurveyQuestionBranchingType
+import com.posthog.surveys.SurveyQuestionBranching
+
 import com.posthog.surveys.SurveyQuestionType
 import com.posthog.surveys.SurveyRatingDisplayType
 import com.posthog.surveys.SurveyTextContentType
@@ -56,12 +57,13 @@ public class PostHogSerializer(private val config: PostHogConfig) {
             registerTypeAdapter(SurveyAppearancePosition::class.java, GsonSurveyAppearancePositionAdapter(config))
             registerTypeAdapter(SurveyAppearanceWidgetType::class.java, GsonSurveyAppearanceWidgetTypeAdapter(config))
             registerTypeAdapter(SurveyMatchType::class.java, GsonSurveyMatchTypeAdapter(config))
-            registerTypeAdapter(SurveyQuestionBranchingType::class.java, GsonSurveyQuestionBranchingTypeAdapter(config))
+
             registerTypeAdapter(SurveyQuestionType::class.java, GsonSurveyQuestionTypeAdapter(config))
             registerTypeAdapter(SurveyRatingDisplayType::class.java, GsonSurveyRatingDisplayTypeAdapter(config))
             registerTypeAdapter(SurveyTextContentType::class.java, GsonSurveyTextContentTypeAdapter(config))
             registerTypeAdapter(SurveyType::class.java, GsonSurveyTypeAdapter(config))
             registerTypeAdapter(SurveyQuestion::class.java, GsonSurveyQuestionAdapter(config))
+            registerTypeAdapter(SurveyQuestionBranching::class.java, GsonSurveyQuestionBranchingAdapter(config))
         }.create()
 
     @Throws(JsonIOException::class, IOException::class)
