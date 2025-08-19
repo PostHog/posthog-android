@@ -512,14 +512,13 @@ public class PostHog private constructor(
                 return
             }
             // Replay has its own queue
-            if (snapshotEvent) {
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
                 return
             } else {
                 queue?.add(postHogEvent)
-	           // Notify surveys integration about the event
-     	       surveysIntegration?.onEvent(event)
+                // Notify surveys integration about the event
+                surveysHandler?.onEvent(event)
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")

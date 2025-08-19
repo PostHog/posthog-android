@@ -147,7 +147,7 @@ public open class PostHogConfig(
      * Defaults to false
      */
     public var surveys: Boolean = false,
-
+    /**
      * Configures an optional HTTP proxy for the PostHog API client.
      *
      * When set, all requests made will be routed through the specified proxy server.
@@ -163,7 +163,6 @@ public open class PostHogConfig(
      * Default: `null` (no proxy).
      */
     public var proxy: Proxy? = null,
-
     /**
      * Configuration for PostHog Surveys feature.
      */

@@ -3,6 +3,7 @@ package com.posthog.android.surveys
 import com.posthog.PostHogConfig
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
@@ -66,7 +67,7 @@ public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandl
     private var seenSurveyKeys: MutableMap<String, Boolean>? = null
 
     private companion object {
-        private const val SURVEY_SEEN_STORAGE_KEY = "surveySeen"
+        private const val SURVEY_SEEN_STORAGE_KEY = PostHogPreferences.SURVEY_SEEN
     }
 
     // Event activation tracking
@@ -234,7 +235,7 @@ public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandl
      *
      * @param survey The survey to show
      */
-    public fun showSurvey(survey: Survey) {
+    internal fun showSurvey(survey: Survey) {
         // Check if we can show a survey (no active survey)
         if (!canShowNextSurvey()) {
             config?.logger?.log("Cannot show survey - another survey is already active")
@@ -331,7 +332,7 @@ public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandl
     /**
      * Cleans up any active surveys by calling the delegate's cleanupSurveys method.
      */
-    public fun cleanupSurveys() {
+    internal fun cleanupSurveys() {
         getSurveysDelegate().cleanupSurveys()
     }
 
@@ -559,12 +560,12 @@ public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandl
 
     // Lifecycle management
     private var isStarted: Boolean = false
-    
+
     /**
      * Checks if we can show the next survey.
      * Returns true if there's no active survey currently being displayed.
      */
-    public fun canShowNextSurvey(): Boolean {
+    internal fun canShowNextSurvey(): Boolean {
         return synchronized(activeSurveyLock) {
             activeSurvey == null
         }
@@ -578,7 +579,7 @@ public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandl
      * 3. Shows the first available survey using the delegate
      * 4. Tracks the active survey state
      */
-    public fun showNextSurvey() {
+    internal fun showNextSurvey() {
         if (!canShowNextSurvey()) {
             return
         }

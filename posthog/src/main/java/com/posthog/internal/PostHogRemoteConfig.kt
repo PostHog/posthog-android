@@ -40,7 +40,7 @@ internal class PostHogRemoteConfig(
     private var surveys: List<Survey>? = null
 
     @Volatile
-    private var isFeatureFlagsLoaded = false
+    private var isRemoteConfigLoaded = false
 
     @Volatile
     private var isFeatureFlagsLoaded = false
@@ -631,6 +631,7 @@ internal class PostHogRemoteConfig(
             isFeatureFlagsLoaded = false
 
             clearFlags()
+        }
 
         synchronized(remoteConfigLock) {
             isRemoteConfigLoaded = false
