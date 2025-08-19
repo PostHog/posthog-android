@@ -4,6 +4,9 @@ import com.posthog.PostHogInternal
 
 @PostHogInternal
 public interface PostHogSurveysHandler {
+    /**
+     * To be called by Posthog when an event is captured
+     */
     public fun onEvent(event: String)
 
     /**

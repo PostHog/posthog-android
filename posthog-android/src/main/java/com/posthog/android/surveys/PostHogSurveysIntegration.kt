@@ -1,6 +1,5 @@
 package com.posthog.android.surveys
 
-import android.content.Context
 import com.posthog.PostHogConfig
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
@@ -20,9 +19,7 @@ import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
 
-public class PostHogSurveysIntegration(
-    private val context: Context? = null,
-) : PostHogIntegration, PostHogSurveysHandler {
+public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandler {
     private val surveyValidationMap: Map<SurveyMatchType, (List<String>, String) -> Boolean> =
         mapOf(
             SurveyMatchType.I_CONTAINS to { targets, value -> targets.any { value.contains(it, ignoreCase = true) } },
@@ -83,6 +80,25 @@ public class PostHogSurveysIntegration(
     public override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
         this.config = postHog.getConfig() as? PostHogConfig
+
+        // Start the survey integration lifecycle
+        synchronized(lifecycleLock) {
+            isStarted = true
+        }
+
+        showNextSurvey()
+    }
+
+    override fun uninstall() {
+        // Stop the survey integration lifecycle
+        synchronized(lifecycleLock) {
+            isStarted = false
+        }
+
+        clearActiveSurvey()
+
+        this.postHog = null
+        this.config = null
     }
 
     // Push-based callback from PostHog when surveys are loaded/updated
@@ -231,18 +247,25 @@ public class PostHogSurveysIntegration(
         val originalSurvey = survey
 
         // Setup callbacks for delegate call
-        val onSurveyShown: OnPostHogSurveyShown = { _ ->
-            // Validate that this survey matches the currently active survey
-            val currentActiveSurvey = activeSurvey
-            if (currentActiveSurvey != null && originalSurvey.id == currentActiveSurvey.id) {
-                sendSurveyShownEvent(currentActiveSurvey)
+        val onSurveyShown: OnPostHogSurveyShown = { shownSurvey ->
+            // Check if shownSurvey is originalSurvey
+            if (shownSurvey.id == originalSurvey.id) {
+                val currentActiveSurvey = activeSurvey
+
+                // If currentActiveSurvey is null, set this originalSurvey as active
+                if (currentActiveSurvey == null) {
+                    setActiveSurvey(originalSurvey)
+                }
+
+                // Send survey shown event
+                sendSurveyShownEvent(originalSurvey)
 
                 // Clear up event-activated surveys if this survey has events
-                if (hasEvents(currentActiveSurvey)) {
-                    eventActivatedSurveys.remove(currentActiveSurvey.id)
+                if (hasEvents(originalSurvey)) {
+                    eventActivatedSurveys.remove(originalSurvey.id)
                 }
             } else {
-                config?.logger?.log("Received a show event for a non-active survey: ${originalSurvey.id}")
+                config?.logger?.log("Received a show event for a non-matching survey: ${shownSurvey.id} vs ${originalSurvey.id}")
             }
         }
 
@@ -300,9 +323,6 @@ public class PostHogSurveysIntegration(
                 showNextSurvey()
             }.start()
         }
-
-        // Set this survey as active
-        setActiveSurvey(originalSurvey)
 
         // Call the delegate to render the survey
         getSurveysDelegate().renderSurvey(displaySurvey, onSurveyShown, onSurveyResponse, onSurveyClosed)
@@ -537,14 +557,9 @@ public class PostHogSurveysIntegration(
     // Active survey tracking
     private var activeSurvey: Survey? = null
 
-    // Lifecycle and throttling management
-    private var lastLayoutTriggerTime: Long = 0
-    private val layoutTriggerThrottleMs: Long = 5000 // 5 seconds throttle
+    // Lifecycle management
     private var isStarted: Boolean = false
-
-    // Lifecycle management - following PostHogLifecycleObserverIntegration pattern
-    private var lifecycleInstalled: Boolean = false
-
+    
     /**
      * Checks if we can show the next survey.
      * Returns true if there's no active survey currently being displayed.
@@ -602,36 +617,6 @@ public class PostHogSurveysIntegration(
             activeSurveyCompleted = false
             currentSurveyResponses.clear()
         }
-    }
-
-    /**
-     * Starts the survey integration lifecycle.
-     * This should be called when the integration is ready to start showing surveys.
-     * In a real Android app, this would typically be called from Application.onCreate()
-     * or when the main activity starts.
-     */
-    public fun start() {
-        synchronized(lifecycleLock) {
-            if (lifecycleInstalled) {
-                return
-            }
-            lifecycleInstalled = true
-            isStarted = true
-        }
-
-        showNextSurvey()
-    }
-
-    /**
-     * Stops the survey integration lifecycle.
-     * This should be called when the integration should stop showing surveys.
-     */
-    public fun stop() {
-        synchronized(lifecycleLock) {
-            lifecycleInstalled = false
-            isStarted = false
-        }
-        clearActiveSurvey()
     }
 
     // Survey Event Methods
@@ -863,8 +848,11 @@ public class PostHogSurveysIntegration(
             }
         }
 
-        // Trigger survey display on main thread
-        showNextSurvey()
+        // Trigger survey display
+        val shouldShowSurvey = synchronized(lifecycleLock) { isStarted }
+        if (shouldShowSurvey) {
+            showNextSurvey()
+        }
     }
 
     /**
