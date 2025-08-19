@@ -168,8 +168,7 @@ public open class PostHogConfig(
      * Configuration for PostHog Surveys feature.
      */
     public var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
-
-    ) {
+) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
 

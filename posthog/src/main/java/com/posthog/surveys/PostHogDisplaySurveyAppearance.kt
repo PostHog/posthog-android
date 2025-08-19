@@ -32,7 +32,7 @@ public data class PostHogDisplaySurveyAppearance(
     val displayThankYouMessage: Boolean = false,
     val thankYouMessageHeader: String? = null,
     val thankYouMessageDescription: String? = null,
-    val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType? = null
+    val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType? = null,
 ) {
     internal companion object {
         /**
@@ -42,12 +42,13 @@ public data class PostHogDisplaySurveyAppearance(
          * @return A new PostHogDisplaySurveyAppearance instance
          */
         internal fun fromSurveyAppearance(appearance: SurveyAppearance): PostHogDisplaySurveyAppearance {
-            val thankYouContentType = if (appearance.thankYouMessageDescriptionContentType?.value == "html") {
-                PostHogDisplaySurveyTextContentType.HTML
-            } else {
-                PostHogDisplaySurveyTextContentType.TEXT
-            }
-            
+            val thankYouContentType =
+                if (appearance.thankYouMessageDescriptionContentType?.value == "html") {
+                    PostHogDisplaySurveyTextContentType.HTML
+                } else {
+                    PostHogDisplaySurveyTextContentType.TEXT
+                }
+
             return PostHogDisplaySurveyAppearance(
                 fontFamily = appearance.fontFamily,
                 backgroundColor = appearance.backgroundColor,
@@ -62,7 +63,7 @@ public data class PostHogDisplaySurveyAppearance(
                 displayThankYouMessage = appearance.displayThankYouMessage ?: false,
                 thankYouMessageHeader = appearance.thankYouMessageHeader,
                 thankYouMessageDescription = appearance.thankYouMessageDescription,
-                thankYouMessageDescriptionContentType = thankYouContentType
+                thankYouMessageDescriptionContentType = thankYouContentType,
             )
         }
     }

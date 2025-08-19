@@ -1,11 +1,5 @@
 package com.posthog.surveys
 
-import com.posthog.surveys.Survey
-import com.posthog.surveys.SurveyAppearance
-import com.posthog.surveys.SurveyQuestion
-import com.posthog.surveys.SurveyQuestionType
-import com.posthog.surveys.SurveyRatingDisplayType
-import com.posthog.surveys.SurveyTextContentType
 import java.util.Date
 
 /**
@@ -25,7 +19,7 @@ public data class PostHogDisplaySurvey(
     val questions: List<PostHogDisplaySurveyQuestion>,
     val appearance: PostHogDisplaySurveyAppearance? = null,
     val startDate: Date? = null,
-    val endDate: Date? = null
+    val endDate: Date? = null,
 ) {
     public companion object {
         /**
@@ -41,7 +35,7 @@ public data class PostHogDisplaySurvey(
                 questions = survey.questions.mapNotNull { PostHogDisplaySurveyQuestion.fromSurveyQuestion(it) },
                 appearance = survey.appearance?.let { PostHogDisplaySurveyAppearance.fromSurveyAppearance(it) },
                 startDate = survey.startDate,
-                endDate = survey.endDate
+                endDate = survey.endDate,
             )
         }
     }
@@ -55,11 +49,11 @@ public enum class PostHogDisplaySurveyRatingType(public val value: Int) {
      * Display numeric rating options
      */
     NUMBER(0),
-    
+
     /**
      * Display emoji rating options
      */
-    EMOJI(1)
+    EMOJI(1),
 }
 
 /**
@@ -70,13 +64,9 @@ public enum class PostHogDisplaySurveyTextContentType(public val value: Int) {
      * Content should be rendered as HTML
      */
     HTML(0),
-    
+
     /**
      * Content should be rendered as plain text
      */
-    TEXT(1)
+    TEXT(1),
 }
-
-
-
-

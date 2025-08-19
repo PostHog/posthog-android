@@ -1,11 +1,8 @@
 package com.posthog.surveys
 
-import com.posthog.surveys.SurveyQuestionType
-import com.posthog.surveys.SurveyTextContentType
-
 /**
  * Base class for all survey question types
- * 
+ *
  * @property question The main question text to display
  * @property questionDescription Optional additional description or context for the question
  * @property questionDescriptionContentType Content type for the question description (HTML or plain text)
@@ -17,43 +14,45 @@ public open class PostHogDisplaySurveyQuestion(
     public val questionDescription: String?,
     public val questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
     public val isOptional: Boolean,
-    public val buttonText: String?
+    public val buttonText: String?,
 ) {
     internal companion object {
         /**
          * Creates a display question from a survey question
-         * 
+         *
          * @param question The survey question to convert
          * @return A display question or null if the question type is not supported
          */
-        internal fun fromSurveyQuestion(question: com.posthog.surveys.SurveyQuestion): PostHogDisplaySurveyQuestion? {
+        internal fun fromSurveyQuestion(question: SurveyQuestion): PostHogDisplaySurveyQuestion? {
             val questionText = question.question ?: return null
             val isOptional = question.optional ?: false
-            val contentType = question.descriptionContentType?.let {
-                when (it) {
-                    SurveyTextContentType.HTML -> PostHogDisplaySurveyTextContentType.HTML
-                    SurveyTextContentType.TEXT -> PostHogDisplaySurveyTextContentType.TEXT
-                }
-            } ?: PostHogDisplaySurveyTextContentType.TEXT
-            
+            val contentType =
+                question.descriptionContentType?.let {
+                    when (it) {
+                        SurveyTextContentType.HTML -> PostHogDisplaySurveyTextContentType.HTML
+                        SurveyTextContentType.TEXT -> PostHogDisplaySurveyTextContentType.TEXT
+                    }
+                } ?: PostHogDisplaySurveyTextContentType.TEXT
+
             return when (question.type) {
-                SurveyQuestionType.OPEN -> PostHogDisplayOpenQuestion(
-                    question = questionText,
-                    questionDescription = question.description,
-                    questionDescriptionContentType = contentType,
-                    isOptional = isOptional,
-                    buttonText = question.buttonText
-                )
-                
+                SurveyQuestionType.OPEN ->
+                    PostHogDisplayOpenQuestion(
+                        question = questionText,
+                        questionDescription = question.description,
+                        questionDescriptionContentType = contentType,
+                        isOptional = isOptional,
+                        buttonText = question.buttonText,
+                    )
+
                 SurveyQuestionType.LINK -> {
-                    if (question is com.posthog.surveys.LinkSurveyQuestion) {
+                    if (question is LinkSurveyQuestion) {
                         PostHogDisplayLinkQuestion(
                             question = questionText,
                             questionDescription = question.description,
                             questionDescriptionContentType = contentType,
                             isOptional = isOptional,
                             buttonText = question.buttonText,
-                            link = question.link
+                            link = question.link,
                         )
                     } else {
                         PostHogDisplayLinkQuestion(
@@ -62,25 +61,27 @@ public open class PostHogDisplaySurveyQuestion(
                             questionDescriptionContentType = contentType,
                             isOptional = isOptional,
                             buttonText = question.buttonText,
-                            link = null
+                            link = null,
                         )
                     }
                 }
-                
+
                 SurveyQuestionType.RATING -> {
-                    if (question is com.posthog.surveys.RatingSurveyQuestion) {
-                        val ratingType = question.display?.let {
-                            when (it) {
-                                com.posthog.surveys.SurveyRatingDisplayType.EMOJI -> PostHogDisplaySurveyRatingType.EMOJI
-                                com.posthog.surveys.SurveyRatingDisplayType.NUMBER -> PostHogDisplaySurveyRatingType.NUMBER
+                    if (question is RatingSurveyQuestion) {
+                        val ratingType =
+                            question.display?.let {
+                                when (it) {
+                                    SurveyRatingDisplayType.EMOJI -> PostHogDisplaySurveyRatingType.EMOJI
+                                    SurveyRatingDisplayType.NUMBER -> PostHogDisplaySurveyRatingType.NUMBER
+                                }
+                            } ?: PostHogDisplaySurveyRatingType.NUMBER
+
+                        val (scaleLower, scaleUpper) =
+                            if (question.scale == 10) {
+                                0 to 10
+                            } else {
+                                1 to (question.scale ?: 5)
                             }
-                        } ?: PostHogDisplaySurveyRatingType.NUMBER
-                        
-                        val (scaleLower, scaleUpper) = if (question.scale == 10) {
-                            0 to 10
-                        } else {
-                            1 to (question.scale ?: 5)
-                        }
 
                         PostHogDisplayRatingQuestion(
                             question = questionText,
@@ -92,7 +93,7 @@ public open class PostHogDisplaySurveyQuestion(
                             scaleLowerBound = scaleLower,
                             scaleUpperBound = scaleUpper,
                             lowerBoundLabel = question.lowerBoundLabel ?: "",
-                            upperBoundLabel = question.upperBoundLabel ?: ""
+                            upperBoundLabel = question.upperBoundLabel ?: "",
                         )
                     } else {
                         PostHogDisplayRatingQuestion(
@@ -105,30 +106,33 @@ public open class PostHogDisplaySurveyQuestion(
                             scaleLowerBound = 1,
                             scaleUpperBound = 5,
                             lowerBoundLabel = "",
-                            upperBoundLabel = ""
+                            upperBoundLabel = "",
                         )
                     }
                 }
-                
+
                 SurveyQuestionType.SINGLE_CHOICE -> {
-                    val choices = if (question is com.posthog.surveys.SingleSurveyQuestion) {
-                        question.choices ?: emptyList()
-                    } else {
-                        emptyList()
-                    }
-                    
-                    val hasOpenChoice = if (question is com.posthog.surveys.SingleSurveyQuestion) {
-                        question.hasOpenChoice ?: false
-                    } else {
-                        false
-                    }
-                    
-                    val shuffleOptions = if (question is com.posthog.surveys.SingleSurveyQuestion) {
-                        question.shuffleOptions ?: false
-                    } else {
-                        false
-                    }
-                    
+                    val choices =
+                        if (question is SingleSurveyQuestion) {
+                            question.choices ?: emptyList()
+                        } else {
+                            emptyList()
+                        }
+
+                    val hasOpenChoice =
+                        if (question is SingleSurveyQuestion) {
+                            question.hasOpenChoice ?: false
+                        } else {
+                            false
+                        }
+
+                    val shuffleOptions =
+                        if (question is SingleSurveyQuestion) {
+                            question.shuffleOptions ?: false
+                        } else {
+                            false
+                        }
+
                     PostHogDisplayChoiceQuestion(
                         question = questionText,
                         questionDescription = question.description,
@@ -138,29 +142,32 @@ public open class PostHogDisplaySurveyQuestion(
                         choices = choices,
                         hasOpenChoice = hasOpenChoice,
                         shuffleOptions = shuffleOptions,
-                        isMultipleChoice = false
+                        isMultipleChoice = false,
                     )
                 }
-                
+
                 SurveyQuestionType.MULTIPLE_CHOICE -> {
-                    val choices = if (question is com.posthog.surveys.MultipleSurveyQuestion) {
-                        question.choices ?: emptyList()
-                    } else {
-                        emptyList()
-                    }
-                    
-                    val hasOpenChoice = if (question is com.posthog.surveys.MultipleSurveyQuestion) {
-                        question.hasOpenChoice ?: false
-                    } else {
-                        false
-                    }
-                    
-                    val shuffleOptions = if (question is com.posthog.surveys.MultipleSurveyQuestion) {
-                        question.shuffleOptions ?: false
-                    } else {
-                        false
-                    }
-                    
+                    val choices =
+                        if (question is MultipleSurveyQuestion) {
+                            question.choices ?: emptyList()
+                        } else {
+                            emptyList()
+                        }
+
+                    val hasOpenChoice =
+                        if (question is MultipleSurveyQuestion) {
+                            question.hasOpenChoice ?: false
+                        } else {
+                            false
+                        }
+
+                    val shuffleOptions =
+                        if (question is MultipleSurveyQuestion) {
+                            question.shuffleOptions ?: false
+                        } else {
+                            false
+                        }
+
                     PostHogDisplayChoiceQuestion(
                         question = questionText,
                         questionDescription = question.description,
@@ -170,10 +177,10 @@ public open class PostHogDisplaySurveyQuestion(
                         choices = choices,
                         hasOpenChoice = hasOpenChoice,
                         shuffleOptions = shuffleOptions,
-                        isMultipleChoice = true
+                        isMultipleChoice = true,
                     )
                 }
-                
+
                 else -> null
             }
         }
@@ -188,18 +195,18 @@ public class PostHogDisplayOpenQuestion(
     questionDescription: String?,
     questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
     isOptional: Boolean,
-    buttonText: String?
+    buttonText: String?,
 ) : PostHogDisplaySurveyQuestion(
-    question = question,
-    questionDescription = questionDescription,
-    questionDescriptionContentType = questionDescriptionContentType,
-    isOptional = isOptional,
-    buttonText = buttonText
-)
+        question = question,
+        questionDescription = questionDescription,
+        questionDescriptionContentType = questionDescriptionContentType,
+        isOptional = isOptional,
+        buttonText = buttonText,
+    )
 
 /**
  * Represents a question with a clickable link
- * 
+ *
  * @property link The URL that will be opened when the link is clicked
  */
 public class PostHogDisplayLinkQuestion(
@@ -208,18 +215,18 @@ public class PostHogDisplayLinkQuestion(
     questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
     isOptional: Boolean,
     buttonText: String?,
-    public val link: String?
+    public val link: String?,
 ) : PostHogDisplaySurveyQuestion(
-    question = question,
-    questionDescription = questionDescription,
-    questionDescriptionContentType = questionDescriptionContentType,
-    isOptional = isOptional,
-    buttonText = buttonText
-)
+        question = question,
+        questionDescription = questionDescription,
+        questionDescriptionContentType = questionDescriptionContentType,
+        isOptional = isOptional,
+        buttonText = buttonText,
+    )
 
 /**
  * Represents a rating question where users can select a rating from a scale
- * 
+ *
  * @property ratingType The type of rating scale (numbers, emoji)
  * @property scaleLowerBound The lower bound of the rating scale
  * @property scaleUpperBound The upper bound of the rating scale
@@ -236,18 +243,18 @@ public class PostHogDisplayRatingQuestion(
     public val scaleLowerBound: Int,
     public val scaleUpperBound: Int,
     public val lowerBoundLabel: String,
-    public val upperBoundLabel: String
+    public val upperBoundLabel: String,
 ) : PostHogDisplaySurveyQuestion(
-    question = question,
-    questionDescription = questionDescription,
-    questionDescriptionContentType = questionDescriptionContentType,
-    isOptional = isOptional,
-    buttonText = buttonText
-)
+        question = question,
+        questionDescription = questionDescription,
+        questionDescriptionContentType = questionDescriptionContentType,
+        isOptional = isOptional,
+        buttonText = buttonText,
+    )
 
 /**
  * Represents a question where users can select one or more choices
- * 
+ *
  * @property choices The list of options for the user to choose from
  * @property hasOpenChoice Whether the question includes an "other" option for users to input free-form text
  * @property shuffleOptions Whether the options should be shuffled when presented
@@ -262,11 +269,11 @@ public class PostHogDisplayChoiceQuestion(
     public val choices: List<String>,
     public val hasOpenChoice: Boolean,
     public val shuffleOptions: Boolean,
-    public val isMultipleChoice: Boolean
+    public val isMultipleChoice: Boolean,
 ) : PostHogDisplaySurveyQuestion(
-    question = question,
-    questionDescription = questionDescription,
-    questionDescriptionContentType = questionDescriptionContentType,
-    isOptional = isOptional,
-    buttonText = buttonText
-)
+        question = question,
+        questionDescription = questionDescription,
+        questionDescriptionContentType = questionDescriptionContentType,
+        isOptional = isOptional,
+        buttonText = buttonText,
+    )

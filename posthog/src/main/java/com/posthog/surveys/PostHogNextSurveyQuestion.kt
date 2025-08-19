@@ -8,5 +8,5 @@ package com.posthog.surveys
  */
 public data class PostHogNextSurveyQuestion(
     val questionIndex: Int,
-    val isSurveyCompleted: Boolean = false
+    val isSurveyCompleted: Boolean = false,
 )

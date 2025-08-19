@@ -1,8 +1,5 @@
 package com.posthog.surveys
 
-import com.posthog.surveys.PostHogSurveysDelegate
-import com.posthog.surveys.PostHogSurveysDefaultDelegate
-
 /**
  * Configuration for PostHog Surveys feature.
  */

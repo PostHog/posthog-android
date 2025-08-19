@@ -27,7 +27,6 @@ import com.posthog.surveys.SurveyAppearanceWidgetType
 import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
-
 import com.posthog.surveys.SurveyQuestionType
 import com.posthog.surveys.SurveyRatingDisplayType
 import com.posthog.surveys.SurveyTextContentType

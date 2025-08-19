@@ -18,7 +18,7 @@ public interface PostHogSurveysDelegate {
         survey: PostHogDisplaySurvey,
         onSurveyShown: OnPostHogSurveyShown,
         onSurveyResponse: OnPostHogSurveyResponse,
-        onSurveyClosed: OnPostHogSurveyClosed
+        onSurveyClosed: OnPostHogSurveyClosed,
     )
 
     /**
@@ -41,7 +41,11 @@ public typealias OnPostHogSurveyShown = (survey: PostHogDisplaySurvey) -> Unit
  * @param response The user's response to the question
  * @return The next question state (next question index and completion flag)
  */
-public typealias OnPostHogSurveyResponse = (survey: PostHogDisplaySurvey, index: Int, response: PostHogSurveyResponse) -> PostHogNextSurveyQuestion?
+public typealias OnPostHogSurveyResponse = (
+    survey: PostHogDisplaySurvey,
+    index: Int,
+    response: PostHogSurveyResponse,
+) -> PostHogNextSurveyQuestion?
 
 /**
  * To be called when a survey is dismissed

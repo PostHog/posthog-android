@@ -12,7 +12,6 @@ import java.lang.reflect.Type
 internal class GsonSurveyQuestionBranchingAdapter(private val config: PostHogConfig) :
     JsonSerializer<SurveyQuestionBranching>,
     JsonDeserializer<SurveyQuestionBranching> {
-    
     override fun serialize(
         src: SurveyQuestionBranching,
         typeOfSrc: Type,
@@ -29,23 +28,25 @@ internal class GsonSurveyQuestionBranchingAdapter(private val config: PostHogCon
         return try {
             val jsonObject = json.asJsonObject
             val type = jsonObject.get("type")?.asString
-            
+
             return when (type) {
                 "next_question" -> SurveyQuestionBranching.Next
                 "end" -> SurveyQuestionBranching.End
                 "response_based" -> {
                     val responseValues = jsonObject.get("responseValues")?.asJsonObject
-                    val responseMap = responseValues?.entrySet()?.associate { entry ->
-                        entry.key to when {
-                            entry.value.isJsonPrimitive && entry.value.asJsonPrimitive.isNumber -> {
-                                entry.value.asInt
-                            }
-                            entry.value.isJsonPrimitive && entry.value.asJsonPrimitive.isString -> {
-                                entry.value.asString
-                            }
-                            else -> entry.value.toString()
-                        }
-                    } ?: emptyMap()
+                    val responseMap =
+                        responseValues?.entrySet()?.associate { entry ->
+                            entry.key to
+                                when {
+                                    entry.value.isJsonPrimitive && entry.value.asJsonPrimitive.isNumber -> {
+                                        entry.value.asInt
+                                    }
+                                    entry.value.isJsonPrimitive && entry.value.asJsonPrimitive.isString -> {
+                                        entry.value.asString
+                                    }
+                                    else -> entry.value.toString()
+                                }
+                        } ?: emptyMap()
                     SurveyQuestionBranching.ResponseBased(responseMap)
                 }
                 "specific_question" -> {
@@ -58,7 +59,7 @@ internal class GsonSurveyQuestionBranchingAdapter(private val config: PostHogCon
                 }
             }
         } catch (e: Throwable) {
-            config.logger.log("${json.toString()} isn't a valid SurveyQuestionBranching: $e.")
+            config.logger.log("$json isn't a valid SurveyQuestionBranching: $e.")
             null
         }
     }

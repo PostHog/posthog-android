@@ -24,7 +24,6 @@ import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
-
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
