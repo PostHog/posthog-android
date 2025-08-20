@@ -1,8 +1,10 @@
 package com.posthog.android.surveys
 
+import android.content.Context
 import com.posthog.PostHogConfig
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.android.internal.getDeviceType
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.surveys.OnPostHogSurveyClosed
@@ -20,7 +22,9 @@ import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
 
-public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandler {
+public class PostHogSurveysIntegration(
+    context: Context,
+) : PostHogIntegration, PostHogSurveysHandler {
     private val surveyValidationMap: Map<SurveyMatchType, (List<String>, String) -> Boolean> =
         mapOf(
             SurveyMatchType.I_CONTAINS to { targets, value -> targets.any { value.contains(it, ignoreCase = true) } },
@@ -47,7 +51,7 @@ public class PostHogSurveysIntegration : PostHogIntegration, PostHogSurveysHandl
             SurveyMatchType.IS_NOT to { targets, value -> targets.all { value != it } },
         )
 
-    private val deviceType: String = "Mobile"
+    private val deviceType: String = getDeviceType(context) ?: "Mobile"
 
     // Thread safety locks
     private val surveysLock = Any()
