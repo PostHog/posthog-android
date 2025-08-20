@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogSerializer
+import com.posthog.surveys.PostHogSurveysConfig
 import java.net.Proxy
 import java.util.UUID
 
@@ -141,6 +142,12 @@ public open class PostHogConfig(
      */
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     /**
+     * Enable Surveys for Android
+     * Requires Surveys to be enabled in the PostHog Project Settings
+     * Defaults to false
+     */
+    public var surveys: Boolean = false,
+    /**
      * Configures an optional HTTP proxy for the PostHog API client.
      *
      * When set, all requests made will be routed through the specified proxy server.
@@ -156,6 +163,10 @@ public open class PostHogConfig(
      * Default: `null` (no proxy).
      */
     public var proxy: Proxy? = null,
+    /**
+     * Configuration for PostHog Surveys feature.
+     */
+    public var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

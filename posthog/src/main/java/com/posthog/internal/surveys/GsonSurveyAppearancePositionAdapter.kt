@@ -1,4 +1,4 @@
-package com.posthog.internal
+package com.posthog.internal.surveys
 
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
@@ -6,14 +6,14 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.posthog.PostHogConfig
-import com.posthog.internal.replay.RRIncrementalSource
+import com.posthog.surveys.SurveyAppearancePosition
 import java.lang.reflect.Type
 
-internal class GsonRRIncrementalSourceSerializer(private val config: PostHogConfig) :
-    JsonSerializer<RRIncrementalSource>,
-    JsonDeserializer<RRIncrementalSource> {
+internal class GsonSurveyAppearancePositionAdapter(private val config: PostHogConfig) :
+    JsonSerializer<SurveyAppearancePosition>,
+    JsonDeserializer<SurveyAppearancePosition> {
     override fun serialize(
-        src: RRIncrementalSource,
+        src: SurveyAppearancePosition,
         typeOfSrc: Type,
         context: JsonSerializationContext,
     ): JsonElement {
@@ -24,11 +24,11 @@ internal class GsonRRIncrementalSourceSerializer(private val config: PostHogConf
         json: JsonElement,
         typeOfT: Type,
         context: JsonDeserializationContext,
-    ): RRIncrementalSource? {
+    ): SurveyAppearancePosition? {
         return try {
-            RRIncrementalSource.fromValue(json.asInt)
+            return SurveyAppearancePosition.fromValue(json.asString)
         } catch (e: Throwable) {
-            config.logger.log("${json.asInt} isn't a known type: $e.")
+            config.logger.log("${json.asString} isn't a known type: $e.")
             null
         }
     }

@@ -17,6 +17,7 @@ import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.android.replay.internal.PostHogLogCatIntegration
+import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
 import java.io.File
@@ -114,6 +115,9 @@ public class PostHogAndroid private constructor() {
                 config.addIntegration(PostHogAppInstallIntegration(context, config))
             }
             config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
+            if (config.surveys) {
+                config.addIntegration(PostHogSurveysIntegration(context))
+            }
         }
     }
 }

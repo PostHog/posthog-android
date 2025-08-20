@@ -7,6 +7,8 @@ import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
+import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
+import com.posthog.surveys.Survey
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -35,14 +37,27 @@ internal class PostHogRemoteConfig(
     private var flags: Map<String, Any>? = null
     private var requestId: String? = null
 
+    private var surveys: List<Survey>? = null
+
     @Volatile
     private var isFeatureFlagsLoaded = false
 
     @Volatile
     private var sessionReplayFlagActive = false
 
+    @Volatile
+    private var hasSurveys = false
+
+    /**
+     * Optional callback invoked after remote config finishes loading and surveys have been processed.
+     * Use this to notify listeners that cached surveys may have changed.
+     */
+    @Volatile
+    var onRemoteConfigLoaded: (() -> Unit)? = null
+
     init {
         preloadSessionReplayFlag()
+        preloadSurveys()
     }
 
     private fun isRecordingActive(
@@ -129,9 +144,12 @@ internal class PostHogRemoteConfig(
             try {
                 val response = api.remoteConfig()
 
+                var shouldNotifyRemoteConfigLoaded = false
+
                 response?.let {
                     synchronized(remoteConfigLock) {
                         processSessionRecordingConfig(it.sessionRecording)
+                        processSurveys(it.surveys)
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
@@ -169,12 +187,23 @@ internal class PostHogRemoteConfig(
                                 onFeatureFlags = onFeatureFlags,
                             )
                         }
+
+                        // mark to notify outside the lock
+                        shouldNotifyRemoteConfigLoaded = true
                     }
                 } ?: run {
                     runOnFeatureFlagsCallbacks(
                         internalOnFeatureFlags = internalOnFeatureFlags,
                         onFeatureFlags = onFeatureFlags,
                     )
+                }
+
+                if (shouldNotifyRemoteConfigLoaded) {
+                    try {
+                        onRemoteConfigLoaded?.invoke()
+                    } catch (e: Throwable) {
+                        config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
+                    }
                 }
             } catch (e: Throwable) {
                 runOnFeatureFlagsCallbacks(
@@ -184,6 +213,60 @@ internal class PostHogRemoteConfig(
                 config.logger.log("Loading remote config failed: $e")
             } finally {
                 isLoadingRemoteConfig.set(false)
+            }
+        }
+    }
+
+    private fun clearSurveys() {
+        hasSurveys = false
+        config.cachePreferences?.remove(SURVEYS)
+        surveys = null
+    }
+
+    private fun clearSessionRecording() {
+        sessionReplayFlagActive = false
+        config.cachePreferences?.remove(SESSION_REPLAY)
+    }
+
+    private fun processSurveys(surveys: Any?) {
+        if (!config.surveys) {
+            // if surveys is disabled, we clear the surveys
+            clearSurveys()
+            return
+        }
+
+        when (surveys) {
+            is Boolean -> {
+                // If surveys is a boolean, it's always false
+                clearSurveys()
+            }
+
+            is Collection<*> -> {
+                val surveysData = surveys as? List<*>
+
+                if (surveysData.isNullOrEmpty()) {
+                    clearSurveys()
+                    return
+                }
+
+                try {
+                    val deserialized = config.serializer.deserializeList<Survey>(surveysData)
+                    if (deserialized.isNullOrEmpty()) {
+                        clearSurveys()
+                        return
+                    }
+
+                    this.surveys = deserialized
+                    hasSurveys = true
+                    config.cachePreferences?.setValue(SURVEYS, surveysData)
+                } catch (e: Throwable) {
+                    clearSurveys()
+                    config.logger.log("Error deserializing surveys: $e")
+                }
+            }
+
+            else -> {
+                clearSurveys()
             }
         }
     }
@@ -324,6 +407,36 @@ internal class PostHogRemoteConfig(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
             )
+        }
+    }
+
+    private fun preloadSurveys() {
+        synchronized(remoteConfigLock) {
+            if (!config.surveys) {
+                clearSurveys()
+                return
+            }
+
+            try {
+                @Suppress("UNCHECKED_CAST")
+                val surveysData = config.cachePreferences?.getValue(SURVEYS) as? List<Map<String, Any>>?
+                if (surveysData.isNullOrEmpty()) {
+                    clearSurveys()
+                    return
+                }
+
+                val surveys = config.serializer.deserializeList<Survey>(surveysData)
+                if (surveys.isNullOrEmpty()) {
+                    clearSurveys()
+                    return
+                }
+
+                this.surveys = surveys
+                hasSurveys = true
+            } catch (e: Throwable) {
+                config.logger.log("Error deserializing surveys: $e")
+                clearSurveys()
+            }
         }
     }
 
@@ -490,6 +603,12 @@ internal class PostHogRemoteConfig(
         }
     }
 
+    fun getSurveys(): List<Survey>? {
+        synchronized(remoteConfigLock) {
+            return surveys
+        }
+    }
+
     private fun clearFlags() {
         // call this method after synchronized(featureFlagsLock)
         this.featureFlags = null
@@ -511,8 +630,12 @@ internal class PostHogRemoteConfig(
             isFeatureFlagsLoaded = false
 
             clearFlags()
-
-            config.cachePreferences?.remove(SESSION_REPLAY)
         }
+
+        synchronized(remoteConfigLock) {
+            clearSurveys()
+        }
+
+        config.cachePreferences?.remove(SESSION_REPLAY)
     }
 }
