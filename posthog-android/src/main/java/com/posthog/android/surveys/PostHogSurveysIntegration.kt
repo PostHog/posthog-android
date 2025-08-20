@@ -71,7 +71,7 @@ public class PostHogSurveysIntegration(
     private var seenSurveyKeys: MutableMap<String, Boolean>? = null
 
     private companion object {
-        private const val SURVEY_SEEN_STORAGE_KEY = PostHogPreferences.SURVEY_SEEN
+        private const val NEXT_SURVEY_TRANSITION_DELAY_MS = 750L
     }
 
     // Event activation tracking
@@ -289,11 +289,11 @@ public class PostHogSurveysIntegration(
                 // Store the response for survey completion tracking
                 currentSurveyResponses[getResponseKey(questionIndex)] = response
 
-                // Mark survey as having received responses
+                // Check if survey is completed (needed on close event)
                 activeSurveyCompleted = nextQuestion.isSurveyCompleted
 
                 // Send completion event if survey is finished
-                if (nextQuestion.isSurveyCompleted) {
+                if (activeSurveyCompleted) {
                     sendSurveySentEvent(originalSurvey, currentSurveyResponses)
                 }
 
@@ -324,7 +324,7 @@ public class PostHogSurveysIntegration(
 
             // Show next survey in queue after a short delay
             Thread {
-                Thread.sleep(750)
+                Thread.sleep(NEXT_SURVEY_TRANSITION_DELAY_MS)
                 showNextSurvey()
             }.start()
         }
@@ -785,7 +785,7 @@ public class PostHogSurveysIntegration(
             val config = postHog?.getConfig() as? PostHogConfig
 
             @Suppress("UNCHECKED_CAST")
-            val storedKeys = config?.cachePreferences?.getValue(SURVEY_SEEN_STORAGE_KEY) as? Map<String, Boolean>
+            val storedKeys = config?.cachePreferences?.getValue(PostHogPreferences.SURVEY_SEEN) as? Map<String, Boolean>
             seenSurveyKeys = storedKeys?.toMutableMap() ?: mutableMapOf()
         }
         return seenSurveyKeys ?: emptyMap()
@@ -821,7 +821,7 @@ public class PostHogSurveysIntegration(
             // Persist to disk immediately
             val postHog = postHog
             val config = postHog?.getConfig() as? PostHogConfig
-            config?.cachePreferences?.setValue(SURVEY_SEEN_STORAGE_KEY, currentKeys)
+            config?.cachePreferences?.setValue(PostHogPreferences.SURVEY_SEEN, currentKeys)
         }
     }
 

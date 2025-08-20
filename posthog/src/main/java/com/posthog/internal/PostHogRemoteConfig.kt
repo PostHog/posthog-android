@@ -40,9 +40,6 @@ internal class PostHogRemoteConfig(
     private var surveys: List<Survey>? = null
 
     @Volatile
-    private var isRemoteConfigLoaded = false
-
-    @Volatile
     private var isFeatureFlagsLoaded = false
 
     @Volatile
@@ -191,7 +188,6 @@ internal class PostHogRemoteConfig(
                             )
                         }
 
-                        isRemoteConfigLoaded = true
                         // mark to notify outside the lock
                         shouldNotifyRemoteConfigLoaded = true
                     }
@@ -280,7 +276,13 @@ internal class PostHogRemoteConfig(
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
-                clearSessionRecording()
+                sessionReplayFlagActive = sessionRecording
+
+                if (!sessionRecording) {
+                    config.cachePreferences?.remove(SESSION_REPLAY)
+                } else {
+                    // do nothing
+                }
             }
 
             is Map<*, *> -> {
@@ -299,9 +301,6 @@ internal class PostHogRemoteConfig(
                     // consoleLogRecordingEnabled -> Boolean or null
                     // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
                     // sampleRate, etc
-                } ?: run {
-                    // that means the response is broken, so we clear the session recording
-                    clearSessionRecording()
                 }
             }
             else -> {
@@ -634,9 +633,9 @@ internal class PostHogRemoteConfig(
         }
 
         synchronized(remoteConfigLock) {
-            isRemoteConfigLoaded = false
-
             clearSurveys()
         }
+
+        config.cachePreferences?.remove(SESSION_REPLAY)
     }
 }

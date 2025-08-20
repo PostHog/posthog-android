@@ -514,7 +514,6 @@ public class PostHog private constructor(
             // Replay has its own queue
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
-                return
             } else {
                 queue?.add(postHogEvent)
                 // Notify surveys integration about the event
@@ -1081,11 +1080,6 @@ public class PostHog private constructor(
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")
         return config as? T
-    }
-
-    @PostHogInternal
-    internal fun getRemoteConfig(): PostHogRemoteConfig? {
-        return remoteConfig
     }
 
     public companion object : PostHogInterface {
