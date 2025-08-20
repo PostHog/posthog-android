@@ -1,5 +1,7 @@
 ## Next
 
+- feat: add surveys support with custom UI ([#276](https://github.com/PostHog/posthog-android/pull/276))
+
 ## 3.20.2 - 2025-08-07
 
 - fix: missing session_id property for snapshot events ([#273](https://github.com/PostHog/posthog-android/pull/273))

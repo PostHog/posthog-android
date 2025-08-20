@@ -5,6 +5,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.internal.getDeviceType
+import com.posthog.android.internal.isMatchingRegex
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.surveys.OnPostHogSurveyClosed
@@ -29,24 +30,8 @@ public class PostHogSurveysIntegration(
         mapOf(
             SurveyMatchType.I_CONTAINS to { targets, value -> targets.any { value.contains(it, ignoreCase = true) } },
             SurveyMatchType.NOT_I_CONTAINS to { targets, value -> targets.all { !value.contains(it, ignoreCase = true) } },
-            SurveyMatchType.REGEX to { targets, value ->
-                targets.any {
-                    try {
-                        value.matches(Regex(it))
-                    } catch (e: Exception) {
-                        false
-                    }
-                }
-            },
-            SurveyMatchType.NOT_REGEX to { targets, value ->
-                targets.all {
-                    try {
-                        !value.matches(Regex(it))
-                    } catch (e: Exception) {
-                        true
-                    }
-                }
-            },
+            SurveyMatchType.REGEX to { targets, value -> targets.any { pattern -> isMatchingRegex(value, pattern) } },
+            SurveyMatchType.NOT_REGEX to { targets, value -> targets.all { pattern -> !isMatchingRegex(value, pattern) } },
             SurveyMatchType.EXACT to { targets, value -> targets.any { value == it } },
             SurveyMatchType.IS_NOT to { targets, value -> targets.all { value != it } },
         )
