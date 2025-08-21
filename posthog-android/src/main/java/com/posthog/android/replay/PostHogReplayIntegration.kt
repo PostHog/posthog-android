@@ -55,6 +55,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
+import com.posthog.android.internal.isValid
 import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
@@ -555,7 +556,7 @@ public class PostHogReplayIntegration(
         return when (this) {
             is InsetDrawable, is ColorDrawable, is VectorDrawable, is GradientDrawable, is LayerDrawable -> false
             // otherwise its not accessible anyway
-            is BitmapDrawable -> !bitmap.isRecycled
+            is BitmapDrawable -> bitmap.isValid()
             else -> true
         }
     }
@@ -783,6 +784,10 @@ public class PostHogReplayIntegration(
                         val maskableWidgets = mutableListOf<Rect>()
 
                         if (findMaskableWidgets(view, maskableWidgets)) {
+                            if (!bitmap.isValid()) {
+                                success = false
+                                return@request
+                            }
                             val canvas = Canvas(bitmap)
 
                             maskableWidgets.forEach {
@@ -1228,9 +1233,7 @@ public class PostHogReplayIntegration(
         try {
             val bitmap = clonedDrawable.toBitmap(width, height)
             val base64 = bitmap.webpBase64()
-            if (!bitmap.isRecycled) {
-                bitmap.recycle()
-            }
+            bitmap.recycle()
             return base64
         } catch (_: Throwable) {
             // ignore
