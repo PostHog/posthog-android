@@ -1,6 +1,6 @@
 ## Next
 
-- fix: do not try to create a Canvas with a recycled bitmap
+- fix: do not try to create a Canvas with a recycled bitmap ([#277](https://github.com/PostHog/posthog-android/pull/277))
 
 ## 3.20.2 - 2025-08-07
 
