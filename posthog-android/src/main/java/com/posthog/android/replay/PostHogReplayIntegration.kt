@@ -540,8 +540,7 @@ public class PostHogReplayIntegration(
                 return if (isViewStateStableForMatrixOperations()) {
                     getGlobalVisibleRect(visibleRect, offset)
                 } else {
-                    // Fallback to basic visibility check when view state is unstable
-                    visibility == View.VISIBLE && alpha > 0
+                    false
                 }
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
@@ -567,42 +566,23 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.globalVisibleRect(): Rect {
-        val rect = Rect()
-        if (isViewStateStableForMatrixOperations()) {
+    private fun View.globalVisibleRect(): Rect? {
+        return if (isViewStateStableForMatrixOperations()) {
+            val rect = Rect()
             getGlobalVisibleRect(rect)
+            return rect
         } else {
-            // Fallback to view bounds when view state is unstable
-            rect.set(0, 0, width, height)
-            val coordinates = IntArray(2)
-            if (isViewStateStableForMatrixOperations()) {
-                getLocationOnScreen(coordinates)
-                rect.offsetTo(coordinates[0], coordinates[1])
-            }
+            null
         }
-        return rect
     }
 
     private fun View.isViewStateStableForMatrixOperations(): Boolean {
-        return try {
-            // Check basic view state requirements
-            isAttachedToWindow &&
+        return isAttachedToWindow &&
             isLaidOut &&
-            width > 0 &&
-            height > 0 &&
             // Check if view is not in layout transition (API 18+)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
-                !isInLayout
-            } else {
-                true
-            } &&
+            !isInLayout &&
             // Check if view doesn't have transient state (animations, etc.)
             !hasTransientState()
-        } catch (e: Throwable) {
-            // If any check fails, assume unstable state
-            config.logger.log("Session Replay view state check failed: $e.")
-            false
-        }
     }
 
     private fun View.isTextInputSensitive(): Boolean {
@@ -628,8 +608,9 @@ public class PostHogReplayIntegration(
             }
 
             view.isNoCapture() -> {
-                val rect = view.globalVisibleRect()
-                maskableWidgets.add(rect)
+                view.globalVisibleRect()?.let {
+                    maskableWidgets.add(it)
+                }
             }
 
             view is TextView -> {
@@ -647,29 +628,33 @@ public class PostHogReplayIntegration(
                 }
 
                 if (maskIt) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
             view is Spinner -> {
                 if (view.shouldMaskSpinner()) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
             view is ImageView -> {
                 if (view.shouldMaskImage()) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
             view is WebView -> {
                 if (view.isAnyInputSensitive()) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
