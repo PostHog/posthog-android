@@ -532,16 +532,10 @@ public class PostHogReplayIntegration(
                     }
                     current = view.parent
                 }
-                // Check if the view is entirely covered by its predecessors.
-                val visibleRect = Rect()
-                val offset = Point()
 
+                val offset = Point()
                 // Check if view is in a stable state before accessing matrix-dependent operations
-                return if (isViewStateStableForMatrixOperations()) {
-                    getGlobalVisibleRect(visibleRect, offset)
-                } else {
-                    false
-                }
+                return globalVisibleRect(offset = offset) != null
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
 //            if (boundInView != null) {
@@ -566,10 +560,10 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.globalVisibleRect(): Rect? {
+    private fun View.globalVisibleRect(offset: Point? = null): Rect? {
         return if (isViewStateStableForMatrixOperations()) {
             val rect = Rect()
-            getGlobalVisibleRect(rect)
+            getGlobalVisibleRect(rect, offset)
             return rect
         } else {
             null
@@ -600,20 +594,12 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isAnimationRunning(): Boolean {
-        return try {
-            animation?.hasStarted() == true && animation?.hasEnded() != true
-        } catch (e: Throwable) {
-            false
-        }
+        return animation?.hasStarted() == true && animation?.hasEnded() != true
     }
 
     private fun View.isComputingLayout(): Boolean {
-        return try {
-            // Check if direct parent ViewGroup is in layout
-            (parent as? ViewGroup)?.isInLayout == true
-        } catch (e: Throwable) {
-            true // Assume unsafe if check fails
-        }
+        // Check if direct parent ViewGroup is in layout
+        return (parent as? ViewGroup)?.isInLayout == true
     }
 
     private fun View.isTextInputSensitive(): Boolean {
