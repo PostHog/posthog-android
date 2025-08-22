@@ -577,12 +577,43 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isViewStateStableForMatrixOperations(): Boolean {
-        return isAttachedToWindow &&
-            isLaidOut &&
-            // Check if view is not in layout transition (API 18+)
-            !isInLayout &&
-            // Check if view doesn't have transient state (animations, etc.)
-            !hasTransientState()
+        return try {
+            isAttachedToWindow &&
+                isLaidOut &&
+                // Check if view has valid dimensions
+                width > 0 && height > 0 &&
+                // Check if view is not in layout transition (API 18+)
+                !isInLayout &&
+                // Check if view doesn't have transient state (animations, etc.)
+                !hasTransientState() &&
+                // Check if view is not currently being animated
+                !isAnimationRunning() &&
+                // Check if view tree is not currently computing layout
+                !isComputingLayout() &&
+                // Check if view hierarchy is stable
+                rootView?.isAttachedToWindow == true
+        } catch (e: Throwable) {
+            // If any check fails, assume unstable state
+            config.logger.log("Session Replay view state check failed: $e.")
+            false
+        }
+    }
+
+    private fun View.isAnimationRunning(): Boolean {
+        return try {
+            animation?.hasStarted() == true && animation?.hasEnded() != true
+        } catch (e: Throwable) {
+            false
+        }
+    }
+
+    private fun View.isComputingLayout(): Boolean {
+        return try {
+            // Check if direct parent ViewGroup is in layout
+            (parent as? ViewGroup)?.isInLayout == true
+        } catch (e: Throwable) {
+            true // Assume unsafe if check fails
+        }
     }
 
     private fun View.isTextInputSensitive(): Boolean {
