@@ -209,7 +209,8 @@ public fun getApplicationInfo(context: Context): ApplicationInfo =
             .getApplicationInfo(context.packageName, GET_META_DATA)
     }
 
-private fun Bitmap.isValid(): Boolean {
+@PostHogInternal
+public fun Bitmap.isValid(): Boolean {
     return !isRecycled &&
         width > 0 &&
         height > 0
@@ -218,6 +219,9 @@ private fun Bitmap.isValid(): Boolean {
 @PostHogInternal
 @Suppress("DEPRECATION")
 public fun Bitmap.webpBase64(quality: Int = 30): String? {
+    if (!isValid()) {
+        return null
+    }
     val format =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Bitmap.CompressFormat.WEBP_LOSSY

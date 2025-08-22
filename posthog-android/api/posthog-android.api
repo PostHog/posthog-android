@@ -45,6 +45,7 @@ public final class com/posthog/android/internal/PostHogAndroidUtilsKt {
 	public static final fun base64 (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;I)Ljava/lang/String;
 	public static synthetic fun base64$default (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;IILjava/lang/Object;)Ljava/lang/String;
 	public static final fun getApplicationInfo (Landroid/content/Context;)Landroid/content/pm/ApplicationInfo;
+	public static final fun isValid (Landroid/graphics/Bitmap;)Z
 	public static final fun webpBase64 (Landroid/graphics/Bitmap;I)Ljava/lang/String;
 	public static synthetic fun webpBase64$default (Landroid/graphics/Bitmap;IILjava/lang/Object;)Ljava/lang/String;
 }

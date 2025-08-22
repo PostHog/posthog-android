@@ -55,6 +55,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
+import com.posthog.android.internal.isValid
 import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
@@ -555,7 +556,7 @@ public class PostHogReplayIntegration(
         return when (this) {
             is InsetDrawable, is ColorDrawable, is VectorDrawable, is GradientDrawable, is LayerDrawable -> false
             // otherwise its not accessible anyway
-            is BitmapDrawable -> !bitmap.isRecycled
+            is BitmapDrawable -> bitmap.isValid()
             else -> true
         }
     }
@@ -775,39 +776,49 @@ public class PostHogReplayIntegration(
             isOnDrawnCalled = false
 
             PixelCopy.request(window, bitmap, { copyResult ->
-                if (copyResult != PixelCopy.SUCCESS) {
-                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $copyResult.")
-                    success = false
-                } else {
-                    if (!isOnDrawnCalled) {
-                        val maskableWidgets = mutableListOf<Rect>()
+                try {
+                    if (copyResult != PixelCopy.SUCCESS) {
+                        recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $copyResult.")
+                        success = false
+                    } else {
+                        if (!isOnDrawnCalled) {
+                            val maskableWidgets = mutableListOf<Rect>()
 
-                        if (findMaskableWidgets(view, maskableWidgets)) {
-                            val canvas = Canvas(bitmap)
-
-                            maskableWidgets.forEach {
-                                if (isOnDrawnCalled) {
+                            if (findMaskableWidgets(view, maskableWidgets)) {
+                                if (!bitmap.isValid()) {
                                     recycleAndLogBitmapDiscarded(bitmap)
                                     success = false
-                                    return@forEach
+                                    return@request
                                 }
-                                canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                                val canvas = Canvas(bitmap)
+
+                                maskableWidgets.forEach {
+                                    if (isOnDrawnCalled) {
+                                        recycleAndLogBitmapDiscarded(bitmap)
+                                        success = false
+                                        return@forEach
+                                    }
+                                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                                }
+                            } else {
+                                recycleAndLogBitmapDiscarded(bitmap)
+                                success = false
                             }
                         } else {
                             recycleAndLogBitmapDiscarded(bitmap)
+                            // if isOnDrawnCalled is true, it means that the view has already been drawn
+                            // again, so we don't need to draw the maskable widgets otherwise
+                            // they might be out of sync (leaking possible PII)
                             success = false
                         }
-                    } else {
-                        recycleAndLogBitmapDiscarded(bitmap)
-                        // if isOnDrawnCalled is true, it means that the view has already been drawn
-                        // again, so we don't need to draw the maskable widgets otherwise
-                        // they might be out of sync (leaking possible PII)
-                        success = false
                     }
+                } catch (e: Throwable) {
+                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
+                } finally {
+                    // reset the isOnDrawnCalled since we've taken the screenshot
+                    isOnDrawnCalled = false
+                    latch.countDown()
                 }
-                // reset the isOnDrawnCalled since we've taken the screenshot
-                isOnDrawnCalled = false
-                latch.countDown()
             }, handler)
         } catch (e: Throwable) {
             recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
@@ -1228,9 +1239,7 @@ public class PostHogReplayIntegration(
         try {
             val bitmap = clonedDrawable.toBitmap(width, height)
             val base64 = bitmap.webpBase64()
-            if (!bitmap.isRecycled) {
-                bitmap.recycle()
-            }
+            bitmap.recycle()
             return base64
         } catch (_: Throwable) {
             // ignore
