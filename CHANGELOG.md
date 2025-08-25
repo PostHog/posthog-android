@@ -1,5 +1,7 @@
 ## Next
 
+## 3.20.4 - 2025-08-25
+
 - fix: do not try to use the view if it is in a dirty state ([#278](https://github.com/PostHog/posthog-android/pull/278))
 
 ## 3.20.3 - 2025-08-22
