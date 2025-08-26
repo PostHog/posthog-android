@@ -55,6 +55,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
 import com.posthog.android.internal.displayMetrics
+import com.posthog.android.internal.isValid
 import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
@@ -531,11 +532,10 @@ public class PostHogReplayIntegration(
                     }
                     current = view.parent
                 }
-                // Check if the view is entirely covered by its predecessors.
-                val visibleRect = Rect()
-                val offset = Point()
 
-                return getGlobalVisibleRect(visibleRect, offset)
+                val offset = Point()
+                // Check if view is in a stable state before accessing matrix-dependent operations
+                return globalVisibleRect(offset = offset) != null
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
 //            if (boundInView != null) {
@@ -555,15 +555,51 @@ public class PostHogReplayIntegration(
         return when (this) {
             is InsetDrawable, is ColorDrawable, is VectorDrawable, is GradientDrawable, is LayerDrawable -> false
             // otherwise its not accessible anyway
-            is BitmapDrawable -> !bitmap.isRecycled
+            is BitmapDrawable -> bitmap.isValid()
             else -> true
         }
     }
 
-    private fun View.globalVisibleRect(): Rect {
-        val rect = Rect()
-        getGlobalVisibleRect(rect)
-        return rect
+    private fun View.globalVisibleRect(offset: Point? = null): Rect? {
+        return if (isViewStateStableForMatrixOperations()) {
+            val rect = Rect()
+            getGlobalVisibleRect(rect, offset)
+            return rect
+        } else {
+            null
+        }
+    }
+
+    private fun View.isViewStateStableForMatrixOperations(): Boolean {
+        return try {
+            isAttachedToWindow &&
+                isLaidOut &&
+                // Check if view has valid dimensions
+                width > 0 && height > 0 &&
+                // Check if view is not in layout transition (API 18+)
+                !isInLayout &&
+                // Check if view doesn't have transient state (animations, etc.)
+                !hasTransientState() &&
+                // Check if view is not currently being animated
+                !isAnimationRunning() &&
+                // Check if view tree is not currently computing layout
+                !isComputingLayout() &&
+                // Check if view hierarchy is stable
+                rootView?.isAttachedToWindow == true
+        } catch (e: Throwable) {
+            // If any check fails, assume unstable state
+            config.logger.log("Session Replay view state check failed: $e.")
+            false
+        }
+    }
+
+    private fun View.isAnimationRunning(): Boolean {
+        return animation?.hasStarted() == true && animation?.hasEnded() != true
+    }
+
+    private fun View.isComputingLayout(): Boolean {
+        // Check if direct parent ViewGroup is in layout
+        return (parent as? ViewGroup)?.isInLayout == true
     }
 
     private fun View.isTextInputSensitive(): Boolean {
@@ -589,8 +625,9 @@ public class PostHogReplayIntegration(
             }
 
             view.isNoCapture() -> {
-                val rect = view.globalVisibleRect()
-                maskableWidgets.add(rect)
+                view.globalVisibleRect()?.let {
+                    maskableWidgets.add(it)
+                }
             }
 
             view is TextView -> {
@@ -608,29 +645,33 @@ public class PostHogReplayIntegration(
                 }
 
                 if (maskIt) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
             view is Spinner -> {
                 if (view.shouldMaskSpinner()) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
             view is ImageView -> {
                 if (view.shouldMaskImage()) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
             view is WebView -> {
                 if (view.isAnyInputSensitive()) {
-                    val rect = view.globalVisibleRect()
-                    maskableWidgets.add(rect)
+                    view.globalVisibleRect()?.let {
+                        maskableWidgets.add(it)
+                    }
                 }
             }
 
@@ -754,7 +795,13 @@ public class PostHogReplayIntegration(
         val viewId = System.identityHashCode(view)
 
         val coordinates = IntArray(2)
-        view.getLocationOnScreen(coordinates)
+        if (view.isViewStateStableForMatrixOperations()) {
+            view.getLocationOnScreen(coordinates)
+        } else {
+            // Use zero coordinates as fallback when view state is unstable
+            coordinates[0] = 0
+            coordinates[1] = 0
+        }
         val x = coordinates[0].densityValue(displayMetrics.density)
         val y = coordinates[1].densityValue(displayMetrics.density)
         val width = view.width.densityValue(displayMetrics.density)
@@ -775,39 +822,49 @@ public class PostHogReplayIntegration(
             isOnDrawnCalled = false
 
             PixelCopy.request(window, bitmap, { copyResult ->
-                if (copyResult != PixelCopy.SUCCESS) {
-                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $copyResult.")
-                    success = false
-                } else {
-                    if (!isOnDrawnCalled) {
-                        val maskableWidgets = mutableListOf<Rect>()
+                try {
+                    if (copyResult != PixelCopy.SUCCESS) {
+                        recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $copyResult.")
+                        success = false
+                    } else {
+                        if (!isOnDrawnCalled) {
+                            val maskableWidgets = mutableListOf<Rect>()
 
-                        if (findMaskableWidgets(view, maskableWidgets)) {
-                            val canvas = Canvas(bitmap)
-
-                            maskableWidgets.forEach {
-                                if (isOnDrawnCalled) {
+                            if (findMaskableWidgets(view, maskableWidgets)) {
+                                if (!bitmap.isValid()) {
                                     recycleAndLogBitmapDiscarded(bitmap)
                                     success = false
-                                    return@forEach
+                                    return@request
                                 }
-                                canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                                val canvas = Canvas(bitmap)
+
+                                maskableWidgets.forEach {
+                                    if (isOnDrawnCalled) {
+                                        recycleAndLogBitmapDiscarded(bitmap)
+                                        success = false
+                                        return@forEach
+                                    }
+                                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                                }
+                            } else {
+                                recycleAndLogBitmapDiscarded(bitmap)
+                                success = false
                             }
                         } else {
                             recycleAndLogBitmapDiscarded(bitmap)
+                            // if isOnDrawnCalled is true, it means that the view has already been drawn
+                            // again, so we don't need to draw the maskable widgets otherwise
+                            // they might be out of sync (leaking possible PII)
                             success = false
                         }
-                    } else {
-                        recycleAndLogBitmapDiscarded(bitmap)
-                        // if isOnDrawnCalled is true, it means that the view has already been drawn
-                        // again, so we don't need to draw the maskable widgets otherwise
-                        // they might be out of sync (leaking possible PII)
-                        success = false
                     }
+                } catch (e: Throwable) {
+                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
+                } finally {
+                    // reset the isOnDrawnCalled since we've taken the screenshot
+                    isOnDrawnCalled = false
+                    latch.countDown()
                 }
-                // reset the isOnDrawnCalled since we've taken the screenshot
-                isOnDrawnCalled = false
-                latch.countDown()
             }, handler)
         } catch (e: Throwable) {
             recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
@@ -860,7 +917,13 @@ public class PostHogReplayIntegration(
         val viewId = System.identityHashCode(view)
 
         val coordinates = IntArray(2)
-        view.getLocationOnScreen(coordinates)
+        if (view.isViewStateStableForMatrixOperations()) {
+            view.getLocationOnScreen(coordinates)
+        } else {
+            // Use zero coordinates as fallback when view state is unstable
+            coordinates[0] = 0
+            coordinates[1] = 0
+        }
         val x = coordinates[0].densityValue(displayMetrics.density)
         val y = coordinates[1].densityValue(displayMetrics.density)
         val width = view.width.densityValue(displayMetrics.density)
@@ -1228,9 +1291,7 @@ public class PostHogReplayIntegration(
         try {
             val bitmap = clonedDrawable.toBitmap(width, height)
             val base64 = bitmap.webpBase64()
-            if (!bitmap.isRecycled) {
-                bitmap.recycle()
-            }
+            bitmap.recycle()
             return base64
         } catch (_: Throwable) {
             // ignore
