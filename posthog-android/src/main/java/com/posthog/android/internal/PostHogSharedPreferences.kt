@@ -60,14 +60,6 @@ internal class PostHogSharedPreferences(
         }
     }
 
-    private fun getStringSet(list: Collection<*>): Set<*>? {
-        list.takeIf { listData -> listData.all { it is String } }?.let { items ->
-            return items.toSet()
-        } ?: run {
-            return null
-        }
-    }
-
     override fun setValue(
         key: String,
         value: Any,
@@ -96,32 +88,17 @@ internal class PostHogSharedPreferences(
                     edit.putInt(key, value)
                 }
                 is Collection<*> -> {
-                    when (value) {
-                        is Set<*> -> {
-                            getStringSet(value)?.let {
-                                @Suppress("UNCHECKED_CAST")
-                                edit.putStringSet(key, it as Set<String>)
-                            } ?: run {
-                                serializeObject(key, value, edit)
-                            }
-                        }
-                        is List<*> -> {
-                            getStringSet(value)?.let {
-                                @Suppress("UNCHECKED_CAST")
-                                edit.putStringSet(key, it as Set<String>)
-                            } ?: run {
-                                serializeObject(key, value, edit)
-                            }
-                        }
-                        else -> {
-                            serializeObject(key, value, edit)
-                        }
+                    @Suppress("UNCHECKED_CAST")
+                    (value.toSet() as? Set<String>)?.let {
+                        edit.putStringSet(key, it)
+                    } ?: run {
+                        serializeObject(key, value, edit)
                     }
                 }
                 is Array<*> -> {
-                    getStringSet(value.toList())?.let {
-                        @Suppress("UNCHECKED_CAST")
-                        edit.putStringSet(key, it as Set<String>)
+                    @Suppress("UNCHECKED_CAST")
+                    (value.toSet() as? Set<String>)?.let {
+                        edit.putStringSet(key, it)
                     } ?: run {
                         serializeObject(key, value, edit)
                     }
