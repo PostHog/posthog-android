@@ -1,5 +1,7 @@
 ## Next
 
+## 3.21.0 - 2025-08-27
+
 - feat: add surveys support with custom UI ([#276](https://github.com/PostHog/posthog-android/pull/276))
 
 ## 3.20.4 - 2025-08-25
