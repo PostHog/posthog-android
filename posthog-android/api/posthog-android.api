@@ -114,3 +114,11 @@ public class com/posthog/android/replay/internal/LogcatParser {
 	public fun parse (Ljava/lang/String;)Lcom/posthog/android/replay/internal/LogLine;
 }
 
+public final class com/posthog/android/surveys/PostHogSurveysIntegration : com/posthog/PostHogIntegration, com/posthog/internal/surveys/PostHogSurveysHandler {
+	public fun <init> (Landroid/content/Context;)V
+	public fun install (Lcom/posthog/PostHogInterface;)V
+	public fun onEvent (Ljava/lang/String;)V
+	public fun onSurveysLoaded (Ljava/util/List;)V
+	public fun uninstall ()V
+}
+
