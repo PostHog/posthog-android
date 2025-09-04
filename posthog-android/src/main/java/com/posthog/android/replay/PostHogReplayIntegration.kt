@@ -836,14 +836,15 @@ public class PostHogReplayIntegration(
                                     success = false
                                     return@request
                                 }
-                                
-                                val canvas = try {
-                                    Canvas(bitmap)
-                                } catch (e: Throwable) {
-                                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay Canvas creation failed: $e.")
-                                    success = false
-                                    return@request
-                                }
+
+                                val canvas =
+                                    try {
+                                        Canvas(bitmap)
+                                    } catch (e: Throwable) {
+                                        recycleAndLogBitmapDiscarded(bitmap, "Session Replay Canvas creation failed: $e.")
+                                        success = false
+                                        return@request
+                                    }
 
                                 maskableWidgets.forEach {
                                     if (isOnDrawnCalled) {
