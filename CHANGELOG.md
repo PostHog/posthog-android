@@ -1,5 +1,7 @@
 ## Next
 
+## 3.21.1 - 2025-09-04
+
 - fix: do not throw if Canvas creation failed ([#280](https://github.com/PostHog/posthog-android/pull/280))
 
 ## 3.21.0 - 2025-08-27
