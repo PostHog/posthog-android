@@ -832,11 +832,18 @@ public class PostHogReplayIntegration(
 
                             if (findMaskableWidgets(view, maskableWidgets)) {
                                 if (!bitmap.isValid()) {
-                                    recycleAndLogBitmapDiscarded(bitmap)
+                                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay Bitmap is invalid.")
                                     success = false
                                     return@request
                                 }
-                                val canvas = Canvas(bitmap)
+                                
+                                val canvas = try {
+                                    Canvas(bitmap)
+                                } catch (e: Throwable) {
+                                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay Canvas creation failed: $e.")
+                                    success = false
+                                    return@request
+                                }
 
                                 maskableWidgets.forEach {
                                     if (isOnDrawnCalled) {
