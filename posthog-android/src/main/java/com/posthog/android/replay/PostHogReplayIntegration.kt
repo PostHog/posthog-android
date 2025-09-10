@@ -618,7 +618,16 @@ public class PostHogReplayIntegration(
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
+        visitedViews: MutableSet<Int> = mutableSetOf(),
     ): Boolean {
+        val viewId = System.identityHashCode(view)
+
+        // Check for cycles to prevent stack overflow
+        if (viewId in visitedViews) {
+            return true
+        }
+        visitedViews.add(viewId)
+
         when {
             view.isComposeView() -> {
                 findMaskableComposeWidgets(view, maskableWidgets)
@@ -688,7 +697,7 @@ public class PostHogReplayIntegration(
                         continue
                     }
 
-                    if (!findMaskableWidgets(viewChild, maskableWidgets)) {
+                    if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
                         // do not continue if the screen has changed
                         return false
                     }

@@ -1,5 +1,7 @@
 ## Next
 
+- fix: prevent circular reference in the view hierarchy where a child view somehow references back to a parent, creating an infinite loop ([#281](https://github.com/PostHog/posthog-android/pull/281))
+
 ## 3.21.1 - 2025-09-04
 
 - fix: do not throw if Canvas creation failed ([#280](https://github.com/PostHog/posthog-android/pull/280))
