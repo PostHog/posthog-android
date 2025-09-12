@@ -64,6 +64,7 @@ android {
         checkReleaseBuilds = false
 
         baseline = File("lint-baseline.xml")
+        disable.add("GradleDependency")
     }
 
     androidComponents.beforeVariants {
