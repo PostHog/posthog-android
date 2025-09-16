@@ -162,11 +162,10 @@ public class PostHogReplayIntegration(
                                         if (!isActive() || !isNativeSdk) {
                                             return@onNextDraw
                                         }
-                                        val timestamp = config.dateProvider.currentTimeMillis()
 
                                         executor.submit {
                                             try {
-                                                generateSnapshot(WeakReference(decorView), WeakReference(window), timestamp)
+                                                generateSnapshot(WeakReference(decorView), WeakReference(window))
                                             } catch (e: Throwable) {
                                                 config.logger.log("Session Replay generateSnapshot failed: $e.")
                                             }
@@ -399,11 +398,12 @@ public class PostHogReplayIntegration(
     private fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
-        timestamp: Long,
     ) {
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
         val window = windowRef.get() ?: return
+
+        val timestamp = config.dateProvider.currentTimeMillis()
 
         val wireframe =
             if (config.sessionReplayConfig.screenshot) {

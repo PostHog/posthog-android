@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class Throttler(
     private val mainHandler: MainHandler,
     private val dateProvider: PostHogDateProvider,
-    private val throttleDelayMs: Long,
+    throttleDelayMs: Long,
 ) {
     private var lastCall = 0L
     private val delayNs = TimeUnit.MILLISECONDS.toNanos(throttleDelayMs)
@@ -23,24 +23,28 @@ internal class Throttler(
         // Check if enough time has passed since the last execution
         val timeSinceLastExecution = currentTime - lastCall
         if (timeSinceLastExecution >= delayNs) {
-            // Execute immediately if enough time has passed
-            execute(runnable)
+            // Execute immediately if enough time has passed and not already throttling
+            if (!isThrottling.getAndSet(true)) {
+                executeAndReleaseThrottle(runnable)
+            }
         } else {
             // If already throttling, ignore additional calls
             if (!isThrottling.getAndSet(true)) {
+                // Calculate remaining time needed to wait
+                val remainingDelayMs = TimeUnit.NANOSECONDS.toMillis(delayNs - timeSinceLastExecution)
                 mainHandler.handler.postDelayed({
-                    try {
-                        execute(runnable)
-                    } finally {
-                        isThrottling.set(false) // Reset throttling after delay
-                    }
-                }, throttleDelayMs)
+                    executeAndReleaseThrottle(runnable)
+                }, remainingDelayMs)
             }
         }
     }
 
-    private fun execute(runnable: Runnable) {
-        runnable.run()
-        lastCall = dateProvider.nanoTime()
+    private fun executeAndReleaseThrottle(runnable: Runnable) {
+        try {
+            lastCall = dateProvider.nanoTime()
+            runnable.run()
+        } finally {
+            isThrottling.set(false)
+        }
     }
 }
