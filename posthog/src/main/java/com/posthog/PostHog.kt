@@ -976,6 +976,7 @@ public class PostHog private constructor(
          * @param T the type of the Config
          * @property config the Config
          */
+        @JvmStatic
         public fun <T : PostHogConfig> with(config: T): PostHogInterface {
             val instance = PostHog()
             instance.setup(config)

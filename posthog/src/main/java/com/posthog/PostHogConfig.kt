@@ -15,7 +15,7 @@ import java.util.UUID
 /**
  * The SDK Config
  */
-public open class PostHogConfig(
+public open class PostHogConfig constructor(
     /**
      * The PostHog API Key
      */
@@ -62,18 +62,18 @@ public open class PostHogConfig(
      * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */
-    public var flushAt: Int = 20,
+    public var flushAt: Int = DEFAULT_FLUSH_AT,
     /**
      * Number of maximum events in memory and disk, when the maximum is exceed, the oldest
      * event is deleted and the new one takes place
      * Defaults to 1000
      */
-    public var maxQueueSize: Int = 1000,
+    public var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE,
     /**
      * Number of maximum events in a batch call
      * Defaults to 50
      */
-    public var maxBatchSize: Int = 50,
+    public var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
     // (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     /**
      * Interval in seconds for sending events over the wire
@@ -81,7 +81,7 @@ public open class PostHogConfig(
      * Defaults to 30s
      */
     @Suppress("ktlint:standard:no-consecutive-comments")
-    public var flushIntervalSeconds: Int = 30,
+    public var flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS,
     /**
      * Hook for encrypt and decrypt events
      * Devices are sandbox so likely not needed
@@ -294,5 +294,104 @@ public open class PostHogConfig(
 
         public const val DEFAULT_EU_HOST: String = "https://eu.i.posthog.com"
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
+
+        public const val DEFAULT_FLUSH_AT: Int = 20
+        public const val DEFAULT_MAX_QUEUE_SIZE: Int = 1000
+        public const val DEFAULT_MAX_BATCH_SIZE: Int = 50
+        public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
+
+        @JvmStatic
+        public fun builder(apiKey: String): Builder = Builder(apiKey)
+    }
+
+    public class Builder(private val apiKey: String) {
+        private var host: String = DEFAULT_HOST
+        private var debug: Boolean = false
+        private var optOut: Boolean = false
+        private var sendFeatureFlagEvent: Boolean = true
+        private var preloadFeatureFlags: Boolean = true
+        private var remoteConfig: Boolean = true
+        private var flushAt: Int = DEFAULT_FLUSH_AT
+        private var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE
+        private var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE
+        private var flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS
+        private var encryption: PostHogEncryption? = null
+        private var onFeatureFlags: PostHogOnFeatureFlags? = null
+        private var sessionReplay: Boolean = false
+        private var propertiesSanitizer: PostHogPropertiesSanitizer? = null
+        private var getAnonymousId: ((UUID) -> UUID) = { it }
+        private var reuseAnonymousId: Boolean = false
+        private var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY
+        private var surveys: Boolean = false
+        private var proxy: Proxy? = null
+        private var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig()
+
+        public fun host(host: String): Builder = apply { this.host = host }
+
+        public fun debug(debug: Boolean): Builder = apply { this.debug = debug }
+
+        public fun optOut(optOut: Boolean): Builder = apply { this.optOut = optOut }
+
+        public fun sendFeatureFlagEvent(sendFeatureFlagEvent: Boolean): Builder = apply { this.sendFeatureFlagEvent = sendFeatureFlagEvent }
+
+        public fun preloadFeatureFlags(preloadFeatureFlags: Boolean): Builder = apply { this.preloadFeatureFlags = preloadFeatureFlags }
+
+        public fun remoteConfig(remoteConfig: Boolean): Builder = apply { this.remoteConfig = remoteConfig }
+
+        public fun flushAt(flushAt: Int): Builder = apply { this.flushAt = flushAt }
+
+        public fun maxQueueSize(maxQueueSize: Int): Builder = apply { this.maxQueueSize = maxQueueSize }
+
+        public fun maxBatchSize(maxBatchSize: Int): Builder = apply { this.maxBatchSize = maxBatchSize }
+
+        public fun flushIntervalSeconds(flushIntervalSeconds: Int): Builder = apply { this.flushIntervalSeconds = flushIntervalSeconds }
+
+        public fun encryption(encryption: PostHogEncryption?): Builder = apply { this.encryption = encryption }
+
+        public fun onFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?): Builder = apply { this.onFeatureFlags = onFeatureFlags }
+
+        public fun sessionReplay(sessionReplay: Boolean): Builder = apply { this.sessionReplay = sessionReplay }
+
+        public fun propertiesSanitizer(propertiesSanitizer: PostHogPropertiesSanitizer?): Builder =
+            apply {
+                this.propertiesSanitizer = propertiesSanitizer
+            }
+
+        public fun getAnonymousId(getAnonymousId: (UUID) -> UUID): Builder = apply { this.getAnonymousId = getAnonymousId }
+
+        public fun reuseAnonymousId(reuseAnonymousId: Boolean): Builder = apply { this.reuseAnonymousId = reuseAnonymousId }
+
+        public fun personProfiles(personProfiles: PersonProfiles): Builder = apply { this.personProfiles = personProfiles }
+
+        public fun surveys(surveys: Boolean): Builder = apply { this.surveys = surveys }
+
+        public fun proxy(proxy: Proxy?): Builder = apply { this.proxy = proxy }
+
+        public fun surveysConfig(surveysConfig: PostHogSurveysConfig): Builder = apply { this.surveysConfig = surveysConfig }
+
+        public fun build(): PostHogConfig =
+            PostHogConfig(
+                apiKey = apiKey,
+                host = host,
+                debug = debug,
+                optOut = optOut,
+                sendFeatureFlagEvent = sendFeatureFlagEvent,
+                preloadFeatureFlags = preloadFeatureFlags,
+                remoteConfig = remoteConfig,
+                flushAt = flushAt,
+                maxQueueSize = maxQueueSize,
+                maxBatchSize = maxBatchSize,
+                flushIntervalSeconds = flushIntervalSeconds,
+                encryption = encryption,
+                onFeatureFlags = onFeatureFlags,
+                sessionReplay = sessionReplay,
+                propertiesSanitizer = propertiesSanitizer,
+                getAnonymousId = getAnonymousId,
+                reuseAnonymousId = reuseAnonymousId,
+                personProfiles = personProfiles,
+                surveys = surveys,
+                proxy = proxy,
+                surveysConfig = surveysConfig,
+            )
     }
 }

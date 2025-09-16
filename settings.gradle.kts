@@ -20,3 +20,4 @@ include(":posthog-android")
 
 // samples
 include(":posthog-samples:posthog-android-sample")
+include(":posthog-samples:posthog-java-sample")

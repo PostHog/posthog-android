@@ -14,6 +14,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      */
+    @JvmSynthetic
     public fun capture(
         event: String,
         distinctId: String? = null,
@@ -22,6 +23,47 @@ public interface PostHogInterface : PostHogCoreInterface {
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
     )
+
+    /**
+     * Captures events
+     * @param event the event name
+     * @param distinctId the distinctId
+     * @param options the capture options containing properties, userProperties, userPropertiesSetOnce, and groups
+     */
+    public fun capture(
+        event: String,
+        distinctId: String,
+        options: CaptureOptions,
+    ) {
+        capture(
+            event,
+            distinctId,
+            options.properties,
+            options.userProperties,
+            options.userPropertiesSetOnce,
+            options.groups,
+        )
+    }
+
+    /**
+     * Captures events
+     * @param event the event name
+     * @param distinctId the distinctId
+     */
+    public fun capture(
+        event: String,
+        distinctId: String,
+    ) {
+        capture(event, distinctId, null, null, null, null)
+    }
+
+    /**
+     * Captures events
+     * @param event the event name
+     */
+    public fun capture(event: String) {
+        capture(event, null, null, null, null, null)
+    }
 
     /**
      * Reloads the feature flags
@@ -41,6 +83,15 @@ public interface PostHogInterface : PostHogCoreInterface {
     ): Boolean
 
     /**
+     * Returns if a feature flag is enabled, the feature flag must be a Boolean
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param key the Key
+     */
+    public fun isFeatureEnabled(key: String): Boolean {
+        return isFeatureEnabled(key, false)
+    }
+
+    /**
      * Returns the feature flag
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
@@ -52,6 +103,16 @@ public interface PostHogInterface : PostHogCoreInterface {
     ): Any?
 
     /**
+     * Returns the feature flag
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param key the Key
+     * @return the feature flag or null if not found
+     */
+    public fun getFeatureFlag(key: String): Any? {
+        return getFeatureFlag(key, null)
+    }
+
+    /**
      * Returns the feature flag payload
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
@@ -61,6 +122,16 @@ public interface PostHogInterface : PostHogCoreInterface {
         key: String,
         defaultValue: Any? = null,
     ): Any?
+
+    /**
+     * Returns the feature flag payload
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param key the Key
+     * @return the feature flag payload or null if not found
+     */
+    public fun getFeatureFlagPayload(key: String): Any? {
+        return getFeatureFlagPayload(key, null)
+    }
 
     /**
      * Resets all the cached properties including the [distinctId]
@@ -82,6 +153,19 @@ public interface PostHogInterface : PostHogCoreInterface {
     )
 
     /**
+     * Creates a group
+     * Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param type the Group type
+     * @param key the Group key
+     */
+    public fun group(
+        type: String,
+        key: String,
+    ) {
+        group(type, key, null)
+    }
+
+    /**
      * Captures a screen view event
      * @param screenTitle the screen title
      * @param properties the custom properties
@@ -90,6 +174,15 @@ public interface PostHogInterface : PostHogCoreInterface {
         screenTitle: String,
         properties: Map<String, Any>? = null,
     )
+
+    /**
+     * Captures a screen view event
+     * @param screenTitle the screen title
+     * @param properties the custom properties
+     */
+    public fun screen(screenTitle: String) {
+        screen(screenTitle, null)
+    }
 
     /**
      * Creates an alias for the user

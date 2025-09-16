@@ -26,6 +26,36 @@ public interface PostHogCoreInterface {
     )
 
     /**
+     * Identifies the user
+     * Docs https://posthog.com/docs/product-analytics/identify
+     * @param distinctId the distinctId
+     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     */
+    public fun identify(
+        distinctId: String,
+        userProperties: Map<String, Any>,
+    ) {
+        identify(
+            distinctId,
+            userProperties,
+            null,
+        )
+    }
+
+    /**
+     * Identifies the user
+     * Docs https://posthog.com/docs/product-analytics/identify
+     * @param distinctId the distinctId
+     */
+    public fun identify(distinctId: String) {
+        identify(
+            distinctId,
+            null,
+            null,
+        )
+    }
+
+    /**
      * Flushes all the events in the Queue right away
      */
     public fun flush()
