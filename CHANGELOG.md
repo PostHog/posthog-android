@@ -2,7 +2,7 @@
 
 ## 3.21.3 - 2025-09-16
 
-- fix: throttle mechanism wasn't thread safe ([#283](https://github.com/PostHog/posthog-android/pull/283))`
+- fix: throttle mechanism wasn't thread safe ([#283](https://github.com/PostHog/posthog-android/pull/283))
 
 ## 3.21.2 - 2025-09-11
 
