@@ -27,7 +27,7 @@ internal class PostHogQueue(
     private val endpoint: PostHogApiEndpoint,
     private val storagePrefix: String?,
     private val executor: ExecutorService,
-) {
+) : PostHogQueueInterface {
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()
     private val timerLock = Any()
@@ -48,7 +48,7 @@ internal class PostHogQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
-    fun add(event: PostHogEvent) {
+    override fun add(event: PostHogEvent) {
         executor.executeSafely {
             var removeFirst = false
             if (deque.size >= config.maxQueueSize) {
@@ -238,7 +238,7 @@ internal class PostHogQueue(
         }
     }
 
-    fun flush() {
+    override fun flush() {
         // only flushes if the queue is above the threshold (not empty in this case)
         if (!isAboveThreshold(1)) {
             return
@@ -288,7 +288,7 @@ internal class PostHogQueue(
         }
     }
 
-    fun start() {
+    override fun start() {
         synchronized(timerLock) {
             stopTimer()
             val timer = Timer(true)
@@ -312,13 +312,13 @@ internal class PostHogQueue(
         timer?.cancel()
     }
 
-    fun stop() {
+    override fun stop() {
         synchronized(timerLock) {
             stopTimer()
         }
     }
 
-    fun clear() {
+    override fun clear() {
         executor.executeSafely {
             val tempFiles: List<File>
             synchronized(dequeLock) {

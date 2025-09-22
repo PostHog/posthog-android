@@ -5,18 +5,7 @@ import java.util.UUID
 /**
  * The PostHog SDK entry point
  */
-public interface PostHogInterface {
-    /**
-     * Setup the SDK
-     * @param config the SDK configuration
-     */
-    public fun <T : PostHogConfig> setup(config: T)
-
-    /**
-     * Closes the SDK
-     */
-    public fun close()
-
+public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Captures events
      * @param distinctId the distinctId, the generated [distinctId] is used if not given
@@ -32,19 +21,6 @@ public interface PostHogInterface {
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
-    )
-
-    /**
-     * Identifies the user
-     * Docs https://posthog.com/docs/product-analytics/identify
-     * @param distinctId the distinctId
-     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
-     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
-     */
-    public fun identify(
-        distinctId: String,
-        userProperties: Map<String, Any>? = null,
-        userPropertiesSetOnce: Map<String, Any>? = null,
     )
 
     /**
@@ -87,25 +63,10 @@ public interface PostHogInterface {
     ): Any?
 
     /**
-     * Flushes all the events in the Queue right away
-     */
-    public fun flush()
-
-    /**
      * Resets all the cached properties including the [distinctId]
      * The SDK will behave as its been setup for the first time
      */
     public fun reset()
-
-    /**
-     * Enables the SDK to capture events
-     */
-    public fun optIn()
-
-    /**
-     * Disables the SDK to capture events until you [optIn] again
-     */
-    public fun optOut()
 
     /**
      * Creates a group
@@ -138,11 +99,6 @@ public interface PostHogInterface {
     public fun alias(alias: String)
 
     /**
-     * Checks if the [optOut] mode is enabled or disabled
-     */
-    public fun isOptOut(): Boolean
-
-    /**
      * Register a property to always be sent with all the following events until you call
      * [unregister] with the same key
      * PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by
@@ -165,11 +121,6 @@ public interface PostHogInterface {
      * Returns the registered [distinctId] property
      */
     public fun distinctId(): String
-
-    /**
-     * Enables or disables the debug mode
-     */
-    public fun debug(enable: Boolean = true)
 
     /**
      * Starts a session

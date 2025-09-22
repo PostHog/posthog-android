@@ -1,5 +1,7 @@
 ## Next
 
+- feat: Add a server-side stateless interface([#284](https://github.com/PostHog/posthog-android/pull/284))
+
 ## 3.21.3 - 2025-09-16
 
 - fix: throttle mechanism wasn't thread safe ([#283](https://github.com/PostHog/posthog-android/pull/283))
@@ -30,16 +32,16 @@
 
 ## 3.20.1 - 2025-07-28
 
-- fix: call PostHogOnFeatureFlags if remote config fails ([#270](https://github.com/PostHog/posthog-android/pull/270)) 
+- fix: call PostHogOnFeatureFlags if remote config fails ([#270](https://github.com/PostHog/posthog-android/pull/270))
 
 ## 3.20.0 - 2025-07-23
 
 - feat: add support for beforeSend function to edit or drop events ([#266](https://github.com/PostHog/posthog-android/pull/266))
-    - Thanks @KopeikinaDarya 
+  - Thanks @KopeikinaDarya
 
 ## 3.19.2 - 2025-07-10
 
-- fix: enable gzip for /flags endpoint  ([#268](https://github.com/PostHog/posthog-android/pull/245)) and ([#268](https://github.com/PostHog/posthog-android/pull/264))
+- fix: enable gzip for /flags endpoint ([#268](https://github.com/PostHog/posthog-android/pull/245)) and ([#268](https://github.com/PostHog/posthog-android/pull/264))
 
 ## 3.19.1 - 2025-06-16
 
@@ -54,8 +56,8 @@
 ## 3.18.0 - 2025-06-12
 
 - feat: add proxy to `PostHogConfig` ([#260](https://github.com/PostHog/posthog-android/issues/260))
-    - Thanks @MamboBryan
-  
+  - Thanks @MamboBryan
+
 ```kotlin
 val config = PostHogAndroidConfig("...")
 config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080))
@@ -71,7 +73,7 @@ config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080
 
 ## 3.15.1 - 2025-05-27
 
-- fix: clear feature flags cache when flags were cleared up server side ([#246](https://github.com/PostHog/posthog-android/pull/246)) 
+- fix: clear feature flags cache when flags were cleared up server side ([#246](https://github.com/PostHog/posthog-android/pull/246))
 
 ## 3.15.0 - 2025-05-14
 
@@ -129,7 +131,7 @@ config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080
 
 ## 3.9.2 - 2024-11-12
 
-- fix: allow changing person properties after identify ([#205](https://github.com/PostHog/posthog-android/pull/205)) 
+- fix: allow changing person properties after identify ([#205](https://github.com/PostHog/posthog-android/pull/205))
 
 ## 3.9.1 - 2024-11-11
 
@@ -233,7 +235,7 @@ config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080
 
 ## 3.2.2 - 2024-05-21
 
-- chore: register to sdk console ([#131](https://github.com/PostHog/posthog-android/pull/131)) 
+- chore: register to sdk console ([#131](https://github.com/PostHog/posthog-android/pull/131))
 
 ## 3.2.1 - 2024-05-08
 
