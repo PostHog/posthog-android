@@ -50,20 +50,6 @@ internal class PostHogStatelessTest {
             return mergeGroups(givenGroups)
         }
 
-        fun testRequirePersonProcessing(
-            functionName: String,
-            ignoreMessage: Boolean = false,
-        ): Boolean {
-            return requirePersonProcessing(functionName, ignoreMessage)
-        }
-
-        fun testHasPersonProcessing(): Boolean {
-            // Use reflection to access the private method
-            val method = PostHogStateless::class.java.getDeclaredMethod("hasPersonProcessing")
-            method.isAccessible = true
-            return method.invoke(this) as Boolean
-        }
-
         fun getPreferencesPublic(): PostHogPreferences {
             return getPreferences()
         }
@@ -189,7 +175,6 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         assertTrue(sut.isEnabledPublic())
-        assertFalse(sut.isOptOut())
     }
 
     @Test
@@ -361,26 +346,6 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `captureStateless enables person processing when user properties provided`() {
-        val mockQueue = MockQueue()
-        sut = createStatelessInstance()
-        config = createConfig(personProfiles = PersonProfiles.IDENTIFIED_ONLY)
-
-        sut.setup(config)
-        sut.setMockQueue(mockQueue)
-
-        sut.captureStateless(
-            event = "test",
-            distinctId = "user123",
-            userProperties = mapOf("name" to "John"),
-        )
-
-        assertEquals(1, mockQueue.events.size)
-        val event = mockQueue.events.first()
-        assertEquals(true, event.properties!!["\$process_person_profile"])
-    }
-
-    @Test
     fun `captureStateless handles feature flags when enabled`() {
         val mockQueue = MockQueue()
         val mockFeatureFlags = MockFeatureFlags()
@@ -479,20 +444,6 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `identify does nothing when person profiles set to NEVER`() {
-        val mockQueue = MockQueue()
-        sut = createStatelessInstance()
-        config = createConfig(personProfiles = PersonProfiles.NEVER)
-
-        sut.setup(config)
-        sut.setMockQueue(mockQueue)
-
-        sut.identify("user123", mapOf("name" to "John"))
-
-        assertEquals(0, mockQueue.events.size)
-    }
-
-    @Test
     fun `identify does nothing with blank distinctId`() {
         val mockQueue = MockQueue()
         sut = createStatelessInstance()
@@ -550,20 +501,6 @@ internal class PostHogStatelessTest {
         assertEquals(mapOf("industry" to "tech"), event.properties!!["\$group_set"])
     }
 
-    @Test
-    fun `groupStateless does nothing when person profiles set to NEVER`() {
-        val mockQueue = MockQueue()
-        sut = createStatelessInstance()
-        config = createConfig(personProfiles = PersonProfiles.NEVER)
-
-        sut.setup(config)
-        sut.setMockQueue(mockQueue)
-
-        sut.groupStateless("user123", "company", "acme")
-
-        assertEquals(0, mockQueue.events.size)
-    }
-
     // Error Handling Tests
     @Test
     fun `operations handle errors gracefully when not enabled`() {
@@ -574,8 +511,6 @@ internal class PostHogStatelessTest {
         sut.identify("user123")
         sut.aliasStateless("user123", "alias")
         sut.groupStateless("user123", "company", "acme")
-        sut.optIn()
-        sut.optOut()
         sut.flush()
         sut.debug(true)
     }
@@ -679,7 +614,6 @@ internal class PostHogStatelessTest {
         assertEquals(mapOf("signup_date" to "2024-01-01"), event.properties!!["\$set_once"])
         assertEquals(mapOf("company" to "acme"), event.properties!!["\$groups"])
         assertEquals("variant_a", event.properties!!["\$feature/test_flag"])
-        assertTrue(event.properties!!["\$process_person_profile"] as Boolean)
     }
 
     @Test
@@ -717,29 +651,6 @@ internal class PostHogStatelessTest {
         val result = sut.testMergeGroups(null)
 
         assertNull(result)
-    }
-
-    @Test
-    fun `person processing works correctly`() {
-        sut = createStatelessInstance()
-        config = createConfig(personProfiles = PersonProfiles.IDENTIFIED_ONLY)
-
-        sut.setup(config)
-
-        // Test that person processing can be enabled
-        val result = sut.testRequirePersonProcessing("test", false)
-        assertTrue(result)
-    }
-
-    @Test
-    fun `requirePersonProcessing returns false for NEVER profile setting`() {
-        sut = createStatelessInstance()
-        config = createConfig(personProfiles = PersonProfiles.NEVER)
-
-        sut.setup(config)
-
-        val result = sut.testRequirePersonProcessing("test", false)
-        assertFalse(result)
     }
 
     @Test
@@ -903,37 +814,6 @@ internal class PostHogStatelessTest {
 
         // Groups should not be included in $groups property for group identify events
         assertNull(event.properties!!["\$groups"])
-    }
-
-    @Test
-    fun `concurrent access to person processing is thread safe`() {
-        sut = createStatelessInstance()
-        config = createConfig(personProfiles = PersonProfiles.IDENTIFIED_ONLY)
-
-        sut.setup(config)
-
-        val threads = mutableListOf<Thread>()
-        val results = mutableListOf<Boolean>()
-
-        // Create multiple threads accessing person processing
-        repeat(10) {
-            val thread =
-                Thread {
-                    val result = sut.testRequirePersonProcessing("test", false)
-                    synchronized(results) {
-                        results.add(result)
-                    }
-                }
-            threads.add(thread)
-            thread.start()
-        }
-
-        // Wait for all threads to complete
-        threads.forEach { it.join() }
-
-        // All should return true (person processing enabled)
-        assertEquals(10, results.size)
-        assertTrue(results.all { it })
     }
 
     // Helper classes

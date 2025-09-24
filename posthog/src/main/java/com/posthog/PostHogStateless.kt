@@ -8,7 +8,6 @@ import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
-import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
@@ -32,7 +31,6 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
-    protected val personProcessingLock: Any = Any()
 
     @JvmField
     protected var config: PostHogConfig? = null
@@ -40,8 +38,6 @@ public open class PostHogStateless protected constructor(
     protected var featureFlags: PostHogFeatureFlagsInterface? = null
     protected var queue: PostHogQueueInterface? = null
     protected var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
-
-    protected var isPersonProcessingLoaded: Boolean = false
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -117,27 +113,6 @@ public open class PostHogStateless protected constructor(
         }
     }
 
-    private var isPersonProcessingEnabled: Boolean = false
-        get() {
-            synchronized(personProcessingLock) {
-                if (!isPersonProcessingLoaded) {
-                    isPersonProcessingEnabled = getPreferences().getValue(PERSON_PROCESSING) as? Boolean
-                        ?: false
-                    isPersonProcessingLoaded = true
-                }
-            }
-            return field
-        }
-        set(value) {
-            synchronized(personProcessingLock) {
-                // only set if it's different to avoid IO since this is called more often
-                if (field != value) {
-                    field = value
-                    getPreferences().setValue(PERSON_PROCESSING, value)
-                }
-            }
-        }
-
     private fun buildProperties(
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
@@ -194,8 +169,6 @@ public open class PostHogStateless protected constructor(
             }
         }
 
-        props["\$process_person_profile"] = hasPersonProcessing()
-
         // Session replay should have the SDK info as well
         config?.context?.getSdkInfo()?.let {
             props.putAll(it)
@@ -238,15 +211,10 @@ public open class PostHogStateless protected constructor(
             if (!isEnabled()) {
                 return
             }
+
             if (config?.optOut == true) {
                 config?.logger?.log("PostHog is in OptOut state.")
                 return
-            }
-
-            // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
-            // we should still enable person processing since this is intentional
-            if (userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false) {
-                requirePersonProcessing("capture", ignoreMessage = true)
             }
 
             var groupIdentify = false
@@ -351,10 +319,6 @@ public open class PostHogStateless protected constructor(
             return
         }
 
-        if (!requirePersonProcessing("alias")) {
-            return
-        }
-
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
 
@@ -367,10 +331,6 @@ public open class PostHogStateless protected constructor(
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
-            return
-        }
-
-        if (!requirePersonProcessing("identify")) {
             return
         }
 
@@ -390,30 +350,6 @@ public open class PostHogStateless protected constructor(
         )
     }
 
-    private fun hasPersonProcessing(): Boolean {
-        return !(
-            config?.personProfiles == PersonProfiles.NEVER ||
-                (
-                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                        !isPersonProcessingEnabled
-                )
-        )
-    }
-
-    protected fun requirePersonProcessing(
-        functionName: String,
-        ignoreMessage: Boolean = false,
-    ): Boolean {
-        if (config?.personProfiles == PersonProfiles.NEVER) {
-            if (!ignoreMessage) {
-                config?.logger?.log("$functionName was called, but `personProfiles` is set to `never`. This call will be ignored.")
-            }
-            return false
-        }
-        isPersonProcessingEnabled = true
-        return true
-    }
-
     public override fun groupStateless(
         distinctId: String,
         type: String,
@@ -421,10 +357,6 @@ public open class PostHogStateless protected constructor(
         groupProperties: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
-            return
-        }
-
-        if (!requirePersonProcessing("group")) {
             return
         }
 

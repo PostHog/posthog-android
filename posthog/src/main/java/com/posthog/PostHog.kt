@@ -10,6 +10,7 @@ import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
@@ -47,6 +48,7 @@ public class PostHog private constructor(
     private val anonymousLock = Any()
     private val identifiedLock = Any()
     private val groupsLock = Any()
+    private val personProcessingLock: Any = Any()
 
     private val featureFlagsCalledLock = Any()
 
@@ -58,6 +60,7 @@ public class PostHog private constructor(
     private var surveysHandler: PostHogSurveysHandler? = null
 
     private var isIdentifiedLoaded: Boolean = false
+    private var isPersonProcessingLoaded: Boolean = false
 
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
@@ -349,6 +352,7 @@ public class PostHog private constructor(
             }
 
             props["\$is_identified"] = isIdentified
+            props["\$process_person_profile"] = hasPersonProcessing()
         }
 
         // Session replay should have the SDK info as well
@@ -402,6 +406,13 @@ public class PostHog private constructor(
             }
 
             val newDistinctId = distinctId ?: this.distinctId
+
+            // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
+            // we should still enable person processing since this is intentional
+            if (userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false) {
+                requirePersonProcessing("capture", ignoreMessage = true)
+            }
+
             if (newDistinctId.isBlank()) {
                 config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
                 return
@@ -605,6 +616,52 @@ public class PostHog private constructor(
             config?.logger?.log("already identified with id: $distinctId.")
         }
     }
+
+    private fun hasPersonProcessing(): Boolean {
+        return !(
+            config?.personProfiles == PersonProfiles.NEVER ||
+                (
+                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                        !isIdentified &&
+                        !isPersonProcessingEnabled
+                )
+        )
+    }
+
+    private fun requirePersonProcessing(
+        functionName: String,
+        ignoreMessage: Boolean = false,
+    ): Boolean {
+        if (config?.personProfiles == PersonProfiles.NEVER) {
+            if (!ignoreMessage) {
+                config?.logger?.log("$functionName was called, but `personProfiles` is set to `never`. This call will be ignored.")
+            }
+            return false
+        }
+        isPersonProcessingEnabled = true
+        return true
+    }
+
+    private var isPersonProcessingEnabled: Boolean = false
+        get() {
+            synchronized(personProcessingLock) {
+                if (!isPersonProcessingLoaded) {
+                    isPersonProcessingEnabled = getPreferences().getValue(PERSON_PROCESSING) as? Boolean
+                        ?: false
+                    isPersonProcessingLoaded = true
+                }
+            }
+            return field
+        }
+        set(value) {
+            synchronized(personProcessingLock) {
+                // only set if it's different to avoid IO since this is called more often
+                if (field != value) {
+                    field = value
+                    getPreferences().setValue(PERSON_PROCESSING, value)
+                }
+            }
+        }
 
     public override fun group(
         type: String,

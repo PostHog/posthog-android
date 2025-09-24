@@ -313,7 +313,6 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	protected final fun getFeatureFlags ()Lcom/posthog/internal/PostHogFeatureFlagsInterface;
 	protected final fun getMemoryPreferences ()Lcom/posthog/internal/PostHogPreferences;
 	protected final fun getOptOutLock ()Ljava/lang/Object;
-	protected final fun getPersonProcessingLock ()Ljava/lang/Object;
 	protected final fun getPreferences ()Lcom/posthog/internal/PostHogPreferences;
 	protected final fun getQueue ()Lcom/posthog/internal/PostHogQueueInterface;
 	protected final fun getSetupLock ()Ljava/lang/Object;
@@ -322,16 +321,12 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	protected final fun isEnabled ()Z
 	public fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;Z)Z
 	public fun isOptOut ()Z
-	protected final fun isPersonProcessingLoaded ()Z
 	protected final fun mergeGroups (Ljava/util/Map;)Ljava/util/Map;
 	public fun optIn ()V
 	public fun optOut ()V
-	protected final fun requirePersonProcessing (Ljava/lang/String;Z)Z
-	public static synthetic fun requirePersonProcessing$default (Lcom/posthog/PostHogStateless;Ljava/lang/String;ZILjava/lang/Object;)Z
 	protected final fun setEnabled (Z)V
 	protected final fun setFeatureFlags (Lcom/posthog/internal/PostHogFeatureFlagsInterface;)V
 	protected final fun setMemoryPreferences (Lcom/posthog/internal/PostHogPreferences;)V
-	protected final fun setPersonProcessingLoaded (Z)V
 	protected final fun setQueue (Lcom/posthog/internal/PostHogQueueInterface;)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
 }
