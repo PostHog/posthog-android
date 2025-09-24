@@ -443,14 +443,17 @@ public open class PostHogStateless protected constructor(
         key: String,
         defaultValue: Boolean,
     ): Boolean {
-        if (!isEnabled()) {
-            return defaultValue
+        val value = getFeatureFlagStateless(distinctId, key, defaultValue)
+
+        if (value is Boolean) {
+            return value
         }
-        val value = featureFlags?.isFeatureEnabled(key, defaultValue) ?: defaultValue
 
-        sendFeatureFlagCalled(distinctId, key, value)
+        if (value is String) {
+            return value.isNotEmpty()
+        }
 
-        return value
+        return false
     }
 
     private fun sendFeatureFlagCalled(

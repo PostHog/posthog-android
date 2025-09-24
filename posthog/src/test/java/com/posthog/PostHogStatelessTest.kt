@@ -117,13 +117,6 @@ internal class PostHogStatelessTest {
             // Mock implementation
         }
 
-        override fun isFeatureEnabled(
-            key: String,
-            defaultValue: Boolean,
-        ): Boolean {
-            return flags[key] as? Boolean ?: defaultValue
-        }
-
         override fun getFeatureFlag(
             key: String,
             defaultValue: Any?,

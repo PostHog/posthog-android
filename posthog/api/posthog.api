@@ -402,7 +402,6 @@ public abstract interface class com/posthog/internal/PostHogFeatureFlagsInterfac
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getFeatureFlags ()Ljava/util/Map;
-	public abstract fun isFeatureEnabled (Ljava/lang/String;Z)Z
 	public abstract fun isSessionReplayFlagActive ()Z
 	public abstract fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 }

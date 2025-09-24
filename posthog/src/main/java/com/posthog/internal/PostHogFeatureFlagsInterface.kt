@@ -11,11 +11,6 @@ public interface PostHogFeatureFlagsInterface {
         onFeatureFlags: PostHogOnFeatureFlags? = null,
     )
 
-    public fun isFeatureEnabled(
-        key: String,
-        defaultValue: Boolean,
-    ): Boolean
-
     public fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
