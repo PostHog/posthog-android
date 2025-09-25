@@ -1,6 +1,4 @@
 async function checkChangelog() {
-  const changelogFile = "CHANGELOG.md";
-
   // Check if skipped
   const skipChangelog =
     danger.github && (danger.github.pr.body + "").includes("#skip-changelog");
@@ -9,14 +7,21 @@ async function checkChangelog() {
     return;
   }
 
-  // Check if current PR has an entry in changelog
-  const changelogContents = await danger.github.utils.fileContents(
-    changelogFile
-  );
+  // Check if current PR has an entry in any changelog
+  const changelogFiles = ["posthog/CHANGELOG.md", "posthog-android/CHANGELOG.md"];
+  let hasChangelogEntry = false;
 
-  const hasChangelogEntry = RegExp(`#${danger.github.pr.number}\\b`).test(
-    changelogContents
-  );
+  for (const file of changelogFiles) {
+    try {
+      const changelogContents = await danger.github.utils.fileContents(file);
+      if (RegExp(`#${danger.github.pr.number}\\b`).test(changelogContents)) {
+        hasChangelogEntry = true;
+        break;
+      }
+    } catch (e) {
+      // File doesn't exist, continue
+    }
+  }
 
   if (hasChangelogEntry) {
     return;
@@ -24,8 +29,7 @@ async function checkChangelog() {
 
   // Report missing changelog entry
   fail(
-    "Please consider adding a changelog entry for the next release.",
-    changelogFile
+    "Please consider adding a changelog entry for the next release."
   );
 
   const prTitleFormatted = danger.github.pr.title
@@ -37,7 +41,11 @@ async function checkChangelog() {
   markdown(
     `
 ### Instructions and example for changelog
-Please add an entry to \`CHANGELOG.md\` to the "Next" section. Make sure the entry includes this PR's number.
+Please add an entry to the appropriate changelog:
+- \`posthog/CHANGELOG.md\` (core module)
+- \`posthog-android/CHANGELOG.md\` (android module)
+
+Make sure the entry includes this PR's number.
 Example:
 \`\`\`markdown
 ## Next
