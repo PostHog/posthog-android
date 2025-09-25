@@ -22,7 +22,7 @@ internal class PostHogRemoteConfig(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
-) {
+) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
     private var isLoadingRemoteConfig = AtomicBoolean(false)
 
@@ -119,12 +119,12 @@ internal class PostHogRemoteConfig(
         }
     }
 
-    fun loadRemoteConfig(
+    override fun loadRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: PostHogOnFeatureFlags?,
+        onFeatureFlags: PostHogOnFeatureFlags?,
     ) {
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
@@ -461,7 +461,6 @@ internal class PostHogRemoteConfig(
 
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
-
             @Suppress("UNCHECKED_CAST")
             val flags =
                 preferences.getValue(
@@ -558,7 +557,7 @@ internal class PostHogRemoteConfig(
         return value ?: defaultValue
     }
 
-    fun getFeatureFlag(
+    override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
     ): Any? {
@@ -568,7 +567,7 @@ internal class PostHogRemoteConfig(
         return readFeatureFlag(key, defaultValue, featureFlags)
     }
 
-    fun getFeatureFlagPayload(
+    override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
     ): Any? {
@@ -578,7 +577,7 @@ internal class PostHogRemoteConfig(
         return readFeatureFlag(key, defaultValue, featureFlagPayloads)
     }
 
-    fun getFeatureFlags(): Map<String, Any>? {
+    override fun getFeatureFlags(): Map<String, Any>? {
         val flags: Map<String, Any>?
         synchronized(featureFlagsLock) {
             flags = featureFlags?.toMap()
@@ -586,7 +585,7 @@ internal class PostHogRemoteConfig(
         return flags
     }
 
-    fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
+    override fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
     fun getRequestId(): String? {
         loadFeatureFlagsFromCacheIfNeeded()
@@ -624,7 +623,7 @@ internal class PostHogRemoteConfig(
         }
     }
 
-    fun clear() {
+    override fun clear() {
         synchronized(featureFlagsLock) {
             sessionReplayFlagActive = false
             isFeatureFlagsLoaded = false
