@@ -1,5 +1,7 @@
 ## Next
 
+## 3.22.0 - 2025-09-25
+
 - feat: Add a server-side stateless interface([#284](https://github.com/PostHog/posthog-android/pull/284))
 
 ## 3.21.3 - 2025-09-16
