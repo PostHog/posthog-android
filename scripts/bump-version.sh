@@ -1,17 +1,32 @@
 #!/bin/bash
 
-# ./scripts/bump-version.sh <new version>
-# eg ./scripts/bump-version.sh "3.0.0-alpha.1"
+# ./scripts/bump-version.sh <module> <new version>
+# eg ./scripts/bump-version.sh core "3.0.1"
+# eg ./scripts/bump-version.sh android "3.0.2"
 
 set -eux
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $SCRIPT_DIR/..
 
-NEW_VERSION="$1"
+MODULE="$1"
+NEW_VERSION="$2"
 
 GRADLE_FILEPATH="gradle.properties"
 
-# Replace `versionName` with the given version
-VERSION_NAME_PATTERN="versionName"
-perl -pi -e "s/$VERSION_NAME_PATTERN=.*$/$VERSION_NAME_PATTERN=$NEW_VERSION/g" $GRADLE_FILEPATH
+# Replace module-specific version
+case "$MODULE" in
+  "core")
+    perl -pi -e "s/coreVersion=.*/coreVersion=$NEW_VERSION/g" $GRADLE_FILEPATH
+    ;;
+  "android")
+    perl -pi -e "s/androidVersion=.*/androidVersion=$NEW_VERSION/g" $GRADLE_FILEPATH
+    ;;
+  *)
+    echo "Usage: $0 {core|android} <version>"
+    echo "Examples:"
+    echo "  $0 core 3.0.1"
+    echo "  $0 android 3.0.2"
+    exit 1
+    ;;
+esac

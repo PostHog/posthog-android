@@ -23,8 +23,20 @@ api:
 dryRelease:
 	./gradlew publishToMavenLocal
 
+dryReleaseCore:
+	./gradlew :posthog:publishToMavenLocal
+
+dryReleaseAndroid:
+	./gradlew :posthog-android:publishToMavenLocal
+
 release:
 	./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+releaseCore:
+	./gradlew :posthog:publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+releaseAndroid:
+	./gradlew :posthog-android:publishToSonatype closeAndReleaseSonatypeStagingRepository
 
 testReport:
 	./gradlew koverHtmlReport

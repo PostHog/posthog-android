@@ -104,7 +104,14 @@ fun MavenPublication.postHogConfig(
 ) {
     groupId = "com.posthog"
     artifactId = projectName
-    version = properties[PostHogPublishConfig.versionNameProperty].toString()
+    version =
+        when (projectName) {
+            "posthog" -> properties["coreVersion"].toString()
+            "posthog-android" -> properties["androidVersion"].toString()
+            else -> throw IllegalArgumentException(
+                "Unknown project name '$projectName'. Please add version mapping in PostHogPublishConfig.kt",
+            )
+        }
 }
 
 fun SigningExtension.postHogConfig(

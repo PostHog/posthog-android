@@ -37,9 +37,27 @@ jobs:
           java-version: ${{ matrix.java }}
           distribution: 'temurin'
 
-      # Let's be sure that everything works before we release    
-      - name: Dry release
-        run: make dryRelease
-  
-      - name: Release
-        run: make release
+      # Determine which module to release based on tag
+      - name: Determine release target
+        id: release_target
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [[ "$TAG" == core-v* ]]; then
+            echo "dry_target=dryReleaseCore" >> $GITHUB_OUTPUT
+            echo "release_target=releaseCore" >> $GITHUB_OUTPUT
+            echo "module=core" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == android-v* ]]; then
+            echo "dry_target=dryReleaseAndroid" >> $GITHUB_OUTPUT
+            echo "release_target=releaseAndroid" >> $GITHUB_OUTPUT
+            echo "module=android" >> $GITHUB_OUTPUT
+          else
+            echo "ERROR: Unknown tag format '$TAG'. Expected 'core-v*' or 'android-v*'"
+            exit 1
+          fi
+
+      # Let's be sure that everything works before we release
+      - name: Dry release (${{ steps.release_target.outputs.module }})
+        run: make ${{ steps.release_target.outputs.dry_target }}
+
+      - name: Release (${{ steps.release_target.outputs.module }})
+        run: make ${{ steps.release_target.outputs.release_target }}
