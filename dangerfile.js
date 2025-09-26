@@ -8,7 +8,7 @@ async function checkChangelog() {
   }
 
   // Check if current PR has an entry in any changelog
-  const changelogFiles = ["posthog/CHANGELOG.md", "posthog-android/CHANGELOG.md"];
+  const changelogFiles = ["posthog/CHANGELOG.md", "posthog-android/CHANGELOG.md", "posthog-server/CHANGELOG.md"];
   let hasChangelogEntry = false;
 
   for (const file of changelogFiles) {
@@ -44,6 +44,7 @@ async function checkChangelog() {
 Please add an entry to the appropriate changelog:
 - \`posthog/CHANGELOG.md\` (core module)
 - \`posthog-android/CHANGELOG.md\` (android module)
+- \`posthog-server/CHANGELOG.md\` (server module)
 
 Make sure the entry includes this PR's number.
 Example:
