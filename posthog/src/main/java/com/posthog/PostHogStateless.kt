@@ -9,9 +9,7 @@ import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPrintLogger
-import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
-import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogThreadFactory
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -54,8 +52,15 @@ public open class PostHogStateless protected constructor(
 
                 config.cachePreferences = memoryPreferences
                 val api = PostHogApi(config)
-                val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val remoteConfig = PostHogRemoteConfig(config, api, featureFlagsExecutor)
+                val queue =
+                    config.queueProvider(
+                        config,
+                        api,
+                        PostHogApiEndpoint.BATCH,
+                        config.storagePrefix,
+                        queueExecutor,
+                    )
+                val remoteConfig = config.remoteConfigProvider(config, api, featureFlagsExecutor)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
