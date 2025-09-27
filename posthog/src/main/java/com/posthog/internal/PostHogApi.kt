@@ -113,12 +113,22 @@ internal class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    fun flags(
+    public fun flags(
         distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, String>?,
+        anonymousId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): PostHogFlagsResponse? {
-        val flagsRequest = PostHogFlagsRequest(config.apiKey, distinctId, anonymousId = anonymousId, groups)
+        val flagsRequest =
+            PostHogFlagsRequest(
+                config.apiKey,
+                distinctId,
+                anonymousId = anonymousId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
 
         val url = "$theHost/flags/?v=2&config=true"
         logRequest(flagsRequest, url)

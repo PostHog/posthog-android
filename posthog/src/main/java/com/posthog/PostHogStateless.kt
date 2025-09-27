@@ -411,7 +411,7 @@ public open class PostHogStateless protected constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        val value = featureFlags?.getFeatureFlag(key, defaultValue) ?: defaultValue
+        val value = featureFlags?.getFeatureFlag(key, defaultValue, distinctId) ?: defaultValue
 
         sendFeatureFlagCalled(distinctId, key, value)
 
@@ -426,7 +426,7 @@ public open class PostHogStateless protected constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
+        return featureFlags?.getFeatureFlagPayload(key, defaultValue, distinctId) ?: defaultValue
     }
 
     public override fun flush() {
