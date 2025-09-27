@@ -1,7 +1,7 @@
 package com.posthog.internal
 
+import com.posthog.PostHogInternal
 import okhttp3.ResponseBody
-import java.lang.RuntimeException
 
 /**
  * The API exception if not within the successful range (2xx - 3xx)
@@ -9,10 +9,11 @@ import java.lang.RuntimeException
  * @property message the exception message
  * @property message the OkHttp response body, the source might be closed already
  */
-internal class PostHogApiError(
-    val statusCode: Int,
+@PostHogInternal
+public class PostHogApiError(
+    public val statusCode: Int,
     override val message: String,
-    val body: ResponseBody?,
+    public val body: ResponseBody?,
 ) : RuntimeException(message) {
     override fun toString(): String {
         return "PostHogApiError(statusCode=$statusCode, message='$message')"

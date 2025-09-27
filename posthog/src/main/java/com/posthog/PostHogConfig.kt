@@ -1,16 +1,23 @@
 package com.posthog
 
+import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider
+import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
+import com.posthog.internal.PostHogQueue
+import com.posthog.internal.PostHogQueueInterface
+import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSerializer
 import com.posthog.surveys.PostHogSurveysConfig
 import java.net.Proxy
 import java.util.UUID
+import java.util.concurrent.ExecutorService
 
 /**
  * The SDK Config
@@ -167,6 +174,16 @@ public open class PostHogConfig(
      * Configuration for PostHog Surveys feature.
      */
     public var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
+    /**
+     * Factory to instantiate a custom [com.posthog.internal.PostHogRemoteConfigInterface] implementation.
+     */
+    public val remoteConfigProvider: (PostHogConfig, PostHogApi, ExecutorService) -> PostHogFeatureFlagsInterface =
+        { config, api, executor -> PostHogRemoteConfig(config, api, executor) },
+    /**
+     * Factory to instantiate a custom queue implementation.
+     */
+    public val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface =
+        { config, api, endpoint, storagePrefix, executor -> PostHogQueue(config, api, endpoint, storagePrefix, executor) },
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

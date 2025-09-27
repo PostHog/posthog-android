@@ -13,7 +13,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
-import com.posthog.internal.PostHogQueue
+import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
@@ -53,7 +53,7 @@ public class PostHog private constructor(
     private val featureFlagsCalledLock = Any()
 
     private var remoteConfig: PostHogRemoteConfig? = null
-    private var replayQueue: PostHogQueue? = null
+    private var replayQueue: PostHogQueueInterface? = null
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
@@ -89,9 +89,9 @@ public class PostHog private constructor(
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
                 val api = PostHogApi(config)
-                val queue = PostHogQueue(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val replayQueue = PostHogQueue(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
-                val featureFlags = PostHogRemoteConfig(config, api, remoteConfigExecutor)
+                val queue = config.queueProvider(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
+                val replayQueue = config.queueProvider(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
+                val featureFlags = config.remoteConfigProvider(config, api, remoteConfigExecutor)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -115,12 +115,15 @@ public class PostHog private constructor(
                 this.config = config
                 this.queue = queue
                 this.replayQueue = replayQueue
-                this.remoteConfig = featureFlags
+
+                if (featureFlags is PostHogRemoteConfig) {
+                    this.remoteConfig = featureFlags
+                }
 
                 // Notify surveys integration whenever remote config finishes loading
-                featureFlags.onRemoteConfigLoaded = {
+                remoteConfig?.onRemoteConfigLoaded = {
                     try {
-                        val surveys = featureFlags.getSurveys() ?: emptyList()
+                        val surveys = remoteConfig?.getSurveys() ?: emptyList()
                         surveysHandler?.onSurveysLoaded(surveys)
                     } catch (e: Throwable) {
                         config.logger.log("Failed to notify surveys loaded: $e.")

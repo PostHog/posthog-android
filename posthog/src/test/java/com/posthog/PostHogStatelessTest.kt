@@ -93,19 +93,13 @@ internal class PostHogStatelessTest {
             flags[key] = value
         }
 
-        override fun loadRemoteConfig(
-            distinctId: String,
-            anonymousId: String?,
-            groups: Map<String, String>?,
-            internalOnFeatureFlags: PostHogOnFeatureFlags?,
-            onFeatureFlags: PostHogOnFeatureFlags?,
-        ) {
-            // Mock implementation
-        }
-
         override fun getFeatureFlag(
             key: String,
             defaultValue: Any?,
+            distinctId: String?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
         ): Any? {
             return flags[key] ?: defaultValue
         }
@@ -113,16 +107,21 @@ internal class PostHogStatelessTest {
         override fun getFeatureFlagPayload(
             key: String,
             defaultValue: Any?,
+            distinctId: String?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
         ): Any? {
             return flags[key] ?: defaultValue
         }
 
-        override fun getFeatureFlags(): Map<String, Any> {
+        override fun getFeatureFlags(
+            distinctId: String?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
+        ): Map<String, Any> {
             return flags.toMap()
-        }
-
-        override fun isSessionReplayFlagActive(): Boolean {
-            return false
         }
 
         override fun clear() {

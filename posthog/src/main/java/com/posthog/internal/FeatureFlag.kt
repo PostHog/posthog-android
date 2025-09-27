@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.PostHogInternal
 import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
 /**
@@ -11,7 +12,8 @@ import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
  * @property reason the reason the feature flag was evaluated
  */
 @IgnoreJRERequirement
-internal data class FeatureFlag(
+@PostHogInternal
+public data class FeatureFlag(
     val key: String,
     val enabled: Boolean,
     val variant: String?,

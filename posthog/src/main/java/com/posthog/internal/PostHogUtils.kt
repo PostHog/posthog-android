@@ -22,7 +22,8 @@ private fun isConnectionTimeout(throwable: Throwable): Boolean {
     return throwable is SocketTimeoutException
 }
 
-internal fun Throwable.isNetworkingError(): Boolean {
+@PostHogInternal
+public fun Throwable.isNetworkingError(): Boolean {
     return isConnectionTimeout(this) ||
         noInternetAvailable(this) ||
         isRequestCanceled(this)
@@ -45,7 +46,8 @@ internal fun File.existsSafely(config: PostHogConfig): Boolean {
     }
 }
 
-internal fun Executor.executeSafely(run: Runnable) {
+@PostHogInternal
+public fun Executor.executeSafely(run: Runnable) {
     try {
         // can throw RejectedExecutionException
         execute(run)

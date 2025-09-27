@@ -1,6 +1,9 @@
 package com.posthog.internal
 
-internal enum class PostHogApiEndpoint {
+import com.posthog.PostHogInternal
+
+@PostHogInternal
+public enum class PostHogApiEndpoint {
     BATCH,
     SNAPSHOT,
 }
