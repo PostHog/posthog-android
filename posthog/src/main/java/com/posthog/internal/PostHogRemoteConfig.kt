@@ -1,6 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
@@ -18,7 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property api the API
  * @property executor the Executor
  */
-internal class PostHogRemoteConfig(
+@PostHogInternal
+public class PostHogRemoteConfig(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
@@ -53,7 +55,7 @@ internal class PostHogRemoteConfig(
      * Use this to notify listeners that cached surveys may have changed.
      */
     @Volatile
-    var onRemoteConfigLoaded: (() -> Unit)? = null
+    public var onRemoteConfigLoaded: (() -> Unit)? = null
 
     init {
         preloadSessionReplayFlag()
@@ -392,7 +394,7 @@ internal class PostHogRemoteConfig(
         }
     }
 
-    fun loadFeatureFlags(
+    public fun loadFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
@@ -600,14 +602,14 @@ internal class PostHogRemoteConfig(
 
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
-    fun getRequestId(): String? {
+    public fun getRequestId(): String? {
         loadFeatureFlagsFromCacheIfNeeded()
         synchronized(featureFlagsLock) {
             return requestId
         }
     }
 
-    fun getFlagDetails(key: String): FeatureFlag? {
+    public fun getFlagDetails(key: String): FeatureFlag? {
         loadFeatureFlagsFromCacheIfNeeded()
 
         synchronized(featureFlagsLock) {
@@ -615,7 +617,7 @@ internal class PostHogRemoteConfig(
         }
     }
 
-    fun getSurveys(): List<Survey>? {
+    public fun getSurveys(): List<Survey>? {
         synchronized(remoteConfigLock) {
             return surveys
         }

@@ -6,6 +6,7 @@ import com.posthog.PostHogConfig.Companion.DEFAULT_EU_HOST
 import com.posthog.PostHogConfig.Companion.DEFAULT_US_ASSETS_HOST
 import com.posthog.PostHogConfig.Companion.DEFAULT_US_HOST
 import com.posthog.PostHogEvent
+import com.posthog.PostHogInternal
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -20,7 +21,8 @@ import java.io.OutputStream
  * The class that calls the PostHog API
  * @property config the Config
  */
-internal class PostHogApi(
+@PostHogInternal
+public class PostHogApi(
     private val config: PostHogConfig,
 ) {
     private companion object {
@@ -48,7 +50,7 @@ internal class PostHogApi(
         }
 
     @Throws(PostHogApiError::class, IOException::class)
-    fun batch(events: List<PostHogEvent>) {
+    public fun batch(events: List<PostHogEvent>) {
         val batch = PostHogBatchEvent(config.apiKey, events)
 
         val url = "$theHost/batch"
@@ -69,7 +71,7 @@ internal class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    fun snapshot(events: List<PostHogEvent>) {
+    public fun snapshot(events: List<PostHogEvent>) {
         events.forEach {
             it.apiKey = config.apiKey
         }
@@ -151,7 +153,7 @@ internal class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    fun remoteConfig(): PostHogRemoteConfigResponse? {
+    public fun remoteConfig(): PostHogRemoteConfigResponse? {
         var host = theHost
         host =
             when (host) {
@@ -177,7 +179,13 @@ internal class PostHogApi(
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
-            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
+            if (!response.isSuccessful) {
+                throw PostHogApiError(
+                    response.code,
+                    response.message,
+                    response.body,
+                )
+            }
 
             response.body?.let { body ->
                 return config.serializer.deserialize(body.charStream().buffered())

@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.PostHogInternal
 import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
 /**
@@ -11,7 +12,8 @@ import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
  * @property quotaLimited array of quota limited features
  */
 @IgnoreJRERequirement
-internal data class PostHogFlagsResponse(
+@PostHogInternal
+public data class PostHogFlagsResponse(
     // assuming theres no errors if not present
     val errorsWhileComputingFlags: Boolean = false,
     val featureFlags: Map<String, Any>?,
