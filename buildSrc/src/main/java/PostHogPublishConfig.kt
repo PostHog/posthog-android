@@ -108,6 +108,7 @@ fun MavenPublication.postHogConfig(
         when (projectName) {
             "posthog" -> properties["coreVersion"].toString()
             "posthog-android" -> properties["androidVersion"].toString()
+            "posthog-server" -> properties["serverVersion"].toString()
             else -> throw IllegalArgumentException(
                 "Unknown project name '$projectName'. Please add version mapping in PostHogPublishConfig.kt",
             )

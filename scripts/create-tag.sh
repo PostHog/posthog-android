@@ -16,8 +16,11 @@ case "$MODULE" in
   "android")
     TAG_NAME="android-v$NEW_VERSION"
     ;;
+  "server")
+    TAG_NAME="server-v$NEW_VERSION"
+    ;;
   *)
-    echo "Usage: $0 {core|android} <version>"
+    echo "Usage: $0 {core|android|server} <version>"
     exit 1
     ;;
 esac
