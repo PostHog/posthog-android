@@ -15,7 +15,6 @@ public sealed class PostHogSurveyResponse {
      * Response for a single choice question.
      *
      * @property selectedChoice The selected choice index
-     * @property otherText Optional text for "other" option if available
      */
     public data class SingleChoice(val selectedChoice: String?) : PostHogSurveyResponse()
 
@@ -23,7 +22,6 @@ public sealed class PostHogSurveyResponse {
      * Response for a multiple choice question.
      *
      * @property selectedChoices List of selected choice indices
-     * @property otherText Optional text for "other" option if available
      */
     public data class MultipleChoice(val selectedChoices: List<String>?) : PostHogSurveyResponse()
 

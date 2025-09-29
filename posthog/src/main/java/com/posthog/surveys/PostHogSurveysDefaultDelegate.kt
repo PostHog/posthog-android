@@ -8,13 +8,7 @@ import com.posthog.PostHogConfig
  *
  * Users should implement their own delegate to handle survey rendering.
  */
-public class PostHogSurveysDefaultDelegate : PostHogSurveysDelegate {
-    private var config: PostHogConfig? = null
-
-    public constructor(config: PostHogConfig? = null) {
-        this.config = config
-    }
-
+public class PostHogSurveysDefaultDelegate public constructor(private var config: PostHogConfig? = null) : PostHogSurveysDelegate {
     /**
      * Called when a survey should be rendered.
      * This default implementation only logs that a survey was requested to be shown.

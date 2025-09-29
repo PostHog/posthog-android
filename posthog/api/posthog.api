@@ -815,7 +815,7 @@ public final class com/posthog/surveys/OpenSurveyQuestion : com/posthog/surveys/
 }
 
 public final class com/posthog/surveys/PostHogDisplayChoiceQuestion : com/posthog/surveys/PostHogDisplaySurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Ljava/util/List;ZZZ)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Ljava/util/List;ZZZ)V
 	public final fun getChoices ()Ljava/util/List;
 	public final fun getHasOpenChoice ()Z
 	public final fun getShuffleOptions ()Z
@@ -823,16 +823,16 @@ public final class com/posthog/surveys/PostHogDisplayChoiceQuestion : com/postho
 }
 
 public final class com/posthog/surveys/PostHogDisplayLinkQuestion : com/posthog/surveys/PostHogDisplaySurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Ljava/lang/String;)V
 	public final fun getLink ()Ljava/lang/String;
 }
 
 public final class com/posthog/surveys/PostHogDisplayOpenQuestion : com/posthog/surveys/PostHogDisplaySurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;)V
 }
 
 public final class com/posthog/surveys/PostHogDisplayRatingQuestion : com/posthog/surveys/PostHogDisplaySurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;IILjava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;IILjava/lang/String;Ljava/lang/String;)V
 	public final fun getLowerBoundLabel ()Ljava/lang/String;
 	public final fun getRatingType ()Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;
 	public final fun getScaleLowerBound ()I
@@ -907,8 +907,9 @@ public final class com/posthog/surveys/PostHogDisplaySurveyAppearance {
 }
 
 public class com/posthog/surveys/PostHogDisplaySurveyQuestion {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;)V
 	public final fun getButtonText ()Ljava/lang/String;
+	public final fun getId ()Ljava/lang/String;
 	public final fun getQuestion ()Ljava/lang/String;
 	public final fun getQuestionDescription ()Ljava/lang/String;
 	public final fun getQuestionDescriptionContentType ()Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;
@@ -1004,6 +1005,7 @@ public final class com/posthog/surveys/PostHogSurveysConfig {
 }
 
 public final class com/posthog/surveys/PostHogSurveysDefaultDelegate : com/posthog/surveys/PostHogSurveysDelegate {
+	public fun <init> ()V
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public synthetic fun <init> (Lcom/posthog/PostHogConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun cleanupSurveys ()V
