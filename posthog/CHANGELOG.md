@@ -1,10 +1,12 @@
 ## Next
 
-- feat: `PostHogConfig` now accepts queue and remote config constructors ([#287])
+## 3.23.0 - 2025-09-29
+
+- feat: `PostHogConfig` now accepts queue and remote config constructors ([#287](https://github.com/PostHog/posthog-android/pull/287))
 
 ## 3.22.0 - 2025-09-25
 
-- feat: Add a server-side stateless interface([#284](https://github.com/PostHog/posthog-android/pull/284))
+- feat: Add a server-side stateless interface ([#284](https://github.com/PostHog/posthog-android/pull/284))
 
 ## 3.21.3 - 2025-09-16
 
