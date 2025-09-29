@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.PostHogInternal
 import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
 /**
@@ -9,7 +10,8 @@ import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
  * @property condition_index the condition index of the reason
  */
 @IgnoreJRERequirement
-internal data class EvaluationReason(
+@PostHogInternal
+public data class EvaluationReason(
     val code: String?,
     val description: String?,
     val condition_index: Int?,

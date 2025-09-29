@@ -6,9 +6,10 @@ package com.posthog.internal
 internal class PostHogFlagsRequest(
     apiKey: String,
     distinctId: String,
-    anonymousId: String?,
-    groups: Map<String, String>?,
-    // add person_properties, group_properties
+    anonymousId: String? = null,
+    groups: Map<String, String>? = null,
+    personProperties: Map<String, String>? = null,
+    groupProperties: Map<String, String>? = null,
 ) : HashMap<String, Any>() {
     init {
         this["api_key"] = apiKey
@@ -18,6 +19,12 @@ internal class PostHogFlagsRequest(
         }
         if (groups?.isNotEmpty() == true) {
             this["\$groups"] = groups
+        }
+        if (personProperties?.isNotEmpty() == true) {
+            this["\$properties"] = personProperties
+        }
+        if (groupProperties?.isNotEmpty() == true) {
+            this["\$group_properties"] = groupProperties
         }
     }
 }

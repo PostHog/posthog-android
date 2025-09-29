@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.PostHogInternal
 import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
 /**
@@ -9,7 +10,8 @@ import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
  * @property version the version of the feature flag
  */
 @IgnoreJRERequirement
-internal data class FeatureFlagMetadata(
+@PostHogInternal
+public data class FeatureFlagMetadata(
     val id: Int,
     val payload: String?,
     val version: Int,

@@ -1,29 +1,33 @@
 package com.posthog.internal
 
-import com.posthog.PostHogOnFeatureFlags
+import com.posthog.PostHogInternal
 
+@PostHogInternal
 public interface PostHogFeatureFlagsInterface {
-    public fun loadRemoteConfig(
-        distinctId: String,
-        anonymousId: String?,
-        groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
-    )
-
     public fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Any?
 
     public fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Any?
 
-    public fun getFeatureFlags(): Map<String, Any>?
-
-    public fun isSessionReplayFlagActive(): Boolean
+    public fun getFeatureFlags(
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
+    ): Map<String, Any>?
 
     public fun clear()
 }
