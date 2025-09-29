@@ -50,8 +50,12 @@ jobs:
             echo "dry_target=dryReleaseAndroid" >> $GITHUB_OUTPUT
             echo "release_target=releaseAndroid" >> $GITHUB_OUTPUT
             echo "module=android" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == server-v* ]]; then
+            echo "dry_target=dryReleaseServer" >> $GITHUB_OUTPUT
+            echo "release_target=releaseServer" >> $GITHUB_OUTPUT
+            echo "module=server" >> $GITHUB_OUTPUT
           else
-            echo "ERROR: Unknown tag format '$TAG'. Expected 'core-v*' or 'android-v*'"
+            echo "ERROR: Unknown tag format '$TAG'. Expected 'core-v*', 'android-v*', or 'server-v*'"
             exit 1
           fi
 
