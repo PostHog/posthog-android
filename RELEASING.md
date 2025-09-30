@@ -4,7 +4,7 @@
 
 1. Update `posthog/CHANGELOG.md` with the version and date
 2. Commit the changes
-3. Run: `./scripts/bump-version.sh core 3.23.0`
+3. Run: `./scripts/prepare-release.sh core 3.23.0`
    - This bumps version, commits, and pushes with tag `core-v3.23.0`
 4. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
 5. Choose a release name (e.g. `core-v3.23.0`), and the tag you just created, ideally the same.
@@ -17,7 +17,7 @@
 
 1. Update `posthog-android/CHANGELOG.md` with the version and date
 2. Commit the changes
-3. Run: `./scripts/bump-version.sh android 3.23.0`
+3. Run: `./scripts/prepare-release.sh android 3.23.0`
    - This bumps version, commits, and pushes with tag `android-v3.23.0`
 4. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
 5. Choose a release name (e.g. `android-v3.23.0`), and the tag you just created, ideally the same.
@@ -30,7 +30,7 @@
 
 1. Update `posthog-server/CHANGELOG.md` with the version and date
 2. Commit the changes
-3. Run: `./scripts/bump-version.sh server 1.0.1`
+3. Run: `./scripts/prepare-release.sh server 1.0.1`
    - This bumps version, commits, and pushes with tag `server-v1.0.1`
 4. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
 5. Choose a release name (e.g. `server-v1.0.1`), and the tag you just created, ideally the same.
