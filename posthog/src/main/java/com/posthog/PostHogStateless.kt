@@ -2,6 +2,7 @@ package com.posthog
 
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogFeatureFlagCalledCache
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNoOpLogger
@@ -29,6 +30,7 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
+    private var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
 
     @JvmField
     protected var config: PostHogConfig? = null
@@ -75,6 +77,7 @@ public open class PostHogStateless protected constructor(
                 this.config = config
                 this.queue = queue
                 this.featureFlags = remoteConfig
+                this.featureFlagsCalled = PostHogFeatureFlagCalledCache(config.featureFlagCalledCacheSize)
 
                 enabled = true
 
@@ -399,12 +402,15 @@ public open class PostHogStateless protected constructor(
         value: Any?,
     ) {
         if (config?.sendFeatureFlagEvent == true) {
-            val props = mutableMapOf<String, Any>()
-            props["\$feature_flag"] = key
-            // value should never be nullable anyway
-            props["\$feature_flag_response"] = value ?: ""
+            val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
+            if (isNewlySeen) {
+                val props = mutableMapOf<String, Any>()
+                props["\$feature_flag"] = key
+                // value should never be nullable anyway
+                props["\$feature_flag_response"] = value ?: ""
 
-            captureStateless("\$feature_flag_called", distinctId, properties = props)
+                captureStateless("\$feature_flag_called", distinctId, properties = props)
+            }
         }
     }
 

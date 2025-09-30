@@ -97,6 +97,13 @@ public open class PostHogConfig constructor(
      */
     @PostHogExperimental
     public var featureFlagCacheMaxAgeMs: Int = DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS,
+    /**
+     * The maximum size of the feature flag called cache in memory. This cache prevents
+     * duplicate $feature_flag_called events from being sent by keeping track of per-user
+     * feature flag usage.
+     * Defaults to 1000
+     */
+    public var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE,
 ) {
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
@@ -166,6 +173,7 @@ public open class PostHogConfig constructor(
         public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
         public const val DEFAULT_FEATURE_FLAG_CACHE_SIZE: Int = 1000
         public const val DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS: Int = 5 * 60 * 1000 // 5 minutes
+        public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
 
         @JvmStatic
         public fun builder(apiKey: String): Builder = Builder(apiKey)
@@ -186,6 +194,7 @@ public open class PostHogConfig constructor(
         private var proxy: Proxy? = null
         private var featureFlagCacheSize: Int = DEFAULT_FEATURE_FLAG_CACHE_SIZE
         private var featureFlagCacheMaxAgeMs: Int = DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS
+        private var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE
 
         public fun host(host: String): Builder = apply { this.host = host }
 
@@ -216,6 +225,9 @@ public open class PostHogConfig constructor(
         public fun featureFlagCacheMaxAgeMs(featureFlagCacheMaxAgeMs: Int): Builder =
             apply { this.featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs }
 
+        public fun featureFlagCalledCacheSize(featureFlagCalledCacheSize: Int): Builder =
+            apply { this.featureFlagCalledCacheSize = featureFlagCalledCacheSize }
+
         public fun build(): PostHogConfig =
             PostHogConfig(
                 apiKey = apiKey,
@@ -233,6 +245,7 @@ public open class PostHogConfig constructor(
                 proxy = proxy,
                 featureFlagCacheSize = featureFlagCacheSize,
                 featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs,
+                featureFlagCalledCacheSize = featureFlagCalledCacheSize,
             )
     }
 }

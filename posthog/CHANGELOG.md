@@ -1,5 +1,7 @@
 ## Next
 
+- fix: `PostHogStateless` now deduplicates `$feature_flag_called` events ([#293](https://github.com/PostHog/posthog-android/pull/293)))
+
 ## 3.23.0 - 2025-09-29
 
 - feat: `PostHogConfig` now accepts queue and remote config constructors ([#287](https://github.com/PostHog/posthog-android/pull/287))

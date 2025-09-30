@@ -54,6 +54,12 @@ public open class PostHogConfig(
      */
     public var sendFeatureFlagEvent: Boolean = true,
     /**
+     * Maximum number of distinct feature flag calls to cache for deduplication
+     * When the cache is full, the least recently used entries are evicted
+     * Defaults to 1000
+     */
+    public var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE,
+    /**
      * Preload feature flags automatically
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * Defaults to true
@@ -311,5 +317,7 @@ public open class PostHogConfig(
 
         public const val DEFAULT_EU_HOST: String = "https://eu.i.posthog.com"
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
+
+        public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
     }
 }
