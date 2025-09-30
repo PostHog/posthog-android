@@ -184,6 +184,8 @@ public open class PostHogConfig constructor(
         private var encryption: PostHogEncryption? = null
         private var onFeatureFlags: PostHogOnFeatureFlags? = null
         private var proxy: Proxy? = null
+        private var featureFlagCacheSize: Int = DEFAULT_FEATURE_FLAG_CACHE_SIZE
+        private var featureFlagCacheMaxAgeMs: Int = DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS
 
         public fun host(host: String): Builder = apply { this.host = host }
 
@@ -209,6 +211,11 @@ public open class PostHogConfig constructor(
 
         public fun proxy(proxy: Proxy?): Builder = apply { this.proxy = proxy }
 
+        public fun featureFlagCacheSize(featureFlagCacheSize: Int): Builder = apply { this.featureFlagCacheSize = featureFlagCacheSize }
+
+        public fun featureFlagCacheMaxAgeMs(featureFlagCacheMaxAgeMs: Int): Builder =
+            apply { this.featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs }
+
         public fun build(): PostHogConfig =
             PostHogConfig(
                 apiKey = apiKey,
@@ -224,6 +231,8 @@ public open class PostHogConfig constructor(
                 encryption = encryption,
                 onFeatureFlags = onFeatureFlags,
                 proxy = proxy,
+                featureFlagCacheSize = featureFlagCacheSize,
+                featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs,
             )
     }
 }

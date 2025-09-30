@@ -364,6 +364,8 @@ internal class PostHogConfigTest {
                 .encryption(mockEncryption)
                 .onFeatureFlags(mockCallback)
                 .proxy(Proxy.NO_PROXY)
+                .featureFlagCacheSize(10)
+                .featureFlagCacheMaxAgeMs(20)
                 .build()
 
         assertEquals(TEST_API_KEY, config.apiKey)
@@ -379,6 +381,8 @@ internal class PostHogConfigTest {
         assertEquals(mockEncryption, config.encryption)
         assertEquals(mockCallback, config.onFeatureFlags)
         assertEquals(Proxy.NO_PROXY, config.proxy)
+        assertEquals(10, config.featureFlagCacheSize)
+        assertEquals(20, config.featureFlagCacheMaxAgeMs)
     }
 
     @Test
