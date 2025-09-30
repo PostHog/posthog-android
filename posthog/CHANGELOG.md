@@ -1,6 +1,6 @@
 ## Next
 
-## 3.23.1 - 2025-09-29
+## 3.23.1 - 2025-09-30
 
 - fix: `PostHogStateless` now deduplicates `$feature_flag_called` events ([#293](https://github.com/PostHog/posthog-android/pull/293))
 
