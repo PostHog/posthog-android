@@ -2,6 +2,7 @@ package com.posthog
 
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogFeatureFlagCalledCache
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNoOpLogger
@@ -13,10 +14,6 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-
-// Cache to track which feature flag values have been seen for each distinct ID
-// Structure: Map<distinctId, Map<flagKey, Set<flagValue>>>
-private typealias FeatureFlagsCalledCache = MutableMap<String, MutableMap<String, MutableSet<Any?>>>
 
 public open class PostHogStateless protected constructor(
     private val queueExecutor: ExecutorService =
@@ -33,8 +30,7 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
-    private val featureFlagsCalledLock: Any = Any()
-    private val featureFlagsCalled: FeatureFlagsCalledCache = mutableMapOf()
+    private var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
 
     @JvmField
     protected var config: PostHogConfig? = null
@@ -81,6 +77,7 @@ public open class PostHogStateless protected constructor(
                 this.config = config
                 this.queue = queue
                 this.featureFlags = remoteConfig
+                this.featureFlagsCalled = PostHogFeatureFlagCalledCache(config.featureFlagCalledCacheSize)
 
                 enabled = true
 
@@ -404,24 +401,16 @@ public open class PostHogStateless protected constructor(
         key: String,
         value: Any?,
     ) {
-        var shouldSendFeatureFlagEvent = true
-        synchronized(featureFlagsCalledLock) {
-            val userFlags = featureFlagsCalled.getOrPut(distinctId) { mutableMapOf() }
-            val values = userFlags.getOrPut(key) { mutableSetOf() }
-            if (values.contains(value)) {
-                shouldSendFeatureFlagEvent = false // Already seen this value for this user
-            } else {
-                values.add(value)
+        if (config?.sendFeatureFlagEvent == true) {
+            val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
+            if (isNewlySeen) {
+                val props = mutableMapOf<String, Any>()
+                props["\$feature_flag"] = key
+                // value should never be nullable anyway
+                props["\$feature_flag_response"] = value ?: ""
+
+                captureStateless("\$feature_flag_called", distinctId, properties = props)
             }
-        }
-
-        if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
-            val props = mutableMapOf<String, Any>()
-            props["\$feature_flag"] = key
-            // value should never be nullable anyway
-            props["\$feature_flag_response"] = value ?: ""
-
-            captureStateless("\$feature_flag_called", distinctId, properties = props)
         }
     }
 

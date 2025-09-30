@@ -93,6 +93,10 @@ internal class PostHogStatelessTest {
             flags[key] = value
         }
 
+        fun clearFlag(key: String) {
+            flags.remove(key)
+        }
+
         override fun getFeatureFlag(
             key: String,
             defaultValue: Any?,
@@ -849,6 +853,89 @@ internal class PostHogStatelessTest {
         assertEquals(2, mockQueue.events.size)
         assertEquals("variant_a", mockQueue.events[0].properties!!["${'$'}feature_flag_response"])
         assertEquals("variant_b", mockQueue.events[1].properties!!["${'$'}feature_flag_response"])
+    }
+
+    @Test
+    fun `feature flag called events are sent when evaluated value changes from true to false to null`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        // First call with true
+        mockFeatureFlags.setFlag("test_flag", true)
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        // Second call with false
+        mockFeatureFlags.setFlag("test_flag", false)
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        // Third call returns null (flag not set, so returns defaultValue which is null)
+        mockFeatureFlags.clearFlag("test_flag")
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        // Should generate three separate events for different evaluated values
+        assertEquals(3, mockQueue.events.size)
+        assertEquals(true, mockQueue.events[0].properties!!["${'$'}feature_flag_response"])
+        assertEquals(false, mockQueue.events[1].properties!!["${'$'}feature_flag_response"])
+        assertEquals("", mockQueue.events[2].properties!!["${'$'}feature_flag_response"])
+    }
+
+    @Test
+    fun `feature flag called cache evicts oldest entries when full`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+
+        sut = createStatelessInstance()
+        // Create config with small cache size for testing
+        config =
+            createConfig(sendFeatureFlagEvent = true).apply {
+                featureFlagCalledCacheSize = 3
+            }
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        mockFeatureFlags.setFlag("test_flag", "variant_a")
+
+        // Fill the cache with 3 entries
+        sut.getFeatureFlagStateless("user1", "test_flag")
+        sut.getFeatureFlagStateless("user2", "test_flag")
+        sut.getFeatureFlagStateless("user3", "test_flag")
+
+        // Should have 3 events
+        assertEquals(3, mockQueue.events.size)
+
+        // Add a 4th entry, which should evict the oldest (user1)
+        sut.getFeatureFlagStateless("user4", "test_flag")
+
+        // Should have 4 events total now
+        assertEquals(4, mockQueue.events.size)
+
+        // Access user1 again - should generate a new event since it was evicted
+        sut.getFeatureFlagStateless("user1", "test_flag")
+
+        // Should have 5 events (the user1 entry was evicted and re-added)
+        // Cache now contains: [user3, user4, user1] (user2 was evicted)
+        assertEquals(5, mockQueue.events.size)
+
+        // Access user4 again - should NOT generate a new event (still in cache)
+        sut.getFeatureFlagStateless("user4", "test_flag")
+
+        // Should still have 5 events
+        assertEquals(5, mockQueue.events.size)
+
+        // Access user2 again - should generate a new event since it was evicted
+        sut.getFeatureFlagStateless("user2", "test_flag")
+
+        // Should have 6 events (user2 was evicted and re-added)
+        assertEquals(6, mockQueue.events.size)
     }
 
     @Test
