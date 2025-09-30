@@ -116,6 +116,8 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun build ()Lcom/posthog/server/PostHogConfig;
 	public final fun debug (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun encryption (Lcom/posthog/PostHogEncryption;)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun featureFlagCacheMaxAgeMs (I)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun featureFlagCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushAt (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun host (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
