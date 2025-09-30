@@ -93,12 +93,6 @@ dependencies {
 
     // compatibility
     signature("org.codehaus.mojo.signature:java18:${PosthogBuildConfig.Plugins.SIGNATURE_JAVA18}@signature")
-    signature(
-        "net.sf.androidscents.signature:android-api-level-${PosthogBuildConfig.Android.MIN_SDK}:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_VERSION}@signature",
-    )
-    signature(
-        "com.toasttab.android:gummy-bears-api-${PosthogBuildConfig.Android.MIN_SDK}:${PosthogBuildConfig.Plugins.GUMMY_BEARS_API}@signature",
-    )
 
     // tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")
