@@ -68,6 +68,7 @@ public class com/posthog/server/PostHogConfig {
 	public static final field DEFAULT_EU_HOST Ljava/lang/String;
 	public static final field DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS I
 	public static final field DEFAULT_FEATURE_FLAG_CACHE_SIZE I
+	public static final field DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE I
 	public static final field DEFAULT_FLUSH_AT I
 	public static final field DEFAULT_FLUSH_INTERVAL_SECONDS I
 	public static final field DEFAULT_HOST Ljava/lang/String;
@@ -75,8 +76,8 @@ public class com/posthog/server/PostHogConfig {
 	public static final field DEFAULT_MAX_QUEUE_SIZE I
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;II)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;III)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public static final fun builder (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
@@ -85,6 +86,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getFeatureFlagCacheMaxAgeMs ()I
 	public final fun getFeatureFlagCacheSize ()I
+	public final fun getFeatureFlagCalledCacheSize ()I
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
@@ -100,6 +102,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setFeatureFlagCacheMaxAgeMs (I)V
 	public final fun setFeatureFlagCacheSize (I)V
+	public final fun setFeatureFlagCalledCacheSize (I)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setMaxBatchSize (I)V
@@ -118,6 +121,7 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun encryption (Lcom/posthog/PostHogEncryption;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCacheMaxAgeMs (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun featureFlagCalledCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushAt (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun host (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;

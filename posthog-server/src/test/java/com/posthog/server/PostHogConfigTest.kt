@@ -366,6 +366,7 @@ internal class PostHogConfigTest {
                 .proxy(Proxy.NO_PROXY)
                 .featureFlagCacheSize(10)
                 .featureFlagCacheMaxAgeMs(20)
+                .featureFlagCalledCacheSize(30)
                 .build()
 
         assertEquals(TEST_API_KEY, config.apiKey)
@@ -383,6 +384,7 @@ internal class PostHogConfigTest {
         assertEquals(Proxy.NO_PROXY, config.proxy)
         assertEquals(10, config.featureFlagCacheSize)
         assertEquals(20, config.featureFlagCacheMaxAgeMs)
+        assertEquals(30, config.featureFlagCalledCacheSize)
     }
 
     @Test
