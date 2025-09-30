@@ -14,6 +14,10 @@ import com.posthog.internal.PostHogThreadFactory
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+// Cache to track which feature flag values have been seen for each distinct ID
+// Structure: Map<distinctId, Map<flagKey, Set<flagValue>>>
+private typealias FeatureFlagsCalledCache = MutableMap<String, MutableMap<String, MutableSet<Any?>>>
+
 public open class PostHogStateless protected constructor(
     private val queueExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -29,6 +33,8 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
+    private val featureFlagsCalledLock: Any = Any()
+    private val featureFlagsCalled: FeatureFlagsCalledCache = mutableMapOf()
 
     @JvmField
     protected var config: PostHogConfig? = null
@@ -398,7 +404,18 @@ public open class PostHogStateless protected constructor(
         key: String,
         value: Any?,
     ) {
-        if (config?.sendFeatureFlagEvent == true) {
+        var shouldSendFeatureFlagEvent = true
+        synchronized(featureFlagsCalledLock) {
+            val userFlags = featureFlagsCalled.getOrPut(distinctId) { mutableMapOf() }
+            val values = userFlags.getOrPut(key) { mutableSetOf() }
+            if (values.contains(value)) {
+                shouldSendFeatureFlagEvent = false // Already seen this value for this user
+            } else {
+                values.add(value)
+            }
+        }
+
+        if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
             val props = mutableMapOf<String, Any>()
             props["\$feature_flag"] = key
             // value should never be nullable anyway

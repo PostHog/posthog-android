@@ -797,6 +797,61 @@ internal class PostHogStatelessTest {
     }
 
     @Test
+    fun `feature flag called events are deduplicated per distinct ID`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlag("test_flag", "variant_a")
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        // Same user accessing same flag multiple times - should deduplicate
+        sut.getFeatureFlagStateless("user123", "test_flag")
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        // Different user accessing same flag - should send separate event
+        sut.getFeatureFlagStateless("user456", "test_flag")
+
+        // Should generate two $feature_flag_called events (one per distinct ID)
+        assertEquals(2, mockQueue.events.size)
+        assertEquals("user123", mockQueue.events[0].distinctId)
+        assertEquals("variant_a", mockQueue.events[0].properties!!["${'$'}feature_flag_response"])
+        assertEquals("user456", mockQueue.events[1].distinctId)
+        assertEquals("variant_a", mockQueue.events[1].properties!!["${'$'}feature_flag_response"])
+    }
+
+    @Test
+    fun `feature flag called events are sent for different values of same flag`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        // Access the same flag with different values
+        mockFeatureFlags.setFlag("test_flag", "variant_a")
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        mockFeatureFlags.setFlag("test_flag", "variant_b")
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        // Should generate two separate events for different values
+        assertEquals(2, mockQueue.events.size)
+        assertEquals("variant_a", mockQueue.events[0].properties!!["${'$'}feature_flag_response"])
+        assertEquals("variant_b", mockQueue.events[1].properties!!["${'$'}feature_flag_response"])
+    }
+
+    @Test
     fun `group identify event excludes groups from properties`() {
         val mockQueue = MockQueue()
         sut = createStatelessInstance()
