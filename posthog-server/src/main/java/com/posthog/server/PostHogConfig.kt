@@ -8,6 +8,7 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.server.internal.PostHogFeatureFlags
 import com.posthog.server.internal.PostHogMemoryQueue
+import com.posthog.server.internal.PostHogServerContext
 import java.net.Proxy
 
 /**
@@ -158,6 +159,7 @@ public open class PostHogConfig constructor(
         // Set SDK identification
         coreConfig.sdkName = BuildConfig.SDK_NAME
         coreConfig.sdkVersion = BuildConfig.VERSION_NAME
+        coreConfig.context = PostHogServerContext(coreConfig)
 
         return coreConfig
     }
