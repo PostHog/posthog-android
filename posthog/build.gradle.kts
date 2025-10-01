@@ -3,6 +3,8 @@
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
+version = properties["coreVersion"].toString()
+
 plugins {
     `java-library`
     kotlin("jvm")
@@ -52,9 +54,12 @@ publishing {
             artifact(dokkaJavadocJar)
             artifact(dokkaHtmlJar)
 
-            postHogConfig(project.name, properties)
+            postHogConfig(project.name, project.version.toString())
 
-            pom.postHogConfig(project.name)
+            pom.postHogConfig(
+                project.name,
+                moduleDescription = "Core library for PostHog SDKs",
+            )
         }
     }
     signing.postHogConfig("maven", this)

@@ -42,9 +42,9 @@ fun Project.publishingAndroidConfig() {
             publications.create("release", MavenPublication::class.java) {
                 from(components.getByName("release"))
 
-                postHogConfig(projectName, properties)
+                postHogConfig(projectName, version.toString())
 
-                pom.postHogConfig(projectName)
+                pom.postHogConfig(projectName, moduleDescription = "Official PostHog SDK for Android applications")
             }
         }
 
@@ -67,9 +67,10 @@ fun Project.javadocConfig() {
 fun MavenPom.postHogConfig(
     projectName: String,
     repo: String = "posthog-android",
+    moduleDescription: String,
 ) {
     name.set(projectName)
-    description.set("SDK for posthog.com")
+    description.set(moduleDescription)
     url.set("https://github.com/postHog/$repo")
 
     licenses {
@@ -100,19 +101,11 @@ fun MavenPom.postHogConfig(
 
 fun MavenPublication.postHogConfig(
     projectName: String,
-    properties: Map<String, Any?>,
+    version: String,
 ) {
     groupId = "com.posthog"
     artifactId = projectName
-    version =
-        when (projectName) {
-            "posthog" -> properties["coreVersion"].toString()
-            "posthog-android" -> properties["androidVersion"].toString()
-            "posthog-server" -> properties["serverVersion"].toString()
-            else -> throw IllegalArgumentException(
-                "Unknown project name '$projectName'. Please add version mapping in PostHogPublishConfig.kt",
-            )
-        }
+    this.version = version
 }
 
 fun SigningExtension.postHogConfig(
