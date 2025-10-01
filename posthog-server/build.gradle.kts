@@ -28,6 +28,7 @@ plugins {
 buildConfig {
     useKotlinOutput()
     packageName("com.posthog")
+    buildConfigField("String", "SDK_NAME", "\"posthog-server\"")
     buildConfigField("String", "VERSION_NAME", "\"${project.version}\"")
 }
 
