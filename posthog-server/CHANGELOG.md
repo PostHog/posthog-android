@@ -1,5 +1,7 @@
 ## Next
 
+## 1.0.2 - 2025-09-30
+
 - fix: Caching of feature flags occurs in constant time ([#294](https://github.com/PostHog/posthog-android/pull/294))
 
 ## 1.0.1 - 2025-09-30
