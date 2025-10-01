@@ -174,21 +174,21 @@ internal class PostHogFeatureFlagCacheTest {
     }
 
     @Test
-    fun `cleanup removes multiple expired entries`() {
+    fun `getting an expired entry removes it`() {
         val cache = PostHogFeatureFlagCache(maxSize = 10, maxAgeMs = 1) // 1ms TTL
         val flags = createTestFlags()
 
-        // Add multiple entries
-        cache.put(createTestKey("user1"), flags)
-        cache.put(createTestKey("user2"), flags)
-        cache.put(createTestKey("user3"), flags)
+        for (i in 1..3) {
+            cache.put(createTestKey("user$i"), flags)
+        }
         assertEquals(3, cache.size())
 
         // Wait for expiration
         Thread.sleep(10)
 
-        // Accessing any key should trigger cleanup of all expired entries
-        cache.get(createTestKey("user1"))
+        for (i in 1..3) {
+            assertEquals(null, cache.get(createTestKey("user$i")))
+        }
         assertEquals(0, cache.size())
     }
 
