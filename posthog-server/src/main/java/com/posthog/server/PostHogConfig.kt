@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.BuildConfig
 import com.posthog.PostHogBeforeSend
 import com.posthog.PostHogEncryption
 import com.posthog.PostHogExperimental
@@ -153,6 +154,10 @@ public open class PostHogConfig constructor(
         // Apply stored callbacks and integrations
         beforeSendCallbacks.forEach { coreConfig.addBeforeSend(it) }
         integrations.forEach { coreConfig.addIntegration(it) }
+
+        // Set SDK identification
+        coreConfig.sdkName = BuildConfig.SDK_NAME
+        coreConfig.sdkVersion = BuildConfig.VERSION_NAME
 
         return coreConfig
     }
