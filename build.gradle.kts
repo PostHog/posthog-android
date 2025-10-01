@@ -17,10 +17,6 @@ plugins {
     // TODO: add jacoco/codecov, gradle-versions-plugin
 }
 
-allprojects {
-    version = properties[PostHogPublishConfig.versionNameProperty].toString()
-}
-
 subprojects {
     apply(plugin = "org.jetbrains.dokka")
 }

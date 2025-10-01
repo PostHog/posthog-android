@@ -2,6 +2,8 @@
 
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
 
+version = properties["androidVersion"].toString()
+
 plugins {
     id("com.android.library")
     kotlin("android")
