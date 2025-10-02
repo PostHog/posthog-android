@@ -4,6 +4,7 @@ import com.posthog.PostHogStatelessInterface
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -385,5 +386,110 @@ internal class PostHogTest {
         assertNull(flagPayload)
 
         postHog.close()
+    }
+
+    // Timestamp Tests
+    @Test
+    fun `capture with timestamp delegates to instance captureStateless with timestamp`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val timestamp = Date(1234567890L)
+        val properties = mapOf("page" to "home")
+        val userProperties = mapOf("plan" to "premium")
+        val userPropertiesSetOnce = mapOf("signup_date" to "2023-01-01")
+        val groups = mapOf("organization" to "acme")
+
+        postHog.capture(
+            distinctId = "user123",
+            event = "page_view",
+            properties = properties,
+            userProperties = userProperties,
+            userPropertiesSetOnce = userPropertiesSetOnce,
+            groups = groups,
+            timestamp = timestamp,
+        )
+
+        verify(mockInstance).captureStateless(
+            "page_view",
+            "user123",
+            properties,
+            userProperties,
+            userPropertiesSetOnce,
+            groups,
+            timestamp,
+        )
+    }
+
+    @Test
+    fun `capture with null timestamp delegates correctly`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        postHog.capture(
+            distinctId = "user123",
+            event = "test_event",
+            properties = mapOf("key" to "value"),
+            timestamp = null,
+        )
+
+        verify(mockInstance).captureStateless(
+            "test_event",
+            "user123",
+            mapOf("key" to "value"),
+            null,
+            null,
+            null,
+            null,
+        )
+    }
+
+    @Test
+    fun `capture with PostHogCaptureOptions containing timestamp passes it through`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val timestamp = Date(1234567890L)
+        val options =
+            PostHogCaptureOptions.builder()
+                .property("page", "home")
+                .userProperty("plan", "premium")
+                .timestamp(timestamp)
+                .build()
+
+        postHog.capture("user123", "page_view", options)
+
+        verify(mockInstance).captureStateless(
+            "page_view",
+            "user123",
+            options.properties,
+            options.userProperties,
+            options.userPropertiesSetOnce,
+            options.groups,
+            timestamp,
+        )
+    }
+
+    @Test
+    fun `capture with PostHogCaptureOptions without timestamp passes null timestamp`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val options =
+            PostHogCaptureOptions.builder()
+                .property("page", "home")
+                .build()
+
+        postHog.capture("user123", "page_view", options)
+
+        verify(mockInstance).captureStateless(
+            "page_view",
+            "user123",
+            options.properties,
+            options.userProperties,
+            options.userPropertiesSetOnce,
+            options.groups,
+            null,
+        )
     }
 }

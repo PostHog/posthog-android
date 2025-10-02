@@ -1,5 +1,7 @@
 ## Next
 
+- feat: `timestamp` can now be overridden when capturing an event ([#297](https://github.com/PostHog/posthog-android/issues/297))
+
 ## 1.0.3 - 2025-10-01
 
 - fix: Events now record SDK info such as `$lib` and `$lib_version` ([#296](https://github.com/PostHog/posthog-android/pull/296))

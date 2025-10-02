@@ -147,6 +147,31 @@ postHog.capture(
 );
 ```
 
+#### Overriding event timestamps
+
+If you need to change the timestamp on an event, you can do so by using the `timestamp` builder method on `PostHogCaptureOptions`.
+
+```java
+postHog.capture(
+    "distinct-id",
+    "past-event",
+    PostHogCaptureOptions
+        .builder()
+        .timestamp(customTime)
+        .build()
+);
+```
+
+Or, directly via named property in Kotlin:
+
+```kotlin
+postHog.capture(
+    distinctId = "distinct-id",
+    event = "past-event",
+    timestamp = customTime
+)
+```
+
 ## User Identification
 
 #### Kotlin

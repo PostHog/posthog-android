@@ -1,5 +1,7 @@
 package com.posthog.server
 
+import java.util.Date
+
 public sealed interface PostHogInterface {
     /**
      * Setup the SDK
@@ -81,6 +83,7 @@ public sealed interface PostHogInterface {
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
+        timestamp: Date? = null,
     )
 
     /**
@@ -101,6 +104,7 @@ public sealed interface PostHogInterface {
             options.userProperties,
             options.userPropertiesSetOnce,
             options.groups,
+            options.timestamp,
         )
     }
 

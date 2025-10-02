@@ -1,5 +1,8 @@
 package com.posthog.server
 
+import java.time.Instant
+import java.util.Date
+
 /**
  * Provides an ergonomic interface when providing options for capturing events
  * This is mainly meant to be used from Java, as Kotlin can use named parameters.
@@ -10,12 +13,14 @@ public class PostHogCaptureOptions private constructor(
     public val userProperties: Map<String, Any>?,
     public val userPropertiesSetOnce: Map<String, Any>?,
     public val groups: Map<String, String>?,
+    public val timestamp: Date? = null,
 ) {
     public class Builder {
         public var properties: MutableMap<String, Any>? = null
         public var userProperties: MutableMap<String, Any>? = null
         public var userPropertiesSetOnce: MutableMap<String, Any>? = null
         public var groups: MutableMap<String, String>? = null
+        public var timestamp: Date? = null
 
         /**
          * Add a single custom property to the capture options
@@ -123,10 +128,45 @@ public class PostHogCaptureOptions private constructor(
             return this
         }
 
-        public fun build(): PostHogCaptureOptions = PostHogCaptureOptions(properties, userProperties, userPropertiesSetOnce, groups)
+        /**
+         * Override the timestamp for the event.
+         * @see <a href="https://posthog.com/docs/data/timestamps">Documentation: Timestamps</a>
+         */
+        public fun timestamp(date: Date): Builder {
+            this.timestamp = date
+            return this
+        }
+
+        /**
+         * Override the timestamp for the event.
+         * @see <a href="https://posthog.com/docs/data/timestamps">Documentation: Timestamps</a>
+         */
+        public fun timestamp(epochMillis: Long): Builder {
+            this.timestamp = Date(epochMillis)
+            return this
+        }
+
+        /**
+         * Override the timestamp for the event.
+         * @see <a href="https://posthog.com/docs/data/timestamps">Documentation: Timestamps</a>
+         */
+        public fun timestamp(instant: Instant): Builder {
+            this.timestamp = Date(instant.toEpochMilli())
+            return this
+        }
+
+        public fun build(): PostHogCaptureOptions =
+            PostHogCaptureOptions(
+                properties,
+                userProperties,
+                userPropertiesSetOnce,
+                groups,
+                timestamp,
+            )
     }
 
     public companion object {
-        @JvmStatic public fun builder(): Builder = Builder()
+        @JvmStatic
+        public fun builder(): Builder = Builder()
     }
 }
