@@ -492,4 +492,213 @@ internal class PostHogTest {
             null,
         )
     }
+
+    @Test
+    fun `isFeatureEnabled propagates parameters as expected`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val groups = mapOf("organization" to "org_123")
+        val personProperties = mapOf("plan" to "premium")
+        val groupProperties = mapOf("size" to "large")
+
+        whenever(
+            mockInstance.isFeatureEnabledStateless(
+                "user123",
+                "feature_key",
+                true,
+                groups,
+                personProperties,
+                groupProperties,
+            ),
+        ).thenReturn(false)
+
+        val result =
+            postHog.isFeatureEnabled(
+                "user123",
+                "feature_key",
+                true,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+
+        verify(mockInstance).isFeatureEnabledStateless(
+            "user123",
+            "feature_key",
+            true,
+            groups,
+            personProperties,
+            groupProperties,
+        )
+        assertFalse(result)
+    }
+
+    @Test
+    fun `isFeatureEnabled with PostHogFeatureFlagOptions propagates parameters as expected`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val options =
+            PostHogFeatureFlagOptions.builder()
+                .defaultValue(true)
+                .group("organization", "org_123")
+                .personProperty("plan", "premium")
+                .groupProperty("size", "large")
+                .build()
+
+        whenever(
+            mockInstance.isFeatureEnabledStateless(
+                "user123",
+                "feature_key",
+                true,
+                options.groups,
+                options.personProperties,
+                options.groupProperties,
+            ),
+        ).thenReturn(false)
+
+        val result = postHog.isFeatureEnabled("user123", "feature_key", options)
+
+        verify(mockInstance).isFeatureEnabledStateless(
+            "user123",
+            "feature_key",
+            true,
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+        )
+        assertFalse(result)
+    }
+
+    @Test
+    fun `isFeatureEnabled with PostHogFeatureFlagOptions handles non-boolean default value`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val options =
+            PostHogFeatureFlagOptions.builder()
+                .defaultValue("some_string")
+                .group("organization", "org_123")
+                .personProperty("plan", "premium")
+                .groupProperty("size", "large")
+                .build()
+
+        postHog.isFeatureEnabled("user123", "feature_key", options)
+
+        verify(mockInstance).isFeatureEnabledStateless(
+            "user123",
+            "feature_key",
+            false,
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+        )
+    }
+
+    @Test
+    fun `getFeatureFlag propagates parameters as expected`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val groups = mapOf("organization" to "org_123")
+        val personProperties = mapOf("plan" to "premium")
+        val groupProperties = mapOf("size" to "large")
+
+        postHog.getFeatureFlag(
+            "user123",
+            "feature_key",
+            "default",
+            groups,
+            personProperties,
+            groupProperties,
+        )
+
+        verify(mockInstance).getFeatureFlagStateless(
+            "user123",
+            "feature_key",
+            "default",
+            groups,
+            personProperties,
+            groupProperties,
+        )
+    }
+
+    @Test
+    fun `getFeatureFlag with PostHogFeatureFlagOptions propagates parameters as expected`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val options =
+            PostHogFeatureFlagOptions.builder()
+                .defaultValue("default")
+                .group("organization", "org_123")
+                .personProperty("plan", "premium")
+                .groupProperty("size", "large")
+                .build()
+
+        postHog.getFeatureFlag("user123", "feature_key", options)
+
+        verify(mockInstance).getFeatureFlagStateless(
+            "user123",
+            "feature_key",
+            "default",
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+        )
+    }
+
+    @Test
+    fun `getFeatureFlagPayload propagates parameters as expected`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val groups = mapOf("organization" to "org_123")
+        val personProperties = mapOf("plan" to "premium")
+        val groupProperties = mapOf("size" to "large")
+
+        postHog.getFeatureFlagPayload(
+            "user123",
+            "feature_key",
+            null,
+            groups,
+            personProperties,
+            groupProperties,
+        )
+
+        verify(mockInstance).getFeatureFlagPayloadStateless(
+            "user123",
+            "feature_key",
+            null,
+            groups,
+            personProperties,
+            groupProperties,
+        )
+    }
+
+    @Test
+    fun `getFeatureFlagPayload with PostHogFeatureFlagOptions propagates parameters as expected`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val options =
+            PostHogFeatureFlagOptions.builder()
+                .defaultValue(null)
+                .group("organization", "org_123")
+                .personProperty("plan", "premium")
+                .groupProperty("size", "large")
+                .build()
+
+        postHog.getFeatureFlagPayload("user123", "feature_key", options)
+
+        verify(mockInstance).getFeatureFlagPayloadStateless(
+            "user123",
+            "feature_key",
+            null,
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+        )
+    }
 }

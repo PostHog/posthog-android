@@ -9,16 +9,22 @@ public final class com/posthog/server/PostHog : com/posthog/server/PostHogInterf
 	public fun debug (Z)V
 	public fun flush ()V
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;
+	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Ljava/lang/Object;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;
+	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public fun group (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public fun group (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;)Z
+	public fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Z
 	public fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Z)Z
+	public fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
 	public fun setup (Lcom/posthog/server/PostHogConfig;)V
 	public static final fun with (Lcom/posthog/server/PostHogConfig;)Lcom/posthog/server/PostHogInterface;
 }
@@ -144,6 +150,40 @@ public final class com/posthog/server/PostHogConfig$Companion {
 	public final fun builder (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
 }
 
+public final class com/posthog/server/PostHogFeatureFlagOptions {
+	public static final field Companion Lcom/posthog/server/PostHogFeatureFlagOptions$Companion;
+	public synthetic fun <init> (Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun builder ()Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun getDefaultValue ()Ljava/lang/Object;
+	public final fun getGroupProperties ()Ljava/util/Map;
+	public final fun getGroups ()Ljava/util/Map;
+	public final fun getPersonProperties ()Ljava/util/Map;
+}
+
+public final class com/posthog/server/PostHogFeatureFlagOptions$Builder {
+	public fun <init> ()V
+	public final fun build ()Lcom/posthog/server/PostHogFeatureFlagOptions;
+	public final fun defaultValue (Ljava/lang/Object;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun getDefaultValue ()Ljava/lang/Object;
+	public final fun getGroupProperties ()Ljava/util/Map;
+	public final fun getGroups ()Ljava/util/Map;
+	public final fun getPersonProperties ()Ljava/util/Map;
+	public final fun group (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun groupProperties (Ljava/util/Map;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun groupProperty (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun groups (Ljava/util/Map;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun personProperties (Ljava/util/Map;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun personProperty (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun setDefaultValue (Ljava/lang/Object;)V
+	public final fun setGroupProperties (Ljava/util/Map;)V
+	public final fun setGroups (Ljava/util/Map;)V
+	public final fun setPersonProperties (Ljava/util/Map;)V
+}
+
+public final class com/posthog/server/PostHogFeatureFlagOptions$Companion {
+	public final fun builder ()Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+}
+
 public abstract interface class com/posthog/server/PostHogInterface {
 	public abstract fun alias (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun capture (Ljava/lang/String;Ljava/lang/String;)V
@@ -153,16 +193,22 @@ public abstract interface class com/posthog/server/PostHogInterface {
 	public abstract fun debug (Z)V
 	public abstract fun flush ()V
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;
+	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Ljava/lang/Object;
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;
+	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun group (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun group (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun identify (Ljava/lang/String;)V
 	public abstract fun identify (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public abstract fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;)Z
+	public abstract fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Z
 	public abstract fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Z)Z
+	public abstract fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
 	public abstract fun setup (Lcom/posthog/server/PostHogConfig;)V
 }
 
@@ -172,9 +218,13 @@ public final class com/posthog/server/PostHogInterface$DefaultImpls {
 	public static synthetic fun capture$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)V
 	public static synthetic fun debug$default (Lcom/posthog/server/PostHogInterface;ZILjava/lang/Object;)V
 	public static fun getFeatureFlag (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;
-	public static synthetic fun getFeatureFlag$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun getFeatureFlag (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Ljava/lang/Object;
+	public static fun getFeatureFlag (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlag$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static fun getFeatureFlagPayload (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;
-	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun getFeatureFlagPayload (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Ljava/lang/Object;
+	public static fun getFeatureFlagPayload (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static fun group (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun group$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static fun identify (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;)V
@@ -182,6 +232,8 @@ public final class com/posthog/server/PostHogInterface$DefaultImpls {
 	public static synthetic fun identify$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun identify$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public static fun isFeatureEnabled (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;)Z
-	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Z
+	public static fun isFeatureEnabled (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Z
+	public static fun isFeatureEnabled (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Z)Z
+	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Z
 }
 
