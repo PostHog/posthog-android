@@ -12,6 +12,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
+import java.util.Date
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -214,6 +215,7 @@ public open class PostHogStateless protected constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
+        timestamp: Date?,
     ) {
         try {
             if (!isEnabled()) {
@@ -239,7 +241,13 @@ public open class PostHogStateless protected constructor(
                     appendGroups = !groupIdentify,
                 )
 
-            val postHogEvent = buildEvent(event, distinctId, mergedProperties.toMutableMap())
+            val postHogEvent =
+                buildEvent(
+                    event,
+                    distinctId,
+                    mergedProperties.toMutableMap(),
+                    timestamp,
+                )
             if (postHogEvent == null) {
                 val originalMessage = "PostHog event $event was dropped"
                 val message =
@@ -263,10 +271,17 @@ public open class PostHogStateless protected constructor(
         event: String,
         distinctId: String,
         properties: MutableMap<String, Any>,
+        timestamp: Date? = null,
     ): PostHogEvent? {
         // sanitize the properties or fallback to the original properties
         val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties)?.toMutableMap() ?: properties
-        val postHogEvent = PostHogEvent(event, distinctId, properties = sanitizedProperties)
+        val postHogEvent =
+            PostHogEvent(
+                event,
+                distinctId,
+                properties = sanitizedProperties,
+                timestamp = timestamp ?: Date(),
+            )
         var eventChecked: PostHogEvent? = postHogEvent
 
         val beforeSendList = config?.beforeSendList ?: emptyList()
@@ -510,6 +525,7 @@ public open class PostHogStateless protected constructor(
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
             groups: Map<String, String>?,
+            timestamp: Date?,
         ) {
             shared.captureStateless(
                 event,
@@ -518,6 +534,7 @@ public open class PostHogStateless protected constructor(
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
                 groups = groups,
+                timestamp = timestamp,
             )
         }
 

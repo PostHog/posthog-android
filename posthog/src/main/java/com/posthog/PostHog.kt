@@ -470,6 +470,7 @@ public class PostHog private constructor(
                     userProperties,
                     userPropertiesSetOnce,
                     groups,
+                    null,
                 )
                 // Notify surveys integration about the event
                 surveysHandler?.onEvent(event)

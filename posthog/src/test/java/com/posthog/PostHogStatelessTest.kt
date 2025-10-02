@@ -11,6 +11,7 @@ import com.posthog.internal.PostHogThreadFactory
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.Date
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -25,8 +26,10 @@ internal class PostHogStatelessTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
-    private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueueStateless"))
-    private val featureFlagsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlagsStateless"))
+    private val queueExecutor =
+        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueueStateless"))
+    private val featureFlagsExecutor =
+        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlagsStateless"))
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
     private lateinit var sut: TestablePostHogStateless
@@ -420,8 +423,14 @@ internal class PostHogStatelessTest {
         sut.setup(config)
         sut.setMockFeatureFlags(mockFeatureFlags)
 
-        assertEquals(mapOf("key" to "value"), sut.getFeatureFlagPayloadStateless("user123", "payload_flag"))
-        assertEquals("default", sut.getFeatureFlagPayloadStateless("user123", "non_existent", "default"))
+        assertEquals(
+            mapOf("key" to "value"),
+            sut.getFeatureFlagPayloadStateless("user123", "payload_flag"),
+        )
+        assertEquals(
+            "default",
+            sut.getFeatureFlagPayloadStateless("user123", "non_existent", "default"),
+        )
     }
 
     // Identity Management Tests
@@ -627,7 +636,8 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         // Set up existing groups in preferences
-        val existingGroups = mapOf("existing_group" to "existing_value", "shared_group" to "old_value")
+        val existingGroups =
+            mapOf("existing_group" to "existing_value", "shared_group" to "old_value")
         sut.getPreferencesPublic().setValue(GROUPS, existingGroups)
 
         // Merge with new groups (including one that overwrites existing)
@@ -957,6 +967,69 @@ internal class PostHogStatelessTest {
         assertNull(event.properties!!["\$groups"])
     }
 
+    // Timestamp Tests
+    @Test
+    fun `captureStateless with timestamp creates event with that timestamp`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        val customTimestamp = Date(1234567890L)
+
+        sut.captureStateless(
+            event = "test_event",
+            distinctId = "user123",
+            properties = mapOf("prop1" to "value1"),
+            userProperties = null,
+            userPropertiesSetOnce = null,
+            groups = null,
+            timestamp = customTimestamp,
+        )
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+        assertEquals("test_event", event.event)
+        assertEquals("user123", event.distinctId)
+        assertEquals(customTimestamp, event.timestamp)
+    }
+
+    @Test
+    fun `captureStateless without timestamp creates event with current timestamp`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        val beforeCapture = Date()
+        Thread.sleep(10) // Small delay to ensure time passes
+
+        sut.captureStateless(
+            event = "test_event",
+            distinctId = "user123",
+            properties = null,
+            userProperties = null,
+            userPropertiesSetOnce = null,
+            groups = null,
+            timestamp = null,
+        )
+
+        Thread.sleep(10) // Small delay to ensure time passes
+        val afterCapture = Date()
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+        assertNotNull(event.timestamp)
+
+        // Verify timestamp is between before and after capture
+        assertTrue(event.timestamp.time >= beforeCapture.time)
+        assertTrue(event.timestamp.time <= afterCapture.time)
+    }
+
     // Helper classes
     private class MockLogger : PostHogLogger {
         val messages = mutableListOf<String>()
@@ -995,6 +1068,7 @@ internal class PostHogStatelessTest {
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
             groups: Map<String, String>?,
+            timestamp: Date?,
         ) {
             captureCalled = true
         }
