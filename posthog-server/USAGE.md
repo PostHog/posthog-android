@@ -92,6 +92,9 @@ PostHogConfig config = PostHogConfig.builder("phc_your_api_key_here")
 - `flushIntervalSeconds`: Interval between automatic flushes (default: `30`)
 - `featureFlagCacheSize`: The maximum number of feature flags results to cache (default: `1000`)
 - `featureFlagCacheMaxAgeMs`: The maximum age of a feature flag cache record in memory in milliseconds (default: `300000` or five minutes)
+- `enableLocalEvaluation`: Enable local evaluation of feature flags (default: `false`) **(Experimental)**
+- `personalApiKey`: Personal API key required for local evaluation (default: `null`) **(Experimental)**
+- `pollIntervalSeconds`: Interval for polling flag definitions for local evaluation (default: `30`) **(Experimental)**
 
 ## Capturing Events
 
@@ -201,6 +204,52 @@ postHog.identify("user123", userProperties, userPropertiesSetOnce);
 ```
 
 ## Feature Flags
+
+### Local Evaluation (Experimental)
+
+Local evaluation allows the SDK to evaluate feature flags locally without making API calls for each flag check. This reduces latency and API costs.
+
+**How it works:**
+1. The SDK periodically polls for flag definitions from PostHog (every 30 seconds by default)
+2. Flags are evaluated locally using cached definitions
+3. If evaluation is inconclusive (missing properties, etc.), the SDK falls back to the API
+
+**Requirements:**
+- A Personal API Key (get one from PostHog → Settings → User → Personal API Keys)
+- The `enableLocalEvaluation` config option set to `true`
+
+#### Kotlin
+
+```kotlin
+val config = PostHogConfig(
+    apiKey = "phc_your_api_key_here",
+    host = "https://your-posthog-instance.com",
+    enableLocalEvaluation = true,
+    personalApiKey = "phx_your_personal_api_key_here",
+    pollIntervalSeconds = 30  // Optional: customize polling interval
+)
+```
+
+#### Java
+
+```java
+PostHogConfig config = PostHogConfig.builder("phc_your_api_key_here")
+    .host("https://your-posthog-instance.com")
+    .enableLocalEvaluation(true)
+    .personalApiKey("phx_your_personal_api_key_here")
+    .pollIntervalSeconds(30)  // Optional: customize polling interval
+    .build();
+```
+
+**Benefits:**
+- **Reduced latency**: No API call needed for most flag evaluations
+- **Lower costs**: Fewer API requests
+- **Offline support**: Flags continue to work with cached definitions
+
+**Limitations:**
+- Requires person/group properties to be provided with each call
+- Falls back to API for cohort-based flags without local cohort data
+- May not reflect real-time flag changes (respects polling interval)
 
 ### Check if Feature is Enabled
 
