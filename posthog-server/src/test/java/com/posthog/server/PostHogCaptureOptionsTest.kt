@@ -1,5 +1,7 @@
 package com.posthog.server
 
+import java.time.Instant
+import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -224,7 +226,10 @@ internal class PostHogCaptureOptionsTest {
 
         builder.userPropertySetOnce("once_key", "once_value")
 
-        assertEquals(mutableMapOf<String, Any>("once_key" to "once_value"), builder.userPropertiesSetOnce)
+        assertEquals(
+            mutableMapOf<String, Any>("once_key" to "once_value"),
+            builder.userPropertiesSetOnce,
+        )
     }
 
     @Test
@@ -273,7 +278,12 @@ internal class PostHogCaptureOptionsTest {
         val options =
             PostHogCaptureOptions.builder()
                 .userPropertySetOnce("existing_key", "existing_value")
-                .userPropertiesSetOnce(mapOf("new_key1" to "new_value1", "new_key2" to "new_value2"))
+                .userPropertiesSetOnce(
+                    mapOf(
+                        "new_key1" to "new_value1",
+                        "new_key2" to "new_value2",
+                    ),
+                )
                 .build()
 
         val expected =
@@ -393,9 +403,18 @@ internal class PostHogCaptureOptionsTest {
                 .groups(mapOf("team" to "team_456"))
                 .build()
 
-        assertEquals(mapOf("prop_key" to "prop_value", "prop_key2" to "prop_value2"), options.properties)
-        assertEquals(mapOf("user_key" to "user_value", "user_key2" to "user_value2"), options.userProperties)
-        assertEquals(mapOf("once_key" to "once_value", "once_key2" to "once_value2"), options.userPropertiesSetOnce)
+        assertEquals(
+            mapOf("prop_key" to "prop_value", "prop_key2" to "prop_value2"),
+            options.properties,
+        )
+        assertEquals(
+            mapOf("user_key" to "user_value", "user_key2" to "user_value2"),
+            options.userProperties,
+        )
+        assertEquals(
+            mapOf("once_key" to "once_value", "once_key2" to "once_value2"),
+            options.userPropertiesSetOnce,
+        )
         assertEquals(mapOf("organization" to "org_123", "team" to "team_456"), options.groups)
     }
 
@@ -472,5 +491,94 @@ internal class PostHogCaptureOptionsTest {
 
         // Built options should not be affected
         assertEquals(mapOf("key" to "value"), options.properties)
+    }
+
+    @Test
+    fun `timestamp with Date sets timestamp correctly`() {
+        val date = Date(1234567890L)
+        val options =
+            PostHogCaptureOptions.builder()
+                .timestamp(date)
+                .build()
+
+        assertEquals(date, options.timestamp)
+    }
+
+    @Test
+    fun `timestamp with Long converts epoch millis to Date`() {
+        val epochMillis = 1234567890L
+        val options =
+            PostHogCaptureOptions.builder()
+                .timestamp(epochMillis)
+                .build()
+
+        assertEquals(Date(epochMillis), options.timestamp)
+    }
+
+    @Test
+    fun `timestamp with Instant converts Instant to Date`() {
+        val instant = Instant.ofEpochMilli(1234567890L)
+        val options =
+            PostHogCaptureOptions.builder()
+                .timestamp(instant)
+                .build()
+
+        assertEquals(Date(1234567890L), options.timestamp)
+    }
+
+    @Test
+    fun `timestamp defaults to null when not set`() {
+        val options = PostHogCaptureOptions.builder().build()
+
+        assertNull(options.timestamp)
+    }
+
+    @Test
+    fun `timestamp returns builder for chaining`() {
+        val builder = PostHogCaptureOptions.builder()
+        val date = Date()
+        val result = builder.timestamp(date)
+
+        assertEquals(builder, result)
+    }
+
+    @Test
+    fun `overwriting timestamp replaces value`() {
+        val firstDate = Date(1234567890L)
+        val secondDate = Date(1640995200000L)
+        val options =
+            PostHogCaptureOptions.builder()
+                .timestamp(firstDate)
+                .timestamp(secondDate)
+                .build()
+
+        assertEquals(secondDate, options.timestamp)
+    }
+
+    @Test
+    fun `timestamp with different formats all work correctly`() {
+        val epochMillis = 1234567890L
+        val instant = Instant.ofEpochMilli(epochMillis)
+        val date = Date(epochMillis)
+
+        val optionsFromDate =
+            PostHogCaptureOptions.builder()
+                .timestamp(date)
+                .build()
+
+        val optionsFromLong =
+            PostHogCaptureOptions.builder()
+                .timestamp(epochMillis)
+                .build()
+
+        val optionsFromInstant =
+            PostHogCaptureOptions.builder()
+                .timestamp(instant)
+                .build()
+
+        // All should produce the same timestamp
+        assertEquals(date, optionsFromDate.timestamp)
+        assertEquals(date, optionsFromLong.timestamp)
+        assertEquals(date, optionsFromInstant.timestamp)
     }
 }

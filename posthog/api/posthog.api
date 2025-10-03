@@ -306,8 +306,9 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	protected fun <init> (Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;)V
 	public synthetic fun <init> (Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun aliasStateless (Ljava/lang/String;Ljava/lang/String;)V
-	protected final fun buildEvent (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lcom/posthog/PostHogEvent;
-	public fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	protected final fun buildEvent (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;)Lcom/posthog/PostHogEvent;
+	public static synthetic fun buildEvent$default (Lcom/posthog/PostHogStateless;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)Lcom/posthog/PostHogEvent;
+	public fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public fun close ()V
 	public fun debug (Z)V
 	public fun flush ()V
@@ -338,7 +339,7 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 
 public final class com/posthog/PostHogStateless$Companion : com/posthog/PostHogStatelessInterface {
 	public fun aliasStateless (Ljava/lang/String;Ljava/lang/String;)V
-	public fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public fun close ()V
 	public fun debug (Z)V
 	public fun flush ()V
@@ -358,7 +359,7 @@ public final class com/posthog/PostHogStateless$Companion : com/posthog/PostHogS
 
 public abstract interface class com/posthog/PostHogStatelessInterface : com/posthog/PostHogCoreInterface {
 	public abstract fun aliasStateless (Ljava/lang/String;Ljava/lang/String;)V
-	public abstract fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public abstract fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public abstract fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun groupStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
@@ -366,7 +367,7 @@ public abstract interface class com/posthog/PostHogStatelessInterface : com/post
 }
 
 public final class com/posthog/PostHogStatelessInterface$DefaultImpls {
-	public static synthetic fun captureStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
+	public static synthetic fun captureStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)V
 	public static synthetic fun getFeatureFlagPayloadStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun groupStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V

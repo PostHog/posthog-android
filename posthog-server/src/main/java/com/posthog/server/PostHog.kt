@@ -41,6 +41,7 @@ public class PostHog : PostHogInterface {
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
+        timestamp: java.util.Date?,
     ) {
         instance?.captureStateless(
             event,
@@ -49,6 +50,7 @@ public class PostHog : PostHogInterface {
             userProperties,
             userPropertiesSetOnce,
             groups,
+            timestamp,
         )
     }
 
