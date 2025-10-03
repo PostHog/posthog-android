@@ -1,6 +1,7 @@
 ## Next
 
 - feat: `timestamp` can now be overridden when capturing an event ([#297](https://github.com/PostHog/posthog-android/issues/297))
+- feat: Add `groups`, `groupProperties`, `personProperties` overrides to feature flag methods ([#298](https://github.com/PostHog/posthog-android/issues/298))
 
 ## 1.0.3 - 2025-10-01
 

@@ -58,24 +58,54 @@ public class PostHog : PostHogInterface {
         distinctId: String,
         key: String,
         defaultValue: Boolean,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
     ): Boolean {
-        return instance?.isFeatureEnabledStateless(distinctId, key, defaultValue) ?: false
+        return instance?.isFeatureEnabledStateless(
+            distinctId,
+            key,
+            defaultValue,
+            groups,
+            personProperties,
+            groupProperties,
+        ) ?: false
     }
 
     override fun getFeatureFlag(
         distinctId: String,
         key: String,
         defaultValue: Any?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
     ): Any? {
-        return instance?.getFeatureFlagStateless(distinctId, key, defaultValue)
+        return instance?.getFeatureFlagStateless(
+            distinctId,
+            key,
+            defaultValue,
+            groups,
+            personProperties,
+            groupProperties,
+        )
     }
 
     override fun getFeatureFlagPayload(
         distinctId: String,
         key: String,
         defaultValue: Any?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
     ): Any? {
-        return instance?.getFeatureFlagPayloadStateless(distinctId, key, defaultValue)
+        return instance?.getFeatureFlagPayloadStateless(
+            distinctId,
+            key,
+            defaultValue,
+            groups,
+            personProperties,
+            groupProperties,
+        )
     }
 
     override fun group(

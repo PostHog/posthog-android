@@ -36,6 +36,9 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
         distinctId: String,
         key: String,
         defaultValue: Boolean = false,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Boolean
 
     /**
@@ -49,6 +52,9 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
         distinctId: String,
         key: String,
         defaultValue: Any? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Any?
 
     /**
@@ -62,6 +68,9 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
         distinctId: String,
         key: String,
         defaultValue: Any? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Any?
 
     /**

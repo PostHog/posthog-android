@@ -138,6 +138,9 @@ public sealed interface PostHogInterface {
         distinctId: String,
         key: String,
         defaultValue: Boolean = false,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Boolean
 
     /**
@@ -150,11 +153,62 @@ public sealed interface PostHogInterface {
         distinctId: String,
         key: String,
     ): Boolean {
-        return isFeatureEnabled(distinctId, key, false)
+        return isFeatureEnabled(
+            distinctId,
+            key,
+            defaultValue = false,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+        )
     }
 
     /**
-     * Returns the feature flag
+     * Returns if a feature flag is enabled, the feature flag must be a Boolean
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param defaultValue the default value if not found
+     */
+    public fun isFeatureEnabled(
+        distinctId: String,
+        key: String,
+        defaultValue: Boolean,
+    ): Boolean {
+        return isFeatureEnabled(
+            distinctId,
+            key,
+            defaultValue = defaultValue,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+        )
+    }
+
+    /**
+     * Returns if a feature flag is enabled, the feature flag must be a Boolean
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     */
+    public fun isFeatureEnabled(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+    ): Boolean {
+        return isFeatureEnabled(
+            distinctId,
+            key,
+            defaultValue = options.defaultValue as? Boolean ?: false,
+            groups = options.groups,
+            personProperties = options.personProperties,
+            groupProperties = options.groupProperties,
+        )
+    }
+
+    /**
+     * Returns the feature flags variant if multi-variant, otherwise whether it is enabled or not
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
@@ -164,10 +218,13 @@ public sealed interface PostHogInterface {
         distinctId: String,
         key: String,
         defaultValue: Any? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Any?
 
     /**
-     * Returns the feature flag
+     * Returns the feature flags variant if multi-variant, otherwise whether it is enabled or not
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
@@ -177,7 +234,58 @@ public sealed interface PostHogInterface {
         distinctId: String,
         key: String,
     ): Any? {
-        return getFeatureFlag(distinctId, key, null)
+        return getFeatureFlag(
+            distinctId,
+            key,
+            defaultValue = null,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+        )
+    }
+
+    /**
+     * Returns the feature flags variant if multi-variant, otherwise whether it is enabled or not
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     */
+    public fun getFeatureFlag(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+    ): Any? {
+        return getFeatureFlag(
+            distinctId,
+            key,
+            defaultValue = options.defaultValue,
+            groups = options.groups,
+            personProperties = options.personProperties,
+            groupProperties = options.groupProperties,
+        )
+    }
+
+    /**
+     * Returns if a feature flag is enabled, the feature flag must be a Boolean
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param defaultValue the default value if not found
+     */
+    public fun getFeatureFlag(
+        distinctId: String,
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
+        return getFeatureFlag(
+            distinctId,
+            key,
+            defaultValue = defaultValue,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+        )
     }
 
     /**
@@ -191,6 +299,9 @@ public sealed interface PostHogInterface {
         distinctId: String,
         key: String,
         defaultValue: Any? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, String>? = null,
+        groupProperties: Map<String, String>? = null,
     ): Any?
 
     /**
@@ -204,7 +315,58 @@ public sealed interface PostHogInterface {
         distinctId: String,
         key: String,
     ): Any? {
-        return getFeatureFlagPayload(distinctId, key, null)
+        return getFeatureFlagPayload(
+            distinctId,
+            key,
+            defaultValue = null,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+        )
+    }
+
+    /**
+     * Returns the feature flag payload
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     */
+    public fun getFeatureFlagPayload(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+    ): Any? {
+        return getFeatureFlagPayload(
+            distinctId,
+            key,
+            defaultValue = options.defaultValue,
+            groups = options.groups,
+            personProperties = options.personProperties,
+            groupProperties = options.groupProperties,
+        )
+    }
+
+    /**
+     * Returns the feature flag payload
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param defaultValue the default value if not found
+     */
+    public fun getFeatureFlagPayload(
+        distinctId: String,
+        key: String,
+        defaultValue: Any?,
+    ): Any? {
+        return getFeatureFlagPayload(
+            distinctId,
+            key,
+            defaultValue = defaultValue,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+        )
     }
 
     /**

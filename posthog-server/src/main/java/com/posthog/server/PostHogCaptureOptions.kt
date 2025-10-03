@@ -29,10 +29,10 @@ public class PostHogCaptureOptions private constructor(
             key: String,
             value: Any,
         ): Builder {
-            if (properties == null) {
-                properties = mutableMapOf()
-            }
-            properties!![key] = value
+            properties =
+                (properties ?: mutableMapOf()).apply {
+                    put(key, value)
+                }
             return this
         }
 
@@ -40,10 +40,10 @@ public class PostHogCaptureOptions private constructor(
          * Appends multiple custom properties to the capture options
          */
         public fun properties(properties: Map<String, Any>): Builder {
-            if (this.properties == null) {
-                this.properties = mutableMapOf()
-            }
-            this.properties!!.putAll(properties)
+            this.properties =
+                (this.properties ?: mutableMapOf()).apply {
+                    putAll(properties)
+                }
             return this
         }
 
@@ -55,10 +55,10 @@ public class PostHogCaptureOptions private constructor(
             key: String,
             value: Any,
         ): Builder {
-            if (userProperties == null) {
-                userProperties = mutableMapOf()
-            }
-            userProperties!![key] = value
+            this.userProperties =
+                (this.userProperties ?: mutableMapOf()).apply {
+                    put(key, value)
+                }
             return this
         }
 
@@ -67,10 +67,10 @@ public class PostHogCaptureOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun userProperties(userProperties: Map<String, Any>): Builder {
-            if (this.userProperties == null) {
-                this.userProperties = mutableMapOf()
-            }
-            this.userProperties!!.putAll(userProperties)
+            this.userProperties =
+                (this.userProperties ?: mutableMapOf()).apply {
+                    putAll(userProperties)
+                }
             return this
         }
 
@@ -82,10 +82,10 @@ public class PostHogCaptureOptions private constructor(
             key: String,
             value: Any,
         ): Builder {
-            if (userPropertiesSetOnce == null) {
-                userPropertiesSetOnce = mutableMapOf()
-            }
-            userPropertiesSetOnce!![key] = value
+            this.userPropertiesSetOnce =
+                (this.userPropertiesSetOnce ?: mutableMapOf()).apply {
+                    put(key, value)
+                }
             return this
         }
 
@@ -94,10 +94,10 @@ public class PostHogCaptureOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun userPropertiesSetOnce(userPropertiesSetOnce: Map<String, Any>): Builder {
-            if (this.userPropertiesSetOnce == null) {
-                this.userPropertiesSetOnce = mutableMapOf()
-            }
-            this.userPropertiesSetOnce!!.putAll(userPropertiesSetOnce)
+            this.userPropertiesSetOnce =
+                (this.userPropertiesSetOnce ?: mutableMapOf()).apply {
+                    putAll(userPropertiesSetOnce)
+                }
             return this
         }
 
@@ -109,10 +109,10 @@ public class PostHogCaptureOptions private constructor(
             type: String,
             key: String,
         ): Builder {
-            if (groups == null) {
-                groups = mutableMapOf()
-            }
-            groups!![type] = key
+            this.groups =
+                (this.groups ?: mutableMapOf()).apply {
+                    put(type, key)
+                }
             return this
         }
 
@@ -121,10 +121,10 @@ public class PostHogCaptureOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/group-analytics">Documentation: Group Analytics</a>
          */
         public fun groups(groups: Map<String, String>): Builder {
-            if (this.groups == null) {
-                this.groups = mutableMapOf()
-            }
-            this.groups!!.putAll(groups)
+            this.groups =
+                (this.groups ?: mutableMapOf()).apply {
+                    putAll(groups)
+                }
             return this
         }
 

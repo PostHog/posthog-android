@@ -10,6 +10,8 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import java.io.File
 import java.util.Date
 import java.util.concurrent.Executors
@@ -1030,6 +1032,105 @@ internal class PostHogStatelessTest {
         assertTrue(event.timestamp.time <= afterCapture.time)
     }
 
+    @Test
+    fun `isFeatureEnabledStateless propagates parameters to feature flags as expected`() {
+        val mockFeatureFlags = mock<PostHogFeatureFlagsInterface>()
+
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        val groups = mapOf("organization" to "org_123")
+        val personProperties = mapOf("plan" to "premium")
+        val groupProperties = mapOf("size" to "large")
+
+        sut.isFeatureEnabledStateless(
+            "user123",
+            "test_flag",
+            false,
+            groups,
+            personProperties,
+            groupProperties,
+        )
+
+        verify(mockFeatureFlags).getFeatureFlag(
+            "test_flag",
+            false,
+            "user123",
+            groups,
+            personProperties,
+            groupProperties,
+        )
+    }
+
+    @Test
+    fun `getFeatureFlagStateless propagates parameters to feature flags as expected`() {
+        val mockFeatureFlags = mock<PostHogFeatureFlagsInterface>()
+
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        val groups = mapOf("organization" to "org_123")
+        val personProperties = mapOf("plan" to "premium")
+        val groupProperties = mapOf("size" to "large")
+
+        sut.getFeatureFlagStateless(
+            "user123",
+            "test_flag",
+            "default",
+            groups,
+            personProperties,
+            groupProperties,
+        )
+
+        verify(mockFeatureFlags).getFeatureFlag(
+            "test_flag",
+            "default",
+            "user123",
+            groups,
+            personProperties,
+            groupProperties,
+        )
+    }
+
+    @Test
+    fun `getFeatureFlagPayloadStateless propagates parameters to feature flags as expected`() {
+        val mockFeatureFlags = mock<PostHogFeatureFlagsInterface>()
+
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        val groups = mapOf("organization" to "org_123")
+        val personProperties = mapOf("plan" to "premium")
+        val groupProperties = mapOf("size" to "large")
+
+        sut.getFeatureFlagPayloadStateless(
+            "user123",
+            "test_flag",
+            null,
+            groups,
+            personProperties,
+            groupProperties,
+        )
+
+        verify(mockFeatureFlags).getFeatureFlagPayload(
+            "test_flag",
+            null,
+            "user123",
+            groups,
+            personProperties,
+            groupProperties,
+        )
+    }
+
     // Helper classes
     private class MockLogger : PostHogLogger {
         val messages = mutableListOf<String>()
@@ -1103,18 +1204,27 @@ internal class PostHogStatelessTest {
             distinctId: String,
             key: String,
             defaultValue: Boolean,
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
         ): Boolean = defaultValue
 
         override fun getFeatureFlagStateless(
             distinctId: String,
             key: String,
             defaultValue: Any?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
         ): Any? = defaultValue
 
         override fun getFeatureFlagPayloadStateless(
             distinctId: String,
             key: String,
             defaultValue: Any?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
         ): Any? = defaultValue
 
         override fun groupStateless(

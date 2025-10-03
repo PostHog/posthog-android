@@ -314,8 +314,8 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	public fun flush ()V
 	protected fun getConfig ()Lcom/posthog/PostHogConfig;
 	protected final fun getEnabled ()Z
-	public fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
-	public fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	protected final fun getFeatureFlags ()Lcom/posthog/internal/PostHogFeatureFlagsInterface;
 	protected final fun getMemoryPreferences ()Lcom/posthog/internal/PostHogPreferences;
 	protected final fun getOptOutLock ()Ljava/lang/Object;
@@ -325,7 +325,7 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	public fun groupStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	protected final fun isEnabled ()Z
-	public fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;Z)Z
+	public fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
 	public fun isOptOut ()Z
 	protected final fun mergeGroups (Ljava/util/Map;)Ljava/util/Map;
 	public fun optIn ()V
@@ -343,11 +343,11 @@ public final class com/posthog/PostHogStateless$Companion : com/posthog/PostHogS
 	public fun close ()V
 	public fun debug (Z)V
 	public fun flush ()V
-	public fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
-	public fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public fun groupStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
-	public fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;Z)Z
+	public fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
 	public fun isOptOut ()Z
 	public fun optIn ()V
 	public fun optOut ()V
@@ -360,18 +360,18 @@ public final class com/posthog/PostHogStateless$Companion : com/posthog/PostHogS
 public abstract interface class com/posthog/PostHogStatelessInterface : com/posthog/PostHogCoreInterface {
 	public abstract fun aliasStateless (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
-	public abstract fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
-	public abstract fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public abstract fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun groupStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
-	public abstract fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;Z)Z
+	public abstract fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
 }
 
 public final class com/posthog/PostHogStatelessInterface$DefaultImpls {
 	public static synthetic fun captureStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)V
-	public static synthetic fun getFeatureFlagPayloadStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
-	public static synthetic fun getFeatureFlagStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagPayloadStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun groupStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
-	public static synthetic fun isFeatureEnabledStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Z
+	public static synthetic fun isFeatureEnabledStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Z
 }
 
 public abstract interface annotation class com/posthog/PostHogVisibleForTesting : java/lang/annotation/Annotation {

@@ -47,7 +47,8 @@ public open class PostHogStateless protected constructor(
                     config.logger.log("Setup called despite already being setup!")
                     return
                 }
-                config.logger = if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
+                config.logger =
+                    if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (!apiKeys.add(config.apiKey)) {
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
@@ -78,7 +79,8 @@ public open class PostHogStateless protected constructor(
                 this.config = config
                 this.queue = queue
                 this.featureFlags = remoteConfig
-                this.featureFlagsCalled = PostHogFeatureFlagCalledCache(config.featureFlagCalledCacheSize)
+                this.featureFlagsCalled =
+                    PostHogFeatureFlagCalledCache(config.featureFlagCalledCacheSize)
 
                 enabled = true
 
@@ -397,8 +399,19 @@ public open class PostHogStateless protected constructor(
         distinctId: String,
         key: String,
         defaultValue: Boolean,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
     ): Boolean {
-        val value = getFeatureFlagStateless(distinctId, key, defaultValue)
+        val value =
+            getFeatureFlagStateless(
+                distinctId,
+                key,
+                defaultValue,
+                groups,
+                personProperties,
+                groupProperties,
+            )
 
         if (value is Boolean) {
             return value
@@ -433,11 +446,22 @@ public open class PostHogStateless protected constructor(
         distinctId: String,
         key: String,
         defaultValue: Any?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
-        val value = featureFlags?.getFeatureFlag(key, defaultValue, distinctId) ?: defaultValue
+        val value =
+            featureFlags?.getFeatureFlag(
+                key,
+                defaultValue,
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            ) ?: defaultValue
 
         sendFeatureFlagCalled(distinctId, key, value)
 
@@ -448,11 +472,21 @@ public open class PostHogStateless protected constructor(
         distinctId: String,
         key: String,
         defaultValue: Any?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.getFeatureFlagPayload(key, defaultValue, distinctId) ?: defaultValue
+        return featureFlags?.getFeatureFlagPayload(
+            key,
+            defaultValue,
+            distinctId,
+            groups,
+            personProperties,
+            groupProperties,
+        ) ?: defaultValue
     }
 
     public override fun flush() {
@@ -554,19 +588,52 @@ public open class PostHogStateless protected constructor(
             distinctId: String,
             key: String,
             defaultValue: Boolean,
-        ): Boolean = shared.isFeatureEnabledStateless(distinctId, key, defaultValue = defaultValue)
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
+        ): Boolean =
+            shared.isFeatureEnabledStateless(
+                distinctId,
+                key,
+                defaultValue,
+                groups,
+                personProperties,
+                groupProperties,
+            )
 
         public override fun getFeatureFlagStateless(
             distinctId: String,
             key: String,
             defaultValue: Any?,
-        ): Any? = shared.getFeatureFlagStateless(distinctId, key, defaultValue = defaultValue)
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
+        ): Any? =
+            shared.getFeatureFlagStateless(
+                distinctId,
+                key,
+                defaultValue,
+                groups,
+                personProperties,
+                groupProperties,
+            )
 
         public override fun getFeatureFlagPayloadStateless(
             distinctId: String,
             key: String,
             defaultValue: Any?,
-        ): Any? = shared.getFeatureFlagPayloadStateless(distinctId, key, defaultValue = defaultValue)
+            groups: Map<String, String>?,
+            personProperties: Map<String, String>?,
+            groupProperties: Map<String, String>?,
+        ): Any? =
+            shared.getFeatureFlagPayloadStateless(
+                distinctId,
+                key,
+                defaultValue,
+                groups,
+                personProperties,
+                groupProperties,
+            )
 
         public override fun flush() {
             shared.flush()
