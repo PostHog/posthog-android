@@ -31,10 +31,10 @@ public class PostHogFeatureFlagOptions private constructor(
             key: String,
             value: String,
         ): Builder {
-            if (groups == null) {
-                groups = mutableMapOf()
-            }
-            groups!![key] = value
+            groups =
+                (groups ?: mutableMapOf()).apply {
+                    put(key, value)
+                }
             return this
         }
 
@@ -42,10 +42,10 @@ public class PostHogFeatureFlagOptions private constructor(
          * Appends multiple groups to the feature flag options
          */
         public fun groups(groups: Map<String, String>): Builder {
-            if (this.groups == null) {
-                this.groups = mutableMapOf()
-            }
-            this.groups!!.putAll(groups)
+            this.groups =
+                (this.groups ?: mutableMapOf()).apply {
+                    putAll(groups)
+                }
             return this
         }
 
@@ -57,10 +57,10 @@ public class PostHogFeatureFlagOptions private constructor(
             key: String,
             value: String,
         ): Builder {
-            if (personProperties == null) {
-                personProperties = mutableMapOf()
-            }
-            personProperties!![key] = value
+            personProperties =
+                (personProperties ?: mutableMapOf()).apply {
+                    put(key, value)
+                }
             return this
         }
 
@@ -69,10 +69,10 @@ public class PostHogFeatureFlagOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun personProperties(userProperties: Map<String, String>): Builder {
-            if (this.personProperties == null) {
-                this.personProperties = mutableMapOf()
-            }
-            this.personProperties!!.putAll(userProperties)
+            this.personProperties =
+                (this.personProperties ?: mutableMapOf()).apply {
+                    putAll(userProperties)
+                }
             return this
         }
 
@@ -84,10 +84,10 @@ public class PostHogFeatureFlagOptions private constructor(
             key: String,
             value: String,
         ): Builder {
-            if (groupProperties == null) {
-                groupProperties = mutableMapOf()
-            }
-            groupProperties!![key] = value
+            groupProperties =
+                (groupProperties ?: mutableMapOf()).apply {
+                    put(key, value)
+                }
             return this
         }
 
@@ -96,10 +96,10 @@ public class PostHogFeatureFlagOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun groupProperties(groupProperties: Map<String, String>): Builder {
-            if (this.groupProperties == null) {
-                this.groupProperties = mutableMapOf()
-            }
-            this.groupProperties!!.putAll(groupProperties)
+            this.groupProperties =
+                (this.groupProperties ?: mutableMapOf()).apply {
+                    putAll(groupProperties)
+                }
             return this
         }
 
