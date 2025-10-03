@@ -3,6 +3,7 @@ package com.posthog.surveys
 /**
  * Base class for all survey question types
  *
+ * @property id The main question id
  * @property question The main question text to display
  * @property questionDescription Optional additional description or context for the question
  * @property questionDescriptionContentType Content type for the question description (HTML or plain text)
@@ -10,6 +11,7 @@ package com.posthog.surveys
  * @property buttonText Optional custom text for the question's action button
  */
 public open class PostHogDisplaySurveyQuestion(
+    public val id: String,
     public val question: String,
     public val questionDescription: String?,
     public val questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
@@ -24,6 +26,7 @@ public open class PostHogDisplaySurveyQuestion(
          * @return A display question or null if the question type is not supported
          */
         internal fun fromSurveyQuestion(question: SurveyQuestion): PostHogDisplaySurveyQuestion? {
+            val id = question.id ?: ""
             val questionText = question.question ?: return null
             val isOptional = question.optional ?: false
             val contentType =
@@ -37,6 +40,7 @@ public open class PostHogDisplaySurveyQuestion(
             return when (question.type) {
                 SurveyQuestionType.OPEN ->
                     PostHogDisplayOpenQuestion(
+                        id = id,
                         question = questionText,
                         questionDescription = question.description,
                         questionDescriptionContentType = contentType,
@@ -47,6 +51,7 @@ public open class PostHogDisplaySurveyQuestion(
                 SurveyQuestionType.LINK -> {
                     if (question is LinkSurveyQuestion) {
                         PostHogDisplayLinkQuestion(
+                            id = id,
                             question = questionText,
                             questionDescription = question.description,
                             questionDescriptionContentType = contentType,
@@ -56,6 +61,7 @@ public open class PostHogDisplaySurveyQuestion(
                         )
                     } else {
                         PostHogDisplayLinkQuestion(
+                            id = id,
                             question = questionText,
                             questionDescription = question.description,
                             questionDescriptionContentType = contentType,
@@ -84,6 +90,7 @@ public open class PostHogDisplaySurveyQuestion(
                             }
 
                         PostHogDisplayRatingQuestion(
+                            id = id,
                             question = questionText,
                             questionDescription = question.description,
                             questionDescriptionContentType = contentType,
@@ -97,6 +104,7 @@ public open class PostHogDisplaySurveyQuestion(
                         )
                     } else {
                         PostHogDisplayRatingQuestion(
+                            id = id,
                             question = questionText,
                             questionDescription = question.description,
                             questionDescriptionContentType = contentType,
@@ -134,6 +142,7 @@ public open class PostHogDisplaySurveyQuestion(
                         }
 
                     PostHogDisplayChoiceQuestion(
+                        id = id,
                         question = questionText,
                         questionDescription = question.description,
                         questionDescriptionContentType = contentType,
@@ -169,6 +178,7 @@ public open class PostHogDisplaySurveyQuestion(
                         }
 
                     PostHogDisplayChoiceQuestion(
+                        id = id,
                         question = questionText,
                         questionDescription = question.description,
                         questionDescriptionContentType = contentType,
@@ -191,12 +201,14 @@ public open class PostHogDisplaySurveyQuestion(
  * Represents an open-ended question where users can input free-form text
  */
 public class PostHogDisplayOpenQuestion(
+    id: String,
     question: String,
     questionDescription: String?,
     questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
     isOptional: Boolean,
     buttonText: String?,
 ) : PostHogDisplaySurveyQuestion(
+        id = id,
         question = question,
         questionDescription = questionDescription,
         questionDescriptionContentType = questionDescriptionContentType,
@@ -210,6 +222,7 @@ public class PostHogDisplayOpenQuestion(
  * @property link The URL that will be opened when the link is clicked
  */
 public class PostHogDisplayLinkQuestion(
+    id: String,
     question: String,
     questionDescription: String?,
     questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
@@ -217,6 +230,7 @@ public class PostHogDisplayLinkQuestion(
     buttonText: String?,
     public val link: String?,
 ) : PostHogDisplaySurveyQuestion(
+        id = id,
         question = question,
         questionDescription = questionDescription,
         questionDescriptionContentType = questionDescriptionContentType,
@@ -234,6 +248,7 @@ public class PostHogDisplayLinkQuestion(
  * @property upperBoundLabel The label for the upper bound of the rating scale
  */
 public class PostHogDisplayRatingQuestion(
+    id: String,
     question: String,
     questionDescription: String?,
     questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
@@ -245,6 +260,7 @@ public class PostHogDisplayRatingQuestion(
     public val lowerBoundLabel: String,
     public val upperBoundLabel: String,
 ) : PostHogDisplaySurveyQuestion(
+        id = id,
         question = question,
         questionDescription = questionDescription,
         questionDescriptionContentType = questionDescriptionContentType,
@@ -261,6 +277,7 @@ public class PostHogDisplayRatingQuestion(
  * @property isMultipleChoice Whether the user can select multiple options
  */
 public class PostHogDisplayChoiceQuestion(
+    id: String,
     question: String,
     questionDescription: String?,
     questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
@@ -271,6 +288,7 @@ public class PostHogDisplayChoiceQuestion(
     public val shuffleOptions: Boolean,
     public val isMultipleChoice: Boolean,
 ) : PostHogDisplaySurveyQuestion(
+        id = id,
         question = question,
         questionDescription = questionDescription,
         questionDescriptionContentType = questionDescriptionContentType,
