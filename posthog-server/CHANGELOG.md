@@ -1,6 +1,7 @@
 ## Next
 
 - fix!: Restructured `groupProperties` and `userProperties` types to match the API and other SDKs
+- feat: Add local evaluation for feature flags ([#299](https://github.com/PostHog/posthog-android/issues/299))
 
 ## 1.1.0 - 2025-10-03
 
