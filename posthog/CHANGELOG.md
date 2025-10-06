@@ -1,6 +1,8 @@
 ## Next
 
 - fix: Typed `groupProperties` and `userProperties` types to match the API and other SDKs
+- feat: Add an optional shutdown override to `FeatureFlagInterface` ([#299](https://github.com/PostHog/posthog-android/pull/299))
+- feat: Add `localEvaluation` to the `PostHogApi` ([#299](https://github.com/PostHog/posthog-android/pull/299))
 
 ## 4.2.0 - 2025-10-23
 
