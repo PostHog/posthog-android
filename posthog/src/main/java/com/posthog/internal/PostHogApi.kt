@@ -195,6 +195,37 @@ public class PostHogApi(
         }
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun localEvaluation(personalApiKey: String): PostHogLocalEvaluationResponse? {
+        val url = "$theHost/api/feature_flag/local_evaluation/?token=${config.apiKey}&send_cohorts"
+
+        val request =
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", config.userAgent)
+                .header("Content-Type", APP_JSON_UTF_8)
+                .header("Authorization", "Bearer $personalApiKey")
+                .get()
+                .build()
+
+        client.newCall(request).execute().use {
+            val response = logResponse(it)
+
+            if (!response.isSuccessful) {
+                throw PostHogApiError(
+                    response.code,
+                    response.message,
+                    response.body,
+                )
+            }
+
+            response.body?.let { body ->
+                return config.serializer.deserialize(body.charStream().buffered())
+            }
+            return null
+        }
+    }
+
     private fun logResponse(response: Response): Response {
         if (config.debug) {
             try {
