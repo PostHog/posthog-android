@@ -1,5 +1,8 @@
 ## Next
 
+- feat: Add an optional shutdown override to `FeatureFlagInterface` ([#299](https://github.com/PostHog/posthog-android/pull/299))
+- feat: Add `localEvaluation` to the `PostHogApi` ([#299](https://github.com/PostHog/posthog-android/pull/299))
+
 ## 4.0.0 - 2025-10-03
 
 - feat: Stateless client can override event `timestamp` when capturing an event ([#297](https://github.com/PostHog/posthog-android/issues/297))
