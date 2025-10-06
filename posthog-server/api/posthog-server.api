@@ -86,10 +86,11 @@ public class com/posthog/server/PostHogConfig {
 	public static final field DEFAULT_HOST Ljava/lang/String;
 	public static final field DEFAULT_MAX_BATCH_SIZE I
 	public static final field DEFAULT_MAX_QUEUE_SIZE I
+	public static final field DEFAULT_POLL_INTERVAL_SECONDS I
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;III)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;I)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public static final fun builder (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
@@ -102,9 +103,12 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
+	public final fun getLocalEvaluation ()Z
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
 	public final fun getOnFeatureFlags ()Lcom/posthog/PostHogOnFeatureFlags;
+	public final fun getPersonalApiKey ()Ljava/lang/String;
+	public final fun getPollIntervalSeconds ()I
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getProxy ()Ljava/net/Proxy;
 	public final fun getRemoteConfig ()Z
@@ -117,9 +121,12 @@ public class com/posthog/server/PostHogConfig {
 	public final fun setFeatureFlagCalledCacheSize (I)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
+	public final fun setLocalEvaluation (Z)V
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
 	public final fun setOnFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
+	public final fun setPersonalApiKey (Ljava/lang/String;)V
+	public final fun setPollIntervalSeconds (I)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setProxy (Ljava/net/Proxy;)V
 	public final fun setRemoteConfig (Z)V
@@ -137,9 +144,12 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun flushAt (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun host (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun localEvaluation (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun maxBatchSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun maxQueueSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun onFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun personalApiKey (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun pollIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun preloadFeatureFlags (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun proxy (Ljava/net/Proxy;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun remoteConfig (Z)Lcom/posthog/server/PostHogConfig$Builder;
