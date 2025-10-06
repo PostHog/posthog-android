@@ -30,4 +30,8 @@ public interface PostHogFeatureFlagsInterface {
     ): Map<String, Any>?
 
     public fun clear()
+
+    public fun shutDown() {
+        // no-op by default
+    }
 }

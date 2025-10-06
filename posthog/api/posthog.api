@@ -583,12 +583,14 @@ public abstract interface class com/posthog/internal/PostHogFeatureFlagsInterfac
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
+	public abstract fun shutDown ()V
 }
 
 public final class com/posthog/internal/PostHogFeatureFlagsInterface$DefaultImpls {
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlags$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/Map;
+	public static fun shutDown (Lcom/posthog/internal/PostHogFeatureFlagsInterface;)V
 }
 
 public final class com/posthog/internal/PostHogFlagsResponse : com/posthog/internal/PostHogRemoteConfigResponse {
@@ -714,6 +716,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun setOnRemoteConfigLoaded (Lkotlin/jvm/functions/Function0;)V
+	public fun shutDown ()V
 }
 
 public class com/posthog/internal/PostHogRemoteConfigResponse {
