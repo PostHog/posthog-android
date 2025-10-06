@@ -118,6 +118,7 @@ public open class PostHogStateless protected constructor(
                 }
 
                 queue?.stop()
+                featureFlags?.shutDown()
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
