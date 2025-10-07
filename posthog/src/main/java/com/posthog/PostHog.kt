@@ -815,6 +815,9 @@ public class PostHog private constructor(
                     props["\$feature_flag_id"] = it.metadata.id
                     props["\$feature_flag_version"] = it.metadata.version
                     props["\$feature_flag_reason"] = it.reason?.description ?: ""
+                    it.metadata.evaluationTags?.let { tags ->
+                        props["\$feature_flag_evaluation_tags"] = tags
+                    }
                 }
                 capture("\$feature_flag_called", properties = props)
             }

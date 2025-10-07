@@ -8,6 +8,7 @@ import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
  * @property id the id of the feature flag
  * @property payload the payload of the feature flag
  * @property version the version of the feature flag
+ * @property evaluationTags the evaluation tags for the feature flag
  */
 @IgnoreJRERequirement
 @PostHogInternal
@@ -15,4 +16,5 @@ public data class FeatureFlagMetadata(
     val id: Int,
     val payload: String?,
     val version: Int,
+    val evaluationTags: Map<String, Any?>? = null,
 )
