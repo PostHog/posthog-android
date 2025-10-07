@@ -19,6 +19,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.exceptions.ThrowableCoercer
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
@@ -61,6 +62,8 @@ public class PostHog private constructor(
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
+
+    private val throwableCoercer = ThrowableCoercer()
 
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
@@ -478,6 +481,24 @@ public class PostHog private constructor(
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
         }
+    }
+
+    override fun captureException(
+        throwable: Throwable,
+        properties: Map<String, Any>?,
+    ) {
+        val exceptionProperties = throwableCoercer.fromThrowableToPostHogProperties(throwable)
+
+        properties?.let {
+            exceptionProperties.putAll(it)
+        }
+
+        config?.let { config ->
+            val personUrl = "${config.host.trimEnd('/')}/project/${config.apiKey}/person/${distinctId()}"
+            exceptionProperties["\$exception_personURL"] = personUrl
+        }
+
+        capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
     }
 
     public override fun optIn() {
@@ -1088,6 +1109,13 @@ public class PostHog private constructor(
                 userPropertiesSetOnce = userPropertiesSetOnce,
                 groups = groups,
             )
+        }
+
+        public override fun captureException(
+            throwable: Throwable,
+            properties: Map<String, Any>?,
+        ) {
+            shared.captureException(throwable, properties)
         }
 
         public override fun identify(

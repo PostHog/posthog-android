@@ -1639,4 +1639,48 @@ internal class PostHogTest {
 
         assertTrue(integration.stopCalled)
     }
+
+    @Test
+    fun `captureException captures exception with correct properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val exception = RuntimeException("Test exception message")
+        val additionalProperties = mapOf("custom_key" to "custom_value")
+
+        sut.captureException(exception, additionalProperties)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batchEvents = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val event = batchEvents.batch.first()
+        assertEquals("\$exception", event.event)
+
+        val properties = event.properties ?: emptyMap()
+        assertEquals("error", properties["\$exception_level"])
+        assertEquals("custom_value", properties["custom_key"])
+
+        val exceptionList = properties["\$exception_list"] as List<*>
+        assertEquals(1, exceptionList.size)
+
+        val exceptionData = exceptionList.first() as Map<*, *>
+        assertEquals("RuntimeException", exceptionData["type"])
+        assertEquals("Test exception message", exceptionData["value"])
+
+        val mechanism = exceptionData["mechanism"] as Map<*, *>
+        assertEquals(true, mechanism["handled"])
+        assertEquals(false, mechanism["synthetic"])
+
+        val personUrl = properties["\$exception_personURL"] as String
+        assertTrue(personUrl.contains("/project/${config.apiKey}/person/${sut.distinctId()}"))
+
+        sut.close()
+    }
 }
