@@ -421,7 +421,7 @@ internal class PostHogTest {
         assertEquals("\$feature_flag_called", theEvent.event)
         assertEquals("test-flag-with-tags", theEvent.properties!!["\$feature_flag"])
         assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
-        
+
         @Suppress("UNCHECKED_CAST")
         val evaluationTags = theEvent.properties!!["\$feature_flag_evaluation_tags"] as Map<String, Any?>
         assertEquals("1.2.3", evaluationTags["release_version"])
