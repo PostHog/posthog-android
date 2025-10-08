@@ -89,17 +89,18 @@ internal class FlagEvaluator(
         val lookupTable = mutableListOf<VariantLookupEntry>()
         var valueMin = 0.0
 
-        val variants = flag.filters.multivariate?.variants ?: emptyList()
-        for (variant in variants) {
-            val valueMax = valueMin + (variant.rolloutPercentage / 100.0)
-            lookupTable.add(
-                VariantLookupEntry(
-                    key = variant.key,
-                    valueMin = valueMin,
-                    valueMax = valueMax,
-                ),
-            )
-            valueMin = valueMax
+        flag.filters.multivariate?.variants?.let { variants ->
+            for (variant in variants) {
+                val valueMax = valueMin + (variant.rolloutPercentage / 100.0)
+                lookupTable.add(
+                    VariantLookupEntry(
+                        key = variant.key,
+                        valueMin = valueMin,
+                        valueMax = valueMax,
+                    ),
+                )
+                valueMin = valueMax
+            }
         }
         return lookupTable
     }
