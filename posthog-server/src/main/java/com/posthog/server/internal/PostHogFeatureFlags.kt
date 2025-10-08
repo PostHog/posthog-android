@@ -395,8 +395,8 @@ internal class PostHogFeatureFlags(
     private fun parseProperty(propMap: Map<String, Any?>): FlagProperty {
         return FlagProperty(
             key = propMap["key"] as? String ?: "",
-            value = propMap["value"],
-            operator = propMap["operator"] as? String,
+            propertyValue = propMap["value"],
+            propertyOperator = propMap["operator"] as? String,
             type = propMap["type"] as? String,
             negation = propMap["negation"] as? Boolean,
             dependencyChain = propMap["dependency_chain"] as? List<String>,
