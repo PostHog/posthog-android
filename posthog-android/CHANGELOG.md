@@ -1,5 +1,9 @@
 ## Next
 
+## 3.24.0 - 2025-10-08
+
+- add evaluation tags to android SDK ([#301](https://github.com/PostHog/posthog-android/pull/301))
+
 ## 3.23.0 - 2025-10-06
 
 - feat: Android surveys use the new response question id format ([#289](https://github.com/PostHog/posthog-android/pull/289))
