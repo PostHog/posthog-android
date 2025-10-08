@@ -33,8 +33,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = "test@example.com",
-                propertyOperator = "exact",
-                type = "person",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -48,8 +48,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = "TEST@EXAMPLE.COM",
-                propertyOperator = "exact",
-                type = "person",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -64,8 +64,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "location",
                 propertyValue = "Straße",
-                propertyOperator = "exact",
-                type = "person",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -81,8 +81,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "star",
                 propertyValue = "ſun",
-                propertyOperator = "exact",
-                type = "person",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -101,8 +101,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "location",
                 propertyValue = listOf("Straße", "München"),
-                propertyOperator = "exact",
-                type = "person",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -118,8 +118,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "browser",
                 propertyValue = listOf("chrome", "firefox"),
-                propertyOperator = "exact",
-                type = "person",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -133,8 +133,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = "other@example.com",
-                propertyOperator = "is_not",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_NOT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -148,8 +148,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = null,
-                propertyOperator = "is_set",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_SET,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -171,8 +171,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = "example",
-                propertyOperator = "icontains",
-                type = "person",
+                propertyOperator = PropertyOperator.ICONTAINS,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -189,8 +189,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "city",
                 propertyValue = "Istanbul",
-                propertyOperator = "icontains",
-                type = "person",
+                propertyOperator = PropertyOperator.ICONTAINS,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -207,8 +207,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = "gmail",
-                propertyOperator = "not_icontains",
-                type = "person",
+                propertyOperator = PropertyOperator.NOT_ICONTAINS,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -222,8 +222,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = ".*@example\\.com",
-                propertyOperator = "regex",
-                type = "person",
+                propertyOperator = PropertyOperator.REGEX,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -237,8 +237,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "email",
                 propertyValue = ".*@gmail\\.com",
-                propertyOperator = "not_regex",
-                type = "person",
+                propertyOperator = PropertyOperator.NOT_REGEX,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -252,8 +252,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "age",
                 propertyValue = "18",
-                propertyOperator = "gt",
-                type = "person",
+                propertyOperator = PropertyOperator.GT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -270,8 +270,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "age",
                 propertyValue = "18",
-                propertyOperator = "gte",
-                type = "person",
+                propertyOperator = PropertyOperator.GTE,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -285,8 +285,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "age",
                 propertyValue = "65",
-                propertyOperator = "lt",
-                type = "person",
+                propertyOperator = PropertyOperator.LT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -300,8 +300,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "age",
                 propertyValue = "65",
-                propertyOperator = "lte",
-                type = "person",
+                propertyOperator = PropertyOperator.LTE,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -315,8 +315,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "signup_date",
                 propertyValue = "2024-01-01T00:00:00Z",
-                propertyOperator = "is_date_before",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_DATE_BEFORE,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -331,8 +331,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "signup_date",
                 propertyValue = "2022-05-01",
-                propertyOperator = "is_date_before",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_DATE_BEFORE,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -345,8 +345,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "key",
                 propertyValue = "2022-04-05 12:34:12 +01:00",
-                propertyOperator = "is_date_before",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_DATE_BEFORE,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -368,8 +368,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "key",
                 propertyValue = "2022-04-05 12:34:12+01:00",
-                propertyOperator = "is_date_before",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_DATE_BEFORE,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -385,8 +385,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "key",
                 propertyValue = "2022-05-01 00:00:00",
-                propertyOperator = "is_date_before",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_DATE_BEFORE,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -399,8 +399,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "signup_date",
                 propertyValue = "2024-01-01T00:00:00Z",
-                propertyOperator = "is_date_after",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_DATE_AFTER,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -414,8 +414,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "last_seen",
                 propertyValue = "-7d",
-                propertyOperator = "is_date_after",
-                type = "person",
+                propertyOperator = PropertyOperator.IS_DATE_AFTER,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -458,8 +458,8 @@ internal class FlagEvaluatorTest {
                                             FlagProperty(
                                                 key = "email",
                                                 propertyValue = "test@example.com",
-                                                propertyOperator = "exact",
-                                                type = "person",
+                                                propertyOperator = PropertyOperator.EXACT,
+                                                type = PropertyType.PERSON,
                                                 negation = false,
                                                 dependencyChain = null,
                                             ),
@@ -497,8 +497,8 @@ internal class FlagEvaluatorTest {
                                             FlagProperty(
                                                 key = "email",
                                                 propertyValue = "test@example.com",
-                                                propertyOperator = "exact",
-                                                type = "person",
+                                                propertyOperator = PropertyOperator.EXACT,
+                                                type = PropertyType.PERSON,
                                                 negation = false,
                                                 dependencyChain = null,
                                             ),
@@ -570,8 +570,8 @@ internal class FlagEvaluatorTest {
             FlagProperty(
                 key = "missing_key",
                 propertyValue = "test",
-                propertyOperator = "exact",
-                type = "person",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
@@ -718,8 +718,8 @@ internal class FlagEvaluatorTest {
                                             FlagProperty(
                                                 key = "id",
                                                 propertyValue = 2,
-                                                propertyOperator = "in",
-                                                type = "cohort",
+                                                propertyOperator = PropertyOperator.IN,
+                                                type = PropertyType.COHORT,
                                                 negation = false,
                                                 dependencyChain = null,
                                             ),
@@ -887,8 +887,8 @@ internal class FlagEvaluatorTest {
                                         FlagProperty(
                                             key = "email",
                                             propertyValue = listOf("example@example.com"),
-                                            propertyOperator = "exact",
-                                            type = "person",
+                                            propertyOperator = PropertyOperator.EXACT,
+                                            type = PropertyType.PERSON,
                                             negation = false,
                                             dependencyChain = null,
                                         ),
@@ -899,48 +899,48 @@ internal class FlagEvaluatorTest {
                                                     "not_example@example.com",
                                                     "also_not_example@example.com",
                                                 ),
-                                            propertyOperator = "is_not",
-                                            type = "person",
+                                            propertyOperator = PropertyOperator.IS_NOT,
+                                            type = PropertyType.PERSON,
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
                                             propertyValue = "example",
-                                            propertyOperator = "icontains",
-                                            type = "person",
+                                            propertyOperator = PropertyOperator.ICONTAINS,
+                                            type = PropertyType.PERSON,
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
                                             propertyValue = ".net",
-                                            propertyOperator = "not_icontains",
-                                            type = "person",
+                                            propertyOperator = PropertyOperator.NOT_ICONTAINS,
+                                            type = PropertyType.PERSON,
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
                                             propertyValue = "\\w+@\\w+\\.\\w+",
-                                            propertyOperator = "regex",
-                                            type = "person",
+                                            propertyOperator = PropertyOperator.REGEX,
+                                            type = PropertyType.PERSON,
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
                                             propertyValue = "@yahoo.com$",
-                                            propertyOperator = "not_regex",
-                                            type = "person",
+                                            propertyOperator = PropertyOperator.NOT_REGEX,
+                                            type = PropertyType.PERSON,
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
                                             propertyValue = "is_set",
-                                            propertyOperator = "is_set",
-                                            type = "person",
+                                            propertyOperator = PropertyOperator.IS_SET,
+                                            type = PropertyType.PERSON,
                                             negation = false,
                                             dependencyChain = null,
                                         ),
@@ -972,8 +972,8 @@ internal class FlagEvaluatorTest {
                                         FlagProperty(
                                             key = "id",
                                             propertyValue = 2,
-                                            propertyOperator = "in",
-                                            type = "cohort",
+                                            propertyOperator = PropertyOperator.IN,
+                                            type = PropertyType.COHORT,
                                             negation = false,
                                             dependencyChain = null,
                                         ),

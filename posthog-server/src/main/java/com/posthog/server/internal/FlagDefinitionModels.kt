@@ -51,8 +51,8 @@ internal data class FlagProperty(
     @SerializedName("value")
     val propertyValue: Any?,
     @SerializedName("operator")
-    val propertyOperator: String?,
-    val type: String?,
+    val propertyOperator: PropertyOperator?,
+    val type: PropertyType?,
     val negation: Boolean?,
     @SerializedName("dependency_chain")
     val dependencyChain: List<String>?,
