@@ -22,6 +22,7 @@ internal class FlagEvaluator(
         private const val LONG_SCALE = 0xFFFFFFFFFFFFFFF.toDouble()
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.IS_NOT)
         private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
+        private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
 
         // Date formatters for parsing various date formats
         private val DATE_FORMATTER_WITH_SPACE_TZ =
@@ -348,8 +349,7 @@ internal class FlagEvaluator(
      * Parse relative date format (e.g., "-1d" or "1d" for 1 day ago). Always produces a date in the past.
      */
     private fun parseRelativeDate(propertyValue: String): ZonedDateTime? {
-        val regex = Regex("^-?([0-9]+)([hdwmy])$")
-        val match = regex.find(propertyValue) ?: return null
+        val match = REGEX_RELATIVE_DATE.find(propertyValue) ?: return null
 
         val number = match.groupValues[1].toIntOrNull() ?: return null
         val interval = match.groupValues[2]
