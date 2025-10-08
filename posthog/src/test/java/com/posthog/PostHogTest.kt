@@ -53,6 +53,7 @@ internal class PostHogTest {
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
+        evaluationEnvironments: List<String>? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -69,6 +70,7 @@ internal class PostHogTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
+                this.evaluationEnvironments = evaluationEnvironments
                 this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
@@ -531,14 +533,11 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        config =
-            PostHogConfig(API_KEY).apply {
-                host = url.toString()
-                evaluationEnvironments = listOf("production", "web", "checkout")
-                preloadFeatureFlags = false
-            }
-
-        val sut = PostHog.with(config)
+        val sut = getSut(
+            url.toString(),
+            preloadFeatureFlags = false,
+            evaluationEnvironments = listOf("production", "web", "checkout")
+        )
 
         sut.reloadFeatureFlags()
 
