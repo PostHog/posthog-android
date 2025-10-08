@@ -48,8 +48,10 @@ internal data class FlagConditionGroup(
  */
 internal data class FlagProperty(
     val key: String,
-    val value: Any?,
-    val operator: String?,
+    @SerializedName("value")
+    val propertyValue: Any?,
+    @SerializedName("operator")
+    val propertyOperator: String?,
     val type: String?,
     val negation: Boolean?,
     @SerializedName("dependency_chain")

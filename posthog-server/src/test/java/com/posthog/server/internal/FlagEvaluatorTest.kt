@@ -32,8 +32,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = "test@example.com",
-                operator = "exact",
+                propertyValue = "test@example.com",
+                propertyOperator = "exact",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -47,8 +47,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = "TEST@EXAMPLE.COM",
-                operator = "exact",
+                propertyValue = "TEST@EXAMPLE.COM",
+                propertyOperator = "exact",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -63,8 +63,8 @@ internal class FlagEvaluatorTest {
         val propertyStrasse =
             FlagProperty(
                 key = "location",
-                value = "Straße",
-                operator = "exact",
+                propertyValue = "Straße",
+                propertyOperator = "exact",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -80,8 +80,8 @@ internal class FlagEvaluatorTest {
         val propertyLongS =
             FlagProperty(
                 key = "star",
-                value = "ſun",
-                operator = "exact",
+                propertyValue = "ſun",
+                propertyOperator = "exact",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -100,8 +100,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "location",
-                value = listOf("Straße", "München"),
-                operator = "exact",
+                propertyValue = listOf("Straße", "München"),
+                propertyOperator = "exact",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -117,8 +117,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "browser",
-                value = listOf("chrome", "firefox"),
-                operator = "exact",
+                propertyValue = listOf("chrome", "firefox"),
+                propertyOperator = "exact",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -132,8 +132,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = "other@example.com",
-                operator = "is_not",
+                propertyValue = "other@example.com",
+                propertyOperator = "is_not",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -147,8 +147,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = null,
-                operator = "is_set",
+                propertyValue = null,
+                propertyOperator = "is_set",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -170,8 +170,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = "example",
-                operator = "icontains",
+                propertyValue = "example",
+                propertyOperator = "icontains",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -188,8 +188,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "city",
-                value = "Istanbul",
-                operator = "icontains",
+                propertyValue = "Istanbul",
+                propertyOperator = "icontains",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -206,8 +206,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = "gmail",
-                operator = "not_icontains",
+                propertyValue = "gmail",
+                propertyOperator = "not_icontains",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -221,8 +221,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = ".*@example\\.com",
-                operator = "regex",
+                propertyValue = ".*@example\\.com",
+                propertyOperator = "regex",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -236,8 +236,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "email",
-                value = ".*@gmail\\.com",
-                operator = "not_regex",
+                propertyValue = ".*@gmail\\.com",
+                propertyOperator = "not_regex",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -251,8 +251,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "age",
-                value = "18",
-                operator = "gt",
+                propertyValue = "18",
+                propertyOperator = "gt",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -269,8 +269,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "age",
-                value = "18",
-                operator = "gte",
+                propertyValue = "18",
+                propertyOperator = "gte",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -284,8 +284,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "age",
-                value = "65",
-                operator = "lt",
+                propertyValue = "65",
+                propertyOperator = "lt",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -299,8 +299,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "age",
-                value = "65",
-                operator = "lte",
+                propertyValue = "65",
+                propertyOperator = "lte",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -314,8 +314,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "signup_date",
-                value = "2024-01-01T00:00:00Z",
-                operator = "is_date_before",
+                propertyValue = "2024-01-01T00:00:00Z",
+                propertyOperator = "is_date_before",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -330,8 +330,8 @@ internal class FlagEvaluatorTest {
         val propertyIsoDate =
             FlagProperty(
                 key = "signup_date",
-                value = "2022-05-01",
-                operator = "is_date_before",
+                propertyValue = "2022-05-01",
+                propertyOperator = "is_date_before",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -344,33 +344,48 @@ internal class FlagEvaluatorTest {
         val propertyWithSpace =
             FlagProperty(
                 key = "key",
-                value = "2022-04-05 12:34:12 +01:00",
-                operator = "is_date_before",
+                propertyValue = "2022-04-05 12:34:12 +01:00",
+                propertyOperator = "is_date_before",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
             )
-        assertTrue(evaluator.matchProperty(propertyWithSpace, mapOf("key" to "2022-04-05 12:34:11 +01:00")))
-        assertFalse(evaluator.matchProperty(propertyWithSpace, mapOf("key" to "2022-04-05 12:34:13 +01:00")))
+        assertTrue(
+            evaluator.matchProperty(
+                propertyWithSpace,
+                mapOf("key" to "2022-04-05 12:34:11 +01:00"),
+            ),
+        )
+        assertFalse(
+            evaluator.matchProperty(
+                propertyWithSpace,
+                mapOf("key" to "2022-04-05 12:34:13 +01:00"),
+            ),
+        )
 
         // ISO datetime with timezone offset (without space)
         val propertyNoSpace =
             FlagProperty(
                 key = "key",
-                value = "2022-04-05 12:34:12+01:00",
-                operator = "is_date_before",
+                propertyValue = "2022-04-05 12:34:12+01:00",
+                propertyOperator = "is_date_before",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
             )
-        assertTrue(evaluator.matchProperty(propertyNoSpace, mapOf("key" to "2022-04-05 12:34:11+01:00")))
+        assertTrue(
+            evaluator.matchProperty(
+                propertyNoSpace,
+                mapOf("key" to "2022-04-05 12:34:11+01:00"),
+            ),
+        )
 
         // ISO datetime without timezone
         val propertyNoTz =
             FlagProperty(
                 key = "key",
-                value = "2022-05-01 00:00:00",
-                operator = "is_date_before",
+                propertyValue = "2022-05-01 00:00:00",
+                propertyOperator = "is_date_before",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -383,8 +398,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "signup_date",
-                value = "2024-01-01T00:00:00Z",
-                operator = "is_date_after",
+                propertyValue = "2024-01-01T00:00:00Z",
+                propertyOperator = "is_date_after",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -398,8 +413,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "last_seen",
-                value = "-7d",
-                operator = "is_date_after",
+                propertyValue = "-7d",
+                propertyOperator = "is_date_after",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -442,8 +457,8 @@ internal class FlagEvaluatorTest {
                                         listOf(
                                             FlagProperty(
                                                 key = "email",
-                                                value = "test@example.com",
-                                                operator = "exact",
+                                                propertyValue = "test@example.com",
+                                                propertyOperator = "exact",
                                                 type = "person",
                                                 negation = false,
                                                 dependencyChain = null,
@@ -481,8 +496,8 @@ internal class FlagEvaluatorTest {
                                         listOf(
                                             FlagProperty(
                                                 key = "email",
-                                                value = "test@example.com",
-                                                operator = "exact",
+                                                propertyValue = "test@example.com",
+                                                propertyOperator = "exact",
                                                 type = "person",
                                                 negation = false,
                                                 dependencyChain = null,
@@ -554,8 +569,8 @@ internal class FlagEvaluatorTest {
         val property =
             FlagProperty(
                 key = "missing_key",
-                value = "test",
-                operator = "exact",
+                propertyValue = "test",
+                propertyOperator = "exact",
                 type = "person",
                 negation = false,
                 dependencyChain = null,
@@ -606,7 +621,8 @@ internal class FlagEvaluatorTest {
     internal fun testMixedConditionsFlag() {
         val flag = createMixedConditionsFlag()
         val withoutSpaces = mapOf("email" to "example@example.com")
-        val resultWithoutSpaces = evaluator.matchFeatureFlagProperties(flag, "user-123", withoutSpaces)
+        val resultWithoutSpaces =
+            evaluator.matchFeatureFlagProperties(flag, "user-123", withoutSpaces)
         assertEquals(true, resultWithoutSpaces)
     }
 
@@ -701,8 +717,8 @@ internal class FlagEvaluatorTest {
                                         listOf(
                                             FlagProperty(
                                                 key = "id",
-                                                value = 2,
-                                                operator = "in",
+                                                propertyValue = 2,
+                                                propertyOperator = "in",
                                                 type = "cohort",
                                                 negation = false,
                                                 dependencyChain = null,
@@ -782,7 +798,13 @@ internal class FlagEvaluatorTest {
 
         // Positive case: user is in cohort 2 (not hedgebox.net, not gmail, email is set)
         val matchingProperties = mapOf("email" to "example@example.com")
-        val result = evaluator.matchFeatureFlagProperties(flag, "user-123", matchingProperties, cohortProperties)
+        val result =
+            evaluator.matchFeatureFlagProperties(
+                flag,
+                "user-123",
+                matchingProperties,
+                cohortProperties,
+            )
         assertEquals(true, result)
     }
 
@@ -793,7 +815,8 @@ internal class FlagEvaluatorTest {
 
         // Negative case: user has hedgebox.net email (fails cohort 2 first condition)
         val properties = mapOf("email" to "mark.s@hedgebox.net")
-        val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
+        val result =
+            evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
         assertEquals(false, result)
     }
 
@@ -804,7 +827,8 @@ internal class FlagEvaluatorTest {
 
         // Negative case: user has gmail email (in cohort 3, fails cohort 2 negation)
         val properties = mapOf("email" to "user@gmail.com")
-        val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
+        val result =
+            evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
         assertEquals(false, result)
     }
 
@@ -830,7 +854,8 @@ internal class FlagEvaluatorTest {
 
         // Positive case: yahoo user is not hedgebox, not gmail, and has email set
         val properties = mapOf("email" to "user@yahoo.com")
-        val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
+        val result =
+            evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
         assertEquals(true, result)
     }
 
@@ -841,7 +866,8 @@ internal class FlagEvaluatorTest {
 
         // Positive case: outlook user is not hedgebox, not gmail, and has email set
         val properties = mapOf("email" to "user@outlook.com")
-        val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
+        val result =
+            evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
         assertEquals(true, result)
     }
 
@@ -860,56 +886,60 @@ internal class FlagEvaluatorTest {
                                     listOf(
                                         FlagProperty(
                                             key = "email",
-                                            value = listOf("example@example.com"),
-                                            operator = "exact",
+                                            propertyValue = listOf("example@example.com"),
+                                            propertyOperator = "exact",
                                             type = "person",
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
-                                            value = listOf("not_example@example.com", "also_not_example@example.com"),
-                                            operator = "is_not",
+                                            propertyValue =
+                                                listOf(
+                                                    "not_example@example.com",
+                                                    "also_not_example@example.com",
+                                                ),
+                                            propertyOperator = "is_not",
                                             type = "person",
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
-                                            value = "example",
-                                            operator = "icontains",
+                                            propertyValue = "example",
+                                            propertyOperator = "icontains",
                                             type = "person",
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
-                                            value = ".net",
-                                            operator = "not_icontains",
+                                            propertyValue = ".net",
+                                            propertyOperator = "not_icontains",
                                             type = "person",
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
-                                            value = "\\w+@\\w+\\.\\w+",
-                                            operator = "regex",
+                                            propertyValue = "\\w+@\\w+\\.\\w+",
+                                            propertyOperator = "regex",
                                             type = "person",
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
-                                            value = "@yahoo.com$",
-                                            operator = "not_regex",
+                                            propertyValue = "@yahoo.com$",
+                                            propertyOperator = "not_regex",
                                             type = "person",
                                             negation = false,
                                             dependencyChain = null,
                                         ),
                                         FlagProperty(
                                             key = "email",
-                                            value = "is_set",
-                                            operator = "is_set",
+                                            propertyValue = "is_set",
+                                            propertyOperator = "is_set",
                                             type = "person",
                                             negation = false,
                                             dependencyChain = null,
@@ -941,8 +971,8 @@ internal class FlagEvaluatorTest {
                                     listOf(
                                         FlagProperty(
                                             key = "id",
-                                            value = 2,
-                                            operator = "in",
+                                            propertyValue = 2,
+                                            propertyOperator = "in",
                                             type = "cohort",
                                             negation = false,
                                             dependencyChain = null,
