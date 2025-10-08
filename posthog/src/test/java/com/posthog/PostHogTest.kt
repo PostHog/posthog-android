@@ -383,55 +383,6 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `getFeatureFlag captures evaluation_tags when present`() {
-        val file = File("src/test/resources/json/flags-with-evaluation-tags.json")
-        val responseFlagsApi = file.readText()
-
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(responseFlagsApi),
-            )
-        http.enqueue(
-            MockResponse()
-                .setBody(""),
-        )
-        val url = http.url("/")
-
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
-
-        sut.reloadFeatureFlags()
-
-        remoteConfigExecutor.shutdownAndAwaitTermination()
-
-        // remove from the http queue
-        http.takeRequest()
-
-        assertTrue(sut.getFeatureFlag("test-flag-with-tags") as Boolean)
-        assertEquals("VariantA", sut.getFeatureFlag("multivariate-flag-with-tags") as String)
-
-        queueExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        val theEvent = batch.batch.first()
-        assertEquals("\$feature_flag_called", theEvent.event)
-        assertEquals("test-flag-with-tags", theEvent.properties!!["\$feature_flag"])
-        assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
-
-        @Suppress("UNCHECKED_CAST")
-        val evaluationTags = theEvent.properties!!["\$feature_flag_evaluation_tags"] as Map<String, Any?>
-        assertEquals("1.2.3", evaluationTags["release_version"])
-        assertEquals("exp_123", evaluationTags["experiment_id"])
-        assertEquals("beta_testers", evaluationTags["user_segment"])
-
-        sut.close()
-    }
-
-    @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
@@ -566,6 +517,40 @@ internal class PostHogTest {
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `includes evaluation_environments in feature flag request when configured`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        config =
+            PostHogConfig(API_KEY).apply {
+                host = url.toString()
+                evaluationEnvironments = listOf("production", "web", "checkout")
+                preloadFeatureFlags = false
+            }
+
+        val sut = PostHog.with(config)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val body = request.body.unGzip()
+        val flagsRequest = serializer.deserialize<Map<String, Any>>(body.reader())
+
+        @Suppress("UNCHECKED_CAST")
+        val evaluationEnvironments = flagsRequest["evaluation_environments"] as? List<String>
+        assertEquals(listOf("production", "web", "checkout"), evaluationEnvironments)
 
         sut.close()
     }

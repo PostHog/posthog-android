@@ -10,6 +10,7 @@ internal class PostHogFlagsRequest(
     groups: Map<String, String>? = null,
     personProperties: Map<String, String>? = null,
     groupProperties: Map<String, String>? = null,
+    evaluationEnvironments: List<String>? = null,
 ) : HashMap<String, Any>() {
     init {
         this["api_key"] = apiKey
@@ -25,6 +26,9 @@ internal class PostHogFlagsRequest(
         }
         if (groupProperties?.isNotEmpty() == true) {
             this["\$group_properties"] = groupProperties
+        }
+        if (evaluationEnvironments?.isNotEmpty() == true) {
+            this["evaluation_environments"] = evaluationEnvironments
         }
     }
 }

@@ -66,6 +66,14 @@ public open class PostHogConfig(
      */
     public var preloadFeatureFlags: Boolean = true,
     /**
+     * Optional list of evaluation environment tags for feature flag evaluation
+     * When specified, only feature flags that have at least one matching evaluation tag will be evaluated
+     * Feature flags with no evaluation tags will always be evaluated for backward compatibility
+     * Example: listOf("production", "web", "checkout")
+     * Defaults to null (evaluate all flags)
+     */
+    public var evaluationEnvironments: List<String>? = null,
+    /**
      * Preload PostHog remote config automatically
      * Defaults to true
      */
