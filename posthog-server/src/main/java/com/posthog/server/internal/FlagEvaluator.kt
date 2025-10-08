@@ -20,7 +20,7 @@ internal class FlagEvaluator(
 ) {
     companion object {
         private const val LONG_SCALE = 0xFFFFFFFFFFFFFFF.toDouble()
-        private val NONE_VALUES_ALLOWED_OPERATORS = setOf("is_not")
+        private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.IS_NOT)
         private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
 
         // Date formatters for parsing various date formats
@@ -114,7 +114,7 @@ internal class FlagEvaluator(
         propertyValues: Map<String, Any?>,
     ): Boolean {
         val key = property.key
-        val propertyOperator = property.propertyOperator ?: "exact"
+        val propertyOperator = property.propertyOperator ?: PropertyOperator.EXACT
         val propertyValue = property.propertyValue
 
         // Check if property key exists in values
@@ -123,7 +123,7 @@ internal class FlagEvaluator(
         }
 
         // is_not_set operator can't be evaluated locally
-        if (propertyOperator == "is_not_set") {
+        if (propertyOperator == PropertyOperator.IS_NOT_SET) {
             throw InconclusiveMatchException("Can't match properties with operator is_not_set")
         }
 
@@ -135,36 +135,46 @@ internal class FlagEvaluator(
         }
 
         return when (propertyOperator) {
-            "exact", "is_not" -> {
+            PropertyOperator.EXACT, PropertyOperator.IS_NOT -> {
                 val matches = computeExactMatch(propertyValue, overrideValue)
-                if (propertyOperator == "exact") matches else !matches
+                if (propertyOperator == PropertyOperator.EXACT) matches else !matches
             }
 
-            "is_set" -> propertyValues.containsKey(key)
-            "icontains" ->
+            PropertyOperator.IS_SET -> propertyValues.containsKey(key)
+            PropertyOperator.ICONTAINS ->
                 stringContains(
                     overrideValue.toString(),
                     propertyValue.toString(),
                     ignoreCase = true,
                 )
 
-            "not_icontains" ->
+            PropertyOperator.NOT_ICONTAINS ->
                 !stringContains(
                     overrideValue.toString(),
                     propertyValue.toString(),
                     ignoreCase = true,
                 )
 
-            "regex" -> matchesRegex(propertyValue.toString(), overrideValue.toString())
-            "not_regex" -> !matchesRegex(propertyValue.toString(), overrideValue.toString())
-            "gt", "gte", "lt", "lte" ->
+            PropertyOperator.REGEX ->
+                matchesRegex(
+                    propertyValue.toString(),
+                    overrideValue.toString(),
+                )
+
+            PropertyOperator.NOT_REGEX ->
+                !matchesRegex(
+                    propertyValue.toString(),
+                    overrideValue.toString(),
+                )
+
+            PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE ->
                 compareValues(
                     overrideValue,
                     propertyValue,
                     propertyOperator,
                 )
 
-            "is_date_before", "is_date_after" ->
+            PropertyOperator.IS_DATE_BEFORE, PropertyOperator.IS_DATE_AFTER ->
                 compareDates(
                     overrideValue,
                     propertyValue,
@@ -224,7 +234,7 @@ internal class FlagEvaluator(
     private fun compareValues(
         overrideValue: Any?,
         propertyValue: Any?,
-        propertyOperator: String,
+        propertyOperator: PropertyOperator,
     ): Boolean {
         val numericValue = propertyValue?.toString()?.toDoubleOrNull()
 
@@ -260,13 +270,13 @@ internal class FlagEvaluator(
     private fun compareNumbers(
         lhs: Double,
         rhs: Double,
-        propertyOperator: String,
+        propertyOperator: PropertyOperator,
     ): Boolean {
         return when (propertyOperator) {
-            "gt" -> lhs > rhs
-            "gte" -> lhs >= rhs
-            "lt" -> lhs < rhs
-            "lte" -> lhs <= rhs
+            PropertyOperator.GT -> lhs > rhs
+            PropertyOperator.GTE -> lhs >= rhs
+            PropertyOperator.LT -> lhs < rhs
+            PropertyOperator.LTE -> lhs <= rhs
             else -> false
         }
     }
@@ -274,13 +284,13 @@ internal class FlagEvaluator(
     private fun compareStrings(
         lhs: String,
         rhs: String,
-        propertyOperator: String,
+        propertyOperator: PropertyOperator,
     ): Boolean {
         return when (propertyOperator) {
-            "gt" -> lhs > rhs
-            "gte" -> lhs >= rhs
-            "lt" -> lhs < rhs
-            "lte" -> lhs <= rhs
+            PropertyOperator.GT -> lhs > rhs
+            PropertyOperator.GTE -> lhs >= rhs
+            PropertyOperator.LT -> lhs < rhs
+            PropertyOperator.LTE -> lhs <= rhs
             else -> false
         }
     }
@@ -288,7 +298,7 @@ internal class FlagEvaluator(
     private fun compareDates(
         overrideValue: Any?,
         propertyValue: Any?,
-        propertyOperator: String,
+        propertyOperator: PropertyOperator,
     ): Boolean {
         val parsedDate =
             try {
@@ -314,8 +324,8 @@ internal class FlagEvaluator(
             }
 
         return when (propertyOperator) {
-            "is_date_before" -> overrideDate.isBefore(parsedDate)
-            "is_date_after" -> overrideDate.isAfter(parsedDate)
+            PropertyOperator.IS_DATE_BEFORE -> overrideDate.isBefore(parsedDate)
+            PropertyOperator.IS_DATE_AFTER -> overrideDate.isAfter(parsedDate)
             else -> false
         }
     }
@@ -524,15 +534,15 @@ internal class FlagEvaluator(
                     FlagProperty(
                         key = prop["key"] as? String ?: "",
                         propertyValue = prop["value"],
-                        propertyOperator = prop["operator"] as? String,
-                        type = prop["type"] as? String,
+                        propertyOperator = PropertyOperator.fromStringOrNull(prop["operator"] as? String),
+                        type = PropertyType.fromStringOrNull(prop["type"] as? String),
                         negation = prop["negation"] as? Boolean,
                         dependencyChain = prop["dependency_chain"] as? List<String>,
                     )
 
                 val matches =
                     when (property.type) {
-                        "cohort" ->
+                        PropertyType.COHORT ->
                             matchCohort(
                                 property,
                                 propertyValues,
@@ -542,7 +552,7 @@ internal class FlagEvaluator(
                                 distinctId,
                             )
 
-                        "flag" ->
+                        PropertyType.FLAG ->
                             evaluateFlagDependency(
                                 property,
                                 flagsByKey
@@ -603,7 +613,7 @@ internal class FlagEvaluator(
             for (prop in conditionProperties) {
                 val matches =
                     when (prop.type) {
-                        "cohort" ->
+                        PropertyType.COHORT ->
                             matchCohort(
                                 prop,
                                 properties,
@@ -613,7 +623,7 @@ internal class FlagEvaluator(
                                 distinctId,
                             )
 
-                        "flag" ->
+                        PropertyType.FLAG ->
                             evaluateFlagDependency(
                                 prop,
                                 flagsByKey
@@ -789,7 +799,7 @@ internal class FlagEvaluator(
         // Now check if the final flag value matches the expected value in the property
         val flagKey = property.key
         val expectedValue = property.propertyValue
-        val propertyOperator = property.propertyOperator ?: "exact"
+        val propertyOperator = property.propertyOperator ?: PropertyOperator.EXACT
 
         if (expectedValue != null) {
             // Get the actual value of the flag we're checking
@@ -801,7 +811,7 @@ internal class FlagEvaluator(
             }
 
             // For flag dependencies, we need to compare the actual flag result with expected value
-            if (propertyOperator == "flag_evaluates_to") {
+            if (propertyOperator == PropertyOperator.FLAG_EVALUATES_TO) {
                 return matchesDependencyValue(expectedValue, actualValue)
             } else {
                 throw InconclusiveMatchException("Flag dependency property for '${property.key}' has invalid operator '$propertyOperator'")
