@@ -84,8 +84,8 @@ public class com/posthog/PostHogConfig {
 	public static final field DEFAULT_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
@@ -95,6 +95,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
+	public final fun getEvaluationEnvironments ()Ljava/util/List;
 	public final fun getFeatureFlagCalledCacheSize ()I
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
@@ -133,6 +134,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
+	public final fun setEvaluationEnvironments (Ljava/util/List;)V
 	public final fun setFeatureFlagCalledCacheSize (I)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
@@ -412,16 +414,13 @@ public final class com/posthog/internal/FeatureFlag {
 }
 
 public final class com/posthog/internal/FeatureFlagMetadata {
-	public fun <init> (ILjava/lang/String;ILjava/util/Map;)V
-	public synthetic fun <init> (ILjava/lang/String;ILjava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ILjava/lang/String;I)V
 	public final fun component1 ()I
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()I
-	public final fun component4 ()Ljava/util/Map;
-	public final fun copy (ILjava/lang/String;ILjava/util/Map;)Lcom/posthog/internal/FeatureFlagMetadata;
-	public static synthetic fun copy$default (Lcom/posthog/internal/FeatureFlagMetadata;ILjava/lang/String;ILjava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/FeatureFlagMetadata;
+	public final fun copy (ILjava/lang/String;I)Lcom/posthog/internal/FeatureFlagMetadata;
+	public static synthetic fun copy$default (Lcom/posthog/internal/FeatureFlagMetadata;ILjava/lang/String;IILjava/lang/Object;)Lcom/posthog/internal/FeatureFlagMetadata;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getEvaluationTags ()Ljava/util/Map;
 	public final fun getId ()I
 	public final fun getPayload ()Ljava/lang/String;
 	public final fun getVersion ()I
