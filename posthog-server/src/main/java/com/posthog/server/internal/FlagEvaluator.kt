@@ -24,8 +24,10 @@ internal class FlagEvaluator(
         private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
 
         // Date formatters for parsing various date formats
-        private val DATE_FORMATTER_WITH_SPACE_TZ = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX")
-        private val DATE_FORMATTER_NO_SPACE_TZ = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX")
+        private val DATE_FORMATTER_WITH_SPACE_TZ =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX")
+        private val DATE_FORMATTER_NO_SPACE_TZ =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX")
         private val DATE_FORMATTER_NO_TZ = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
         private fun casefold(input: String): String {
@@ -111,8 +113,8 @@ internal class FlagEvaluator(
         propertyValues: Map<String, Any?>,
     ): Boolean {
         val key = property.key
-        val operator = property.operator ?: "exact"
-        val value = property.value
+        val propertyOperator = property.propertyOperator ?: "exact"
+        val propertyValue = property.propertyValue
 
         // Check if property key exists in values
         if (!propertyValues.containsKey(key)) {
@@ -120,48 +122,60 @@ internal class FlagEvaluator(
         }
 
         // is_not_set operator can't be evaluated locally
-        if (operator == "is_not_set") {
+        if (propertyOperator == "is_not_set") {
             throw InconclusiveMatchException("Can't match properties with operator is_not_set")
         }
 
         val overrideValue = propertyValues[key]
 
         // Handle null values (only allowed for certain operators)
-        if (operator !in NONE_VALUES_ALLOWED_OPERATORS && overrideValue == null) {
+        if (propertyOperator !in NONE_VALUES_ALLOWED_OPERATORS && overrideValue == null) {
             return false
         }
 
-        return when (operator) {
+        return when (propertyOperator) {
             "exact", "is_not" -> {
-                val matches = computeExactMatch(value, overrideValue)
-                if (operator == "exact") matches else !matches
+                val matches = computeExactMatch(propertyValue, overrideValue)
+                if (propertyOperator == "exact") matches else !matches
             }
 
             "is_set" -> propertyValues.containsKey(key)
             "icontains" ->
                 stringContains(
                     overrideValue.toString(),
-                    value.toString(),
+                    propertyValue.toString(),
                     ignoreCase = true,
                 )
 
             "not_icontains" ->
                 !stringContains(
                     overrideValue.toString(),
-                    value.toString(),
+                    propertyValue.toString(),
                     ignoreCase = true,
                 )
 
-            "regex" -> matchesRegex(value.toString(), overrideValue.toString())
-            "not_regex" -> !matchesRegex(value.toString(), overrideValue.toString())
-            "gt", "gte", "lt", "lte" -> compareValues(overrideValue, value, operator)
-            "is_date_before", "is_date_after" -> compareDates(overrideValue, value, operator)
-            else -> throw InconclusiveMatchException("Unknown operator: $operator")
+            "regex" -> matchesRegex(propertyValue.toString(), overrideValue.toString())
+            "not_regex" -> !matchesRegex(propertyValue.toString(), overrideValue.toString())
+            "gt", "gte", "lt", "lte" ->
+                compareValues(
+                    overrideValue,
+                    propertyValue,
+                    propertyOperator,
+                )
+
+            "is_date_before", "is_date_after" ->
+                compareDates(
+                    overrideValue,
+                    propertyValue,
+                    propertyOperator,
+                )
+
+            else -> throw InconclusiveMatchException("Unknown operator: $propertyOperator")
         }
     }
 
     private fun computeExactMatch(
-        value: Any?,
+        propertyValue: Any?,
         overrideValue: Any?,
     ): Boolean {
         // Lowercase to uppercase to normalize locale (e.g., Turkish i, German ß)
@@ -169,13 +183,18 @@ internal class FlagEvaluator(
         // https://kotlinlang.org/api/core/1.3/kotlin-stdlib/kotlin.text/equals.html
         val expectedValue = overrideValue?.let { casefold(it.toString()) }
         return when {
-            value is List<*> -> {
-                value.any { v ->
+            propertyValue is List<*> -> {
+                propertyValue.any { v ->
                     v == expectedValue || (v != null && casefold(v.toString()) == expectedValue)
                 }
             }
 
-            else -> value == expectedValue || (value != null && casefold(value.toString()) == expectedValue)
+            else ->
+                propertyValue == expectedValue || (
+                    propertyValue != null && casefold(
+                        propertyValue.toString(),
+                    ) == expectedValue
+                )
         }
     }
 
@@ -192,10 +211,10 @@ internal class FlagEvaluator(
 
     private fun matchesRegex(
         pattern: String,
-        value: String,
+        propertyValue: String,
     ): Boolean {
         return try {
-            Regex(pattern).find(value) != null
+            Regex(pattern).find(propertyValue) != null
         } catch (e: PatternSyntaxException) {
             false
         }
@@ -203,29 +222,46 @@ internal class FlagEvaluator(
 
     private fun compareValues(
         overrideValue: Any?,
-        value: Any?,
-        operator: String,
+        propertyValue: Any?,
+        propertyOperator: String,
     ): Boolean {
-        val numericValue = value?.toString()?.toDoubleOrNull()
+        val numericValue = propertyValue?.toString()?.toDoubleOrNull()
 
         return if (numericValue != null && overrideValue != null) {
             when (overrideValue) {
-                is String -> compareStrings(overrideValue, value.toString(), operator)
-                is Number -> compareNumbers(overrideValue.toDouble(), numericValue, operator)
-                else -> compareStrings(overrideValue.toString(), value.toString(), operator)
+                is String ->
+                    compareStrings(
+                        overrideValue,
+                        propertyValue.toString(),
+                        propertyOperator,
+                    )
+
+                is Number ->
+                    compareNumbers(
+                        overrideValue.toDouble(),
+                        numericValue,
+                        propertyOperator,
+                    )
+
+                else ->
+                    compareStrings(
+                        overrideValue.toString(),
+                        propertyValue.toString(),
+                        propertyOperator,
+                    )
             }
         } else {
             // String comparison if numeric parsing fails
-            compareStrings(overrideValue.toString(), value.toString(), operator)
+            compareStrings(overrideValue.toString(), propertyValue.toString(), propertyOperator)
         }
     }
 
     private fun compareNumbers(
         lhs: Double,
         rhs: Double,
-        operator: String,
+        propertyOperator: String,
     ): Boolean {
-        return when (operator) {
+        return when (propertyOperator) {
             "gt" -> lhs > rhs
             "gte" -> lhs >= rhs
             "lt" -> lhs < rhs
@@ -237,9 +273,9 @@ internal class FlagEvaluator(
     private fun compareStrings(
         lhs: String,
         rhs: String,
-        operator: String,
+        propertyOperator: String,
     ): Boolean {
-        return when (operator) {
+        return when (propertyOperator) {
             "gt" -> lhs > rhs
             "gte" -> lhs >= rhs
             "lt" -> lhs < rhs
@@ -250,12 +286,12 @@ internal class FlagEvaluator(
 
     private fun compareDates(
         overrideValue: Any?,
-        value: Any?,
-        operator: String,
+        propertyValue: Any?,
+        propertyOperator: String,
     ): Boolean {
         val parsedDate =
             try {
-                parseDateValue(value.toString())
+                parseDateValue(propertyValue.toString())
             } catch (e: Exception) {
                 throw InconclusiveMatchException("The date set on the flag is not a valid format")
             }
@@ -272,10 +308,11 @@ internal class FlagEvaluator(
                         throw InconclusiveMatchException("The date provided is not a valid format")
                     }
                 }
+
                 else -> throw InconclusiveMatchException("The date provided must be a string or date object")
             }
 
-        return when (operator) {
+        return when (propertyOperator) {
             "is_date_before" -> overrideDate.isBefore(parsedDate)
             "is_date_after" -> overrideDate.isAfter(parsedDate)
             else -> false
@@ -285,23 +322,23 @@ internal class FlagEvaluator(
     /**
      * Parse date value from flag definition, supporting relative dates
      */
-    private fun parseDateValue(value: String): ZonedDateTime {
+    private fun parseDateValue(propertyValue: String): ZonedDateTime {
         // Try relative date first (e.g., "-1d", "-2w", "-3m", "-1y")
-        val relativeDate = parseRelativeDate(value)
+        val relativeDate = parseRelativeDate(propertyValue)
         if (relativeDate != null) {
             return relativeDate
         }
 
         // Fall back to absolute date parsing
-        return parseOverrideDate(value)
+        return parseOverrideDate(propertyValue)
     }
 
     /**
      * Parse relative date format (e.g., "-1d" or "1d" for 1 day ago). Always produces a date in the past.
      */
-    private fun parseRelativeDate(value: String): ZonedDateTime? {
+    private fun parseRelativeDate(propertyValue: String): ZonedDateTime? {
         val regex = Regex("^-?([0-9]+)([hdwmy])$")
-        val match = regex.find(value) ?: return null
+        val match = regex.find(propertyValue) ?: return null
 
         val number = match.groupValues[1].toIntOrNull() ?: return null
         val interval = match.groupValues[2]
@@ -325,57 +362,59 @@ internal class FlagEvaluator(
     /**
      * Parse absolute date from string
      */
-    private fun parseOverrideDate(value: String): ZonedDateTime {
+    private fun parseOverrideDate(propertyValue: String): ZonedDateTime {
         try {
             // Try ISO 8601 with timezone (standard format with 'T')
-            return ZonedDateTime.parse(value)
+            return ZonedDateTime.parse(propertyValue)
         } catch (e: DateTimeParseException) {
             // fall through
         }
 
         try {
             // Try ISO_DATE_TIME
-            return ZonedDateTime.parse(value, DateTimeFormatter.ISO_DATE_TIME)
+            return ZonedDateTime.parse(propertyValue, DateTimeFormatter.ISO_DATE_TIME)
         } catch (e: DateTimeParseException) {
             // fall through
         }
 
         try {
             // Try date only: "2022-05-01"
-            return java.time.LocalDate.parse(value, DateTimeFormatter.ISO_DATE).atStartOfDay(ZoneId.systemDefault())
+            return java.time.LocalDate.parse(propertyValue, DateTimeFormatter.ISO_DATE)
+                .atStartOfDay(ZoneId.systemDefault())
         } catch (e: DateTimeParseException) {
             // fall through
         }
 
         try {
             // Try Instant (UTC)
-            return Instant.parse(value).atZone(ZoneId.systemDefault())
+            return Instant.parse(propertyValue).atZone(ZoneId.systemDefault())
         } catch (e: DateTimeParseException) {
             // fall through
         }
 
         try {
             // Try datetime with space and timezone offset: "2022-04-05 12:34:12 +01:00"
-            return ZonedDateTime.parse(value, DATE_FORMATTER_WITH_SPACE_TZ)
+            return ZonedDateTime.parse(propertyValue, DATE_FORMATTER_WITH_SPACE_TZ)
         } catch (e: DateTimeParseException) {
             // fall through
         }
 
         try {
             // Try datetime with timezone offset (no space): "2022-04-05 12:34:12+01:00"
-            return ZonedDateTime.parse(value, DATE_FORMATTER_NO_SPACE_TZ)
+            return ZonedDateTime.parse(propertyValue, DATE_FORMATTER_NO_SPACE_TZ)
         } catch (e: DateTimeParseException) {
             // fall through
         }
 
         try {
             // Try datetime without timezone: "2022-05-01 00:00:00"
-            return java.time.LocalDateTime.parse(value, DATE_FORMATTER_NO_TZ).atZone(ZoneId.systemDefault())
+            return java.time.LocalDateTime.parse(propertyValue, DATE_FORMATTER_NO_TZ)
+                .atZone(ZoneId.systemDefault())
         } catch (e: DateTimeParseException) {
             // All formats failed
         }
 
-        throw DateTimeParseException("Unable to parse date: $value", value, 0)
+        throw DateTimeParseException("Unable to parse date: $propertyValue", propertyValue, 0)
     }
 
     /**
@@ -390,7 +429,7 @@ internal class FlagEvaluator(
         distinctId: String?,
     ): Boolean {
         val cohortId =
-            property.value?.toString()
+            property.propertyValue?.toString()
                 ?: throw InconclusiveMatchException("Cohort property missing value")
 
         if (!cohortProperties.containsKey(cohortId)) {
@@ -483,8 +522,8 @@ internal class FlagEvaluator(
                 val property =
                     FlagProperty(
                         key = prop["key"] as? String ?: "",
-                        value = prop["value"],
-                        operator = prop["operator"] as? String,
+                        propertyValue = prop["value"],
+                        propertyOperator = prop["operator"] as? String,
                         type = prop["type"] as? String,
                         negation = prop["negation"] as? Boolean,
                         dependencyChain = prop["dependency_chain"] as? List<String>,
@@ -748,8 +787,8 @@ internal class FlagEvaluator(
         // All dependencies in the chain have been evaluated successfully
         // Now check if the final flag value matches the expected value in the property
         val flagKey = property.key
-        val expectedValue = property.value
-        val operator = property.operator ?: "exact"
+        val expectedValue = property.propertyValue
+        val propertyOperator = property.propertyOperator ?: "exact"
 
         if (expectedValue != null) {
             // Get the actual value of the flag we're checking
@@ -761,10 +800,10 @@ internal class FlagEvaluator(
             }
 
             // For flag dependencies, we need to compare the actual flag result with expected value
-            if (operator == "flag_evaluates_to") {
+            if (propertyOperator == "flag_evaluates_to") {
                 return matchesDependencyValue(expectedValue, actualValue)
             } else {
-                throw InconclusiveMatchException("Flag dependency property for '${property.key}' has invalid operator '$operator'")
+                throw InconclusiveMatchException("Flag dependency property for '${property.key}' has invalid operator '$propertyOperator'")
             }
         }
 
