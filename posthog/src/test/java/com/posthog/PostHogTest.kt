@@ -533,11 +533,12 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(
-            url.toString(),
-            preloadFeatureFlags = false,
-            evaluationEnvironments = listOf("production", "web", "checkout")
-        )
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                evaluationEnvironments = listOf("production", "web", "checkout"),
+            )
 
         sut.reloadFeatureFlags()
 
