@@ -73,6 +73,7 @@ internal class ThrowableCoercer {
                 }
             }
 
+            // TODO: exception_id and parent_id
             val exception =
                 mutableMapOf(
                     "type" to className,
@@ -80,7 +81,9 @@ internal class ThrowableCoercer {
                         mapOf(
                             "handled" to handled,
                             "synthetic" to false,
+                            "type" to "generic",
                         ),
+                    "thread_id" to Thread.currentThread().id
                 )
             if (throwable.message?.isNotEmpty() == true) {
                 exception["value"] = throwable.message
