@@ -54,6 +54,7 @@ internal class ThrowableCoercer {
 
             if (frames.isNotEmpty()) {
                 stackTrace["frames"] = frames
+                stackTrace["type"] =  "raw"
             }
         }
 
