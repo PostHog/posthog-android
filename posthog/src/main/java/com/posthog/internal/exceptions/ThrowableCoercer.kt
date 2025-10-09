@@ -23,15 +23,13 @@ internal class ThrowableCoercer {
         val exceptions = mutableListOf<Map<String, Any>>()
 
         val allThrowables = mutableListOf<Throwable>()
+        val circularDetector = hashSetOf<Throwable>()
 
-        var rootCause: Throwable? = throwable
-        allThrowables.add(throwable)
+        var currentThrowable: Throwable? = throwable
+        while (currentThrowable != null && circularDetector.add(currentThrowable)) {
+            allThrowables.add(currentThrowable)
 
-        while (rootCause?.cause != null) {
-            rootCause.cause?.let {
-                allThrowables.add(it)
-            }
-            rootCause = rootCause.cause
+            currentThrowable = currentThrowable.cause
         }
 
         allThrowables.forEach { theThrowable ->
@@ -83,7 +81,7 @@ internal class ThrowableCoercer {
                             "synthetic" to false,
                             "type" to "generic",
                         ),
-                    "thread_id" to Thread.currentThread().id
+                    "thread_id" to Thread.currentThread().id,
                 )
             if (throwable.message?.isNotEmpty() == true) {
                 exception["value"] = throwable.message
