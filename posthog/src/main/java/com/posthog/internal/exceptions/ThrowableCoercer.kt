@@ -20,65 +20,91 @@ internal class ThrowableCoercer {
         handled: Boolean = true,
         isFatal: Boolean = false,
     ): MutableMap<String, Any> {
-        val thePackage = throwable.javaClass.`package`
-        val theClass = throwable.javaClass.name
-        val className = if (thePackage != null) theClass.replace(thePackage.name + ".", "") else theClass
-        val exceptionPackage = thePackage?.name
+        val exceptions = mutableListOf<Map<String, Any>>()
 
-        val stackTraces = throwable.stackTrace
+        val allThrowables = mutableListOf<Throwable>()
 
-        val stackTrace = mutableMapOf<String, Any?>()
-        if (stackTraces.isNotEmpty()) {
-            val frames = mutableListOf<Map<String, Any>>()
+        var rootCause: Throwable? = throwable
+        allThrowables.add(throwable)
 
-            stackTraces.forEach { frame ->
-                val myFrame = mutableMapOf<String, Any>()
-
-                myFrame["module"] = frame.className
-                myFrame["function"] = frame.methodName
-                myFrame["platform"] = "java"
-
-                if (frame.lineNumber >= 0) {
-                    myFrame["lineno"] = frame.lineNumber
-                }
-
-                val fileName = frame.fileName
-                if (fileName?.isNotEmpty() == true) {
-                    myFrame["filename"] = fileName
-                }
-
-                myFrame["in_app"] = isInApp(frame.className, inAppIncludes)
-
-                frames.add(myFrame)
+        while (rootCause?.cause != null) {
+            rootCause.cause?.let {
+                allThrowables.add(it)
             }
-
-            if (frames.isNotEmpty()) {
-                stackTrace["frames"] = frames
-                stackTrace["type"] =  "raw"
-            }
+            rootCause = rootCause.cause
         }
 
-        val exception =
-            mutableMapOf(
-                "type" to className,
-                "value" to throwable.message,
-                "mechanism" to
-                    mapOf(
-                        "handled" to handled,
-                        "synthetic" to false,
-                    ),
-                "module" to exceptionPackage,
-            )
+        allThrowables.forEach { theThrowable ->
+            val thePackage = theThrowable.javaClass.`package`
+            val theClass = theThrowable.javaClass.name
+            val className = if (thePackage != null) theClass.replace(thePackage.name + ".", "") else theClass
+            val exceptionPackage = thePackage?.name
 
-        if (stackTrace.isNotEmpty()) {
-            exception["stacktrace"] = stackTrace
+            val stackTraces = theThrowable.stackTrace
+
+            val stackTrace = mutableMapOf<String, Any?>()
+            if (stackTraces.isNotEmpty()) {
+                val frames = mutableListOf<Map<String, Any>>()
+
+                stackTraces.forEach { frame ->
+                    val myFrame = mutableMapOf<String, Any>()
+
+                    myFrame["module"] = frame.className
+                    myFrame["function"] = frame.methodName
+                    myFrame["platform"] = "java"
+
+                    if (frame.lineNumber >= 0) {
+                        myFrame["lineno"] = frame.lineNumber
+                    }
+
+                    val fileName = frame.fileName
+                    if (fileName?.isNotEmpty() == true) {
+                        myFrame["filename"] = fileName
+                    }
+
+                    myFrame["in_app"] = isInApp(frame.className, inAppIncludes)
+
+                    frames.add(myFrame)
+                }
+
+                if (frames.isNotEmpty()) {
+                    stackTrace["frames"] = frames
+                    stackTrace["type"] = "raw"
+                }
+            }
+
+            val exception =
+                mutableMapOf(
+                    "type" to className,
+                    "mechanism" to
+                        mapOf(
+                            "handled" to handled,
+                            "synthetic" to false,
+                        ),
+                )
+            if (throwable.message?.isNotEmpty() == true) {
+                exception["value"] = throwable.message
+            }
+
+            if (exceptionPackage?.isNotEmpty() == true) {
+                exception["module"] = exceptionPackage
+            }
+
+            if (stackTrace.isNotEmpty()) {
+                exception["stacktrace"] = stackTrace
+            }
+
+            exceptions.add(exception)
         }
 
         val exceptionProperties =
-            mutableMapOf(
+            mutableMapOf<String, Any>(
                 "\$exception_level" to if (isFatal) "fatal" else "error",
-                "\$exception_list" to listOf(exception),
             )
+
+        if (exceptions.isNotEmpty()) {
+            exceptionProperties["\$exception_list"] = exceptions
+        }
 
         return exceptionProperties
     }
