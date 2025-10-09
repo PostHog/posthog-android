@@ -91,36 +91,6 @@ internal class PostHogFeatureFlags(
             ?: defaultValue
     }
 
-    private fun fetchRemoteFlags(
-        distinctId: String,
-        groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
-    ): Map<String, FeatureFlag>? {
-        val cacheKey =
-            FeatureFlagCacheKey(
-                distinctId = distinctId,
-                groups = groups,
-                personProperties = personProperties,
-                groupProperties = groupProperties,
-            )
-
-        val cachedFlags = cache.get(cacheKey)
-        if (cachedFlags != null) {
-            return cachedFlags
-        }
-
-        return try {
-            val response = api.flags(distinctId, null, groups, personProperties, groupProperties)
-            val flags = response?.flags
-            cache.put(cacheKey, flags)
-            flags
-        } catch (e: Throwable) {
-            config.logger.log("Loading remote feature flags failed: $e")
-            null
-        }
-    }
-
     private fun resolveFeatureFlag(
         key: String,
         distinctId: String,
@@ -128,15 +98,8 @@ internal class PostHogFeatureFlags(
         personProperties: Map<String, String>?,
         groupProperties: Map<String, String>?,
     ): FeatureFlag? {
-        val cacheKey =
-            FeatureFlagCacheKey(
-                distinctId = distinctId,
-                groups = groups,
-                personProperties = personProperties,
-                groupProperties = groupProperties,
-            )
-
-        val cachedFlags = cache.get(cacheKey)
+        val cachedFlags =
+            getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
         if (cachedFlags != null) {
             config.logger.log("Feature flags cache hit for distinctId: $distinctId")
             val flag = cachedFlags[key]
@@ -177,7 +140,105 @@ internal class PostHogFeatureFlags(
         // Local evaluation not available or failed - fall back to API
         // Fetch and cache all flags, then return the specific one
         config.logger.log("Feature flag cache miss for distinctId: $distinctId, calling API")
-        return fetchRemoteFlags(distinctId, groups, personProperties, groupProperties)?.get(key)
+        return getFeatureFlagsFromRemote(
+            distinctId,
+            groups,
+            personProperties,
+            groupProperties,
+        )?.get(key)
+    }
+
+    private fun getFeatureFlagsFromCache(
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
+    ): Map<String, FeatureFlag>? {
+        val cacheKey =
+            FeatureFlagCacheKey(
+                distinctId = distinctId,
+                groups = groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
+
+        return cache.get(cacheKey)
+    }
+
+    private fun getFeatureFlagsFromLocalEvaluation(
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
+        onlyEvaluateLocally: Boolean = false,
+    ): Map<String, FeatureFlag>? {
+        if (!localEvaluation) {
+            return null
+        }
+
+        val currentFlagDefinitions = flagDefinitions
+        if (currentFlagDefinitions == null) {
+            return null
+        }
+
+        config.logger.log("Attempting local evaluation for distinctId: $distinctId")
+        val localFlags = mutableMapOf<String, FeatureFlag>()
+        val props = (personProperties ?: emptyMap()).toMutableMap()
+
+        // Evaluate all flags locally
+        for ((key, flagDef) in currentFlagDefinitions) {
+            try {
+                val result =
+                    computeFlagLocally(
+                        key = key,
+                        distinctId = distinctId,
+                        personProperties = props,
+                        groups = groups,
+                        groupProperties = groupProperties,
+                    )
+
+                localFlags[key] = buildFeatureFlagFromResult(key, result, flagDef)
+            } catch (e: InconclusiveMatchException) {
+                config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
+                if (!onlyEvaluateLocally) {
+                    // Allow fallback to remote evaluation
+                    return null
+                }
+            }
+        }
+
+        config.logger.log("Local evaluation successful for ${localFlags.size} flags")
+        return localFlags
+    }
+
+    private fun getFeatureFlagsFromRemote(
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, String>?,
+        groupProperties: Map<String, String>?,
+    ): Map<String, FeatureFlag>? {
+        val cacheKey =
+            FeatureFlagCacheKey(
+                distinctId = distinctId,
+                groups = groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
+
+        val cachedFlags = cache.get(cacheKey)
+        if (cachedFlags != null) {
+            return cachedFlags
+        }
+
+        return try {
+            val response = api.flags(distinctId, null, groups, personProperties, groupProperties)
+            val flags = response?.flags
+            cache.put(cacheKey, flags)
+            flags
+        } catch (e: Throwable) {
+            config.logger.log("Loading remote feature flags failed: $e")
+            null
+        }
     }
 
     override fun getFeatureFlags(
@@ -191,62 +252,25 @@ internal class PostHogFeatureFlags(
             return null
         }
 
-        val cacheKey =
-            FeatureFlagCacheKey(
-                distinctId = distinctId,
-                groups = groups,
-                personProperties = personProperties,
-                groupProperties = groupProperties,
+        val cached = getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
+        if (cached != null) {
+            return cached
+        }
+
+        // If no cached flags, try local evaluation
+        val localFlags =
+            getFeatureFlagsFromLocalEvaluation(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
             )
-
-        // Check cache first
-        val cachedFlags = cache.get(cacheKey)
-        if (cachedFlags != null) {
-            config.logger.log("Feature flags cache hit for distinctId: $distinctId")
-            return cachedFlags
+        if (localFlags != null) {
+            return localFlags
         }
 
-        // Try local evaluation if enabled and flags are loaded
-        val currentFlagDefinitions = flagDefinitions ?: emptyMap()
-        if (localEvaluation && currentFlagDefinitions.isNotEmpty()) {
-            try {
-                config.logger.log("Attempting local evaluation for distinctId: $distinctId")
-                val localFlags = mutableMapOf<String, FeatureFlag>()
-                val props = (personProperties ?: emptyMap()).toMutableMap()
-
-                // Evaluate all flags locally
-                for ((key, flagDef) in currentFlagDefinitions) {
-                    try {
-                        val result =
-                            computeFlagLocally(
-                                key = key,
-                                distinctId = distinctId,
-                                personProperties = props,
-                                groups = groups,
-                                groupProperties = groupProperties,
-                            )
-
-                        localFlags[key] = buildFeatureFlagFromResult(key, result, flagDef)
-                    } catch (e: InconclusiveMatchException) {
-                        config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
-                        // Skip this flag, it will be fetched from API as a fallback below
-                    }
-                }
-
-                if (localFlags.isNotEmpty()) {
-                    config.logger.log("Local evaluation successful for ${localFlags.size} flags")
-                    // Don't cache locally evaluated flags, as they depend on properties
-                    return localFlags
-                }
-            } catch (e: Throwable) {
-                config.logger.log("Local evaluation failed: ${e.message}")
-                // Fall through to API call
-            }
-        }
-
-        // Cache miss or local evaluation failed - fall back to API
-        config.logger.log("Feature flags cache miss for distinctId: $distinctId, calling API")
-        return fetchRemoteFlags(distinctId, groups, personProperties, groupProperties)
+        // Finally, fall back to remote fetch
+        return getFeatureFlagsFromRemote(distinctId, groups, personProperties, groupProperties)
     }
 
     override fun clear() {
