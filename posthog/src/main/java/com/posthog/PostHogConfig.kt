@@ -190,6 +190,16 @@ public open class PostHogConfig(
      */
     public val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface =
         { config, api, endpoint, storagePrefix, executor -> PostHogQueue(config, api, endpoint, storagePrefix, executor) },
+    /**
+     * List of names to be considered inApp frames for error tracking
+     *
+     * inApp Example:
+     * inAppIncludes=["com.posthog"]
+     * All Exception stacktrace frames that start with com.posthog will be considered inApp*
+     *
+     * On Android only frames coming from the app's package name will be considered inApp by default
+     */
+    public val inAppIncludes: MutableList<String> = mutableListOf(),
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

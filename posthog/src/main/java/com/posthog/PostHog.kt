@@ -487,7 +487,11 @@ public class PostHog private constructor(
         throwable: Throwable,
         properties: Map<String, Any>?,
     ) {
-        val exceptionProperties = throwableCoercer.fromThrowableToPostHogProperties(throwable)
+        val exceptionProperties =
+            throwableCoercer.fromThrowableToPostHogProperties(
+                throwable,
+                inAppIncludes = config?.inAppIncludes ?: listOf(),
+            )
 
         properties?.let {
             exceptionProperties.putAll(it)
