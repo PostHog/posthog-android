@@ -1,4 +1,3 @@
 package com.posthog.android.sample
 
-class MyCustomException {
-}
+class MyCustomException(message: String) : Exception(message)

@@ -487,22 +487,32 @@ public class PostHog private constructor(
         throwable: Throwable,
         properties: Map<String, Any>?,
     ) {
-        val exceptionProperties =
-            throwableCoercer.fromThrowableToPostHogProperties(
-                throwable,
-                inAppIncludes = config?.inAppIncludes ?: listOf(),
-            )
-
-        properties?.let {
-            exceptionProperties.putAll(it)
+        if (!isEnabled()) {
+            return
         }
 
-        config?.let { config ->
-            val personUrl = "${config.host.trimEnd('/')}/project/${config.apiKey}/person/${distinctId()}"
-            exceptionProperties["\$exception_personURL"] = personUrl
-        }
+        try {
+            val exceptionProperties =
+                throwableCoercer.fromThrowableToPostHogProperties(
+                    throwable,
+                    inAppIncludes = config?.inAppIncludes ?: listOf(),
+                )
 
-        capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
+            properties?.let {
+                exceptionProperties.putAll(it)
+            }
+
+            config?.let { config ->
+                val personUrl = "${config.host.trimEnd('/')}/project/${config.apiKey}/person/${distinctId()}"
+                exceptionProperties["\$exception_personURL"] = personUrl
+            }
+
+            capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
+        } catch (e: Throwable) {
+            // we swallow all exceptions that the SDK has thrown by trying to convert
+            // a captured exception to a PostHog exception event
+            config?.logger?.log("captureException has thrown an exception: $e.")
+        }
     }
 
     public override fun optIn() {
