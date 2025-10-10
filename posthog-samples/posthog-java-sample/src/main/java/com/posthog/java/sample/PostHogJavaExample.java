@@ -5,7 +5,7 @@ import com.posthog.server.PostHogCaptureOptions;
 import com.posthog.server.PostHogConfig;
 import com.posthog.server.PostHogFeatureFlagOptions;
 import com.posthog.server.PostHogInterface;
-
+import com.posthog.server.PostHogSendFeatureFlagOptions;
 import java.util.HashMap;
 
 /**
@@ -68,6 +68,20 @@ public class PostHogJavaExample {
                         .build());
 
         System.out.println("File previews enabled: " + hasFilePreview);
+
+        posthog.capture(
+                "distinct-id",
+                "file_uploaded",
+                PostHogCaptureOptions
+                        .builder()
+                        .property("file_name", "document.pdf")
+                        .property("file_size", 123456)
+                        .sendFeatureFlags(PostHogSendFeatureFlagOptions
+                                .builder()
+                                .personProperty("email", "example@example.com")
+                                .onlyEvaluateLocally(true)
+                                .build())
+                        .build());
 
         posthog.flush();
         posthog.close();
