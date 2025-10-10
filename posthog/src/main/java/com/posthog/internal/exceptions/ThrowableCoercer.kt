@@ -21,18 +21,16 @@ internal class ThrowableCoercer {
         isFatal: Boolean = false,
     ): MutableMap<String, Any> {
         val exceptions = mutableListOf<Map<String, Any>>()
-
-        val allThrowables = mutableListOf<Throwable>()
         val circularDetector = hashSetOf<Throwable>()
 
         var currentThrowable: Throwable? = throwable
         while (currentThrowable != null && circularDetector.add(currentThrowable)) {
-            allThrowables.add(currentThrowable)
-
             currentThrowable = currentThrowable.cause
         }
 
-        allThrowables.forEach { theThrowable ->
+        val threadId = Thread.currentThread().id
+
+        circularDetector.forEach { theThrowable ->
             val thePackage = theThrowable.javaClass.`package`
             val theClass = theThrowable.javaClass.name
             val className = if (thePackage != null) theClass.replace(thePackage.name + ".", "") else theClass
@@ -81,7 +79,7 @@ internal class ThrowableCoercer {
                             "synthetic" to false,
                             "type" to "generic",
                         ),
-                    "thread_id" to Thread.currentThread().id,
+                    "thread_id" to threadId,
                 )
             if (throwable.message?.isNotEmpty() == true) {
                 exception["value"] = throwable.message
