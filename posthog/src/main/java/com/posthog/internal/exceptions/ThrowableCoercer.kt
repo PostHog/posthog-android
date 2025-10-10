@@ -45,7 +45,7 @@ internal class ThrowableCoercer {
 
             val stackTraces = theThrowable.stackTrace
 
-            val stackTrace = mutableMapOf<String, Any?>()
+            val stackTrace = mutableMapOf<String, Any>()
             if (stackTraces.isNotEmpty()) {
                 val frames = mutableListOf<Map<String, Any>>()
 
