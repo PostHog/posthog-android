@@ -15,6 +15,7 @@ import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
+import com.posthog.android.internal.getPackageInfo
 import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.android.replay.internal.PostHogLogCatIntegration
 import com.posthog.android.surveys.PostHogSurveysIntegration
@@ -74,6 +75,15 @@ public class PostHogAndroid private constructor() {
         ) {
             config.logger =
                 if (config.logger is PostHogNoOpLogger) PostHogAndroidLogger(config) else config.logger
+
+            val packageInfo = getPackageInfo(context, config)
+            val packageName = packageInfo?.packageName ?: ""
+
+            // only frames coming from the package name will be considered inApp by default
+            if (packageName.isNotEmpty() && !packageName.startsWith("android.")) {
+                config.inAppIncludes.add(packageName)
+            }
+
             config.context = config.context ?: PostHogAndroidContext(context, config)
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)

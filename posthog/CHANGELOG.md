@@ -1,5 +1,7 @@
 ## Next
 
+- feat: add manual captureException ([#300](https://github.com/PostHog/posthog-android/issues/300))
+
 ## 4.0.0 - 2025-10-03
 
 - feat: Stateless client can override event `timestamp` when capturing an event ([#297](https://github.com/PostHog/posthog-android/issues/297))
