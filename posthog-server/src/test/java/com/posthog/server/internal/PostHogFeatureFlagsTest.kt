@@ -11,6 +11,7 @@ import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -315,6 +316,171 @@ internal class PostHogFeatureFlagsTest {
             2,
             mockServer.requestCount,
         ) // Should have made 2 API calls for different cache keys
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `appendFlagEventProperties does nothing when options is null`() {
+        val config = createTestConfig()
+        val api = PostHogApi(config)
+        val featureFlags = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val properties = mutableMapOf<String, Any>("existing" to "value")
+
+        featureFlags.appendFlagEventProperties(
+            distinctId = "user123",
+            properties = properties,
+            groups = null,
+            options = null,
+        )
+
+        // Properties should remain unchanged
+        assertEquals(1, properties.size)
+        assertEquals("value", properties["existing"])
+    }
+
+    @Test
+    fun `appendFlagEventProperties does nothing when properties is null`() {
+        val config = createTestConfig()
+        val api = PostHogApi(config)
+        val featureFlags = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val options = com.posthog.server.PostHogSendFeatureFlagOptions.builder().build()
+
+        // Should not crash
+        featureFlags.appendFlagEventProperties(
+            distinctId = "user123",
+            properties = null,
+            groups = null,
+            options = options,
+        )
+    }
+
+    @Test
+    fun `appendFlagEventProperties enriches properties with feature flags`() {
+        val flagsResponse =
+            """
+            {
+                "flags": {
+                    "string-flag": {
+                        "key": "string-flag",
+                        "enabled": true,
+                        "variant": "control",
+                        "metadata": { "version": 1, "payload": null, "id": 1 },
+                        "reason": { "kind": "condition_match", "condition_match_type": "Test", "condition_index": 0 }
+                    },
+                    "boolean-flag": {
+                        "key": "boolean-flag",
+                        "enabled": true,
+                        "variant": null,
+                        "metadata": { "version": 1, "payload": null, "id": 2 },
+                        "reason": { "kind": "condition_match", "condition_match_type": "Test", "condition_index": 0 }
+                    },
+                    "disabled-flag": {
+                        "key": "disabled-flag",
+                        "enabled": false,
+                        "variant": null,
+                        "metadata": { "version": 1, "payload": null, "id": 3 },
+                        "reason": { "kind": "condition_match", "condition_match_type": "Test", "condition_index": 0 }
+                    }
+                }
+            }
+            """.trimIndent()
+
+        val mockServer = createMockHttp(jsonResponse(flagsResponse))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val featureFlags = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val properties = mutableMapOf<String, Any>("existing" to "value")
+        val options =
+            com.posthog.server.PostHogSendFeatureFlagOptions.builder()
+                .personProperty("email", "test@example.com")
+                .build()
+
+        featureFlags.appendFlagEventProperties(
+            distinctId = "user123",
+            properties = properties,
+            groups = null,
+            options = options,
+        )
+
+        // Verify original property preserved
+        assertEquals("value", properties["existing"])
+
+        // Verify flags added
+        assertEquals("control", properties["\$feature/string-flag"])
+        assertEquals(true, properties["\$feature/boolean-flag"])
+        assertEquals(false, properties["\$feature/disabled-flag"])
+
+        // Verify active flags list (only enabled flags)
+        @Suppress("UNCHECKED_CAST")
+        val activeFlags = properties["\$active_feature_flags"] as? List<String>
+        assertEquals(2, activeFlags?.size)
+        assertTrue(activeFlags?.contains("string-flag") == true)
+        assertTrue(activeFlags?.contains("boolean-flag") == true)
+        assertFalse(activeFlags?.contains("disabled-flag") == true)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `appendFlagEventProperties handles onlyEvaluateLocally option`() {
+        val config = createTestConfig()
+        val api = PostHogApi(config)
+        val featureFlags = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val properties = mutableMapOf<String, Any>("existing" to "value")
+        val options =
+            com.posthog.server.PostHogSendFeatureFlagOptions.builder()
+                .onlyEvaluateLocally(true)
+                .build()
+
+        featureFlags.appendFlagEventProperties(
+            distinctId = "user123",
+            properties = properties,
+            groups = null,
+            options = options,
+        )
+
+        // Without local evaluation setup, flags should be null and no properties added
+        assertEquals(1, properties.size)
+        assertEquals("value", properties["existing"])
+    }
+
+    @Test
+    fun `appendFlagEventProperties returns early when no flags resolved`() {
+        val emptyFlagsResponse = createEmptyFlagsResponse()
+        val mockServer = createMockHttp(jsonResponse(emptyFlagsResponse))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val featureFlags = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val properties = mutableMapOf<String, Any>("existing" to "value")
+        val options =
+            com.posthog.server.PostHogSendFeatureFlagOptions.builder()
+                .personProperty("email", "test@example.com")
+                .build()
+
+        featureFlags.appendFlagEventProperties(
+            distinctId = "user123",
+            properties = properties,
+            groups = null,
+            options = options,
+        )
+
+        // Empty flags map returns an empty active_feature_flags list
+        assertEquals(2, properties.size)
+        assertEquals("value", properties["existing"])
+
+        @Suppress("UNCHECKED_CAST")
+        val activeFlags = properties["\$active_feature_flags"] as? List<String>
+        assertEquals(0, activeFlags?.size)
 
         mockServer.shutdown()
     }

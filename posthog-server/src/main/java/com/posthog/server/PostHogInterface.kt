@@ -74,6 +74,7 @@ public sealed interface PostHogInterface {
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param sendFeatureFlags whether to send feature flags with this event, if not provided the default config value will be used
      */
     @JvmSynthetic
     public fun capture(
@@ -84,13 +85,14 @@ public sealed interface PostHogInterface {
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
         timestamp: Date? = null,
+        sendFeatureFlags: PostHogSendFeatureFlagOptions? = null,
     )
 
     /**
      * Captures events
      * @param event the event name
      * @param distinctId the distinctId
-     * @param options the capture options containing properties, userProperties, userPropertiesSetOnce, and groups
+     * @param options the capture options containing properties, userProperties, userPropertiesSetOnce, groups, and sendFeatureFlags
      */
     public fun capture(
         distinctId: String,
@@ -105,6 +107,7 @@ public sealed interface PostHogInterface {
             options.userPropertiesSetOnce,
             options.groups,
             options.timestamp,
+            options.sendFeatureFlags,
         )
     }
 

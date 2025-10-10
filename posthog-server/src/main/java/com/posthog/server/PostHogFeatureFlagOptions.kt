@@ -9,12 +9,16 @@ public class PostHogFeatureFlagOptions private constructor(
     public val groups: Map<String, String>?,
     public val personProperties: Map<String, Any?>?,
     public val groupProperties: Map<String, Map<String, Any?>>?,
+    public val sendFeatureFlagsEvent: Boolean = true,
+    public val onlyEvaluateLocally: Boolean = false,
 ) {
     public class Builder {
         public var defaultValue: Any? = null
         public var groups: MutableMap<String, String>? = null
         public var personProperties: MutableMap<String, Any?>? = null
         public var groupProperties: MutableMap<String, MutableMap<String, Any?>>? = null
+        public var sendFeatureFlagsEvent: Boolean = true
+        public var onlyEvaluateLocally: Boolean = false
 
         /**
          * Sets the default value to return if the feature flag is not found or not enabled
@@ -106,12 +110,32 @@ public class PostHogFeatureFlagOptions private constructor(
             return this
         }
 
+        /**
+         * Whether to send a feature flag called event
+         * Defaults to true
+         */
+        public fun sendFeatureFlagsEvent(sendFeatureFlagsEvent: Boolean): Builder {
+            this.sendFeatureFlagsEvent = sendFeatureFlagsEvent
+            return this
+        }
+
+        /**
+         * Whether to only evaluate the feature flag locally
+         * Defaults to false
+         */
+        public fun onlyEvaluateLocally(onlyEvaluateLocally: Boolean): Builder {
+            this.onlyEvaluateLocally = onlyEvaluateLocally
+            return this
+        }
+
         public fun build(): PostHogFeatureFlagOptions =
             PostHogFeatureFlagOptions(
                 defaultValue = defaultValue,
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                sendFeatureFlagsEvent = sendFeatureFlagsEvent,
+                onlyEvaluateLocally = onlyEvaluateLocally,
             )
     }
 

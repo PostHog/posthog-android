@@ -4,7 +4,7 @@ package com.posthog.internal
  * LRU cache for tracking which feature flag values have been seen
  * to deduplicate $feature_flag_called events
  */
-internal class PostHogFeatureFlagCalledCache(
+public class PostHogFeatureFlagCalledCache(
     private val maxSize: Int,
 ) {
     // LinkedHashMap isn't supported in Android API 21. We use a linked list instead
@@ -24,7 +24,7 @@ internal class PostHogFeatureFlagCalledCache(
      * Returns true if this is the first time seeing this combination (was added), false if already seen.
      */
     @Synchronized
-    fun add(
+    public fun add(
         distinctId: String,
         flagKey: String,
         value: Any?,
@@ -103,7 +103,7 @@ internal class PostHogFeatureFlagCalledCache(
      * Clear all cached entries
      */
     @Synchronized
-    fun clear() {
+    public fun clear() {
         cache.clear()
         head = null
         tail = null
@@ -113,7 +113,7 @@ internal class PostHogFeatureFlagCalledCache(
      * Get current cache size
      */
     @Synchronized
-    fun size(): Int = cache.size
+    public fun size(): Int = cache.size
 
     private companion object {
         const val BATCH_EVICTION_FACTOR = 0.2

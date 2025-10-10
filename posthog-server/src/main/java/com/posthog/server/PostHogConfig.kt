@@ -129,6 +129,7 @@ public open class PostHogConfig constructor(
 ) {
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
+    internal var featureFlags: PostHogFeatureFlags? = null
 
     public fun addBeforeSend(beforeSend: PostHogBeforeSend) {
         beforeSendCallbacks.add(beforeSend)
@@ -149,7 +150,6 @@ public open class PostHogConfig constructor(
                 apiKey = apiKey,
                 host = host,
                 debug = debug,
-                sendFeatureFlagEvent = sendFeatureFlagEvent,
                 preloadFeatureFlags = preloadFeatureFlags,
                 remoteConfig = remoteConfig,
                 flushAt = flushAt,
@@ -174,6 +174,8 @@ public open class PostHogConfig constructor(
                 queueProvider = { config, api, endpoint, _, executor ->
                     PostHogMemoryQueue(config, api, endpoint, executor)
                 },
+                // Don't let the core SDK handle this, we do it ourselves
+                sendFeatureFlagEvent = false,
             )
 
         // Apply stored callbacks and integrations

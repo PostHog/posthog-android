@@ -1,17 +1,20 @@
 package com.posthog.server
 
 import com.posthog.PostHogStateless
-import com.posthog.PostHogStatelessInterface
+import com.posthog.server.internal.EvaluationSource
+import com.posthog.server.internal.FeatureFlagResultContext
+import com.posthog.server.internal.PostHogFeatureFlags
 
-public class PostHog : PostHogInterface {
-    private var instance: PostHogStatelessInterface? = null
+public class PostHog : PostHogInterface, PostHogStateless() {
+    private var serverConfig: PostHogConfig? = null
 
     override fun <T : PostHogConfig> setup(config: T) {
-        instance = PostHogStateless.with(config.asCoreConfig())
+        super.setup(config.asCoreConfig())
+        this.serverConfig = config
     }
 
     override fun close() {
-        instance?.close()
+        super.close()
     }
 
     override fun identify(
@@ -19,7 +22,7 @@ public class PostHog : PostHogInterface {
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        instance?.identify(
+        super<PostHogStateless>.identify(
             distinctId,
             userProperties,
             userPropertiesSetOnce,
@@ -27,11 +30,11 @@ public class PostHog : PostHogInterface {
     }
 
     override fun flush() {
-        instance?.flush()
+        super.flush()
     }
 
     override fun debug(enable: Boolean) {
-        instance?.debug(enable)
+        super.debug(enable)
     }
 
     override fun capture(
@@ -42,11 +45,27 @@ public class PostHog : PostHogInterface {
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
         timestamp: java.util.Date?,
+        sendFeatureFlags: PostHogSendFeatureFlagOptions?,
     ) {
-        instance?.captureStateless(
+        val updatedProperties =
+            if (sendFeatureFlags == null) {
+                properties
+            } else {
+                mutableMapOf<String, Any>().apply {
+                    properties?.let { putAll(it) }
+                }.also { props ->
+                    appendFlagCaptureProperties(
+                        distinctId,
+                        props,
+                        groups,
+                        sendFeatureFlags,
+                    )
+                }
+            }
+        super.captureStateless(
             event,
             distinctId,
-            properties,
+            updatedProperties,
             userProperties,
             userPropertiesSetOnce,
             groups,
@@ -62,14 +81,24 @@ public class PostHog : PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Boolean {
-        return instance?.isFeatureEnabledStateless(
-            distinctId,
-            key,
-            defaultValue,
-            groups,
-            personProperties,
-            groupProperties,
-        ) ?: false
+        (featureFlags as? PostHogFeatureFlags)?.let { featureFlags ->
+            val result =
+                featureFlags.resolveFeatureFlag(
+                    key,
+                    distinctId,
+                    groups,
+                    personProperties,
+                    groupProperties,
+                )
+            sendFeatureFlagCalled(
+                distinctId,
+                key,
+                result,
+            )
+            val flag = result?.results?.get(key)
+            return flag?.enabled ?: defaultValue
+        }
+        return defaultValue
     }
 
     override fun getFeatureFlag(
@@ -80,14 +109,24 @@ public class PostHog : PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
-        return instance?.getFeatureFlagStateless(
-            distinctId,
-            key,
-            defaultValue,
-            groups,
-            personProperties,
-            groupProperties,
-        )
+        (featureFlags as? PostHogFeatureFlags)?.let { featureFlags ->
+            val result =
+                featureFlags.resolveFeatureFlag(
+                    key,
+                    distinctId,
+                    groups,
+                    personProperties,
+                    groupProperties,
+                )
+            sendFeatureFlagCalled(
+                distinctId,
+                key,
+                result,
+            )
+            val flag = result?.results?.get(key)
+            return flag?.variant ?: flag?.enabled ?: defaultValue
+        }
+        return defaultValue
     }
 
     override fun getFeatureFlagPayload(
@@ -98,14 +137,24 @@ public class PostHog : PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
-        return instance?.getFeatureFlagPayloadStateless(
-            distinctId,
-            key,
-            defaultValue,
-            groups,
-            personProperties,
-            groupProperties,
-        )
+        (featureFlags as? PostHogFeatureFlags)?.let { featureFlags ->
+            val result =
+                featureFlags.resolveFeatureFlag(
+                    key,
+                    distinctId,
+                    groups,
+                    personProperties,
+                    groupProperties,
+                )
+            sendFeatureFlagCalled(
+                distinctId,
+                key,
+                result,
+            )
+            val flag = result?.results?.get(key)
+            return flag?.metadata?.payload ?: defaultValue
+        }
+        return defaultValue
     }
 
     override fun group(
@@ -114,7 +163,7 @@ public class PostHog : PostHogInterface {
         key: String,
         groupProperties: Map<String, Any>?,
     ) {
-        instance?.groupStateless(
+        super.groupStateless(
             distinctId,
             type,
             key,
@@ -126,10 +175,110 @@ public class PostHog : PostHogInterface {
         distinctId: String,
         alias: String,
     ) {
-        instance?.aliasStateless(
+        super.aliasStateless(
             distinctId,
             alias,
         )
+    }
+
+    private fun sendFeatureFlagCalled(
+        distinctId: String,
+        key: String,
+        resultContext: FeatureFlagResultContext?,
+    ) {
+        if (serverConfig?.sendFeatureFlagEvent == false || distinctId.isEmpty() || key.isEmpty() || resultContext == null) {
+            return
+        }
+
+        if (config?.sendFeatureFlagEvent == true) {
+            val requestedFlag = resultContext.results?.get(key)
+            val requestedFlagValue = requestedFlag?.variant ?: requestedFlag?.enabled
+            val isNewlySeen = featureFlagsCalled?.add(distinctId, key, requestedFlagValue) ?: false
+            if (isNewlySeen) {
+                val props = mutableMapOf<String, Any>()
+                props["\$feature_flag"] = key
+                props["\$feature_flag_response"] = requestedFlagValue ?: ""
+                resultContext.requestId?.let {
+                    props["\$feature_flag_request_id"] = it
+                }
+                requestedFlag?.metadata?.let {
+                    props["\$feature_flag_id"] = it.id
+                    props["\$feature_flag_version"] = it.version
+                }
+                props["\$feature_flag_reason"] = requestedFlag?.reason?.description ?: ""
+                resultContext.source?.let {
+                    props["\$feature_flag_source"] = it.toString()
+                    if (it == EvaluationSource.LOCAL) {
+                        props["locally_evaluated"] = true
+                    }
+                }
+
+                var allFlags = resultContext.results
+                if (!resultContext.exhaustive) {
+                    // we only have partial results so we'll need to resolve the rest
+                    resultContext.parameters?.let { params ->
+                        // this will be cached or evaluated locally
+                        val response =
+                            (featureFlags as? PostHogFeatureFlags)?.resolveFeatureFlags(
+                                distinctId,
+                                params.groups,
+                                params.personProperties,
+                                params.groupProperties,
+                                params.onlyEvaluateLocally,
+                            )
+                        if (response != null) {
+                            allFlags = response.results
+                        }
+                    }
+                }
+
+                allFlags?.let { flags ->
+                    val activeFeatureFlags = mutableListOf<String>()
+                    flags.values.forEach { flag ->
+                        val flagValue = flag.variant ?: flag.enabled
+                        props["\$feature/${flag.key}"] = flagValue
+                        if (flagValue != false) {
+                            activeFeatureFlags.add(flag.key)
+                        }
+                    }
+                    props["\$active_feature_flags"] = activeFeatureFlags.toList()
+                }
+
+                captureStateless("\$feature_flag_called", distinctId, properties = props)
+            }
+        }
+    }
+
+    private fun appendFlagCaptureProperties(
+        distinctId: String,
+        properties: MutableMap<String, Any>?,
+        groups: Map<String, String>?,
+        options: PostHogSendFeatureFlagOptions?,
+    ) {
+        if (options == null || properties == null) {
+            return
+        }
+
+        val response =
+            (featureFlags as? PostHogFeatureFlags)?.resolveFeatureFlags(
+                distinctId,
+                groups,
+                options.personProperties,
+                options.groupProperties,
+                options.onlyEvaluateLocally,
+            )
+
+        response?.results?.values?.let {
+            val activeFeatureFlags = mutableListOf<String>()
+            it.forEach { flag ->
+                val flagValue = flag.variant ?: flag.enabled
+                properties["\$feature/${flag.key}"] = flagValue
+                if (flagValue != false) {
+                    activeFeatureFlags.add(flag.key)
+                }
+            }
+            properties["\$active_feature_flags"] = activeFeatureFlags.toList()
+        }
     }
 
     public companion object {
