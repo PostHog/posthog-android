@@ -73,6 +73,7 @@ internal class PostHogTest {
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
+                this.inAppIncludes.add("com.posthog")
             }
         return PostHog.withInternal(
             config,
@@ -1647,7 +1648,8 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        val exception = RuntimeException("Test exception message")
+        val causeException = Exception("I am the cause")
+        val exception = RuntimeException("Test exception message", causeException)
         val additionalProperties = mapOf("custom_key" to "custom_value")
 
         sut.captureException(exception, additionalProperties)
@@ -1661,25 +1663,87 @@ internal class PostHogTest {
         val batchEvents = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         val event = batchEvents.batch.first()
-        assertEquals("\$exception", event.event)
+        assertEquals(PostHogEventName.EXCEPTION.event, event.event)
 
         val properties = event.properties ?: emptyMap()
+
+        // Verify basic exception properties
         assertEquals("error", properties["\$exception_level"])
         assertEquals("custom_value", properties["custom_key"])
 
-        val exceptionList = properties["\$exception_list"] as List<*>
-        assertEquals(1, exceptionList.size)
-
-        val exceptionData = exceptionList.first() as Map<*, *>
-        assertEquals("RuntimeException", exceptionData["type"])
-        assertEquals("Test exception message", exceptionData["value"])
-
-        val mechanism = exceptionData["mechanism"] as Map<*, *>
-        assertEquals(true, mechanism["handled"])
-        assertEquals(false, mechanism["synthetic"])
-
+        // Verify person URL
+        assertTrue(properties.containsKey("\$exception_personURL"))
         val personUrl = properties["\$exception_personURL"] as String
         assertTrue(personUrl.contains("/project/${config.apiKey}/person/${sut.distinctId()}"))
+
+        // Verify exception list structure - should contain both main exception and cause
+        val exceptionList = properties["\$exception_list"] as List<*>
+        assertEquals(2, exceptionList.size)
+
+        // The ThrowableCoercer processes the exception chain with main exception first, then cause
+        val exceptions = exceptionList.map { it as Map<*, *> }
+
+        // The first exception should be the main RuntimeException
+        val mainException = exceptions[0]
+        assertEquals("RuntimeException", mainException["type"])
+        assertEquals("Test exception message", mainException["value"])
+
+        // The second exception should be the cause Exception
+        val causeExceptionData = exceptions[1]
+        assertEquals("Exception", causeExceptionData["type"])
+        assertEquals("I am the cause", causeExceptionData["value"])
+
+        val threadId = Thread.currentThread().id
+        // Verify both exceptions have the required structure
+        // Check main exception structure
+        assertEquals("RuntimeException", mainException["type"])
+        assertEquals(threadId, (mainException["thread_id"] as Number).toLong())
+
+        // Check cause exception structure
+        assertEquals("Exception", causeExceptionData["type"])
+        assertEquals(threadId, (causeExceptionData["thread_id"] as Number).toLong())
+
+        // Verify mechanism structure for main exception
+        val mechanism = mainException["mechanism"] as Map<*, *>
+        assertEquals(true, mechanism["handled"])
+        assertEquals(false, mechanism["synthetic"])
+        assertEquals("generic", mechanism["type"])
+
+        // Verify mechanism structure for cause exception
+        val causeMechanism = causeExceptionData["mechanism"] as Map<*, *>
+        assertEquals(true, causeMechanism["handled"])
+        assertEquals(false, causeMechanism["synthetic"])
+        assertEquals("generic", causeMechanism["type"])
+
+        // Verify stack trace structure for main exception
+        val stackTraceMainException = mainException["stacktrace"] as Map<*, *>
+        assertEquals("raw", stackTraceMainException["type"])
+
+        val framesMainException = stackTraceMainException["frames"] as List<*>
+        assertTrue(framesMainException.isNotEmpty())
+
+        // Verify first frame structure
+        val firstFrameMainException = framesMainException.first() as Map<*, *>
+        assertTrue(firstFrameMainException.containsKey("module"))
+        assertTrue(firstFrameMainException.containsKey("function"))
+        assertEquals("java", firstFrameMainException["platform"])
+        assertTrue(firstFrameMainException["in_app"] as Boolean)
+        assertTrue(firstFrameMainException["lineno"] is Number)
+
+        // Verify stack trace structure for cause exception
+        val stackTraceCauseException = causeExceptionData["stacktrace"] as Map<*, *>
+        assertEquals("raw", stackTraceCauseException["type"])
+
+        val framesCauseException = stackTraceCauseException["frames"] as List<*>
+        assertTrue(framesCauseException.isNotEmpty())
+
+        // Verify first frame structure
+        val firstFrameCauseException = framesCauseException.first() as Map<*, *>
+        assertTrue(firstFrameCauseException.containsKey("module"))
+        assertTrue(firstFrameCauseException.containsKey("function"))
+        assertEquals("java", firstFrameCauseException["platform"])
+        assertTrue(firstFrameCauseException["in_app"] as Boolean)
+        assertTrue(firstFrameCauseException["lineno"] is Number)
 
         sut.close()
     }

@@ -5,6 +5,11 @@ internal class ThrowableCoercer {
         className: String,
         inAppIncludes: List<String>,
     ): Boolean {
+        // if there's nothing, all frames are considered in app
+        if (inAppIncludes.isEmpty()) {
+            return true
+        }
+
         inAppIncludes.forEach { include ->
             if (className.startsWith(include)) {
                 return true
@@ -21,16 +26,18 @@ internal class ThrowableCoercer {
         isFatal: Boolean = false,
     ): MutableMap<String, Any> {
         val exceptions = mutableListOf<Map<String, Any>>()
+        val throwableList = mutableListOf<Throwable>()
         val circularDetector = hashSetOf<Throwable>()
 
         var currentThrowable: Throwable? = throwable
         while (currentThrowable != null && circularDetector.add(currentThrowable)) {
+            throwableList.add(currentThrowable)
             currentThrowable = currentThrowable.cause
         }
 
         val threadId = Thread.currentThread().id
 
-        circularDetector.forEach { theThrowable ->
+        throwableList.forEach { theThrowable ->
             val thePackage = theThrowable.javaClass.`package`
             val theClass = theThrowable.javaClass.name
             val className = if (thePackage != null) theClass.replace(thePackage.name + ".", "") else theClass
@@ -81,8 +88,8 @@ internal class ThrowableCoercer {
                         ),
                     "thread_id" to threadId,
                 )
-            if (throwable.message?.isNotEmpty() == true) {
-                exception["value"] = throwable.message
+            if (theThrowable.message?.isNotEmpty() == true) {
+                exception["value"] = theThrowable.message
             }
 
             if (exceptionPackage?.isNotEmpty() == true) {
