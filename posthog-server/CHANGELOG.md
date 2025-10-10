@@ -1,5 +1,7 @@
 ## Next
 
+- feat: Add local evaluation for feature flags ([#299](https://github.com/PostHog/posthog-android/issues/299))
+
 ## 1.1.0 - 2025-10-03
 
 - feat: `timestamp` can now be overridden when capturing an event ([#297](https://github.com/PostHog/posthog-android/issues/297))

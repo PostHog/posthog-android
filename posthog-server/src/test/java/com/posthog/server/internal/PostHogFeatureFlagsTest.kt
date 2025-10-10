@@ -212,7 +212,7 @@ internal class PostHogFeatureFlagsTest {
             )
 
         assertNull(result)
-        assertTrue(logger.containsLog("Loading feature flags failed"))
+        assertTrue(logger.containsLog("Loading remote feature flags failed"))
         mockServer.shutdown()
     }
 
