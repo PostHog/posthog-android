@@ -1,8 +1,5 @@
 package com.posthog.server
 
-import java.time.Instant
-import java.util.Date
-
 /**
  * Provides an ergonomic interface when providing options for capturing events
  * This is mainly meant to be used from Java, as Kotlin can use named parameters.

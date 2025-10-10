@@ -568,8 +568,10 @@ internal class PostHogTest {
 
         // Parse the batch request JSON
         val gson = com.google.gson.Gson()
+
         @Suppress("UNCHECKED_CAST")
         val batchData = gson.fromJson(batchBody, Map::class.java) as Map<String, Any>
+
         @Suppress("UNCHECKED_CAST")
         val batch = batchData["batch"] as List<Map<String, Any>>
 
