@@ -2,6 +2,10 @@
 
 - feat: add manual captureException ([#300](https://github.com/PostHog/posthog-android/issues/300))
 
+## 3.24.0 - 2025-10-10
+
+- add evaluation tags to android SDK ([#301](https://github.com/PostHog/posthog-android/pull/301))
+
 ## 3.23.0 - 2025-10-06
 
 - feat: Android surveys use the new response question id format ([#289](https://github.com/PostHog/posthog-android/pull/289))

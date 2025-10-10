@@ -53,6 +53,7 @@ internal class PostHogTest {
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
+        evaluationEnvironments: List<String>? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -69,6 +70,7 @@ internal class PostHogTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
+                this.evaluationEnvironments = evaluationEnvironments
                 this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
@@ -518,6 +520,38 @@ internal class PostHogTest {
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `includes evaluation_environments in feature flag request when configured`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                evaluationEnvironments = listOf("production", "web", "checkout"),
+            )
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val body = request.body.unGzip()
+        val flagsRequest = serializer.deserialize<Map<String, Any>>(body.reader())
+
+        @Suppress("UNCHECKED_CAST")
+        val evaluationEnvironments = flagsRequest["evaluation_environments"] as? List<String>
+        assertEquals(listOf("production", "web", "checkout"), evaluationEnvironments)
 
         sut.close()
     }
