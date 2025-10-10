@@ -31,7 +31,7 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
-    private var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
+    protected var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
 
     @JvmField
     protected var config: PostHogConfig? = null

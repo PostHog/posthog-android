@@ -3,53 +3,23 @@ package com.posthog.server
 /**
  * Provides an ergonomic interface when providing options for capturing events
  * This is mainly meant to be used from Java, as Kotlin can use named parameters.
+ * @see <a href="https://posthog.com/docs/product-analytics/capture-events">Documentation: Capturing events</a>
  */
-public class PostHogFeatureFlagOptions private constructor(
-    public val defaultValue: Any?,
-    public val groups: Map<String, String>?,
+public class PostHogSendFeatureFlagOptions private constructor(
+    public val onlyEvaluateLocally: Boolean = false,
     public val personProperties: Map<String, String>?,
     public val groupProperties: Map<String, String>?,
-    public val sendFeatureFlagsEvent: Boolean = true,
-    public val onlyEvaluateLocally: Boolean = false,
 ) {
     public class Builder {
-        public var defaultValue: Any? = null
-        public var groups: MutableMap<String, String>? = null
+        public var onlyEvaluateLocally: Boolean = false
         public var personProperties: MutableMap<String, String>? = null
         public var groupProperties: MutableMap<String, String>? = null
-        public var sendFeatureFlagsEvent: Boolean = true
-        public var onlyEvaluateLocally: Boolean = false
 
         /**
-         * Sets the default value to return if the feature flag is not found or not enabled
+         * Sets whether to only evaluate the feature flags locally.
          */
-        public fun defaultValue(defaultValue: Any?): Builder {
-            this.defaultValue = defaultValue
-            return this
-        }
-
-        /**
-         * Add a single custom property to the capture options
-         */
-        public fun group(
-            key: String,
-            value: String,
-        ): Builder {
-            groups =
-                (groups ?: mutableMapOf()).apply {
-                    put(key, value)
-                }
-            return this
-        }
-
-        /**
-         * Appends multiple groups to the feature flag options
-         */
-        public fun groups(groups: Map<String, String>): Builder {
-            this.groups =
-                (this.groups ?: mutableMapOf()).apply {
-                    putAll(groups)
-                }
+        public fun onlyEvaluateLocally(onlyEvaluateLocally: Boolean): Builder {
+            this.onlyEvaluateLocally = onlyEvaluateLocally
             return this
         }
 
@@ -107,32 +77,11 @@ public class PostHogFeatureFlagOptions private constructor(
             return this
         }
 
-        /**
-         * Whether to send a feature flag called event
-         * Defaults to true
-         */
-        public fun sendFeatureFlagsEvent(sendFeatureFlagsEvent: Boolean): Builder {
-            this.sendFeatureFlagsEvent = sendFeatureFlagsEvent
-            return this
-        }
-
-        /**
-         * Whether to only evaluate the feature flag locally
-         * Defaults to false
-         */
-        public fun onlyEvaluateLocally(onlyEvaluateLocally: Boolean): Builder {
-            this.onlyEvaluateLocally = onlyEvaluateLocally
-            return this
-        }
-
-        public fun build(): PostHogFeatureFlagOptions =
-            PostHogFeatureFlagOptions(
-                defaultValue = defaultValue,
-                groups = groups,
+        public fun build(): PostHogSendFeatureFlagOptions =
+            PostHogSendFeatureFlagOptions(
+                onlyEvaluateLocally = onlyEvaluateLocally,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
-                sendFeatureFlagsEvent = sendFeatureFlagsEvent,
-                onlyEvaluateLocally = onlyEvaluateLocally,
             )
     }
 
