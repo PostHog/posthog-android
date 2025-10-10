@@ -2,12 +2,17 @@ package com.posthog.server
 
 import com.posthog.PostHogStateless
 import com.posthog.PostHogStatelessInterface
+import com.posthog.server.internal.PostHogFeatureFlags
 
 public class PostHog : PostHogInterface {
     private var instance: PostHogStatelessInterface? = null
+    private var config: PostHogConfig? = null
+    private var featureFlags: PostHogFeatureFlags? = null
 
     override fun <T : PostHogConfig> setup(config: T) {
+        this.config = config
         instance = PostHogStateless.with(config.asCoreConfig())
+        featureFlags = config.featureFlags
     }
 
     override fun close() {
@@ -42,11 +47,21 @@ public class PostHog : PostHogInterface {
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
         timestamp: java.util.Date?,
+        sendFeatureFlags: PostHogSendFeatureFlagOptions?,
     ) {
+        val updatedProperties = if (sendFeatureFlags == null && properties == null) {
+            null
+        } else {
+            mutableMapOf<String, Any>().apply {
+                properties?.let { putAll(it) }
+            }.also { updatedProperties ->
+                featureFlags?.appendFlagEventProperties(distinctId, updatedProperties, groups, sendFeatureFlags)
+            }
+        }
         instance?.captureStateless(
             event,
             distinctId,
-            properties,
+            updatedProperties,
             userProperties,
             userPropertiesSetOnce,
             groups,

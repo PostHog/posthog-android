@@ -1,6 +1,7 @@
 package com.posthog.server
 
 import com.posthog.PostHogStatelessInterface
+import okhttp3.mockwebserver.MockResponse
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -491,6 +492,108 @@ internal class PostHogTest {
             options.groups,
             null,
         )
+    }
+
+    @Test
+    fun `capture with sendFeatureFlags appends flags to event properties`() {
+        val flagsResponse =
+            """
+            {
+                "flags": {
+                    "flag1": {
+                        "key": "flag1",
+                        "enabled": true,
+                        "variant": "variant_a",
+                        "metadata": { "version": 1, "payload": null, "id": 1 },
+                        "reason": { "kind": "condition_match", "condition_match_type": "Test", "condition_index": 0 }
+                    },
+                    "flag2": {
+                        "key": "flag2",
+                        "enabled": true,
+                        "variant": null,
+                        "metadata": { "version": 1, "payload": null, "id": 2 },
+                        "reason": { "kind": "condition_match", "condition_match_type": "Test", "condition_index": 0 }
+                    },
+                    "flag3": {
+                        "key": "flag3",
+                        "enabled": false,
+                        "variant": null,
+                        "metadata": { "version": 1, "payload": null, "id": 3 },
+                        "reason": { "kind": "condition_match", "condition_match_type": "Test", "condition_index": 0 }
+                    }
+                }
+            }
+            """.trimIndent()
+
+        val mockServer =
+            createMockHttp(
+                jsonResponse(flagsResponse),
+                MockResponse().setResponseCode(200).setBody("{}"),
+            )
+        val url = mockServer.url("/")
+
+        val config = PostHogConfig(apiKey = TEST_API_KEY, host = url.toString())
+        val postHog = PostHog()
+        postHog.setup(config)
+
+        // Capture with sendFeatureFlags
+        val sendFeatureFlagOptions =
+            PostHogSendFeatureFlagOptions.builder()
+                .personProperty("email", "test@example.com")
+                .build()
+
+        postHog.capture(
+            distinctId = "user123",
+            event = "test_event",
+            properties = mapOf("prop" to "value"),
+            userProperties = null,
+            userPropertiesSetOnce = null,
+            groups = null,
+            timestamp = null,
+            sendFeatureFlags = sendFeatureFlagOptions,
+        )
+
+        postHog.flush()
+
+        mockServer.takeRequest() // flags request
+        val batchRequest = mockServer.takeRequest()
+
+        // Decompress the batch body if gzipped
+        val batchBody =
+            if (batchRequest.getHeader("Content-Encoding") == "gzip") {
+                batchRequest.body.unGzip()
+            } else {
+                batchRequest.body.readUtf8()
+            }
+
+        // Parse the batch request JSON
+        val gson = com.google.gson.Gson()
+        @Suppress("UNCHECKED_CAST")
+        val batchData = gson.fromJson(batchBody, Map::class.java) as Map<String, Any>
+        @Suppress("UNCHECKED_CAST")
+        val batch = batchData["batch"] as List<Map<String, Any>>
+
+        assertEquals(1, batch.size)
+
+        val event = batch[0]
+        assertEquals("test_event", event["event"])
+        assertEquals("user123", event["distinct_id"])
+
+        @Suppress("UNCHECKED_CAST")
+        val properties = event["properties"] as Map<String, Any>
+        assertEquals("value", properties["prop"])
+        assertEquals("variant_a", properties["\$feature/flag1"])
+        assertEquals(true, properties["\$feature/flag2"])
+        assertEquals(false, properties["\$feature/flag3"])
+
+        @Suppress("UNCHECKED_CAST")
+        val activeFlags = properties["\$active_feature_flags"] as? List<String>
+        assertEquals(2, activeFlags?.size)
+        assertEquals(true, activeFlags?.contains("flag1"))
+        assertEquals(true, activeFlags?.contains("flag2"))
+
+        mockServer.shutdown()
+        postHog.close()
     }
 
     @Test

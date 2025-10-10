@@ -147,25 +147,6 @@ public open class PostHogStateless protected constructor(
             props.putAll(it)
         }
 
-        if (config?.sendFeatureFlagEvent == true) {
-            featureFlags?.getFeatureFlags()?.let {
-                if (it.isNotEmpty()) {
-                    val keys = mutableListOf<String>()
-                    for (entry in it.entries) {
-                        props["\$feature/${entry.key}"] = entry.value
-
-                        // only add active feature flags
-                        val active = entry.value as? Boolean ?: true
-
-                        if (active) {
-                            keys.add(entry.key)
-                        }
-                    }
-                    props["\$active_feature_flags"] = keys
-                }
-            }
-        }
-
         userProperties?.let {
             props["\$set"] = it
         }
@@ -277,7 +258,8 @@ public open class PostHogStateless protected constructor(
         timestamp: Date? = null,
     ): PostHogEvent? {
         // sanitize the properties or fallback to the original properties
-        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties)?.toMutableMap() ?: properties
+        val sanitizedProperties =
+            config?.propertiesSanitizer?.sanitize(properties)?.toMutableMap() ?: properties
         val postHogEvent =
             PostHogEvent(
                 event,

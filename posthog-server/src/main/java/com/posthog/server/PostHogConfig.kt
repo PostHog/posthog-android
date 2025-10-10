@@ -129,6 +129,7 @@ public open class PostHogConfig constructor(
 ) {
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
+    internal var featureFlags: PostHogFeatureFlags? = null
 
     public fun addBeforeSend(beforeSend: PostHogBeforeSend) {
         beforeSendCallbacks.add(beforeSend)
@@ -160,7 +161,7 @@ public open class PostHogConfig constructor(
                 onFeatureFlags = onFeatureFlags,
                 proxy = proxy,
                 remoteConfigProvider = { config, api, _ ->
-                    PostHogFeatureFlags(
+                    val featureFlags = PostHogFeatureFlags(
                         config,
                         api,
                         cacheMaxAgeMs = featureFlagCacheMaxAgeMs,
@@ -170,6 +171,10 @@ public open class PostHogConfig constructor(
                         pollIntervalSeconds = pollIntervalSeconds,
                         onFeatureFlags = onFeatureFlags,
                     )
+                    // TODO: Ideally we'd construct this outside of the config, maybe in PostHog.setup.
+                    //.      Then we could avoid capturing this value as a side effect.
+                    this.featureFlags = featureFlags
+                    featureFlags
                 },
                 queueProvider = { config, api, endpoint, _, executor ->
                     PostHogMemoryQueue(config, api, endpoint, executor)
@@ -235,27 +240,36 @@ public open class PostHogConfig constructor(
 
         public fun debug(debug: Boolean): Builder = apply { this.debug = debug }
 
-        public fun sendFeatureFlagEvent(sendFeatureFlagEvent: Boolean): Builder = apply { this.sendFeatureFlagEvent = sendFeatureFlagEvent }
+        public fun sendFeatureFlagEvent(sendFeatureFlagEvent: Boolean): Builder =
+            apply { this.sendFeatureFlagEvent = sendFeatureFlagEvent }
 
-        public fun preloadFeatureFlags(preloadFeatureFlags: Boolean): Builder = apply { this.preloadFeatureFlags = preloadFeatureFlags }
+        public fun preloadFeatureFlags(preloadFeatureFlags: Boolean): Builder =
+            apply { this.preloadFeatureFlags = preloadFeatureFlags }
 
-        public fun remoteConfig(remoteConfig: Boolean): Builder = apply { this.remoteConfig = remoteConfig }
+        public fun remoteConfig(remoteConfig: Boolean): Builder =
+            apply { this.remoteConfig = remoteConfig }
 
         public fun flushAt(flushAt: Int): Builder = apply { this.flushAt = flushAt }
 
-        public fun maxQueueSize(maxQueueSize: Int): Builder = apply { this.maxQueueSize = maxQueueSize }
+        public fun maxQueueSize(maxQueueSize: Int): Builder =
+            apply { this.maxQueueSize = maxQueueSize }
 
-        public fun maxBatchSize(maxBatchSize: Int): Builder = apply { this.maxBatchSize = maxBatchSize }
+        public fun maxBatchSize(maxBatchSize: Int): Builder =
+            apply { this.maxBatchSize = maxBatchSize }
 
-        public fun flushIntervalSeconds(flushIntervalSeconds: Int): Builder = apply { this.flushIntervalSeconds = flushIntervalSeconds }
+        public fun flushIntervalSeconds(flushIntervalSeconds: Int): Builder =
+            apply { this.flushIntervalSeconds = flushIntervalSeconds }
 
-        public fun encryption(encryption: PostHogEncryption?): Builder = apply { this.encryption = encryption }
+        public fun encryption(encryption: PostHogEncryption?): Builder =
+            apply { this.encryption = encryption }
 
-        public fun onFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?): Builder = apply { this.onFeatureFlags = onFeatureFlags }
+        public fun onFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?): Builder =
+            apply { this.onFeatureFlags = onFeatureFlags }
 
         public fun proxy(proxy: Proxy?): Builder = apply { this.proxy = proxy }
 
-        public fun featureFlagCacheSize(featureFlagCacheSize: Int): Builder = apply { this.featureFlagCacheSize = featureFlagCacheSize }
+        public fun featureFlagCacheSize(featureFlagCacheSize: Int): Builder =
+            apply { this.featureFlagCacheSize = featureFlagCacheSize }
 
         public fun featureFlagCacheMaxAgeMs(featureFlagCacheMaxAgeMs: Int): Builder =
             apply { this.featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs }
@@ -263,11 +277,14 @@ public open class PostHogConfig constructor(
         public fun featureFlagCalledCacheSize(featureFlagCalledCacheSize: Int): Builder =
             apply { this.featureFlagCalledCacheSize = featureFlagCalledCacheSize }
 
-        public fun localEvaluation(localEvaluation: Boolean): Builder = apply { this.localEvaluation = localEvaluation }
+        public fun localEvaluation(localEvaluation: Boolean): Builder =
+            apply { this.localEvaluation = localEvaluation }
 
-        public fun personalApiKey(personalApiKey: String?): Builder = apply { this.personalApiKey = personalApiKey }
+        public fun personalApiKey(personalApiKey: String?): Builder =
+            apply { this.personalApiKey = personalApiKey }
 
-        public fun pollIntervalSeconds(pollIntervalSeconds: Int): Builder = apply { this.pollIntervalSeconds = pollIntervalSeconds }
+        public fun pollIntervalSeconds(pollIntervalSeconds: Int): Builder =
+            apply { this.pollIntervalSeconds = pollIntervalSeconds }
 
         public fun build(): PostHogConfig =
             PostHogConfig(

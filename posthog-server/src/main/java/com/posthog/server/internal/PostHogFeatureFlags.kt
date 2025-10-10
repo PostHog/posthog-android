@@ -5,6 +5,7 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.FeatureFlag
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlagsInterface
+import com.posthog.server.PostHogSendFeatureFlagOptions
 
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
@@ -526,5 +527,42 @@ internal class PostHogFeatureFlags(
             flagsByKey = flags,
             evaluationCache = evaluationCache,
         )
+    }
+
+    internal fun appendFlagEventProperties(
+        distinctId: String,
+        properties: MutableMap<String, Any>?,
+        groups: Map<String, String>?,
+        options: PostHogSendFeatureFlagOptions?,
+    ) {
+        if (options == null || properties == null) {
+            return
+        }
+
+        val featureFlags = if (options.onlyEvaluateLocally) {
+            getFeatureFlagsFromLocalEvaluation(distinctId, groups, options.personProperties, options.groupProperties, true)
+        } else {
+            getFeatureFlags(
+                distinctId,
+                groups,
+                options.personProperties,
+                options.groupProperties,
+            )
+        }
+        if (featureFlags == null) {
+            return
+        }
+
+        val activeFeatureFlags = mutableListOf<String>()
+
+        for (featureFlag in featureFlags.values) {
+            val flagValue = featureFlag.variant ?: featureFlag.enabled
+            properties.put("\$feature/${featureFlag.key}", flagValue)
+            if (flagValue != false) {
+                activeFeatureFlags.add(featureFlag.key)
+            }
+        }
+
+        properties.put("\$active_feature_flags", activeFeatureFlags)
     }
 }
