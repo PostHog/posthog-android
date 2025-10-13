@@ -1,8 +1,7 @@
 ## Next
 
-## 3.24.0 - 2025-10-09
-
 - add evaluation tags to android SDK ([#301](https://github.com/PostHog/posthog-android/pull/301))
+- feat: add manual captureException ([#300](https://github.com/PostHog/posthog-android/issues/300))
 
 ## 3.23.0 - 2025-10-06
 

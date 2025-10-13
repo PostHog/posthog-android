@@ -30,6 +30,12 @@ public class PostHogFake : PostHogInterface {
         captures++
     }
 
+    override fun captureException(
+        throwable: Throwable,
+        properties: Map<String, Any>?,
+    ) {
+    }
+
     override fun identify(
         distinctId: String,
         userProperties: Map<String, Any>?,

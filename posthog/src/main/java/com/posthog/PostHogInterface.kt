@@ -24,6 +24,16 @@ public interface PostHogInterface : PostHogCoreInterface {
     )
 
     /**
+     * Captures exceptions
+     * @param throwable the Throwable error
+     * @param properties the custom properties
+     */
+    public fun captureException(
+        throwable: Throwable,
+        properties: Map<String, Any>? = null,
+    )
+
+    /**
      * Reloads the feature flags
      * @param onFeatureFlags the callback to get notified once feature flags is ready to use
      */
