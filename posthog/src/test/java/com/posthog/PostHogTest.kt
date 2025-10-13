@@ -1705,11 +1705,6 @@ internal class PostHogTest {
         assertEquals("error", properties["\$exception_level"])
         assertEquals("custom_value", properties["custom_key"])
 
-        // Verify person URL
-        assertTrue(properties.containsKey("\$exception_personURL"))
-        val personUrl = properties["\$exception_personURL"] as String
-        assertTrue(personUrl.contains("/project/${config.apiKey}/person/${sut.distinctId()}"))
-
         // Verify exception list structure - should contain both main exception and cause
         val exceptionList = properties["\$exception_list"] as List<*>
         assertEquals(2, exceptionList.size)

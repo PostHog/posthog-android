@@ -502,11 +502,6 @@ public class PostHog private constructor(
                 exceptionProperties.putAll(it)
             }
 
-            config?.let { config ->
-                val personUrl = "${config.host.trimEnd('/')}/project/${config.apiKey}/person/${distinctId()}"
-                exceptionProperties["\$exception_personURL"] = personUrl
-            }
-
             capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
         } catch (e: Throwable) {
             // we swallow all exceptions that the SDK has thrown by trying to convert
