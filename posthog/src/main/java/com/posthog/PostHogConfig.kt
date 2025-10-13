@@ -211,6 +211,15 @@ public open class PostHogConfig(
      * If this list of package names is empty, all frames will be considered inApp
      */
     public val inAppIncludes: MutableList<String> = mutableListOf(),
+    /**
+     * Enable autocapture of exceptions
+     * This feature installs an uncaught exception handler (Thread.UncaughtExceptionHandler) that will capture exceptions
+     *
+     * Disabled by default
+     *
+     * You can manually capture exceptions by calling [PostHog.captureException]
+     */
+    public var exceptionAutocapture: Boolean = false,
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.exceptions.PostHogExceptionAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogNoOpLogger
@@ -134,6 +135,7 @@ public class PostHog private constructor(
                 }
 
                 config.addIntegration(sendCachedEventsIntegration)
+                config.addIntegration(PostHogExceptionAutoCaptureIntegration(config))
 
                 legacyPreferences(config, config.serializer)
 

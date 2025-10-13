@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.PostHogEventName
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
@@ -48,53 +49,87 @@ internal class PostHogQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
-    override fun add(event: PostHogEvent) {
-        executor.executeSafely {
-            var removeFirst = false
-            if (deque.size >= config.maxQueueSize) {
-                removeFirst = true
+    private fun addEventSync(event: PostHogEvent): Boolean {
+        storagePrefix?.let {
+            val dir = File(it, config.apiKey)
+
+            if (!dirCreated) {
+                dir.mkdirs()
+                dirCreated = true
             }
 
-            if (removeFirst) {
-                try {
-                    val first: File
-                    synchronized(dequeLock) {
-                        first = deque.removeFirst()
-                    }
-                    first.deleteSafely(config)
-                    config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
-                } catch (ignored: NoSuchElementException) {
-                }
+            val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
+            val file = File(dir, "$uuid.event")
+            synchronized(dequeLock) {
+                deque.add(file)
             }
 
-            storagePrefix?.let {
-                val dir = File(it, config.apiKey)
-
-                if (!dirCreated) {
-                    dir.mkdirs()
-                    dirCreated = true
+            try {
+                val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
+                os.use { theOutputStream ->
+                    config.serializer.serialize(event, theOutputStream.writer().buffered())
                 }
+                config.logger.log("Queued Event ${event.event}: ${file.name}.")
 
-                val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
-                val file = File(dir, "$uuid.event")
+                return true
+            } catch (e: Throwable) {
+                config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
+
+                // if for some reason the file failed to serialize, lets delete it
+                file.deleteSafely(config)
+            }
+
+            return false
+        }
+
+        // if there's no storagePrefix, we assume it failed
+        return true
+    }
+
+    private fun removeEventSync() {
+        var removeFirst = false
+        if (deque.size >= config.maxQueueSize) {
+            removeFirst = true
+        }
+
+        if (removeFirst) {
+            try {
+                val first: File
                 synchronized(dequeLock) {
-                    deque.add(file)
+                    first = deque.removeFirst()
                 }
+                first.deleteSafely(config)
+                config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
+            } catch (ignored: NoSuchElementException) {
+            }
+        }
+    }
 
-                try {
-                    val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
-                    os.use { theOutputStream ->
-                        config.serializer.serialize(event, theOutputStream.writer().buffered())
-                    }
-                    config.logger.log("Queued Event ${event.event}: ${file.name}.")
+    private fun flushEventSync(event: PostHogEvent) {
+        removeEventSync()
+        if (addEventSync(event)) {
+            // this is best effort since we dont know if theres
+            // enough time to flush events to the wire
+            flushIfOverThreshold()
+        }
+    }
 
-                    flushIfOverThreshold()
-                } catch (e: Throwable) {
-                    config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
+    override fun add(event: PostHogEvent) {
+        val isExceptionEvent = event.event == PostHogEventName.EXCEPTION.event
+        val isFatal = event.properties?.get("\$exception_level") == "fatal"
 
-                    // if for some reason the file failed to serialize, lets delete it
-                    file.deleteSafely(config)
-                }
+        if (isExceptionEvent && isFatal) {
+            flushEventSync(event)
+            try {
+                executor.submit {
+                    flushEventSync(event)
+                }.get()
+            } catch (e: Throwable) {
+                config.logger.log("Flushing failed: $e.")
+            }
+        } else {
+            executor.executeSafely {
+                flushEventSync(event)
             }
         }
     }

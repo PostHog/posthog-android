@@ -22,20 +22,32 @@ internal class ThrowableCoercer {
     fun fromThrowableToPostHogProperties(
         throwable: Throwable,
         inAppIncludes: List<String> = listOf(),
-        handled: Boolean = true,
-        isFatal: Boolean = false,
     ): MutableMap<String, Any> {
         val exceptions = mutableListOf<Map<String, Any>>()
         val throwableList = mutableListOf<Throwable>()
         val circularDetector = hashSetOf<Throwable>()
 
+        var handled = true
+        var isFatal = false
+        var mechanismType = "generic"
+
         var currentThrowable: Throwable? = throwable
+        val threadId: Long
+
+        if (throwable is PostHogThrowable) {
+            handled = throwable.handled
+            isFatal = throwable.isFatal
+            mechanismType = throwable.mechanism
+            currentThrowable = throwable.cause
+            threadId = throwable.thread.id
+        } else {
+            threadId = Thread.currentThread().id
+        }
+
         while (currentThrowable != null && circularDetector.add(currentThrowable)) {
             throwableList.add(currentThrowable)
             currentThrowable = currentThrowable.cause
         }
-
-        val threadId = Thread.currentThread().id
 
         throwableList.forEach { theThrowable ->
             val thePackage = theThrowable.javaClass.`package`
@@ -84,7 +96,7 @@ internal class ThrowableCoercer {
                         mapOf(
                             "handled" to handled,
                             "synthetic" to false,
-                            "type" to "generic",
+                            "type" to mechanismType,
                         ),
                     "thread_id" to threadId,
                 )
