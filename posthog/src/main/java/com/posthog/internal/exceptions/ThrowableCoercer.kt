@@ -100,9 +100,9 @@ internal class ThrowableCoercer {
                         ),
                     "thread_id" to threadId,
                 )
-            if (theThrowable.message?.isNotEmpty() == true) {
-                exception["value"] = theThrowable.message
-            }
+
+            // value is required, using an empty placeholder
+            exception["value"] = theThrowable.message ?: ""
 
             if (exceptionPackage?.isNotEmpty() == true) {
                 exception["module"] = exceptionPackage

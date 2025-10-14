@@ -67,7 +67,6 @@ public class PostHogExceptionAutoCaptureIntegration : PostHogIntegration, Thread
     ) {
         postHog?.let { postHog ->
             postHog.captureException(PostHogThrowable(throwable, thread))
-            // TODO: flush has to await the queue to be processed
             postHog.flush()
         }
 

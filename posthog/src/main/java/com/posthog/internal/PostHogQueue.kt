@@ -105,12 +105,15 @@ internal class PostHogQueue(
         }
     }
 
-    private fun flushEventSync(event: PostHogEvent) {
+    private fun flushEventSync(
+        event: PostHogEvent,
+        isFatal: Boolean = false,
+    ) {
         removeEventSync()
         if (addEventSync(event)) {
             // this is best effort since we dont know if theres
             // enough time to flush events to the wire
-            flushIfOverThreshold()
+            flushIfOverThreshold(isFatal)
         }
     }
 
@@ -121,9 +124,11 @@ internal class PostHogQueue(
         if (isExceptionEvent && isFatal) {
             flushEventSync(event)
             try {
-                executor.submit {
-                    flushEventSync(event)
-                }.get()
+                val result =
+                    executor.submit {
+                        flushEventSync(event, true)
+                    }.get()
+                config.logger.log("Flushing result: $result.")
             } catch (e: Throwable) {
                 config.logger.log("Flushing failed: $e.")
             }
@@ -134,9 +139,9 @@ internal class PostHogQueue(
         }
     }
 
-    private fun flushIfOverThreshold() {
+    private fun flushIfOverThreshold(isFatal: Boolean) {
         if (isAboveThreshold(config.flushAt)) {
-            flushBatch()
+            flushBatch(isFatal)
         }
     }
 
@@ -167,8 +172,8 @@ internal class PostHogQueue(
         return events
     }
 
-    private fun flushBatch() {
-        if (!canFlushBatch()) {
+    private fun flushBatch(isFatal: Boolean) {
+        if (!isFatal && !canFlushBatch()) {
             config.logger.log("Cannot flush the Queue.")
             return
         }
