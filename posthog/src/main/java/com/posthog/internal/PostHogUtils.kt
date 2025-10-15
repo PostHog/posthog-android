@@ -47,6 +47,7 @@ internal fun File.existsSafely(config: PostHogConfig): Boolean {
     }
 }
 
+@PostHogInternal
 public fun ExecutorService.submitSyncSafely(run: Runnable) {
     try {
         // can throw RejectedExecutionException, InterruptedException and more
