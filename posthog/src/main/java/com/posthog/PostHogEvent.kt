@@ -1,6 +1,8 @@
 package com.posthog
 
 import com.google.gson.annotations.SerializedName
+import com.posthog.internal.exceptions.ThrowableCoercer.Companion.EXCEPTION_LEVEL_ATTRIBUTE
+import com.posthog.internal.exceptions.ThrowableCoercer.Companion.EXCEPTION_LEVEL_FATAL
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
@@ -35,4 +37,18 @@ public data class PostHogEvent(
     // Only used for Replay
     @SerializedName("api_key")
     var apiKey: String? = null,
-)
+) {
+    /**
+     * Checks if the event is an exception event ($exception)
+     */
+    public fun isExceptionEvent(): Boolean {
+        return event == PostHogEventName.EXCEPTION.event
+    }
+
+    /**
+     * Checks if the event is a fatal exception event ($exception) and properties ($exception_level=fatal)
+     */
+    public fun isFatalExceptionEvent(): Boolean {
+        return isExceptionEvent() && properties?.get(EXCEPTION_LEVEL_ATTRIBUTE) == EXCEPTION_LEVEL_FATAL
+    }
+}

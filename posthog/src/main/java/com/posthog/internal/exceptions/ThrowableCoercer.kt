@@ -117,7 +117,7 @@ internal class ThrowableCoercer {
 
         val exceptionProperties =
             mutableMapOf<String, Any>(
-                "\$exception_level" to if (isFatal) "fatal" else "error",
+                EXCEPTION_LEVEL_ATTRIBUTE to if (isFatal) EXCEPTION_LEVEL_FATAL else "error",
             )
 
         if (exceptions.isNotEmpty()) {
@@ -125,5 +125,10 @@ internal class ThrowableCoercer {
         }
 
         return exceptionProperties
+    }
+
+    internal companion object {
+        const val EXCEPTION_LEVEL_FATAL = "fatal"
+        const val EXCEPTION_LEVEL_ATTRIBUTE = "\$exception_level"
     }
 }

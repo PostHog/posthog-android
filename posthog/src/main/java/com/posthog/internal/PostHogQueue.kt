@@ -2,7 +2,6 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
-import com.posthog.PostHogEventName
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
@@ -118,19 +117,9 @@ internal class PostHogQueue(
     }
 
     override fun add(event: PostHogEvent) {
-        val isExceptionEvent = event.event == PostHogEventName.EXCEPTION.event
-        val isFatal = event.properties?.get("\$exception_level") == "fatal"
-
-        if (isExceptionEvent && isFatal) {
-            flushEventSync(event)
-            try {
-                val result =
-                    executor.submit {
-                        flushEventSync(event, true)
-                    }.get()
-                config.logger.log("Flushing result: $result.")
-            } catch (e: Throwable) {
-                config.logger.log("Flushing failed: $e.")
+        if (event.isFatalExceptionEvent()) {
+            executor.submitSyncSafely {
+                flushEventSync(event, true)
             }
         } else {
             executor.executeSafely {
