@@ -31,23 +31,29 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         if (integrationInstalled) {
             return
         }
-        this.postHog = postHog
 
         if (!config.errorTrackingConfig.autoCapture) {
             return
         }
+
+        this.postHog = postHog
 
         val currentExceptionHandler = adapterExceptionHandler.getDefaultUncaughtExceptionHandler()
 
         if (currentExceptionHandler != null) {
             if (currentExceptionHandler !is PostHogErrorTrackingAutoCaptureIntegration) {
                 defaultExceptionHandler = currentExceptionHandler
+                installHandler()
             }
+            // we don't install if the handler is us already
         } else {
             defaultExceptionHandler = null
+            installHandler()
         }
-        adapterExceptionHandler.setDefaultUncaughtExceptionHandler(this)
+    }
 
+    private fun installHandler() {
+        adapterExceptionHandler.setDefaultUncaughtExceptionHandler(this)
         integrationInstalled = true
         config.logger.log("Exception autocapture is enabled.")
     }

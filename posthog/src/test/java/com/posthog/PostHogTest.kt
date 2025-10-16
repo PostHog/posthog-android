@@ -75,7 +75,7 @@ internal class PostHogTest {
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
-                this.inAppIncludes.add("com.posthog")
+                this.errorTrackingConfig.inAppIncludes.add("com.posthog")
             }
         return PostHog.withInternal(
             config,
