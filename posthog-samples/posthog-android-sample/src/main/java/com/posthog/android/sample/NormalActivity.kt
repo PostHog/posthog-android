@@ -43,6 +43,8 @@ class NormalActivity : ComponentActivity() {
                 str = "123"
                 Toast.makeText(this, str, Toast.LENGTH_SHORT).show()
             }
+//            val domsehting = DoSomething()
+//            domsehting.doSomethingNow()
 
             val isNetworkRequestEnabled = PostHog.isFeatureEnabled("enable_network_request", false)
 

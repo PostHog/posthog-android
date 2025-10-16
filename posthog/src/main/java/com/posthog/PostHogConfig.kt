@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.errortracking.PostHogErrorTrackingConfig
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogContext
@@ -199,27 +200,9 @@ public open class PostHogConfig(
     public val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface =
         { config, api, endpoint, storagePrefix, executor -> PostHogQueue(config, api, endpoint, storagePrefix, executor) },
     /**
-     * List of package names to be considered inApp frames for error tracking
-     *
-     * inApp Example:
-     * inAppIncludes=["com.yourapp"]
-     * All Exception stacktrace frames that start with com.yourapp will be considered inApp*
-     *
-     * On Android only frames coming from the app's package name will be considered inApp by default
-     * On Android, We add your app's package name to this list automatically (read from applicationId at runtime)
-     *
-     * If this list of package names is empty, all frames will be considered inApp
+     * Configuration for PostHog Error Tracking feature.
      */
-    public val inAppIncludes: MutableList<String> = mutableListOf(),
-    /**
-     * Enable autocapture of exceptions
-     * This feature installs an uncaught exception handler (Thread.UncaughtExceptionHandler) that will capture exceptions
-     *
-     * Disabled by default
-     *
-     * You can manually capture exceptions by calling [PostHog.captureException]
-     */
-    public var exceptionAutocapture: Boolean = false,
+    public val errorTrackingConfig: PostHogErrorTrackingConfig = PostHogErrorTrackingConfig(),
 ) {
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

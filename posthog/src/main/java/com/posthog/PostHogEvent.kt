@@ -1,8 +1,8 @@
 package com.posthog
 
 import com.google.gson.annotations.SerializedName
-import com.posthog.internal.exceptions.ThrowableCoercer.Companion.EXCEPTION_LEVEL_ATTRIBUTE
-import com.posthog.internal.exceptions.ThrowableCoercer.Companion.EXCEPTION_LEVEL_FATAL
+import com.posthog.internal.errortracking.ThrowableCoercer.Companion.EXCEPTION_LEVEL_ATTRIBUTE
+import com.posthog.internal.errortracking.ThrowableCoercer.Companion.EXCEPTION_LEVEL_FATAL
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID

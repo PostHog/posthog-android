@@ -1,6 +1,6 @@
 package com.posthog
 
-import com.posthog.exceptions.PostHogExceptionAutoCaptureIntegration
+import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogNoOpLogger
@@ -20,7 +20,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
-import com.posthog.internal.exceptions.ThrowableCoercer
+import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
@@ -135,7 +135,7 @@ public class PostHog private constructor(
                 }
 
                 config.addIntegration(sendCachedEventsIntegration)
-                config.addIntegration(PostHogExceptionAutoCaptureIntegration(config))
+                config.addIntegration(PostHogErrorTrackingAutoCaptureIntegration(config))
 
                 legacyPreferences(config, config.serializer)
 
@@ -497,7 +497,7 @@ public class PostHog private constructor(
             val exceptionProperties =
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
-                    inAppIncludes = config?.inAppIncludes ?: listOf(),
+                    inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
                 )
 
             properties?.let {

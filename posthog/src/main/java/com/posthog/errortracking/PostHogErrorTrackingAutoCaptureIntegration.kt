@@ -1,12 +1,12 @@
-package com.posthog.exceptions
+package com.posthog.errortracking
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
-import com.posthog.internal.exceptions.PostHogThrowable
-import com.posthog.internal.exceptions.UncaughtExceptionHandlerAdapter
+import com.posthog.internal.errortracking.PostHogThrowable
+import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
 
-public class PostHogExceptionAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler {
+public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler {
     private val config: PostHogConfig
     private val adapterExceptionHandler: UncaughtExceptionHandlerAdapter
     private var defaultExceptionHandler: Thread.UncaughtExceptionHandler? = null
@@ -33,14 +33,14 @@ public class PostHogExceptionAutoCaptureIntegration : PostHogIntegration, Thread
         }
         this.postHog = postHog
 
-        if (!config.exceptionAutocapture) {
+        if (!config.errorTrackingConfig.autoCapture) {
             return
         }
 
         val currentExceptionHandler = adapterExceptionHandler.getDefaultUncaughtExceptionHandler()
 
         if (currentExceptionHandler != null) {
-            if (currentExceptionHandler !is PostHogExceptionAutoCaptureIntegration) {
+            if (currentExceptionHandler !is PostHogErrorTrackingAutoCaptureIntegration) {
                 defaultExceptionHandler = currentExceptionHandler
             }
         } else {
@@ -58,6 +58,7 @@ public class PostHogExceptionAutoCaptureIntegration : PostHogIntegration, Thread
         }
         adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
         integrationInstalled = false
+        postHog = null
         config.logger.log("Exception autocapture is disabled.")
     }
 

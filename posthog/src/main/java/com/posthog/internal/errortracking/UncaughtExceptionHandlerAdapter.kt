@@ -1,4 +1,4 @@
-package com.posthog.internal.exceptions
+package com.posthog.internal.errortracking
 
 internal interface UncaughtExceptionHandlerAdapter {
     fun getDefaultUncaughtExceptionHandler(): Thread.UncaughtExceptionHandler?

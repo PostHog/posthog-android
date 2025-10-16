@@ -1,4 +1,4 @@
-package com.posthog.internal.exceptions
+package com.posthog.internal.errortracking
 
 internal class ThrowableCoercer {
     private fun isInApp(
