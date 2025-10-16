@@ -3,8 +3,11 @@ package com.posthog.internal
 import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
+import com.posthog.PostHogEvent
+import com.posthog.PostHogEventName
 import com.posthog.awaitExecution
 import com.posthog.generateEvent
+import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
@@ -363,5 +366,25 @@ internal class PostHogQueueTest {
         val config = PostHogConfig(API_KEY)
 
         assertTrue(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `flush the event right away if exception and fatal`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val fakeCurrentTime = FakePostHogDateProvider()
+        val path = tmpDir.newFolder().absolutePath
+        val sut = getSut(host = url.toString(), flushAt = 1, storagePrefix = path, dateProvider = fakeCurrentTime)
+
+        val props = mutableMapOf<String, Any>(ThrowableCoercer.EXCEPTION_LEVEL_ATTRIBUTE to ThrowableCoercer.EXCEPTION_LEVEL_FATAL)
+        val event = PostHogEvent(PostHogEventName.EXCEPTION.event, "123", properties = props)
+
+        sut.add(event)
+
+        // we dont call shutdownAndAwaitTermination here
+
+        assertEquals(0, sut.dequeList.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 }
