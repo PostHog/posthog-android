@@ -86,8 +86,8 @@ public class com/posthog/PostHogConfig {
 	public static final field DEFAULT_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;Ljava/util/List;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
@@ -97,13 +97,13 @@ public class com/posthog/PostHogConfig {
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
+	public final fun getErrorTrackingConfig ()Lcom/posthog/errortracking/PostHogErrorTrackingConfig;
 	public final fun getEvaluationEnvironments ()Ljava/util/List;
 	public final fun getFeatureFlagCalledCacheSize ()I
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getGetAnonymousId ()Lkotlin/jvm/functions/Function1;
 	public final fun getHost ()Ljava/lang/String;
-	public final fun getInAppIncludes ()Ljava/util/List;
 	public final fun getIntegrations ()Ljava/util/List;
 	public final fun getLegacyStoragePrefix ()Ljava/lang/String;
 	public final fun getLogger ()Lcom/posthog/internal/PostHogLogger;
@@ -215,6 +215,8 @@ public final class com/posthog/PostHogEvent {
 	public final fun getType ()Ljava/lang/String;
 	public final fun getUuid ()Ljava/util/UUID;
 	public fun hashCode ()I
+	public final fun isExceptionEvent ()Z
+	public final fun isFatalExceptionEvent ()Z
 	public final fun setApiKey (Ljava/lang/String;)V
 	public fun toString ()Ljava/lang/String;
 }
@@ -383,6 +385,23 @@ public final class com/posthog/PostHogStatelessInterface$DefaultImpls {
 }
 
 public abstract interface annotation class com/posthog/PostHogVisibleForTesting : java/lang/annotation/Annotation {
+}
+
+public final class com/posthog/errortracking/PostHogErrorTrackingAutoCaptureIntegration : com/posthog/PostHogIntegration, java/lang/Thread$UncaughtExceptionHandler {
+	public fun <init> (Lcom/posthog/PostHogConfig;)V
+	public fun install (Lcom/posthog/PostHogInterface;)V
+	public fun uncaughtException (Ljava/lang/Thread;Ljava/lang/Throwable;)V
+	public fun uninstall ()V
+}
+
+public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
+	public fun <init> ()V
+	public fun <init> (Z)V
+	public fun <init> (ZLjava/util/List;)V
+	public synthetic fun <init> (ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAutoCapture ()Z
+	public final fun getInAppIncludes ()Ljava/util/List;
+	public final fun setAutoCapture (Z)V
 }
 
 public final class com/posthog/internal/EvaluationReason {
@@ -636,6 +655,7 @@ public final class com/posthog/internal/PostHogUtilsKt {
 	public static final fun executeSafely (Ljava/util/concurrent/Executor;Ljava/lang/Runnable;)V
 	public static final fun interruptSafely (Ljava/lang/Thread;)V
 	public static final fun isNetworkingError (Ljava/lang/Throwable;)Z
+	public static final fun submitSyncSafely (Ljava/util/concurrent/ExecutorService;Ljava/lang/Runnable;)V
 }
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {

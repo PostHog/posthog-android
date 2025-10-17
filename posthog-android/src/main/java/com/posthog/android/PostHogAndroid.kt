@@ -81,7 +81,7 @@ public class PostHogAndroid private constructor() {
 
             // only frames coming from the package name will be considered inApp by default
             if (packageName.isNotEmpty() && !packageName.startsWith("android.")) {
-                config.inAppIncludes.add(packageName)
+                config.errorTrackingConfig.inAppIncludes.add(packageName)
             }
 
             config.context = config.context ?: PostHogAndroidContext(context, config)
