@@ -25,14 +25,14 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     @BeforeTest
     fun setUp() {
         whenever(mockConfig.logger).thenReturn(mockLogger)
-        whenever(mockConfig.errorTrackingConfig).thenReturn(
-            PostHogErrorTrackingConfig().apply {
-                autoCapture = true
-            },
-        )
     }
 
-    private fun getSut(): PostHogErrorTrackingAutoCaptureIntegration {
+    private fun getSut(autoCapture: Boolean = true): PostHogErrorTrackingAutoCaptureIntegration {
+        whenever(mockConfig.errorTrackingConfig).thenReturn(
+            PostHogErrorTrackingConfig().apply {
+                this.autoCapture = autoCapture
+            },
+        )
         return PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter)
     }
 
@@ -47,20 +47,19 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.install(mockPostHog)
 
         verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.uninstall()
     }
 
     @Test
     fun `install does nothing when autoCapture is disabled`() {
-        whenever(mockConfig.errorTrackingConfig).thenReturn(
-            PostHogErrorTrackingConfig().apply {
-                autoCapture = false
-            },
-        )
-        val integration = getSut()
+        val integration = getSut(false)
 
         integration.install(mockPostHog)
 
         verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
     }
 
     @Test
@@ -71,6 +70,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.install(mockPostHog)
 
         verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.uninstall()
     }
 
     @Test
@@ -81,6 +82,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.install(mockPostHog)
 
         verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.uninstall()
     }
 
     @Test
@@ -92,6 +95,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.install(mockPostHog)
 
         verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
     }
 
     @Test
@@ -101,6 +106,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.uninstall()
 
         verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
     }
 
     @Test
@@ -112,6 +119,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.uninstall()
 
         verify(mockAdapter).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
+
+        integration.uninstall()
     }
 
     @Test
@@ -125,6 +134,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.uncaughtException(thread, throwable)
 
         verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull())
+
+        integration.uninstall()
     }
 
     @Test
@@ -140,5 +151,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.uncaughtException(thread, throwable)
 
         verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        integration.uninstall()
     }
 }
