@@ -86,12 +86,7 @@ internal class PostHogQueue(
     }
 
     private fun removeEventSync() {
-        var removeFirst = false
         if (deque.size >= config.maxQueueSize) {
-            removeFirst = true
-        }
-
-        if (removeFirst) {
             try {
                 val first: File
                 synchronized(dequeLock) {
