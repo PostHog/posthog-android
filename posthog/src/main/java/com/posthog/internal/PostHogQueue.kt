@@ -48,60 +48,84 @@ internal class PostHogQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
-    override fun add(event: PostHogEvent) {
-        executor.executeSafely {
-            var removeFirst = false
-            if (deque.size >= config.maxQueueSize) {
-                removeFirst = true
+    private fun addEventSync(event: PostHogEvent): Boolean {
+        storagePrefix?.let {
+            val dir = File(it, config.apiKey)
+
+            if (!dirCreated) {
+                dir.mkdirs()
+                dirCreated = true
             }
 
-            if (removeFirst) {
-                try {
-                    val first: File
-                    synchronized(dequeLock) {
-                        first = deque.removeFirst()
-                    }
-                    first.deleteSafely(config)
-                    config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
-                } catch (ignored: NoSuchElementException) {
-                }
+            val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
+            val file = File(dir, "$uuid.event")
+            synchronized(dequeLock) {
+                deque.add(file)
             }
 
-            storagePrefix?.let {
-                val dir = File(it, config.apiKey)
-
-                if (!dirCreated) {
-                    dir.mkdirs()
-                    dirCreated = true
+            try {
+                val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
+                os.use { theOutputStream ->
+                    config.serializer.serialize(event, theOutputStream.writer().buffered())
                 }
+                config.logger.log("Queued Event ${event.event}: ${file.name}.")
 
-                val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
-                val file = File(dir, "$uuid.event")
+                return true
+            } catch (e: Throwable) {
+                config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
+
+                // if for some reason the file failed to serialize, lets delete it
+                file.deleteSafely(config)
+            }
+
+            return false
+        }
+
+        // if there's no storagePrefix, we assume it failed
+        return true
+    }
+
+    private fun removeEventSync() {
+        if (deque.size >= config.maxQueueSize) {
+            try {
+                val first: File
                 synchronized(dequeLock) {
-                    deque.add(file)
+                    first = deque.removeFirst()
                 }
-
-                try {
-                    val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
-                    os.use { theOutputStream ->
-                        config.serializer.serialize(event, theOutputStream.writer().buffered())
-                    }
-                    config.logger.log("Queued Event ${event.event}: ${file.name}.")
-
-                    flushIfOverThreshold()
-                } catch (e: Throwable) {
-                    config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
-
-                    // if for some reason the file failed to serialize, lets delete it
-                    file.deleteSafely(config)
-                }
+                first.deleteSafely(config)
+                config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
+            } catch (ignored: NoSuchElementException) {
             }
         }
     }
 
-    private fun flushIfOverThreshold() {
+    private fun flushEventSync(
+        event: PostHogEvent,
+        isFatal: Boolean = false,
+    ) {
+        removeEventSync()
+        if (addEventSync(event)) {
+            // this is best effort since we dont know if theres
+            // enough time to flush events to the wire
+            flushIfOverThreshold(isFatal)
+        }
+    }
+
+    override fun add(event: PostHogEvent) {
+        if (event.isFatalExceptionEvent()) {
+            executor.submitSyncSafely {
+                flushEventSync(event, true)
+            }
+        } else {
+            executor.executeSafely {
+                flushEventSync(event)
+            }
+        }
+    }
+
+    private fun flushIfOverThreshold(isFatal: Boolean) {
         if (isAboveThreshold(config.flushAt)) {
-            flushBatch()
+            flushBatch(isFatal)
         }
     }
 
@@ -132,8 +156,8 @@ internal class PostHogQueue(
         return events
     }
 
-    private fun flushBatch() {
-        if (!canFlushBatch()) {
+    private fun flushBatch(isFatal: Boolean) {
+        if (!isFatal && !canFlushBatch()) {
             config.logger.log("Cannot flush the Queue.")
             return
         }

@@ -28,9 +28,10 @@ class MyApp : Application() {
                 captureScreenViews = false
                 sessionReplay = true
                 preloadFeatureFlags = true
+                sendFeatureFlagEvent = true
                 onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
                 addBeforeSend { event ->
-                    if (event.event == "test_name") {
+                    if (event.event == "test_event") {
                         null
                     } else {
                         event
@@ -41,6 +42,7 @@ class MyApp : Application() {
                 sessionReplayConfig.captureLogcat = true
                 sessionReplayConfig.screenshot = true
                 surveys = true
+                errorTrackingConfig.autoCapture = true
             }
         PostHogAndroid.setup(this, config)
     }

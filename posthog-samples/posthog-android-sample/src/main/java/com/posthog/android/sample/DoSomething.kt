@@ -7,7 +7,7 @@ class DoSomething {
         try {
             throw MyCustomException("Something went wrong")
         } catch (e: Throwable) {
-            PostHog.captureException(e, mapOf("am-i-stupid" to true))
+            PostHog.captureException(e, mapOf("my-custom-error" to true))
         }
     }
 }

@@ -9,6 +9,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
@@ -75,7 +76,7 @@ internal class PostHogTest {
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
-                this.inAppIncludes.add("com.posthog")
+                this.errorTrackingConfig.inAppIncludes.add("com.posthog")
             }
         return PostHog.withInternal(
             config,
@@ -1773,6 +1774,75 @@ internal class PostHogTest {
         assertEquals("java", firstFrameCauseException["platform"])
         assertTrue(firstFrameCauseException["in_app"] as Boolean)
         assertTrue(firstFrameCauseException["lineno"] is Number)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException unwraps and captures exception with correct properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val causeException = RuntimeException("Test exception message")
+        val thread = Thread()
+        val exception = PostHogThrowable(causeException, thread = thread)
+        val additionalProperties = mapOf("custom_key" to "custom_value")
+
+        sut.captureException(exception, additionalProperties)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batchEvents = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val event = batchEvents.batch.first()
+        assertEquals(PostHogEventName.EXCEPTION.event, event.event)
+
+        val properties = event.properties ?: emptyMap()
+
+        // Verify basic exception properties
+        assertEquals("fatal", properties["\$exception_level"])
+        assertEquals("custom_value", properties["custom_key"])
+
+        // Verify exception list structure - should contain both main exception and cause
+        val exceptionList = properties["\$exception_list"] as List<*>
+        assertEquals(1, exceptionList.size)
+
+        // The ThrowableCoercer processes the exception chain with main exception first, then cause
+        val exceptions = exceptionList.map { it as Map<*, *> }
+
+        // The first exception should be the main RuntimeException
+        val mainException = exceptions[0]
+        assertEquals("RuntimeException", mainException["type"])
+        assertEquals("Test exception message", mainException["value"])
+
+        assertEquals(thread.id, (mainException["thread_id"] as Number).toLong())
+
+        // Verify mechanism structure for main exception
+        val mechanism = mainException["mechanism"] as Map<*, *>
+        assertEquals(false, mechanism["handled"])
+        assertEquals(false, mechanism["synthetic"])
+        assertEquals("UncaughtExceptionHandler", mechanism["type"])
+
+        // Verify stack trace structure for main exception
+        val stackTraceMainException = mainException["stacktrace"] as Map<*, *>
+        assertEquals("raw", stackTraceMainException["type"])
+
+        val framesMainException = stackTraceMainException["frames"] as List<*>
+        assertTrue(framesMainException.isNotEmpty())
+
+        // Verify first frame structure
+        val firstFrameMainException = framesMainException.first() as Map<*, *>
+        assertTrue(firstFrameMainException.containsKey("module"))
+        assertTrue(firstFrameMainException.containsKey("function"))
+        assertEquals("java", firstFrameMainException["platform"])
+        assertTrue(firstFrameMainException["in_app"] as Boolean)
+        assertTrue(firstFrameMainException["lineno"] is Number)
 
         sut.close()
     }
