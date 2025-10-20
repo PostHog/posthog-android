@@ -38,13 +38,13 @@ class NormalActivity : ComponentActivity() {
 //            finish()
             // Check if the "enable_network_request" feature flag is enabled
 
-            var str: String? = null
-            if (str!!.startsWith("")) {
-                str = "123"
-                Toast.makeText(this, str, Toast.LENGTH_SHORT).show()
-            }
-//            val domsehting = DoSomething()
-//            domsehting.doSomethingNow()
+//            var str: String? = null
+//            if (str!!.startsWith("")) {
+//                str = "123"
+//                Toast.makeText(this, str, Toast.LENGTH_SHORT).show()
+//            }
+            val doSomething = DoSomething()
+            doSomething.doSomethingNow()
 
             val isNetworkRequestEnabled = PostHog.isFeatureEnabled("enable_network_request", false)
 

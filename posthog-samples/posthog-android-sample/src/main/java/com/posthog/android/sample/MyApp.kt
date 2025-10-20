@@ -26,12 +26,12 @@ class MyApp : Application() {
                 captureDeepLinks = false
                 captureApplicationLifecycleEvents = false
                 captureScreenViews = false
-                sessionReplay = false
-                preloadFeatureFlags = false
-                sendFeatureFlagEvent = false
+                sessionReplay = true
+                preloadFeatureFlags = true
+                sendFeatureFlagEvent = true
                 onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
                 addBeforeSend { event ->
-                    if (event.event == "test_name") {
+                    if (event.event == "test_event") {
                         null
                     } else {
                         event
