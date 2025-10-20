@@ -1,5 +1,7 @@
 ## Next
 
+## 4.1.0 - 2025-10-20
+
 - feat: add manual captureException ([#300](https://github.com/PostHog/posthog-android/issues/300))
 - feat: add exception autocapture ([#305](https://github.com/PostHog/posthog-android/issues/305))
 
