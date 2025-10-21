@@ -3,8 +3,10 @@ package com.posthog.server.internal
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.FeatureFlag
+import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlagsInterface
+import com.posthog.internal.PropertyGroup
 
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
@@ -22,7 +24,6 @@ internal class PostHogFeatureFlags(
             maxAgeMs = cacheMaxAgeMs,
         )
 
-    // Local evaluation state
     @Volatile
     private var featureFlags: List<FlagDefinition>? = null
 
@@ -30,7 +31,7 @@ internal class PostHogFeatureFlags(
     private var flagDefinitions: Map<String, FlagDefinition>? = null
 
     @Volatile
-    private var cohorts: Map<String, CohortDefinition>? = null
+    private var cohorts: Map<String, PropertyGroup>? = null
 
     @Volatile
     private var groupTypeMapping: Map<String, String>? = null
@@ -290,30 +291,25 @@ internal class PostHogFeatureFlags(
             return
         }
 
-        try {
-            config.logger.log("Loading feature flags for local evaluation")
-            val response = api.localEvaluation(personalApiKey)
+        synchronized(this) {
+            if (definitionsLoaded) {
+                config.logger.log("Definitions already loaded, skipping")
+                return
+            }
 
-            if (response != null) {
-                // Parse flag definitions
-                val flags =
-                    response.flags?.mapNotNull { flagMap ->
-                        try {
-                            parseFlagDefinition(flagMap)
-                        } catch (e: Exception) {
-                            config.logger.log("Failed to parse flag definition: ${e.message}")
-                            null
-                        }
-                    }
+            try {
+                config.logger.log("Loading feature flags for local evaluation")
+                val apiResponse = api.localEvaluation(personalApiKey)
 
-                featureFlags = flags
-                flagDefinitions = flags?.associateBy { it.key }
-                cohorts = response.cohorts?.mapValues { parseCohortDefinition(it.value) }
-                groupTypeMapping = response.groupTypeMapping
+                if (apiResponse != null) {
+                    // apiResponse is now LocalEvaluationResponse with properly typed models
+                    featureFlags = apiResponse.flags
+                    flagDefinitions = apiResponse.flags?.associateBy { it.key }
+                    cohorts = apiResponse.cohorts
+                    groupTypeMapping = apiResponse.groupTypeMapping
 
-                config.logger.log("Loaded ${flags?.size ?: 0} feature flags for local evaluation")
+                    config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
 
-                if (!definitionsLoaded) {
                     definitionsLoaded = true
                     try {
                         onFeatureFlags?.loaded()
@@ -321,9 +317,9 @@ internal class PostHogFeatureFlags(
                         config.logger.log("Error in onFeatureFlags callback: ${e.message}")
                     }
                 }
+            } catch (e: Throwable) {
+                config.logger.log("Failed to load feature flags for local evaluation: ${e.message}")
             }
-        } catch (e: Throwable) {
-            config.logger.log("Failed to load feature flags for local evaluation: ${e.message}")
         }
     }
 
@@ -360,101 +356,6 @@ internal class PostHogFeatureFlags(
                     version = flagDef.version,
                 ),
             reason = null,
-        )
-    }
-
-    /**
-     * Parse a flag definition from JSON map
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun parseFlagDefinition(flagMap: Map<String, Any?>): FlagDefinition {
-        return FlagDefinition(
-            id = (flagMap["id"] as? Number)?.toInt() ?: 0,
-            name = flagMap["name"] as? String ?: "",
-            key = flagMap["key"] as? String ?: "",
-            active = flagMap["active"] as? Boolean ?: false,
-            filters = parseFilters(flagMap["filters"] as? Map<String, Any?>),
-            version = (flagMap["version"] as? Number)?.toInt() ?: 0,
-        )
-    }
-
-    /**
-     * Parse filters from JSON map
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun parseFilters(filtersMap: Map<String, Any?>?): FlagFilters {
-        val groups =
-            (filtersMap?.get("groups") as? List<Map<String, Any?>>)?.map { parseConditionGroup(it) }
-        val multivariate = parseMultiVariate(filtersMap?.get("multivariate") as? Map<String, Any?>)
-        val payloads = filtersMap?.get("payloads") as? Map<String, Any?>
-
-        return FlagFilters(
-            groups = groups,
-            multivariate = multivariate,
-            payloads = payloads,
-        )
-    }
-
-    /**
-     * Parse a condition group from JSON map
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun parseConditionGroup(groupMap: Map<String, Any?>): FlagConditionGroup {
-        val properties =
-            (groupMap["properties"] as? List<Map<String, Any?>>)?.map { parseProperty(it) }
-        val rolloutPercentage = (groupMap["rollout_percentage"] as? Number)?.toInt()
-        val variant = groupMap["variant"] as? String
-
-        return FlagConditionGroup(
-            properties = properties,
-            rolloutPercentage = rolloutPercentage,
-            variant = variant,
-        )
-    }
-
-    /**
-     * Parse a property from JSON map
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun parseProperty(propMap: Map<String, Any?>): FlagProperty {
-        return FlagProperty(
-            key = propMap["key"] as? String ?: "",
-            propertyValue = propMap["value"],
-            propertyOperator = PropertyOperator.fromStringOrNull(propMap["operator"] as? String),
-            type = PropertyType.fromStringOrNull(propMap["type"] as? String),
-            negation = propMap["negation"] as? Boolean,
-            dependencyChain = propMap["dependency_chain"] as? List<String>,
-        )
-    }
-
-    /**
-     * Parse multivariate config from JSON map
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun parseMultiVariate(multivariateMap: Map<String, Any?>?): MultiVariateConfig? {
-        if (multivariateMap == null) return null
-
-        val variants =
-            (multivariateMap["variants"] as? List<Map<String, Any?>>)?.map { variantMap ->
-                VariantDefinition(
-                    key = variantMap["key"] as? String ?: "",
-                    rolloutPercentage =
-                        (variantMap["rollout_percentage"] as? Number)?.toDouble()
-                            ?: 0.0,
-                )
-            }
-
-        return MultiVariateConfig(variants = variants)
-    }
-
-    /**
-     * Parse cohort definition from JSON map
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun parseCohortDefinition(cohortMap: Map<String, Any?>): CohortDefinition {
-        return CohortDefinition(
-            type = cohortMap["type"] as? String,
-            values = cohortMap["values"] as? List<Any>,
         )
     }
 

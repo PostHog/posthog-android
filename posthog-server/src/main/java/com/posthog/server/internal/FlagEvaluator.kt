@@ -1,6 +1,14 @@
 package com.posthog.server.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.internal.FlagConditionGroup
+import com.posthog.internal.FlagDefinition
+import com.posthog.internal.FlagProperty
+import com.posthog.internal.LogicalOperator
+import com.posthog.internal.PropertyGroup
+import com.posthog.internal.PropertyOperator
+import com.posthog.internal.PropertyType
+import com.posthog.internal.PropertyValue
 import java.security.MessageDigest
 import java.text.Normalizer
 import java.time.Instant
@@ -24,7 +32,6 @@ internal class FlagEvaluator(
         private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
 
-        // Date formatters for parsing various date formats
         private val DATE_FORMATTER_WITH_SPACE_TZ =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX")
         private val DATE_FORMATTER_NO_SPACE_TZ =
@@ -434,14 +441,13 @@ internal class FlagEvaluator(
     fun matchCohort(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
-        cohortProperties: Map<String, CohortDefinition>,
+        cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
     ): Boolean {
-        val cohortId =
-            property.propertyValue?.toString()
-                ?: throw InconclusiveMatchException("Cohort property missing value")
+        val cohortId = property.propertyValue?.toString()
+            ?: throw InconclusiveMatchException("Cohort property missing value")
 
         if (!cohortProperties.containsKey(cohortId)) {
             throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
@@ -463,88 +469,30 @@ internal class FlagEvaluator(
     /**
      * Match a property group (AND/OR) against property values
      */
-    @Suppress("UNCHECKED_CAST")
     fun matchPropertyGroup(
-        propertyGroup: CohortDefinition,
+        propertyGroup: PropertyGroup,
         propertyValues: Map<String, Any?>,
-        cohortProperties: Map<String, CohortDefinition>,
+        cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
     ): Boolean {
         val groupType = propertyGroup.type
-        val properties = propertyGroup.values ?: return true
+        val properties = propertyGroup.values
 
-        if (properties.isEmpty()) {
-            // Empty groups are no-ops, always match
-            return true
-        }
+        // Empty properties always match
+        if (properties == null || properties.isEmpty()) return true
 
         var errorMatchingLocally = false
 
-        // Check if this is a nested property group
-        val firstProperty = properties.firstOrNull()
-        if (firstProperty is Map<*, *> && firstProperty.containsKey("values")) {
-            // Nested property groups
-            for (prop in properties) {
-                if (prop !is Map<*, *>) continue
-
-                try {
-                    val nestedGroup =
-                        CohortDefinition(
-                            type = prop["type"] as? String,
-                            values = prop["values"] as? List<Any>,
-                        )
-                    val matches =
-                        matchPropertyGroup(
-                            nestedGroup,
-                            propertyValues,
-                            cohortProperties,
-                            flagsByKey,
-                            evaluationCache,
-                            distinctId,
-                        )
-
-                    if (groupType == "AND") {
-                        if (!matches) return false
-                    } else {
-                        // OR group
-                        if (matches) return true
-                    }
-                } catch (e: InconclusiveMatchException) {
-                    config.logger.log("Failed to compute property $prop locally: ${e.message}")
-                    errorMatchingLocally = true
-                }
-            }
-
-            if (errorMatchingLocally) {
-                throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
-            }
-
-            // If we get here, all matched in AND case, or none matched in OR case
-            return groupType == "AND"
-        }
-
-        // Regular properties
-        for (prop in properties) {
-            if (prop !is Map<*, *>) continue
-
-            try {
-                val property =
-                    FlagProperty(
-                        key = prop["key"] as? String ?: "",
-                        propertyValue = prop["value"],
-                        propertyOperator = PropertyOperator.fromStringOrNull(prop["operator"] as? String),
-                        type = PropertyType.fromStringOrNull(prop["type"] as? String),
-                        negation = prop["negation"] as? Boolean,
-                        dependencyChain = prop["dependency_chain"] as? List<String>,
-                    )
-
-                val matches =
-                    when (property.type) {
-                        PropertyType.COHORT ->
-                            matchCohort(
-                                property,
+        // Handle based on whether we have nested property groups or flag properties
+        when (properties) {
+            is PropertyValue.PropertyGroups -> {
+                for (nestedGroup in properties.values) {
+                    try {
+                        val matches =
+                            matchPropertyGroup(
+                                nestedGroup,
                                 propertyValues,
                                 cohortProperties,
                                 flagsByKey,
@@ -552,45 +500,83 @@ internal class FlagEvaluator(
                                 distinctId,
                             )
 
-                        PropertyType.FLAG ->
-                            evaluateFlagDependency(
-                                property,
-                                flagsByKey
-                                    ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without flagsByKey"),
-                                evaluationCache
-                                    ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without evaluationCache"),
-                                distinctId
-                                    ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without distinctId"),
-                                propertyValues,
-                                cohortProperties,
-                            )
-
-                        else -> matchProperty(property, propertyValues)
+                        if (groupType == LogicalOperator.AND) {
+                            if (!matches) return false
+                        } else {
+                            // OR group
+                            if (matches) return true
+                        }
+                    } catch (e: InconclusiveMatchException) {
+                        config.logger.log("Failed to compute nested property group locally: ${e.message}")
+                        errorMatchingLocally = true
                     }
-
-                val negation = property.negation ?: false
-
-                if (groupType == "AND") {
-                    // If negated property, do the inverse
-                    if (!matches && !negation) return false
-                    if (matches && negation) return false
-                } else {
-                    // OR group
-                    if (matches && !negation) return true
-                    if (!matches && negation) return true
                 }
-            } catch (e: InconclusiveMatchException) {
-                config.logger.log("Failed to compute property $prop locally: ${e.message}")
-                errorMatchingLocally = true
+
+                if (errorMatchingLocally) {
+                    throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
+                }
+
+                // If we get here, all matched in AND case, or none matched in OR case
+                return groupType == LogicalOperator.AND
+            }
+
+            is PropertyValue.FlagProperties -> {
+                // Regular properties
+                for (property in properties.values) {
+                    try {
+                        val matches =
+                            when (property.type) {
+                                PropertyType.COHORT ->
+                                    matchCohort(
+                                        property,
+                                        propertyValues,
+                                        cohortProperties,
+                                        flagsByKey,
+                                        evaluationCache,
+                                        distinctId,
+                                    )
+
+                                PropertyType.FLAG ->
+                                    evaluateFlagDependency(
+                                        property,
+                                        flagsByKey
+                                            ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without flagsByKey"),
+                                        evaluationCache
+                                            ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without evaluationCache"),
+                                        distinctId
+                                            ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without distinctId"),
+                                        propertyValues,
+                                        cohortProperties,
+                                    )
+
+                                else -> matchProperty(property, propertyValues)
+                            }
+
+                        val negation = property.negation ?: false
+
+                        if (groupType == LogicalOperator.AND) {
+                            // If negated property, do the inverse
+                            if (!matches && !negation) return false
+                            if (matches && negation) return false
+                        } else {
+                            // OR group
+                            if (matches && !negation) return true
+                            if (!matches && negation) return true
+                        }
+                    } catch (e: InconclusiveMatchException) {
+                        config.logger.log("Failed to compute property ${property.key} locally: ${e.message}")
+                        errorMatchingLocally = true
+                    }
+                }
+
+                if (errorMatchingLocally) {
+                    throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
+                }
+
+                // If we get here, all matched in AND case, or none matched in OR case
+                return groupType == LogicalOperator.AND
             }
         }
-
-        if (errorMatchingLocally) {
-            throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
-        }
-
-        // If we get here, all matched in AND case, or none matched in OR case
-        return groupType == "AND"
     }
 
     /**
@@ -601,7 +587,7 @@ internal class FlagEvaluator(
         distinctId: String,
         condition: FlagConditionGroup,
         properties: Map<String, Any?>,
-        cohortProperties: Map<String, CohortDefinition>,
+        cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
     ): Boolean {
@@ -669,7 +655,7 @@ internal class FlagEvaluator(
         flag: FlagDefinition,
         distinctId: String,
         properties: Map<String, Any?>,
-        cohortProperties: Map<String, CohortDefinition> = emptyMap(),
+        cohortProperties: Map<String, PropertyGroup> = emptyMap(),
         flagsByKey: Map<String, FlagDefinition>? = null,
         evaluationCache: MutableMap<String, Any?>? = null,
     ): Any? {
@@ -731,7 +717,7 @@ internal class FlagEvaluator(
         evaluationCache: MutableMap<String, Any?>,
         distinctId: String,
         properties: Map<String, Any?>,
-        cohortProperties: Map<String, CohortDefinition>,
+        cohortProperties: Map<String, PropertyGroup>,
     ): Boolean {
         // Check if dependency_chain is present
         val dependencyChain = property.dependencyChain
