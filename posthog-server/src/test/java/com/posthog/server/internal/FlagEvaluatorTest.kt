@@ -1,6 +1,16 @@
 package com.posthog.server.internal
 
+import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
+import com.posthog.internal.FlagConditionGroup
+import com.posthog.internal.FlagDefinition
+import com.posthog.internal.FlagFilters
+import com.posthog.internal.FlagProperty
+import com.posthog.internal.MultiVariateConfig
+import com.posthog.internal.PropertyGroup
+import com.posthog.internal.PropertyOperator
+import com.posthog.internal.PropertyType
+import com.posthog.internal.VariantDefinition
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -442,37 +452,33 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesSimpleMatch() {
-        val flag =
-            FlagDefinition(
-                id = 1,
-                name = "Test Flag",
-                key = "test-flag",
-                active = true,
-                filters =
-                    FlagFilters(
-                        groups =
-                            listOf(
-                                FlagConditionGroup(
-                                    properties =
-                                        listOf(
-                                            FlagProperty(
-                                                key = "email",
-                                                propertyValue = "test@example.com",
-                                                propertyOperator = PropertyOperator.EXACT,
-                                                type = PropertyType.PERSON,
-                                                negation = false,
-                                                dependencyChain = null,
-                                            ),
-                                        ),
-                                    rolloutPercentage = 100,
-                                    variant = null,
-                                ),
-                            ),
-                        multivariate = null,
-                        payloads = null,
-                    ),
-                version = 1,
-            )
+        val json = """
+            {
+              "id": 1,
+              "name": "Test Flag",
+              "key": "test-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "email",
+                        "value": "test@example.com",
+                        "operator": "exact",
+                        "type": "person",
+                        "negation": false
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
 
         val properties = mapOf("email" to "test@example.com")
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
@@ -481,37 +487,33 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesNoMatch() {
-        val flag =
-            FlagDefinition(
-                id = 1,
-                name = "Test Flag",
-                key = "test-flag",
-                active = true,
-                filters =
-                    FlagFilters(
-                        groups =
-                            listOf(
-                                FlagConditionGroup(
-                                    properties =
-                                        listOf(
-                                            FlagProperty(
-                                                key = "email",
-                                                propertyValue = "test@example.com",
-                                                propertyOperator = PropertyOperator.EXACT,
-                                                type = PropertyType.PERSON,
-                                                negation = false,
-                                                dependencyChain = null,
-                                            ),
-                                        ),
-                                    rolloutPercentage = 100,
-                                    variant = null,
-                                ),
-                            ),
-                        multivariate = null,
-                        payloads = null,
-                    ),
-                version = 1,
-            )
+        val json = """
+            {
+              "id": 1,
+              "name": "Test Flag",
+              "key": "test-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "email",
+                        "value": "test@example.com",
+                        "operator": "exact",
+                        "type": "person",
+                        "negation": false
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
 
         val properties = mapOf("email" to "other@example.com")
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
@@ -520,38 +522,34 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesWithRollout() {
-        val flag =
-            FlagDefinition(
-                id = 1,
-                name = "Test Flag",
-                key = "test-flag",
-                active = true,
-                filters =
-                    FlagFilters(
-                        groups =
-                            listOf(
-                                FlagConditionGroup(
-                                    properties = emptyList(),
-                                    rolloutPercentage = 50,
-                                    variant = null,
-                                ),
-                            ),
-                        multivariate = null,
-                        payloads = null,
-                    ),
-                version = 1,
-            )
+        val json = """
+            {
+              "id": 1,
+              "name": "Test Flag",
+              "key": "test-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 50
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
 
         // Test multiple users to verify some match and some don't
         var matchCount = 0
-        for (i in 1..100) {
+        for (i in 1..1000) {
             val result = evaluator.matchFeatureFlagProperties(flag, "user-$i", emptyMap())
             if (result == true) matchCount++
         }
 
-        // With 50% rollout, we should get roughly 50 matches out of 100
-        // Allow some variance (40-60)
-        assertTrue("Expected ~50 matches, got $matchCount", matchCount in 40..60)
+        assertTrue("Expected ~500 matches, got $matchCount", matchCount in 400..600)
     }
 
     @Test
@@ -588,33 +586,37 @@ internal class FlagEvaluatorTest {
     // Helper functions
 
     internal fun createSimpleFlag(): FlagDefinition {
-        return FlagDefinition(
-            id = 1,
-            name = "Simple Flag",
-            key = "simple-flag",
-            active = true,
-            filters =
-                FlagFilters(
-                    groups =
-                        listOf(
-                            FlagConditionGroup(
-                                properties = emptyList(),
-                                rolloutPercentage = 100,
-                                variant = null,
-                            ),
-                        ),
-                    multivariate =
-                        MultiVariateConfig(
-                            variants =
-                                listOf(
-                                    VariantDefinition(key = "control", rolloutPercentage = 50.0),
-                                    VariantDefinition(key = "test", rolloutPercentage = 50.0),
-                                ),
-                        ),
-                    payloads = null,
-                ),
-            version = 1,
-        )
+        val json = """
+            {
+              "id": 1,
+              "name": "Simple Flag",
+              "key": "simple-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ],
+                "multivariate": {
+                  "variants": [
+                    {
+                      "key": "control",
+                      "rollout_percentage": 50.0
+                    },
+                    {
+                      "key": "test",
+                      "rollout_percentage": 50.0
+                    }
+                  ]
+                }
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
 
     @Test
@@ -702,99 +704,35 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testCohortMemberFlag() {
-        val flag =
-            FlagDefinition(
-                id = 26,
-                name = "Cohort Member",
-                key = "cohort-member",
-                active = true,
-                filters =
-                    FlagFilters(
-                        groups =
-                            listOf(
-                                FlagConditionGroup(
-                                    properties =
-                                        listOf(
-                                            FlagProperty(
-                                                key = "id",
-                                                propertyValue = 2,
-                                                propertyOperator = PropertyOperator.IN,
-                                                type = PropertyType.COHORT,
-                                                negation = false,
-                                                dependencyChain = null,
-                                            ),
-                                        ),
-                                    rolloutPercentage = 100,
-                                    variant = null,
-                                ),
-                            ),
-                        multivariate = null,
-                        payloads = null,
-                    ),
-                version = 2,
-            )
+        val json = """
+            {
+              "id": 26,
+              "name": "Cohort Member",
+              "key": "cohort-member",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "id",
+                        "value": 2,
+                        "operator": "in",
+                        "type": "cohort",
+                        "negation": false
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 2
+            }
+        """.trimIndent()
 
-        val cohortProperties =
-            mapOf(
-                "2" to
-                    CohortDefinition(
-                        type = "AND",
-                        values =
-                            listOf(
-                                mapOf(
-                                    "type" to "AND",
-                                    "values" to
-                                        listOf(
-                                            mapOf(
-                                                "key" to "email",
-                                                "operator" to "not_regex",
-                                                "type" to "person",
-                                                "value" to "@hedgebox.net$",
-                                            ),
-                                        ),
-                                ),
-                                mapOf(
-                                    "type" to "AND",
-                                    "values" to
-                                        listOf(
-                                            mapOf(
-                                                "key" to "id",
-                                                "type" to "cohort",
-                                                "negation" to true,
-                                                "value" to 3,
-                                            ),
-                                            mapOf(
-                                                "key" to "email",
-                                                "operator" to "is_set",
-                                                "type" to "person",
-                                                "negation" to false,
-                                                "value" to "is_set",
-                                            ),
-                                        ),
-                                ),
-                            ),
-                    ),
-                "3" to
-                    CohortDefinition(
-                        type = "OR",
-                        values =
-                            listOf(
-                                mapOf(
-                                    "type" to "AND",
-                                    "values" to
-                                        listOf(
-                                            mapOf(
-                                                "key" to "email",
-                                                "operator" to "regex",
-                                                "type" to "person",
-                                                "negation" to false,
-                                                "value" to "@gmail.com",
-                                            ),
-                                        ),
-                                ),
-                            ),
-                    ),
-            )
+        val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
+
+        val cohortProperties = createCohortProperties()
 
         // Positive case: user is in cohort 2 (not hedgebox.net, not gmail, email is set)
         val matchingProperties = mapOf("email" to "example@example.com")
@@ -872,213 +810,199 @@ internal class FlagEvaluatorTest {
     }
 
     internal fun createMixedConditionsFlag(): FlagDefinition {
-        return FlagDefinition(
-            id = 25,
-            name = "Mixed Conditions",
-            key = "mixed-conditions",
-            active = true,
-            filters =
-                FlagFilters(
-                    groups =
-                        listOf(
-                            FlagConditionGroup(
-                                properties =
-                                    listOf(
-                                        FlagProperty(
-                                            key = "email",
-                                            propertyValue = listOf("example@example.com"),
-                                            propertyOperator = PropertyOperator.EXACT,
-                                            type = PropertyType.PERSON,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                        FlagProperty(
-                                            key = "email",
-                                            propertyValue =
-                                                listOf(
-                                                    "not_example@example.com",
-                                                    "also_not_example@example.com",
-                                                ),
-                                            propertyOperator = PropertyOperator.IS_NOT,
-                                            type = PropertyType.PERSON,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                        FlagProperty(
-                                            key = "email",
-                                            propertyValue = "example",
-                                            propertyOperator = PropertyOperator.ICONTAINS,
-                                            type = PropertyType.PERSON,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                        FlagProperty(
-                                            key = "email",
-                                            propertyValue = ".net",
-                                            propertyOperator = PropertyOperator.NOT_ICONTAINS,
-                                            type = PropertyType.PERSON,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                        FlagProperty(
-                                            key = "email",
-                                            propertyValue = "\\w+@\\w+\\.\\w+",
-                                            propertyOperator = PropertyOperator.REGEX,
-                                            type = PropertyType.PERSON,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                        FlagProperty(
-                                            key = "email",
-                                            propertyValue = "@yahoo.com$",
-                                            propertyOperator = PropertyOperator.NOT_REGEX,
-                                            type = PropertyType.PERSON,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                        FlagProperty(
-                                            key = "email",
-                                            propertyValue = "is_set",
-                                            propertyOperator = PropertyOperator.IS_SET,
-                                            type = PropertyType.PERSON,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                    ),
-                                rolloutPercentage = 100,
-                                variant = null,
-                            ),
-                        ),
-                    multivariate = null,
-                    payloads = null,
-                ),
-            version = 1,
-        )
+        val json = """
+            {
+              "id": 25,
+              "name": "Mixed Conditions",
+              "key": "mixed-conditions",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "email",
+                        "value": ["example@example.com"],
+                        "operator": "exact",
+                        "type": "person",
+                        "negation": false
+                      },
+                      {
+                        "key": "email",
+                        "value": ["not_example@example.com", "also_not_example@example.com"],
+                        "operator": "is_not",
+                        "type": "person",
+                        "negation": false
+                      },
+                      {
+                        "key": "email",
+                        "value": "example",
+                        "operator": "icontains",
+                        "type": "person",
+                        "negation": false
+                      },
+                      {
+                        "key": "email",
+                        "value": ".net",
+                        "operator": "not_icontains",
+                        "type": "person",
+                        "negation": false
+                      },
+                      {
+                        "key": "email",
+                        "value": "\\w+@\\w+\\.\\w+",
+                        "operator": "regex",
+                        "type": "person",
+                        "negation": false
+                      },
+                      {
+                        "key": "email",
+                        "value": "@yahoo.com$",
+                        "operator": "not_regex",
+                        "type": "person",
+                        "negation": false
+                      },
+                      {
+                        "key": "email",
+                        "value": "is_set",
+                        "operator": "is_set",
+                        "type": "person",
+                        "negation": false
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
 
     internal fun createCohortMemberFlag(): FlagDefinition {
-        return FlagDefinition(
-            id = 26,
-            name = "Cohort Member",
-            key = "cohort-member",
-            active = true,
-            filters =
-                FlagFilters(
-                    groups =
-                        listOf(
-                            FlagConditionGroup(
-                                properties =
-                                    listOf(
-                                        FlagProperty(
-                                            key = "id",
-                                            propertyValue = 2,
-                                            propertyOperator = PropertyOperator.IN,
-                                            type = PropertyType.COHORT,
-                                            negation = false,
-                                            dependencyChain = null,
-                                        ),
-                                    ),
-                                rolloutPercentage = 100,
-                                variant = null,
-                            ),
-                        ),
-                    multivariate = null,
-                    payloads = null,
-                ),
-            version = 2,
-        )
+        val json = """
+            {
+              "id": 26,
+              "name": "Cohort Member",
+              "key": "cohort-member",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "id",
+                        "value": 2,
+                        "operator": "in",
+                        "type": "cohort",
+                        "negation": false
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 2
+            }
+        """.trimIndent()
+
+        return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
 
-    internal fun createCohortProperties(): Map<String, CohortDefinition> {
-        return mapOf(
-            "2" to
-                CohortDefinition(
-                    type = "AND",
-                    values =
-                        listOf(
-                            mapOf(
-                                "type" to "AND",
-                                "values" to
-                                    listOf(
-                                        mapOf(
-                                            "key" to "email",
-                                            "operator" to "not_regex",
-                                            "type" to "person",
-                                            "value" to "@hedgebox.net$",
-                                        ),
-                                    ),
-                            ),
-                            mapOf(
-                                "type" to "AND",
-                                "values" to
-                                    listOf(
-                                        mapOf(
-                                            "key" to "id",
-                                            "type" to "cohort",
-                                            "negation" to true,
-                                            "value" to 3,
-                                        ),
-                                        mapOf(
-                                            "key" to "email",
-                                            "operator" to "is_set",
-                                            "type" to "person",
-                                            "negation" to false,
-                                            "value" to "is_set",
-                                        ),
-                                    ),
-                            ),
-                        ),
-                ),
-            "3" to
-                CohortDefinition(
-                    type = "OR",
-                    values =
-                        listOf(
-                            mapOf(
-                                "type" to "AND",
-                                "values" to
-                                    listOf(
-                                        mapOf(
-                                            "key" to "email",
-                                            "operator" to "regex",
-                                            "type" to "person",
-                                            "negation" to false,
-                                            "value" to "@gmail.com",
-                                        ),
-                                    ),
-                            ),
-                        ),
-                ),
-        )
+    internal fun createCohortProperties(): Map<String, PropertyGroup> {
+        val json = """
+            {
+              "2": {
+                "type": "AND",
+                "values": [
+                  {
+                    "type": "AND",
+                    "values": [
+                      {
+                        "key": "email",
+                        "operator": "not_regex",
+                        "type": "person",
+                        "value": "@hedgebox.net$"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "AND",
+                    "values": [
+                      {
+                        "key": "id",
+                        "type": "cohort",
+                        "negation": true,
+                        "value": 3
+                      },
+                      {
+                        "key": "email",
+                        "operator": "is_set",
+                        "type": "person",
+                        "negation": false,
+                        "value": "is_set"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "3": {
+                "type": "OR",
+                "values": [
+                  {
+                    "type": "AND",
+                    "values": [
+                      {
+                        "key": "email",
+                        "operator": "regex",
+                        "type": "person",
+                        "negation": false,
+                        "value": "@gmail.com"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val type = object : TypeToken<Map<String, PropertyGroup>>() {}.type
+        return config.serializer.gson.fromJson(json, type)
     }
 
     internal fun createMultiVariateFlag(): FlagDefinition {
-        return FlagDefinition(
-            id = 1,
-            name = "Multi Variate Flag",
-            key = "multi-variate-flag",
-            active = true,
-            filters =
-                FlagFilters(
-                    groups =
-                        listOf(
-                            FlagConditionGroup(
-                                properties = emptyList(),
-                                rolloutPercentage = 100,
-                                variant = null,
-                            ),
-                        ),
-                    multivariate =
-                        MultiVariateConfig(
-                            variants =
-                                listOf(
-                                    VariantDefinition(key = "control", rolloutPercentage = 50.0),
-                                    VariantDefinition(key = "test", rolloutPercentage = 50.0),
-                                ),
-                        ),
-                    payloads = null,
-                ),
-            version = 1,
-        )
+        val json = """
+            {
+              "id": 1,
+              "name": "Multi Variate Flag",
+              "key": "multi-variate-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ],
+                "multivariate": {
+                  "variants": [
+                    {
+                      "key": "control",
+                      "rollout_percentage": 50.0
+                    },
+                    {
+                      "key": "test",
+                      "rollout_percentage": 50.0
+                    }
+                  ]
+                }
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
 }
