@@ -375,14 +375,16 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `local evaluation poller loads flag definitions`() {
         val logger = TestLogger()
-        val localEvalResponse = createLocalEvaluationResponse(
-            flagKey = "test-flag",
-            aggregationGroupTypeIndex = null,
-        )
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
 
-        val mockServer = createMockHttp(
-            jsonResponse(localEvalResponse),
-        )
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+            )
         val url = mockServer.url("/")
 
         val config = createTestConfig(logger, url.toString())
@@ -404,14 +406,17 @@ internal class PostHogFeatureFlagsTest {
         // Check that we made the API call
         assertTrue(
             mockServer.requestCount >= 1,
-            "Expected at least 1 request, got ${mockServer.requestCount}"
+            "Expected at least 1 request, got ${mockServer.requestCount}",
         )
         assertTrue(logger.containsLog("Loading feature flags for local evaluation"))
-        assertTrue(logger.containsLog("Loaded 1 feature flags for local evaluation") || logger.logs.any {
-            it.contains(
-                "Loaded"
-            )
-        })
+        assertTrue(
+            logger.containsLog("Loaded 1 feature flags for local evaluation") ||
+                logger.logs.any {
+                    it.contains(
+                        "Loaded",
+                    )
+                },
+        )
 
         remoteConfig.shutDown()
         mockServer.shutdown()
@@ -420,16 +425,18 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `group-based flag evaluates correctly when group is provided`() {
         val logger = TestLogger()
-        val localEvalResponse = createLocalEvaluationResponse(
-            flagKey = "org-feature",
-            aggregationGroupTypeIndex = 2, // organization
-        )
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "org-feature",
+                aggregationGroupTypeIndex = 2,
+            )
 
         // Mock both local evaluation endpoint and regular flags endpoint
-        val mockServer = createMockHttp(
-            jsonResponse(localEvalResponse),
-            jsonResponse(createEmptyFlagsResponse()),
-        )
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
         val url = mockServer.url("/")
 
         val config = createTestConfig(logger, url.toString())
@@ -468,16 +475,18 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `group-based flag returns false when required group is missing`() {
         val logger = TestLogger()
-        val localEvalResponse = createLocalEvaluationResponse(
-            flagKey = "org-feature",
-            aggregationGroupTypeIndex = 2, // organization
-        )
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "org-feature",
+                aggregationGroupTypeIndex = 2,
+            )
 
         // Add fallback response in case local evaluation fails
-        val mockServer = createMockHttp(
-            jsonResponse(localEvalResponse),
-            jsonResponse(createEmptyFlagsResponse()),
-        )
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
         val url = mockServer.url("/")
 
         val config = createTestConfig(logger, url.toString())
@@ -498,7 +507,7 @@ internal class PostHogFeatureFlagsTest {
                 key = "org-feature",
                 defaultValue = "default",
                 distinctId = "user-123",
-                groups = null, // No groups provided
+                groups = null,
             )
 
         // Debug logging
@@ -519,39 +528,40 @@ internal class PostHogFeatureFlagsTest {
         // Create flag with unknown group type index (99 doesn't exist in groupTypeMapping)
         val localEvalResponse =
             """
-        {
-            "flags": [
-                {
-                    "id": 1,
-                    "name": "org-feature",
-                    "key": "org-feature",
-                    "active": true,
-                    "filters": {
-                        "aggregation_group_type_index": 99,
-                        "groups": [
-                            {
-                                "properties": [],
-                                "rollout_percentage": 100
-                            }
-                        ]
-                    },
-                    "version": 1
-                }
-            ],
-            "group_type_mapping": {
-                "0": "account",
-                "2": "organization"
-            },
-            "cohorts": {}
-        }
+            {
+                "flags": [
+                    {
+                        "id": 1,
+                        "name": "org-feature",
+                        "key": "org-feature",
+                        "active": true,
+                        "filters": {
+                            "aggregation_group_type_index": 99,
+                            "groups": [
+                                {
+                                    "properties": [],
+                                    "rollout_percentage": 100
+                                }
+                            ]
+                        },
+                        "version": 1
+                    }
+                ],
+                "group_type_mapping": {
+                    "0": "account",
+                    "2": "organization"
+                },
+                "cohorts": {}
+            }
             """.trimIndent()
 
         val apiFlagsResponse = createFlagsResponse("org-feature", enabled = true)
 
-        val mockServer = createMockHttp(
-            jsonResponse(localEvalResponse),
-            jsonResponse(apiFlagsResponse),
-        )
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+                jsonResponse(apiFlagsResponse),
+            )
         val url = mockServer.url("/")
 
         val config = createTestConfig(logger, url.toString())
@@ -588,14 +598,16 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `person-based flag still works with local evaluation`() {
         val logger = TestLogger()
-        val localEvalResponse = createLocalEvaluationResponse(
-            flagKey = "person-feature",
-            aggregationGroupTypeIndex = null, // person-based flag
-        )
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "person-feature",
+                aggregationGroupTypeIndex = null,
+            )
 
-        val mockServer = createMockHttp(
-            jsonResponse(localEvalResponse),
-        )
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+            )
         val url = mockServer.url("/")
 
         val config = createTestConfig(logger, url.toString())
