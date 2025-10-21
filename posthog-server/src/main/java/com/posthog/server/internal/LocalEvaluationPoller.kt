@@ -16,7 +16,7 @@ internal class LocalEvaluationPoller(
     private val executor: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "PostHog-LocalEvaluationPoller").apply {
-                isDaemon = false
+                isDaemon = true
             }
         }
 
