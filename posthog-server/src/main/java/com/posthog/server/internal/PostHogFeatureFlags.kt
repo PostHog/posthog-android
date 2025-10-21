@@ -110,6 +110,11 @@ internal class PostHogFeatureFlags(
         }
 
         if (localEvaluation) {
+            if (flagDefinitions == null && !definitionsLoaded) {
+                config.logger.log("Flag definitions not loaded, loading now")
+                loadFeatureFlagDefinitions()
+            }
+
             val flagDef = flagDefinitions?.get(key)
             if (flagDef != null) {
                 try {
@@ -175,6 +180,11 @@ internal class PostHogFeatureFlags(
     ): Map<String, FeatureFlag>? {
         if (!localEvaluation) {
             return null
+        }
+
+        if (flagDefinitions == null && !definitionsLoaded) {
+            config.logger.log("Flag definitions not loaded, loading now")
+            loadFeatureFlagDefinitions()
         }
 
         val currentFlagDefinitions = flagDefinitions
