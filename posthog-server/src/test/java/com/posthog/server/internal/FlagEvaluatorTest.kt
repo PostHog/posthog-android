@@ -1005,4 +1005,839 @@ internal class FlagEvaluatorTest {
 
         return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
+
+    // Flag Dependency Tests
+
+    @Test
+    internal fun testFlagDependencyMissingDependencyChain() {
+        val property =
+            FlagProperty(
+                key = "dependent-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        val flagsByKey = emptyMap<String, FlagDefinition>()
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        try {
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("missing required 'dependency_chain' field") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testFlagDependencyCircularDependency() {
+        val property =
+            FlagProperty(
+                key = "dependent-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = emptyList(),
+            )
+
+        val flagsByKey = emptyMap<String, FlagDefinition>()
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        try {
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("Circular dependency") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testFlagDependencyMissingFlag() {
+        val property =
+            FlagProperty(
+                key = "dependent-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("missing-flag"),
+            )
+
+        val flagsByKey = emptyMap<String, FlagDefinition>()
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        try {
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("flag not found in local flags") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testFlagDependencyInactiveFlag() {
+        val inactiveFlagJson = """
+            {
+              "id": 1,
+              "name": "Inactive Flag",
+              "key": "inactive-flag",
+              "active": false,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val inactiveFlag = config.serializer.gson.fromJson(inactiveFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "inactive-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("inactive-flag"),
+            )
+
+        val flagsByKey = mapOf("inactive-flag" to inactiveFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertFalse(result)
+        assertEquals(false, evaluationCache["inactive-flag"])
+    }
+
+    @Test
+    internal fun testFlagDependencySimpleMatch() {
+        val dependencyFlagJson = """
+            {
+              "id": 1,
+              "name": "Dependency Flag",
+              "key": "dependency-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "dependency-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("dependency-flag"),
+            )
+
+        val flagsByKey = mapOf("dependency-flag" to dependencyFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertTrue(result)
+        assertEquals(true, evaluationCache["dependency-flag"])
+    }
+
+    @Test
+    internal fun testFlagDependencyWithFalseValue() {
+        val dependencyFlagJson = """
+            {
+              "id": 1,
+              "name": "Dependency Flag",
+              "key": "dependency-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 0
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "dependency-flag",
+                propertyValue = false,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("dependency-flag"),
+            )
+
+        val flagsByKey = mapOf("dependency-flag" to dependencyFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        // When dependency evaluates to false, the dependency check fails regardless of expected value
+        assertFalse(result)
+        assertEquals(false, evaluationCache["dependency-flag"])
+    }
+
+    @Test
+    internal fun testFlagDependencyVariantMatch() {
+        val multivariateFlagJson = """
+            {
+              "id": 1,
+              "name": "Multivariate Flag",
+              "key": "multivariate-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ],
+                "multivariate": {
+                  "variants": [
+                    {
+                      "key": "control",
+                      "rollout_percentage": 100.0
+                    }
+                  ]
+                }
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val multivariateFlag = config.serializer.gson.fromJson(multivariateFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "multivariate-flag",
+                propertyValue = "control",
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("multivariate-flag"),
+            )
+
+        val flagsByKey = mapOf("multivariate-flag" to multivariateFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertTrue(result)
+        assertEquals("control", evaluationCache["multivariate-flag"])
+    }
+
+    @Test
+    internal fun testFlagDependencyVariantMismatch() {
+        val multivariateFlagJson = """
+            {
+              "id": 1,
+              "name": "Multivariate Flag",
+              "key": "multivariate-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ],
+                "multivariate": {
+                  "variants": [
+                    {
+                      "key": "control",
+                      "rollout_percentage": 100.0
+                    }
+                  ]
+                }
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val multivariateFlag = config.serializer.gson.fromJson(multivariateFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "multivariate-flag",
+                propertyValue = "test",
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("multivariate-flag"),
+            )
+
+        val flagsByKey = mapOf("multivariate-flag" to multivariateFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertFalse(result)
+    }
+
+    @Test
+    internal fun testFlagDependencyVariantMatchesBoolean() {
+        val multivariateFlagJson = """
+            {
+              "id": 1,
+              "name": "Multivariate Flag",
+              "key": "multivariate-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ],
+                "multivariate": {
+                  "variants": [
+                    {
+                      "key": "control",
+                      "rollout_percentage": 100.0
+                    }
+                  ]
+                }
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val multivariateFlag = config.serializer.gson.fromJson(multivariateFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "multivariate-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("multivariate-flag"),
+            )
+
+        val flagsByKey = mapOf("multivariate-flag" to multivariateFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertTrue(result)
+    }
+
+    @Test
+    internal fun testFlagDependencyChainedDependencies() {
+        val flag1Json = """
+            {
+              "id": 1,
+              "name": "Flag 1",
+              "key": "flag-1",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val flag2Json = """
+            {
+              "id": 2,
+              "name": "Flag 2",
+              "key": "flag-2",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val flag1 = config.serializer.gson.fromJson(flag1Json, FlagDefinition::class.java)
+        val flag2 = config.serializer.gson.fromJson(flag2Json, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "flag-2",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("flag-1", "flag-2"),
+            )
+
+        val flagsByKey = mapOf("flag-1" to flag1, "flag-2" to flag2)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertTrue(result)
+        assertEquals(true, evaluationCache["flag-1"])
+        assertEquals(true, evaluationCache["flag-2"])
+    }
+
+    @Test
+    internal fun testFlagDependencyChainFailsEarly() {
+        val flag1Json = """
+            {
+              "id": 1,
+              "name": "Flag 1",
+              "key": "flag-1",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 0
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val flag2Json = """
+            {
+              "id": 2,
+              "name": "Flag 2",
+              "key": "flag-2",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val flag1 = config.serializer.gson.fromJson(flag1Json, FlagDefinition::class.java)
+        val flag2 = config.serializer.gson.fromJson(flag2Json, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "flag-2",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("flag-1", "flag-2"),
+            )
+
+        val flagsByKey = mapOf("flag-1" to flag1, "flag-2" to flag2)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertFalse(result)
+        assertEquals(false, evaluationCache["flag-1"])
+    }
+
+    @Test
+    internal fun testFlagDependencyNoExpectedValue() {
+        val dependencyFlagJson = """
+            {
+              "id": 1,
+              "name": "Dependency Flag",
+              "key": "dependency-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "dependency-flag",
+                propertyValue = null,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("dependency-flag"),
+            )
+
+        val flagsByKey = mapOf("dependency-flag" to dependencyFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+
+        assertTrue(result)
+        assertEquals(true, evaluationCache["dependency-flag"])
+    }
+
+    @Test
+    internal fun testFlagDependencyInvalidOperator() {
+        val dependencyFlagJson = """
+            {
+              "id": 1,
+              "name": "Dependency Flag",
+              "key": "dependency-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "dependency-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("dependency-flag"),
+            )
+
+        val flagsByKey = mapOf("dependency-flag" to dependencyFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        try {
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+            )
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("invalid operator") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testFlagDependencyWithPropertyConditions() {
+        val dependencyFlagJson = """
+            {
+              "id": 1,
+              "name": "Dependency Flag",
+              "key": "dependency-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "email",
+                        "value": "test@example.com",
+                        "operator": "exact",
+                        "type": "person",
+                        "negation": false
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
+
+        val property =
+            FlagProperty(
+                key = "dependency-flag",
+                propertyValue = true,
+                propertyOperator = PropertyOperator.FLAG_EVALUATES_TO,
+                type = PropertyType.FLAG,
+                negation = false,
+                dependencyChain = listOf("dependency-flag"),
+            )
+
+        val flagsByKey = mapOf("dependency-flag" to dependencyFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+        val properties = mapOf("email" to "test@example.com")
+
+        val result =
+            evaluator.evaluateFlagDependency(
+                property,
+                flagsByKey,
+                evaluationCache,
+                "user-123",
+                properties,
+                emptyMap(),
+            )
+
+        assertTrue(result)
+        assertEquals(true, evaluationCache["dependency-flag"])
+    }
+
+    @Test
+    internal fun testMatchFeatureFlagPropertiesWithFlagDependency() {
+        val dependencyFlagJson = """
+            {
+              "id": 1,
+              "name": "Dependency Flag",
+              "key": "dependency-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val mainFlagJson = """
+            {
+              "id": 2,
+              "name": "Main Flag",
+              "key": "main-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "dependency-flag",
+                        "value": true,
+                        "operator": "flag_evaluates_to",
+                        "type": "flag",
+                        "negation": false,
+                        "dependency_chain": ["dependency-flag"]
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
+        val mainFlag = config.serializer.gson.fromJson(mainFlagJson, FlagDefinition::class.java)
+        val flagsByKey = mapOf("dependency-flag" to dependencyFlag, "main-flag" to mainFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.matchFeatureFlagProperties(
+                mainFlag,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+                flagsByKey,
+                evaluationCache,
+            )
+
+        assertEquals(true, result)
+        assertEquals(true, evaluationCache["dependency-flag"])
+    }
+
+    @Test
+    internal fun testMatchFeatureFlagPropertiesWithFailedFlagDependency() {
+        val dependencyFlagJson = """
+            {
+              "id": 1,
+              "name": "Dependency Flag",
+              "key": "dependency-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 0
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val mainFlagJson = """
+            {
+              "id": 2,
+              "name": "Main Flag",
+              "key": "main-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "dependency-flag",
+                        "value": true,
+                        "operator": "flag_evaluates_to",
+                        "type": "flag",
+                        "negation": false,
+                        "dependency_chain": ["dependency-flag"]
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+        """.trimIndent()
+
+        val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
+        val mainFlag = config.serializer.gson.fromJson(mainFlagJson, FlagDefinition::class.java)
+        val flagsByKey = mapOf("dependency-flag" to dependencyFlag, "main-flag" to mainFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.matchFeatureFlagProperties(
+                mainFlag,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+                flagsByKey,
+                evaluationCache,
+            )
+
+        assertEquals(false, result)
+        assertEquals(false, evaluationCache["dependency-flag"])
+    }
 }
