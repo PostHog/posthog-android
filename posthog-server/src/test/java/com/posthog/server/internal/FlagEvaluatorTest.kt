@@ -2,15 +2,11 @@ package com.posthog.server.internal
 
 import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
-import com.posthog.internal.FlagConditionGroup
 import com.posthog.internal.FlagDefinition
-import com.posthog.internal.FlagFilters
 import com.posthog.internal.FlagProperty
-import com.posthog.internal.MultiVariateConfig
 import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
-import com.posthog.internal.VariantDefinition
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -452,7 +448,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesSimpleMatch() {
-        val json = """
+        val json =
+            """
             {
               "id": 1,
               "name": "Test Flag",
@@ -476,7 +473,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
 
@@ -487,7 +484,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesNoMatch() {
-        val json = """
+        val json =
+            """
             {
               "id": 1,
               "name": "Test Flag",
@@ -511,7 +509,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
 
@@ -522,7 +520,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesWithRollout() {
-        val json = """
+        val json =
+            """
             {
               "id": 1,
               "name": "Test Flag",
@@ -538,7 +537,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
 
@@ -586,7 +585,8 @@ internal class FlagEvaluatorTest {
     // Helper functions
 
     internal fun createSimpleFlag(): FlagDefinition {
-        val json = """
+        val json =
+            """
             {
               "id": 1,
               "name": "Simple Flag",
@@ -614,7 +614,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
@@ -704,7 +704,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testCohortMemberFlag() {
-        val json = """
+        val json =
+            """
             {
               "id": 26,
               "name": "Cohort Member",
@@ -728,7 +729,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 2
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
 
@@ -810,7 +811,8 @@ internal class FlagEvaluatorTest {
     }
 
     internal fun createMixedConditionsFlag(): FlagDefinition {
-        val json = """
+        val json =
+            """
             {
               "id": 25,
               "name": "Mixed Conditions",
@@ -876,13 +878,14 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
 
     internal fun createCohortMemberFlag(): FlagDefinition {
-        val json = """
+        val json =
+            """
             {
               "id": 26,
               "name": "Cohort Member",
@@ -906,13 +909,14 @@ internal class FlagEvaluatorTest {
               },
               "version": 2
             }
-        """.trimIndent()
+            """.trimIndent()
 
         return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
 
     internal fun createCohortProperties(): Map<String, PropertyGroup> {
-        val json = """
+        val json =
+            """
             {
               "2": {
                 "type": "AND",
@@ -966,14 +970,15 @@ internal class FlagEvaluatorTest {
                 ]
               }
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val type = object : TypeToken<Map<String, PropertyGroup>>() {}.type
         return config.serializer.gson.fromJson(json, type)
     }
 
     internal fun createMultiVariateFlag(): FlagDefinition {
-        val json = """
+        val json =
+            """
             {
               "id": 1,
               "name": "Multi Variate Flag",
@@ -1001,7 +1006,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
     }
@@ -1100,7 +1105,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyInactiveFlag() {
-        val inactiveFlagJson = """
+        val inactiveFlagJson =
+            """
             {
               "id": 1,
               "name": "Inactive Flag",
@@ -1116,7 +1122,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val inactiveFlag = config.serializer.gson.fromJson(inactiveFlagJson, FlagDefinition::class.java)
 
@@ -1149,7 +1155,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencySimpleMatch() {
-        val dependencyFlagJson = """
+        val dependencyFlagJson =
+            """
             {
               "id": 1,
               "name": "Dependency Flag",
@@ -1165,7 +1172,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
 
@@ -1198,7 +1205,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyWithFalseValue() {
-        val dependencyFlagJson = """
+        val dependencyFlagJson =
+            """
             {
               "id": 1,
               "name": "Dependency Flag",
@@ -1214,7 +1222,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
 
@@ -1248,7 +1256,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyVariantMatch() {
-        val multivariateFlagJson = """
+        val multivariateFlagJson =
+            """
             {
               "id": 1,
               "name": "Multivariate Flag",
@@ -1272,7 +1281,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val multivariateFlag = config.serializer.gson.fromJson(multivariateFlagJson, FlagDefinition::class.java)
 
@@ -1305,7 +1314,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyVariantMismatch() {
-        val multivariateFlagJson = """
+        val multivariateFlagJson =
+            """
             {
               "id": 1,
               "name": "Multivariate Flag",
@@ -1329,7 +1339,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val multivariateFlag = config.serializer.gson.fromJson(multivariateFlagJson, FlagDefinition::class.java)
 
@@ -1361,7 +1371,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyVariantMatchesBoolean() {
-        val multivariateFlagJson = """
+        val multivariateFlagJson =
+            """
             {
               "id": 1,
               "name": "Multivariate Flag",
@@ -1385,7 +1396,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val multivariateFlag = config.serializer.gson.fromJson(multivariateFlagJson, FlagDefinition::class.java)
 
@@ -1417,7 +1428,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyChainedDependencies() {
-        val flag1Json = """
+        val flag1Json =
+            """
             {
               "id": 1,
               "name": "Flag 1",
@@ -1433,9 +1445,10 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
-        val flag2Json = """
+        val flag2Json =
+            """
             {
               "id": 2,
               "name": "Flag 2",
@@ -1451,7 +1464,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val flag1 = config.serializer.gson.fromJson(flag1Json, FlagDefinition::class.java)
         val flag2 = config.serializer.gson.fromJson(flag2Json, FlagDefinition::class.java)
@@ -1486,7 +1499,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyChainFailsEarly() {
-        val flag1Json = """
+        val flag1Json =
+            """
             {
               "id": 1,
               "name": "Flag 1",
@@ -1502,9 +1516,10 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
-        val flag2Json = """
+        val flag2Json =
+            """
             {
               "id": 2,
               "name": "Flag 2",
@@ -1520,7 +1535,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val flag1 = config.serializer.gson.fromJson(flag1Json, FlagDefinition::class.java)
         val flag2 = config.serializer.gson.fromJson(flag2Json, FlagDefinition::class.java)
@@ -1554,7 +1569,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyNoExpectedValue() {
-        val dependencyFlagJson = """
+        val dependencyFlagJson =
+            """
             {
               "id": 1,
               "name": "Dependency Flag",
@@ -1570,7 +1586,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
 
@@ -1603,7 +1619,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyInvalidOperator() {
-        val dependencyFlagJson = """
+        val dependencyFlagJson =
+            """
             {
               "id": 1,
               "name": "Dependency Flag",
@@ -1619,7 +1636,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
 
@@ -1653,7 +1670,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testFlagDependencyWithPropertyConditions() {
-        val dependencyFlagJson = """
+        val dependencyFlagJson =
+            """
             {
               "id": 1,
               "name": "Dependency Flag",
@@ -1677,7 +1695,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
 
@@ -1711,7 +1729,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesWithFlagDependency() {
-        val dependencyFlagJson = """
+        val dependencyFlagJson =
+            """
             {
               "id": 1,
               "name": "Dependency Flag",
@@ -1727,9 +1746,10 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
-        val mainFlagJson = """
+        val mainFlagJson =
+            """
             {
               "id": 2,
               "name": "Main Flag",
@@ -1754,7 +1774,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
         val mainFlag = config.serializer.gson.fromJson(mainFlagJson, FlagDefinition::class.java)
@@ -1777,7 +1797,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testMatchFeatureFlagPropertiesWithFailedFlagDependency() {
-        val dependencyFlagJson = """
+        val dependencyFlagJson =
+            """
             {
               "id": 1,
               "name": "Dependency Flag",
@@ -1793,9 +1814,10 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
-        val mainFlagJson = """
+        val mainFlagJson =
+            """
             {
               "id": 2,
               "name": "Main Flag",
@@ -1820,7 +1842,7 @@ internal class FlagEvaluatorTest {
               },
               "version": 1
             }
-        """.trimIndent()
+            """.trimIndent()
 
         val dependencyFlag = config.serializer.gson.fromJson(dependencyFlagJson, FlagDefinition::class.java)
         val mainFlag = config.serializer.gson.fromJson(mainFlagJson, FlagDefinition::class.java)
