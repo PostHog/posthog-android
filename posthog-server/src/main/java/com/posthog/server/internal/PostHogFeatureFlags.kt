@@ -408,7 +408,6 @@ internal class PostHogFeatureFlags(
     /**
      * Compute a flag locally using the evaluation engine
      */
-    @Suppress("UNUSED_PARAMETER")
     private fun computeFlagLocally(
         key: String,
         distinctId: String,
@@ -423,16 +422,38 @@ internal class PostHogFeatureFlags(
             return false
         }
 
-        // Merge person and group properties for evaluation
-        val allProperties = personProperties.toMutableMap()
-        // Add group properties if available
-        groupProperties?.forEach { (k, v) -> allProperties[k] = v }
+        // Check if this is a group-based flag
+        val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
+
+        val (evaluationId, evaluationProperties) =
+            if (aggregationGroupIndex != null) {
+                // Group-based flag - evaluate at group level
+                val groupTypeName = groupTypeMapping?.get(aggregationGroupIndex.toString())
+
+                if (groupTypeName == null) {
+                    config.logger.log("Unknown group type index $aggregationGroupIndex for flag '$key'")
+                    throw InconclusiveMatchException("Flag has unknown group type index")
+                }
+
+                val groupKey = groups?.get(groupTypeName)
+                if (groupKey == null) {
+                    // Group not provided - flag is off, don't failover to API
+                    config.logger.log("Can't compute group flag '$key' without group '$groupTypeName'")
+                    return false
+                }
+
+                // Use group's key and properties for evaluation
+                Pair(groupKey, groupProperties)
+            } else {
+                // Person-based flag - use person's ID and properties
+                Pair(distinctId, personProperties)
+            }
 
         val evaluationCache = mutableMapOf<String, Any?>()
         return evaluator.matchFeatureFlagProperties(
             flag = flag,
-            distinctId = distinctId,
-            properties = allProperties,
+            distinctId = evaluationId,
+            properties = evaluationProperties ?: emptyMap(),
             cohortProperties = cohorts ?: emptyMap(),
             flagsByKey = flags,
             evaluationCache = evaluationCache,
