@@ -4,6 +4,7 @@ import com.posthog.internal.PostHogApi
 import com.posthog.server.TestLogger
 import com.posthog.server.createEmptyFlagsResponse
 import com.posthog.server.createFlagsResponse
+import com.posthog.server.createLocalEvaluationResponse
 import com.posthog.server.createMockHttp
 import com.posthog.server.createTestConfig
 import com.posthog.server.errorResponse
@@ -368,6 +369,51 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(true, booleanResult)
         assertEquals(false, disabledResult)
 
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local evaluation poller loads flag definitions`() {
+        val logger = TestLogger()
+        val localEvalResponse = createLocalEvaluationResponse(
+            flagKey = "test-flag",
+            aggregationGroupTypeIndex = null,
+        )
+
+        val mockServer = createMockHttp(
+            jsonResponse(localEvalResponse),
+        )
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val remoteConfig =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollIntervalSeconds = 30,
+            )
+
+        // Wait for poller to load
+        Thread.sleep(2000)
+
+        // Check that we made the API call
+        assertTrue(
+            mockServer.requestCount >= 1,
+            "Expected at least 1 request, got ${mockServer.requestCount}"
+        )
+        assertTrue(logger.containsLog("Loading feature flags for local evaluation"))
+        assertTrue(logger.containsLog("Loaded 1 feature flags for local evaluation") || logger.logs.any {
+            it.contains(
+                "Loaded"
+            )
+        })
+
+        remoteConfig.shutDown()
         mockServer.shutdown()
     }
 }
