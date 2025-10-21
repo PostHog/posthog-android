@@ -196,7 +196,7 @@ public class PostHogApi(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    public fun localEvaluation(personalApiKey: String): PostHogLocalEvaluationResponse? {
+    public fun localEvaluation(personalApiKey: String): LocalEvaluationResponse? {
         val url = "$theHost/api/feature_flag/local_evaluation/?token=${config.apiKey}&send_cohorts"
 
         val request =
