@@ -537,7 +537,7 @@ public final class com/posthog/internal/PostHogApi {
 	public final fun batch (Ljava/util/List;)V
 	public final fun flags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
-	public final fun localEvaluation (Ljava/lang/String;)Lcom/posthog/internal/PostHogLocalEvaluationResponse;
+	public final fun localEvaluation (Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationResponse;
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
 	public final fun snapshot (Ljava/util/List;)V
 }
@@ -611,21 +611,6 @@ public final class com/posthog/internal/PostHogFlagsResponse : com/posthog/inter
 	public final fun getFlags ()Ljava/util/Map;
 	public final fun getQuotaLimited ()Ljava/util/List;
 	public final fun getRequestId ()Ljava/lang/String;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class com/posthog/internal/PostHogLocalEvaluationResponse : com/posthog/internal/PostHogRemoteConfigResponse {
-	public fun <init> (Ljava/util/List;Ljava/util/Map;Ljava/util/Map;)V
-	public final fun component1 ()Ljava/util/List;
-	public final fun component2 ()Ljava/util/Map;
-	public final fun component3 ()Ljava/util/Map;
-	public final fun copy (Ljava/util/List;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/internal/PostHogLocalEvaluationResponse;
-	public static synthetic fun copy$default (Lcom/posthog/internal/PostHogLocalEvaluationResponse;Ljava/util/List;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogLocalEvaluationResponse;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getCohorts ()Ljava/util/Map;
-	public final fun getFlags ()Ljava/util/List;
-	public final fun getGroupTypeMapping ()Ljava/util/Map;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -769,6 +754,12 @@ public final class com/posthog/internal/PropertyGroup {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/posthog/internal/PropertyGroupDeserializer : com/google/gson/JsonDeserializer {
+	public fun <init> ()V
+	public fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lcom/posthog/internal/PropertyGroup;
+	public synthetic fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Ljava/lang/Object;
+}
+
 public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field Companion Lcom/posthog/internal/PropertyOperator$Companion;
 	public static final field EXACT Lcom/posthog/internal/PropertyOperator;
@@ -837,6 +828,12 @@ public final class com/posthog/internal/PropertyValue$PropertyGroups : com/posth
 	public fun hashCode ()I
 	public fun isEmpty ()Z
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/posthog/internal/PropertyValueDeserializer : com/google/gson/JsonDeserializer {
+	public fun <init> ()V
+	public fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lcom/posthog/internal/PropertyValue;
+	public synthetic fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Ljava/lang/Object;
 }
 
 public final class com/posthog/internal/VariantDefinition {
