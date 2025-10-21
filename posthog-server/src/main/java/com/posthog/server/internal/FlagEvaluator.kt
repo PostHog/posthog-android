@@ -446,8 +446,9 @@ internal class FlagEvaluator(
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
     ): Boolean {
-        val cohortId = property.propertyValue?.toString()
-            ?: throw InconclusiveMatchException("Cohort property missing value")
+        val cohortId =
+            property.propertyValue?.toString()
+                ?: throw InconclusiveMatchException("Cohort property missing value")
 
         if (!cohortProperties.containsKey(cohortId)) {
             throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
@@ -542,7 +543,9 @@ internal class FlagEvaluator(
                                         flagsByKey
                                             ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without flagsByKey"),
                                         evaluationCache
-                                            ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without evaluationCache"),
+                                            ?: throw InconclusiveMatchException(
+                                                "Cannot evaluate flag dependencies without evaluationCache",
+                                            ),
                                         distinctId
                                             ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without distinctId"),
                                         propertyValues,
