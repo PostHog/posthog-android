@@ -14,7 +14,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
-     * @param timestamp the timestamp for the event, if not provided the current time will be used
+     * @param timestamp the timestamp for the event in UTC, if not provided the current time will be used
      */
     public fun capture(
         event: String,

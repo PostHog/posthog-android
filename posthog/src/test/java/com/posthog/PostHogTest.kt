@@ -15,7 +15,6 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.util.Date
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -722,7 +721,7 @@ internal class PostHogTest {
         assertEquals(EVENT, theEvent.event)
         assertEquals(DISTINCT_ID, theEvent.distinctId)
         assertEquals(theEvent.timestamp, customTimestamp)
-        
+
         sut.close()
     }
 
