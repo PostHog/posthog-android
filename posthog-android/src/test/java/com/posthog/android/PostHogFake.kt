@@ -3,6 +3,7 @@ package com.posthog.android
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
+import java.util.Date
 import java.util.UUID
 
 public class PostHogFake : PostHogInterface {
@@ -24,6 +25,7 @@ public class PostHogFake : PostHogInterface {
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
+        timestamp: Date?,
     ) {
         this.event = event
         this.properties = properties

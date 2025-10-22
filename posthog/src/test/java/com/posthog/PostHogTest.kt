@@ -15,6 +15,7 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.Date
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -686,6 +687,42 @@ internal class PostHogTest {
 
         assertNotNull(theEvent.distinctId)
 
+        sut.close()
+    }
+
+    @Test
+    fun `captures an event with a custom timestamp`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val customTimestamp = date // Use the predefined test date from Utils.kt
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            timestamp = customTimestamp,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertEquals(API_KEY, batch.apiKey)
+        assertNotNull(batch.sentAt)
+
+        val theEvent = batch.batch.first()
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+        assertEquals(EVENT, theEvent.event)
+        assertEquals(DISTINCT_ID, theEvent.distinctId)
+        assertEquals(theEvent.timestamp, customTimestamp)
+        
         sut.close()
     }
 
