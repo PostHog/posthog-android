@@ -24,6 +24,7 @@ import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
+import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -403,6 +404,7 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
+        timestamp: Date?,
     ) {
         try {
             if (!isEnabled()) {
@@ -445,7 +447,7 @@ public class PostHog private constructor(
                     appendGroups = !groupIdentify,
                 )
 
-            val postHogEvent = buildEvent(event, newDistinctId, mergedProperties)
+            val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp)
             if (postHogEvent == null) {
                 val originalMessage = "PostHog event $event was dropped"
                 val message =
@@ -475,7 +477,7 @@ public class PostHog private constructor(
                     userProperties,
                     userPropertiesSetOnce,
                     groups,
-                    null,
+                    timestamp,
                 )
                 // Notify surveys integration about the event
                 surveysHandler?.onEvent(event)
@@ -1111,6 +1113,7 @@ public class PostHog private constructor(
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
             groups: Map<String, String>?,
+            timestamp: Date?,
         ) {
             shared.capture(
                 event,
@@ -1119,6 +1122,7 @@ public class PostHog private constructor(
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
                 groups = groups,
+                timestamp = timestamp,
             )
         }
 

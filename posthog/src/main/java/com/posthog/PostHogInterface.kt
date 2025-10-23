@@ -1,5 +1,6 @@
 package com.posthog
 
+import java.util.Date
 import java.util.UUID
 
 /**
@@ -13,6 +14,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param timestamp the timestamp for the event in UTC, if not provided the current time will be used
      */
     public fun capture(
         event: String,
@@ -21,6 +23,7 @@ public interface PostHogInterface : PostHogCoreInterface {
         userProperties: Map<String, Any>? = null,
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
+        timestamp: Date? = null,
     )
 
     /**
