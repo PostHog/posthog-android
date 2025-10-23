@@ -1,5 +1,7 @@
 ## Next
 
+## 3.25.0 - 2025-10-23
+
 - feat: allow override of event timestamp ([#309](https://github.com/PostHog/posthog-android/pull/309))
 
 ## 3.24.0 - 2025-10-20
