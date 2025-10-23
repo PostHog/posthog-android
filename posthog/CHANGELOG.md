@@ -1,5 +1,7 @@
 ## Next
 
+- feat: allow override of event timestamp ([#309](https://github.com/PostHog/posthog-android/pull/309))
+
 ## 4.1.0 - 2025-10-20
 
 - feat: add manual captureException ([#300](https://github.com/PostHog/posthog-android/issues/300))
