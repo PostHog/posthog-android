@@ -10,7 +10,7 @@
 5. Choose a release name (e.g. `core-v3.23.0`), and the tag you just created, ideally the same.
 6. Write a description of the release.
 7. Publish the release.
-8. A GitHub action triggers `make releaseAndroid` automatically
+8. A GitHub action triggers `make releaseCore` automatically
 9. Done.
 
 ### Android module (posthog-android):
