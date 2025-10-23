@@ -18,40 +18,40 @@ public data class LocalEvaluationResponse(
 /**
  * Complete feature flag definition for local evaluation
  */
-@IgnoreJRERequirement
+// not a data class to avoid (int Integer.hashCode(int))
 @PostHogInternal
-public data class FlagDefinition(
-    val id: Int,
-    val name: String,
-    val key: String,
-    val active: Boolean,
-    val filters: FlagFilters,
-    val version: Int,
+public class FlagDefinition(
+    public val id: Int,
+    public val name: String,
+    public val key: String,
+    public val active: Boolean,
+    public val filters: FlagFilters,
+    public val version: Int,
 )
 
 /**
  * Flag filters containing groups and multivariate config
  */
-@IgnoreJRERequirement
+// not a data class to avoid (int Integer.hashCode(int))
 @PostHogInternal
-public data class FlagFilters(
-    val groups: List<FlagConditionGroup>?,
-    val multivariate: MultiVariateConfig?,
-    val payloads: Map<String, Any?>?,
+public class FlagFilters(
+    public val groups: List<FlagConditionGroup>?,
+    public val multivariate: MultiVariateConfig?,
+    public val payloads: Map<String, Any?>?,
     @SerializedName("aggregation_group_type_index")
-    val aggregationGroupTypeIndex: Int?,
+    public val aggregationGroupTypeIndex: Int?,
 )
 
 /**
  * A condition group with properties and rollout percentage
  */
-@IgnoreJRERequirement
+// not a data class to avoid (int Integer.hashCode(int))
 @PostHogInternal
-public data class FlagConditionGroup(
-    val properties: List<FlagProperty>?,
+public class FlagConditionGroup(
+    public val properties: List<FlagProperty>?,
     @SerializedName("rollout_percentage")
-    val rolloutPercentage: Int?,
-    val variant: String?,
+    public val rolloutPercentage: Int?,
+    public val variant: String?,
 )
 
 /**
@@ -81,12 +81,12 @@ public data class MultiVariateConfig(
 /**
  * A variant definition with key and rollout percentage
  */
-@IgnoreJRERequirement
+// not a data class to avoid (double Double.hashCode(double))
 @PostHogInternal
-public data class VariantDefinition(
-    val key: String,
+public class VariantDefinition(
+    public val key: String,
     @SerializedName("rollout_percentage")
-    val rolloutPercentage: Double,
+    public val rolloutPercentage: Double,
 )
 
 @PostHogInternal
