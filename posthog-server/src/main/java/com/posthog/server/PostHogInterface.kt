@@ -139,8 +139,8 @@ public sealed interface PostHogInterface {
         key: String,
         defaultValue: Boolean = false,
         groups: Map<String, String>? = null,
-        personProperties: Map<String, String>? = null,
-        groupProperties: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Boolean
 
     /**
@@ -219,8 +219,8 @@ public sealed interface PostHogInterface {
         key: String,
         defaultValue: Any? = null,
         groups: Map<String, String>? = null,
-        personProperties: Map<String, String>? = null,
-        groupProperties: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any?
 
     /**
@@ -300,8 +300,8 @@ public sealed interface PostHogInterface {
         key: String,
         defaultValue: Any? = null,
         groups: Map<String, String>? = null,
-        personProperties: Map<String, String>? = null,
-        groupProperties: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any?
 
     /**
