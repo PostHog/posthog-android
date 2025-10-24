@@ -22,8 +22,8 @@ internal class PostHogFeatureFlags(
         defaultValue: Any?,
         distinctId: String?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         val flag =
             getFeatureFlags(
@@ -40,8 +40,8 @@ internal class PostHogFeatureFlags(
         defaultValue: Any?,
         distinctId: String?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         return getFeatureFlags(
             distinctId,
@@ -55,8 +55,8 @@ internal class PostHogFeatureFlags(
     override fun getFeatureFlags(
         distinctId: String?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Map<String, FeatureFlag>? {
         if (distinctId == null) {
             config.logger.log("getFeatureFlags called but no distinctId available for API call")

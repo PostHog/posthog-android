@@ -22,8 +22,8 @@ internal class PostHogFeatureFlagCacheTest {
     private fun createTestKey(
         distinctId: String = "test-user",
         groups: Map<String, String>? = null,
-        personProperties: Map<String, String>? = null,
-        groupProperties: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): FeatureFlagCacheKey {
         return FeatureFlagCacheKey(distinctId, groups, personProperties, groupProperties)
     }
@@ -194,8 +194,8 @@ internal class PostHogFeatureFlagCacheTest {
 
     @Test
     fun `cache key equality with same values`() {
-        val key1 = createTestKey("user1", mapOf("org" to "test"), mapOf("name" to "test"), mapOf("size" to "10"))
-        val key2 = createTestKey("user1", mapOf("org" to "test"), mapOf("name" to "test"), mapOf("size" to "10"))
+        val key1 = createTestKey("user1", mapOf("org" to "test"), mapOf("name" to "test"), mapOf("test" to mapOf("size" to "10")))
+        val key2 = createTestKey("user1", mapOf("org" to "test"), mapOf("name" to "test"), mapOf("test" to mapOf("size" to "10")))
 
         val cache = PostHogFeatureFlagCache(maxSize = 10, maxAgeMs = 60000)
         val flags = createTestFlags()

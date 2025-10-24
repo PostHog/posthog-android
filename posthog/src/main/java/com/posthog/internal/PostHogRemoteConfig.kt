@@ -564,8 +564,8 @@ public class PostHogRemoteConfig(
         defaultValue: Any?,
         distinctId: String?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         // since we pass featureFlags as a value, we need to load it from cache if needed
         loadFeatureFlagsFromCacheIfNeeded()
@@ -578,8 +578,8 @@ public class PostHogRemoteConfig(
         defaultValue: Any?,
         distinctId: String?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         // since we pass featureFlags as a value, we need to load it from cache if needed
         loadFeatureFlagsFromCacheIfNeeded()
@@ -590,8 +590,8 @@ public class PostHogRemoteConfig(
     override fun getFeatureFlags(
         distinctId: String?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Map<String, Any>? {
         val flags: Map<String, Any>?
         synchronized(featureFlagsLock) {

@@ -8,8 +8,8 @@ internal class PostHogFlagsRequest(
     distinctId: String,
     anonymousId: String? = null,
     groups: Map<String, String>? = null,
-    personProperties: Map<String, String>? = null,
-    groupProperties: Map<String, String>? = null,
+    personProperties: Map<String, Any?>? = null,
+    groupProperties: Map<String, Map<String, Any?>>? = null,
     evaluationEnvironments: List<String>? = null,
 ) : HashMap<String, Any>() {
     init {
