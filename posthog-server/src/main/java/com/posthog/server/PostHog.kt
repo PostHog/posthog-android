@@ -59,8 +59,8 @@ public class PostHog : PostHogInterface {
         key: String,
         defaultValue: Boolean,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Boolean {
         return instance?.isFeatureEnabledStateless(
             distinctId,
@@ -77,8 +77,8 @@ public class PostHog : PostHogInterface {
         key: String,
         defaultValue: Any?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         return instance?.getFeatureFlagStateless(
             distinctId,
@@ -95,8 +95,8 @@ public class PostHog : PostHogInterface {
         key: String,
         defaultValue: Any?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         return instance?.getFeatureFlagPayloadStateless(
             distinctId,

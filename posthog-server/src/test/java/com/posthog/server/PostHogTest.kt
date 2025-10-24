@@ -500,7 +500,7 @@ internal class PostHogTest {
 
         val groups = mapOf("organization" to "org_123")
         val personProperties = mapOf("plan" to "premium")
-        val groupProperties = mapOf("size" to "large")
+        val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
 
         whenever(
             mockInstance.isFeatureEnabledStateless(
@@ -544,7 +544,7 @@ internal class PostHogTest {
                 .defaultValue(true)
                 .group("organization", "org_123")
                 .personProperty("plan", "premium")
-                .groupProperty("size", "large")
+                .groupProperty("org_123", "size", "large")
                 .build()
 
         whenever(
@@ -581,7 +581,7 @@ internal class PostHogTest {
                 .defaultValue("some_string")
                 .group("organization", "org_123")
                 .personProperty("plan", "premium")
-                .groupProperty("size", "large")
+                .groupProperty("org_123", "size", "large")
                 .build()
 
         postHog.isFeatureEnabled("user123", "feature_key", options)
@@ -603,7 +603,7 @@ internal class PostHogTest {
 
         val groups = mapOf("organization" to "org_123")
         val personProperties = mapOf("plan" to "premium")
-        val groupProperties = mapOf("size" to "large")
+        val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
 
         postHog.getFeatureFlag(
             "user123",
@@ -634,7 +634,7 @@ internal class PostHogTest {
                 .defaultValue("default")
                 .group("organization", "org_123")
                 .personProperty("plan", "premium")
-                .groupProperty("size", "large")
+                .groupProperty("org_123", "size", "large")
                 .build()
 
         postHog.getFeatureFlag("user123", "feature_key", options)
@@ -656,7 +656,7 @@ internal class PostHogTest {
 
         val groups = mapOf("organization" to "org_123")
         val personProperties = mapOf("plan" to "premium")
-        val groupProperties = mapOf("size" to "large")
+        val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
 
         postHog.getFeatureFlagPayload(
             "user123",
@@ -687,7 +687,7 @@ internal class PostHogTest {
                 .defaultValue(null)
                 .group("organization", "org_123")
                 .personProperty("plan", "premium")
-                .groupProperty("size", "large")
+                .groupProperty("org_123", "size", "large")
                 .build()
 
         postHog.getFeatureFlagPayload("user123", "feature_key", options)

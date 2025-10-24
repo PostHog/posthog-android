@@ -296,7 +296,7 @@ internal class PostHogFeatureFlagsTest {
                 distinctId = "test-user",
                 groups = mapOf("org" to "test-org"),
                 personProperties = mapOf("plan" to "premium"),
-                groupProperties = mapOf("size" to "large"),
+                groupProperties = mapOf("test-org" to mapOf("size" to "large")),
             )
 
         // Test with null parameters (different cache key)

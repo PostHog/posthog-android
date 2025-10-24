@@ -170,10 +170,10 @@ public final class com/posthog/server/PostHogFeatureFlagOptions$Builder {
 	public final fun getPersonProperties ()Ljava/util/Map;
 	public final fun group (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
 	public final fun groupProperties (Ljava/util/Map;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
-	public final fun groupProperty (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun groupProperty (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
 	public final fun groups (Ljava/util/Map;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
 	public final fun personProperties (Ljava/util/Map;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
-	public final fun personProperty (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
+	public final fun personProperty (Ljava/lang/String;Ljava/lang/Object;)Lcom/posthog/server/PostHogFeatureFlagOptions$Builder;
 	public final fun setDefaultValue (Ljava/lang/Object;)V
 	public final fun setGroupProperties (Ljava/util/Map;)V
 	public final fun setGroups (Ljava/util/Map;)V
