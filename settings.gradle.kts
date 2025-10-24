@@ -22,3 +22,4 @@ include(":posthog-server")
 // samples
 include(":posthog-samples:posthog-android-sample")
 include(":posthog-samples:posthog-java-sample")
+include(":posthog-samples:posthog-spring-sample")
