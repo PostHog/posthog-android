@@ -16,8 +16,8 @@ internal enum class EvaluationSource {
 
 internal data class FeatureFlagResolutionParameters(
     val groups: Map<String, String>? = null,
-    val personProperties: Map<String, String>? = null,
-    val groupProperties: Map<String, String>? = null,
+    val personProperties: Map<String, Any?>? = null,
+    val groupProperties: Map<String, Map<String, Any?>>? = null,
     val onlyEvaluateLocally: Boolean = false,
 )
 
@@ -125,14 +125,24 @@ internal class PostHogFeatureFlags(
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
         onlyEvaluateLocally: Boolean = false,
-    ): FeatureFlag? {
+    ): FeatureFlagResultContext? {
         val cachedFlags =
             getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
         if (cachedFlags != null) {
             config.logger.log("Feature flags cache hit for distinctId: $distinctId")
             val flag = cachedFlags[key]
             if (flag != null) {
-                return flag
+                return FeatureFlagResultContext(
+                    results = mapOf(key to flag),
+                    source = EvaluationSource.CACHE,
+                    parameters =
+                        FeatureFlagResolutionParameters(
+                            groups = groups,
+                            personProperties = personProperties,
+                            groupProperties = groupProperties,
+                            onlyEvaluateLocally = onlyEvaluateLocally,
+                        ),
+                )
             }
         }
 
@@ -159,7 +169,17 @@ internal class PostHogFeatureFlags(
 
                     val flag = buildFeatureFlagFromResult(key, result, flagDef)
                     config.logger.log("Local evaluation successful for flag '$key'")
-                    return flag
+                    return FeatureFlagResultContext(
+                        results = mapOf(key to flag),
+                        source = EvaluationSource.LOCAL,
+                        parameters =
+                            FeatureFlagResolutionParameters(
+                                groups = groups,
+                                personProperties = personProperties,
+                                groupProperties = groupProperties,
+                                onlyEvaluateLocally = onlyEvaluateLocally,
+                            ),
+                    )
                 } catch (e: InconclusiveMatchException) {
                     config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
                     if (onlyEvaluateLocally) {
@@ -174,19 +194,38 @@ internal class PostHogFeatureFlags(
                     // Fall through to remote evaluation
                 }
             }
-        } else if if (onlyEvaluateLocally) {
+        } else if (onlyEvaluateLocally) {
             return null
         }
 
         // Local evaluation not available or failed - fall back to API
         // Fetch and cache all flags, then return the specific one
         config.logger.log("Feature flag cache miss for distinctId: $distinctId, calling API")
-        return getFeatureFlagsFromRemote(
-            distinctId,
-            groups,
-            personProperties,
-            groupProperties,
-        )?.get(key)
+        val remoteFlags =
+            getFeatureFlagsFromRemote(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+        if (remoteFlags.flags != null) {
+            val flag = remoteFlags.flags[key]
+            if (flag != null) {
+                return FeatureFlagResultContext(
+                    results = mapOf(key to flag),
+                    source = EvaluationSource.REMOTE,
+                    requestId = remoteFlags.requestId,
+                    parameters =
+                        FeatureFlagResolutionParameters(
+                            groups = groups,
+                            personProperties = personProperties,
+                            groupProperties = groupProperties,
+                            onlyEvaluateLocally = onlyEvaluateLocally,
+                        ),
+                )
+            }
+        }
+        return null
     }
 
     private fun getFeatureFlagsFromCache(
@@ -306,8 +345,8 @@ internal class PostHogFeatureFlags(
     internal fun resolveFeatureFlags(
         distinctId: String?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
         onlyEvaluateLocally: Boolean = false,
     ): FeatureFlagResultContext? {
         if (distinctId == null) {
@@ -475,6 +514,41 @@ internal class PostHogFeatureFlags(
         synchronized(this) {
             poller?.stop()
             poller = null
+        }
+    }
+
+    /**
+     * Appends feature flag properties to event properties
+     */
+    internal fun appendFlagEventProperties(
+        distinctId: String,
+        properties: MutableMap<String, Any>?,
+        groups: Map<String, String>?,
+        options: com.posthog.server.PostHogSendFeatureFlagOptions?,
+    ) {
+        if (options == null || properties == null) {
+            return
+        }
+
+        val response =
+            resolveFeatureFlags(
+                distinctId,
+                groups,
+                options.personProperties,
+                options.groupProperties,
+                options.onlyEvaluateLocally,
+            )
+
+        response?.results?.values?.let {
+            val activeFeatureFlags = mutableListOf<String>()
+            it.forEach { flag ->
+                val flagValue = flag.variant ?: flag.enabled
+                properties["\$feature/${flag.key}"] = flagValue
+                if (flagValue != false) {
+                    activeFeatureFlags.add(flag.key)
+                }
+            }
+            properties["\$active_feature_flags"] = activeFeatureFlags.toList()
         }
     }
 

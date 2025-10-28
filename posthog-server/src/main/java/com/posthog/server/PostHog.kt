@@ -249,36 +249,18 @@ public class PostHog : PostHogInterface, PostHogStateless() {
         }
     }
 
-    private fun appendFlagCaptureProperties(
+    internal fun appendFlagCaptureProperties(
         distinctId: String,
         properties: MutableMap<String, Any>?,
         groups: Map<String, String>?,
         options: PostHogSendFeatureFlagOptions?,
     ) {
-        if (options == null || properties == null) {
-            return
-        }
-
-        val response =
-            (featureFlags as? PostHogFeatureFlags)?.resolveFeatureFlags(
-                distinctId,
-                groups,
-                options.personProperties,
-                options.groupProperties,
-                options.onlyEvaluateLocally,
-            )
-
-        response?.results?.values?.let {
-            val activeFeatureFlags = mutableListOf<String>()
-            it.forEach { flag ->
-                val flagValue = flag.variant ?: flag.enabled
-                properties["\$feature/${flag.key}"] = flagValue
-                if (flagValue != false) {
-                    activeFeatureFlags.add(flag.key)
-                }
-            }
-            properties["\$active_feature_flags"] = activeFeatureFlags.toList()
-        }
+        (featureFlags as? PostHogFeatureFlags)?.appendFlagEventProperties(
+            distinctId,
+            properties,
+            groups,
+            options,
+        )
     }
 
     public companion object {

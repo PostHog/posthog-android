@@ -7,13 +7,13 @@ package com.posthog.server
  */
 public class PostHogSendFeatureFlagOptions private constructor(
     public val onlyEvaluateLocally: Boolean = false,
-    public val personProperties: Map<String, String>?,
-    public val groupProperties: Map<String, String>?,
+    public val personProperties: Map<String, Any?>?,
+    public val groupProperties: Map<String, Map<String, Any?>>?,
 ) {
     public class Builder {
         public var onlyEvaluateLocally: Boolean = false
-        public var personProperties: MutableMap<String, String>? = null
-        public var groupProperties: MutableMap<String, String>? = null
+        public var personProperties: MutableMap<String, Any?>? = null
+        public var groupProperties: MutableMap<String, MutableMap<String, Any?>>? = null
 
         /**
          * Sets whether to only evaluate the feature flags locally.
@@ -29,11 +29,11 @@ public class PostHogSendFeatureFlagOptions private constructor(
          */
         public fun personProperty(
             key: String,
-            value: String,
+            propValue: Any?,
         ): Builder {
             personProperties =
                 (personProperties ?: mutableMapOf()).apply {
-                    put(key, value)
+                    put(key, propValue)
                 }
             return this
         }
@@ -42,7 +42,7 @@ public class PostHogSendFeatureFlagOptions private constructor(
          * Appends multiple user properties to the capture options.
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
-        public fun personProperties(userProperties: Map<String, String>): Builder {
+        public fun personProperties(userProperties: Map<String, Any?>): Builder {
             this.personProperties =
                 (this.personProperties ?: mutableMapOf()).apply {
                     putAll(userProperties)
@@ -55,12 +55,13 @@ public class PostHogSendFeatureFlagOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun groupProperty(
+            group: String,
             key: String,
-            value: String,
+            propValue: Any?,
         ): Builder {
             groupProperties =
                 (groupProperties ?: mutableMapOf()).apply {
-                    put(key, value)
+                    getOrPut(group) { mutableMapOf() }[key] = propValue
                 }
             return this
         }
@@ -69,10 +70,12 @@ public class PostHogSendFeatureFlagOptions private constructor(
          * Appends multiple user properties (set once) to the capture options.
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
-        public fun groupProperties(groupProperties: Map<String, String>): Builder {
+        public fun groupProperties(groupProperties: Map<String, Map<String, Any?>>): Builder {
             this.groupProperties =
                 (this.groupProperties ?: mutableMapOf()).apply {
-                    putAll(groupProperties)
+                    groupProperties.forEach { (group, properties) ->
+                        getOrPut(group) { mutableMapOf() }.putAll(properties)
+                    }
                 }
             return this
         }
