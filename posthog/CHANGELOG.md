@@ -1,5 +1,7 @@
 ## Next
 
+- fix: Typed `groupProperties` and `userProperties` types to match the API and other SDKs
+
 ## 4.2.0 - 2025-10-23
 
 - feat: allow override of event timestamp ([#309](https://github.com/PostHog/posthog-android/pull/309))
