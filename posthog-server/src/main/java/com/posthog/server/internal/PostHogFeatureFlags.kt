@@ -96,8 +96,8 @@ internal class PostHogFeatureFlags(
         key: String,
         distinctId: String,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): FeatureFlag? {
         val cachedFlags =
             getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
@@ -157,8 +157,8 @@ internal class PostHogFeatureFlags(
     private fun getFeatureFlagsFromCache(
         distinctId: String,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Map<String, FeatureFlag>? {
         val cacheKey =
             FeatureFlagCacheKey(
@@ -174,8 +174,8 @@ internal class PostHogFeatureFlags(
     private fun getFeatureFlagsFromLocalEvaluation(
         distinctId: String,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
         onlyEvaluateLocally: Boolean = false,
     ): Map<String, FeatureFlag>? {
         if (!localEvaluation) {
@@ -225,8 +225,8 @@ internal class PostHogFeatureFlags(
     private fun getFeatureFlagsFromRemote(
         distinctId: String,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Map<String, FeatureFlag>? {
         val cacheKey =
             FeatureFlagCacheKey(
@@ -411,9 +411,9 @@ internal class PostHogFeatureFlags(
     private fun computeFlagLocally(
         key: String,
         distinctId: String,
-        personProperties: Map<String, Any?>,
         groups: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         val flags = this.flagDefinitions ?: return null
         val flag = flags[key] ?: return null
