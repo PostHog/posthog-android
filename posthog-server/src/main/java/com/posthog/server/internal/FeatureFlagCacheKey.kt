@@ -6,8 +6,8 @@ package com.posthog.server.internal
 internal data class FeatureFlagCacheKey(
     val distinctId: String?,
     val groups: Map<String, String>?,
-    val personProperties: Map<String, String>?,
-    val groupProperties: Map<String, String>?,
+    val personProperties: Map<String, Any?>?,
+    val groupProperties: Map<String, Map<String, Any?>>?,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

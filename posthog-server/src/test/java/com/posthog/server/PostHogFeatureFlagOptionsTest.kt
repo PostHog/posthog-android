@@ -158,7 +158,7 @@ internal class PostHogFeatureFlagOptionsTest {
 
         builder.personProperty("plan", "premium")
 
-        assertEquals(mutableMapOf<String, String>("plan" to "premium"), builder.personProperties)
+        assertEquals(mutableMapOf<String, Any?>("plan" to "premium"), builder.personProperties)
     }
 
     @Test
@@ -199,7 +199,7 @@ internal class PostHogFeatureFlagOptionsTest {
         val propertiesToAdd = mapOf("plan" to "premium")
         builder.personProperties(propertiesToAdd)
 
-        assertEquals(mutableMapOf<String, String>("plan" to "premium"), builder.personProperties)
+        assertEquals(mutableMapOf<String, Any?>("plan" to "premium"), builder.personProperties)
     }
 
     @Test
@@ -231,10 +231,10 @@ internal class PostHogFeatureFlagOptionsTest {
     fun `groupProperty method adds single group property`() {
         val options =
             PostHogFeatureFlagOptions.builder()
-                .groupProperty("industry", "tech")
+                .groupProperty("my-org", "industry", "tech")
                 .build()
 
-        assertEquals(mapOf("industry" to "tech"), options.groupProperties)
+        assertEquals(mapOf("my-org" to mapOf("industry" to "tech")), options.groupProperties)
     }
 
     @Test
@@ -242,33 +242,33 @@ internal class PostHogFeatureFlagOptionsTest {
         val builder = PostHogFeatureFlagOptions.builder()
         assertNull(builder.groupProperties)
 
-        builder.groupProperty("industry", "tech")
+        builder.groupProperty("my-org", "industry", "tech")
 
-        assertEquals(mutableMapOf<String, String>("industry" to "tech"), builder.groupProperties)
+        assertEquals(mutableMapOf("my-org" to mutableMapOf<String, Any?>("industry" to "tech")), builder.groupProperties)
     }
 
     @Test
     fun `groupProperty method adds to existing groupProperties map`() {
         val options =
             PostHogFeatureFlagOptions.builder()
-                .groupProperty("industry", "tech")
-                .groupProperty("size", "large")
+                .groupProperty("my-org", "industry", "tech")
+                .groupProperty("my-org", "size", "large")
                 .build()
 
-        assertEquals(mapOf("industry" to "tech", "size" to "large"), options.groupProperties)
+        assertEquals(mapOf("my-org" to mapOf("industry" to "tech", "size" to "large")), options.groupProperties)
     }
 
     @Test
     fun `groupProperty method returns builder for chaining`() {
         val builder = PostHogFeatureFlagOptions.builder()
-        val result = builder.groupProperty("industry", "tech")
+        val result = builder.groupProperty("my-org", "industry", "tech")
 
         assertEquals(builder, result)
     }
 
     @Test
     fun `groupProperties method adds multiple group properties`() {
-        val propertiesToAdd = mapOf("industry" to "tech", "size" to "large")
+        val propertiesToAdd = mapOf("my-org" to mapOf("industry" to "tech", "size" to "large"))
         val options =
             PostHogFeatureFlagOptions.builder()
                 .groupProperties(propertiesToAdd)
@@ -282,25 +282,28 @@ internal class PostHogFeatureFlagOptionsTest {
         val builder = PostHogFeatureFlagOptions.builder()
         assertNull(builder.groupProperties)
 
-        val propertiesToAdd = mapOf("industry" to "tech")
+        val propertiesToAdd = mapOf("my-org" to mapOf("industry" to "tech"))
         builder.groupProperties(propertiesToAdd)
 
-        assertEquals(mutableMapOf<String, String>("industry" to "tech"), builder.groupProperties)
+        assertEquals(mutableMapOf("my-org" to mutableMapOf<String, Any?>("industry" to "tech")), builder.groupProperties)
     }
 
     @Test
     fun `groupProperties method appends to existing groupProperties`() {
         val options =
             PostHogFeatureFlagOptions.builder()
-                .groupProperty("existing_key", "existing_value")
-                .groupProperties(mapOf("new_key1" to "new_value1", "new_key2" to "new_value2"))
+                .groupProperty("my-org", "existing_key", "existing_value")
+                .groupProperties(mapOf("my-org" to mapOf("new_key1" to "new_value1", "new_key2" to "new_value2")))
                 .build()
 
         val expected =
             mapOf(
-                "existing_key" to "existing_value",
-                "new_key1" to "new_value1",
-                "new_key2" to "new_value2",
+                "my-org" to
+                    mapOf(
+                        "existing_key" to "existing_value",
+                        "new_key1" to "new_value1",
+                        "new_key2" to "new_value2",
+                    ),
             )
         assertEquals(expected, options.groupProperties)
     }
@@ -308,7 +311,7 @@ internal class PostHogFeatureFlagOptionsTest {
     @Test
     fun `groupProperties method returns builder for chaining`() {
         val builder = PostHogFeatureFlagOptions.builder()
-        val result = builder.groupProperties(mapOf("industry" to "tech"))
+        val result = builder.groupProperties(mapOf("my-org" to mapOf("industry" to "tech")))
 
         assertEquals(builder, result)
     }
@@ -322,14 +325,14 @@ internal class PostHogFeatureFlagOptionsTest {
                 .groups(mapOf("team" to "team_456"))
                 .personProperty("plan", "premium")
                 .personProperties(mapOf("role" to "admin"))
-                .groupProperty("industry", "tech")
-                .groupProperties(mapOf("size" to "large"))
+                .groupProperty("my-org", "industry", "tech")
+                .groupProperties(mapOf("my-org" to mapOf("size" to "large")))
                 .build()
 
         assertEquals("default", options.defaultValue)
         assertEquals(mapOf("organization" to "org_123", "team" to "team_456"), options.groups)
         assertEquals(mapOf("plan" to "premium", "role" to "admin"), options.personProperties)
-        assertEquals(mapOf("industry" to "tech", "size" to "large"), options.groupProperties)
+        assertEquals(mapOf("my-org" to mapOf("industry" to "tech", "size" to "large")), options.groupProperties)
     }
 
     @Test
@@ -358,11 +361,11 @@ internal class PostHogFeatureFlagOptionsTest {
     fun `overwriting same key in groupProperties replaces value`() {
         val options =
             PostHogFeatureFlagOptions.builder()
-                .groupProperty("size", "small")
-                .groupProperty("size", "large")
+                .groupProperty("my-org", "size", "small")
+                .groupProperty("my-org", "size", "large")
                 .build()
 
-        assertEquals(mapOf("size" to "large"), options.groupProperties)
+        assertEquals(mapOf("my-org" to mapOf("size" to "large")), options.groupProperties)
     }
 
     @Test
