@@ -457,7 +457,7 @@ internal class PostHogFeatureFlagsTest {
                 defaultValue = false,
                 distinctId = "user-123",
                 groups = mapOf("organization" to "org-456"),
-                groupProperties = mapOf("plan" to "enterprise"),
+                groupProperties = mapOf("org-456" to mapOf("plan" to "enterprise")),
             )
 
         // Debug logging
