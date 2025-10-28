@@ -327,6 +327,7 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	public fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	protected final fun getFeatureFlags ()Lcom/posthog/internal/PostHogFeatureFlagsInterface;
+	protected final fun getFeatureFlagsCalled ()Lcom/posthog/internal/PostHogFeatureFlagCalledCache;
 	protected final fun getMemoryPreferences ()Lcom/posthog/internal/PostHogPreferences;
 	protected final fun getOptOutLock ()Ljava/lang/Object;
 	protected final fun getPreferences ()Lcom/posthog/internal/PostHogPreferences;
@@ -342,6 +343,7 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	public fun optOut ()V
 	protected final fun setEnabled (Z)V
 	protected final fun setFeatureFlags (Lcom/posthog/internal/PostHogFeatureFlagsInterface;)V
+	protected final fun setFeatureFlagsCalled (Lcom/posthog/internal/PostHogFeatureFlagCalledCache;)V
 	protected final fun setMemoryPreferences (Lcom/posthog/internal/PostHogPreferences;)V
 	protected final fun setQueue (Lcom/posthog/internal/PostHogQueueInterface;)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
@@ -576,6 +578,14 @@ public final class com/posthog/internal/PostHogDeviceDateProvider : com/posthog/
 	public fun currentDate ()Ljava/util/Date;
 	public fun currentTimeMillis ()J
 	public fun nanoTime ()J
+}
+
+public final class com/posthog/internal/PostHogFeatureFlagCalledCache {
+	public static final field BATCH_EVICTION_FACTOR D
+	public fun <init> (I)V
+	public final fun add (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Z
+	public final fun clear ()V
+	public final fun size ()I
 }
 
 public abstract interface class com/posthog/internal/PostHogFeatureFlagsInterface {

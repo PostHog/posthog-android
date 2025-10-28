@@ -57,7 +57,7 @@ public class PostHog private constructor(
 
     private var remoteConfig: PostHogRemoteConfig? = null
     private var replayQueue: PostHogQueueInterface? = null
-    private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
+    private val featureFlagsCalledCache = mutableMapOf<String, MutableList<Any?>>()
 
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
     private var surveysHandler: PostHogSurveysHandler? = null
@@ -85,7 +85,8 @@ public class PostHog private constructor(
                     config.logger.log("Setup called despite already being setup!")
                     return
                 }
-                config.logger = if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
+                config.logger =
+                    if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (!apiKeys.add(config.apiKey)) {
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
@@ -94,8 +95,22 @@ public class PostHog private constructor(
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
                 val api = PostHogApi(config)
-                val queue = config.queueProvider(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
-                val replayQueue = config.queueProvider(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
+                val queue =
+                    config.queueProvider(
+                        config,
+                        api,
+                        PostHogApiEndpoint.BATCH,
+                        config.storagePrefix,
+                        queueExecutor,
+                    )
+                val replayQueue =
+                    config.queueProvider(
+                        config,
+                        api,
+                        PostHogApiEndpoint.SNAPSHOT,
+                        config.replayStoragePrefix,
+                        replayExecutor,
+                    )
                 val featureFlags = config.remoteConfigProvider(config, api, remoteConfigExecutor)
 
                 // no need to lock optOut here since the setup is locked already
@@ -177,7 +192,12 @@ public class PostHog private constructor(
                 // only because of testing in isolation, this flag is always enabled
                 if (reloadFeatureFlags) {
                     when {
-                        config.remoteConfig -> loadRemoteConfigRequest(internalOnFeatureFlagsLoaded, config.onFeatureFlags)
+                        config.remoteConfig ->
+                            loadRemoteConfigRequest(
+                                internalOnFeatureFlagsLoaded,
+                                config.onFeatureFlags,
+                            )
+
                         config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
                     }
                 }
@@ -244,7 +264,7 @@ public class PostHog private constructor(
                 queue?.stop()
                 replayQueue?.stop()
 
-                featureFlagsCalled.clear()
+                featureFlagsCalledCache.clear()
 
                 endSession()
             } catch (e: Throwable) {
@@ -684,8 +704,9 @@ public class PostHog private constructor(
         get() {
             synchronized(personProcessingLock) {
                 if (!isPersonProcessingLoaded) {
-                    isPersonProcessingEnabled = getPreferences().getValue(PERSON_PROCESSING) as? Boolean
-                        ?: false
+                    isPersonProcessingEnabled =
+                        getPreferences().getValue(PERSON_PROCESSING) as? Boolean
+                            ?: false
                     isPersonProcessingLoaded = true
                 }
             }
@@ -755,7 +776,10 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return
         }
-        loadFeatureFlagsRequest(internalOnFeatureFlags = internalOnFeatureFlagsLoaded, onFeatureFlags = onFeatureFlags)
+        loadFeatureFlagsRequest(
+            internalOnFeatureFlags = internalOnFeatureFlagsLoaded,
+            onFeatureFlags = onFeatureFlags,
+        )
     }
 
     private fun loadFeatureFlagsRequest(
@@ -800,7 +824,13 @@ public class PostHog private constructor(
             anonymousId = this.anonymousId
         }
 
-        remoteConfig?.loadRemoteConfig(distinctId, anonymousId = anonymousId, groups, internalOnFeatureFlags, onFeatureFlags)
+        remoteConfig?.loadRemoteConfig(
+            distinctId,
+            anonymousId = anonymousId,
+            groups,
+            internalOnFeatureFlags,
+            onFeatureFlags,
+        )
     }
 
     public override fun isFeatureEnabled(
@@ -826,12 +856,12 @@ public class PostHog private constructor(
     ) {
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
-            val values = featureFlagsCalled[key] ?: mutableListOf()
+            val values = featureFlagsCalledCache[key] ?: mutableListOf()
             if (values.contains(value)) {
                 shouldSendFeatureFlagEvent = false
             } else {
                 values.add(value)
-                featureFlagsCalled[key] = values
+                featureFlagsCalledCache[key] = values
             }
         }
 
@@ -902,7 +932,7 @@ public class PostHog private constructor(
         }
         getPreferences().clear(except = except.toList())
         remoteConfig?.clear()
-        featureFlagsCalled.clear()
+        featureFlagsCalledCache.clear()
         synchronized(identifiedLock) {
             isIdentifiedLoaded = false
         }

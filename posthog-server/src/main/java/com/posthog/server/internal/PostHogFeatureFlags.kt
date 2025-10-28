@@ -8,6 +8,32 @@ import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PropertyGroup
 
+internal enum class EvaluationSource {
+    LOCAL,
+    REMOTE,
+    CACHE,
+}
+
+internal data class FeatureFlagResolutionParameters(
+    val groups: Map<String, String>? = null,
+    val personProperties: Map<String, Any?>? = null,
+    val groupProperties: Map<String, Map<String, Any?>>? = null,
+    val onlyEvaluateLocally: Boolean = false,
+)
+
+internal data class FeatureFlagResultContext(
+    val results: Map<String, FeatureFlag>? = null,
+    val source: EvaluationSource? = null,
+    val requestId: String? = null,
+    val exhaustive: Boolean = false,
+    val parameters: FeatureFlagResolutionParameters? = null,
+)
+
+internal data class RemoteFeatureFlagsResponse(
+    val flags: Map<String, FeatureFlag>?,
+    val requestId: String?,
+)
+
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
     private val api: PostHogApi,
@@ -67,7 +93,7 @@ internal class PostHogFeatureFlags(
                 groups,
                 personProperties,
                 groupProperties,
-            )
+            )?.results?.get(key)
         return flag?.variant ?: flag?.enabled ?: defaultValue
     }
 
@@ -88,24 +114,35 @@ internal class PostHogFeatureFlags(
             groups,
             personProperties,
             groupProperties,
-        )?.metadata?.payload
+        )?.results?.get(key)?.metadata?.payload
             ?: defaultValue
     }
 
-    private fun resolveFeatureFlag(
+    internal fun resolveFeatureFlag(
         key: String,
         distinctId: String,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-    ): FeatureFlag? {
+        onlyEvaluateLocally: Boolean = false,
+    ): FeatureFlagResultContext? {
         val cachedFlags =
             getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
         if (cachedFlags != null) {
             config.logger.log("Feature flags cache hit for distinctId: $distinctId")
             val flag = cachedFlags[key]
             if (flag != null) {
-                return flag
+                return FeatureFlagResultContext(
+                    results = mapOf(key to flag),
+                    source = EvaluationSource.CACHE,
+                    parameters =
+                        FeatureFlagResolutionParameters(
+                            groups = groups,
+                            personProperties = personProperties,
+                            groupProperties = groupProperties,
+                            onlyEvaluateLocally = onlyEvaluateLocally,
+                        ),
+                )
             }
         }
 
@@ -132,26 +169,63 @@ internal class PostHogFeatureFlags(
 
                     val flag = buildFeatureFlagFromResult(key, result, flagDef)
                     config.logger.log("Local evaluation successful for flag '$key'")
-                    return flag
+                    return FeatureFlagResultContext(
+                        results = mapOf(key to flag),
+                        source = EvaluationSource.LOCAL,
+                        parameters =
+                            FeatureFlagResolutionParameters(
+                                groups = groups,
+                                personProperties = personProperties,
+                                groupProperties = groupProperties,
+                                onlyEvaluateLocally = onlyEvaluateLocally,
+                            ),
+                    )
                 } catch (e: InconclusiveMatchException) {
                     config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
+                    if (onlyEvaluateLocally) {
+                        return null
+                    }
                     // Fall through to remote evaluation
                 } catch (e: Throwable) {
                     config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
+                    if (onlyEvaluateLocally) {
+                        return null
+                    }
                     // Fall through to remote evaluation
                 }
             }
+        } else if (onlyEvaluateLocally) {
+            return null
         }
 
         // Local evaluation not available or failed - fall back to API
         // Fetch and cache all flags, then return the specific one
         config.logger.log("Feature flag cache miss for distinctId: $distinctId, calling API")
-        return getFeatureFlagsFromRemote(
-            distinctId,
-            groups,
-            personProperties,
-            groupProperties,
-        )?.get(key)
+        val remoteFlags =
+            getFeatureFlagsFromRemote(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+        if (remoteFlags.flags != null) {
+            val flag = remoteFlags.flags[key]
+            if (flag != null) {
+                return FeatureFlagResultContext(
+                    results = mapOf(key to flag),
+                    source = EvaluationSource.REMOTE,
+                    requestId = remoteFlags.requestId,
+                    parameters =
+                        FeatureFlagResolutionParameters(
+                            groups = groups,
+                            personProperties = personProperties,
+                            groupProperties = groupProperties,
+                            onlyEvaluateLocally = onlyEvaluateLocally,
+                        ),
+                )
+            }
+        }
+        return null
     }
 
     private fun getFeatureFlagsFromCache(
@@ -227,7 +301,7 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-    ): Map<String, FeatureFlag>? {
+    ): RemoteFeatureFlagsResponse {
         val cacheKey =
             FeatureFlagCacheKey(
                 distinctId = distinctId,
@@ -238,17 +312,17 @@ internal class PostHogFeatureFlags(
 
         val cachedFlags = cache.get(cacheKey)
         if (cachedFlags != null) {
-            return cachedFlags
+            return RemoteFeatureFlagsResponse(flags = cachedFlags, requestId = null)
         }
 
         return try {
             val response = api.flags(distinctId, null, groups, personProperties, groupProperties)
             val flags = response?.flags
             cache.put(cacheKey, flags)
-            flags
+            RemoteFeatureFlagsResponse(flags = flags, requestId = response?.requestId)
         } catch (e: Throwable) {
             config.logger.log("Loading remote feature flags failed: $e")
-            null
+            RemoteFeatureFlagsResponse(flags = null, requestId = null)
         }
     }
 
@@ -258,6 +332,23 @@ internal class PostHogFeatureFlags(
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Map<String, FeatureFlag>? {
+        val result =
+            resolveFeatureFlags(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+        return result?.results
+    }
+
+    internal fun resolveFeatureFlags(
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        onlyEvaluateLocally: Boolean = false,
+    ): FeatureFlagResultContext? {
         if (distinctId == null) {
             config.logger.log("getFeatureFlags called but no distinctId available for API call")
             return null
@@ -265,7 +356,11 @@ internal class PostHogFeatureFlags(
 
         val cached = getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
         if (cached != null) {
-            return cached
+            return FeatureFlagResultContext(
+                results = cached,
+                source = EvaluationSource.CACHE,
+                exhaustive = true,
+            )
         }
 
         // If no cached flags, try local evaluation
@@ -275,13 +370,30 @@ internal class PostHogFeatureFlags(
                 groups,
                 personProperties,
                 groupProperties,
+                onlyEvaluateLocally = onlyEvaluateLocally,
             )
         if (localFlags != null) {
-            return localFlags
+            return FeatureFlagResultContext(
+                results = localFlags,
+                source = EvaluationSource.LOCAL,
+                exhaustive = true,
+            )
         }
 
         // Finally, fall back to remote fetch
-        return getFeatureFlagsFromRemote(distinctId, groups, personProperties, groupProperties)
+        val result =
+            getFeatureFlagsFromRemote(distinctId, groups, personProperties, groupProperties)
+        if (result.flags != null) {
+            return FeatureFlagResultContext(
+                results = result.flags,
+                source = EvaluationSource.REMOTE,
+                requestId = result.requestId,
+                exhaustive = true,
+            )
+        }
+
+        // Everything failed
+        return null
     }
 
     override fun clear() {
@@ -402,6 +514,41 @@ internal class PostHogFeatureFlags(
         synchronized(this) {
             poller?.stop()
             poller = null
+        }
+    }
+
+    /**
+     * Appends feature flag properties to event properties
+     */
+    internal fun appendFlagEventProperties(
+        distinctId: String,
+        properties: MutableMap<String, Any>?,
+        groups: Map<String, String>?,
+        options: com.posthog.server.PostHogSendFeatureFlagOptions?,
+    ) {
+        if (options == null || properties == null) {
+            return
+        }
+
+        val response =
+            resolveFeatureFlags(
+                distinctId,
+                groups,
+                options.personProperties,
+                options.groupProperties,
+                options.onlyEvaluateLocally,
+            )
+
+        response?.results?.values?.let {
+            val activeFeatureFlags = mutableListOf<String>()
+            it.forEach { flag ->
+                val flagValue = flag.variant ?: flag.enabled
+                properties["\$feature/${flag.key}"] = flagValue
+                if (flagValue != false) {
+                    activeFeatureFlags.add(flag.key)
+                }
+            }
+            properties["\$active_feature_flags"] = activeFeatureFlags.toList()
         }
     }
 
