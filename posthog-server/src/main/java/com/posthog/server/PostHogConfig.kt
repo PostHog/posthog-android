@@ -227,7 +227,7 @@ public open class PostHogConfig constructor(
         private var featureFlagCacheSize: Int = DEFAULT_FEATURE_FLAG_CACHE_SIZE
         private var featureFlagCacheMaxAgeMs: Int = DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS
         private var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE
-        private var localEvaluation: Boolean = false
+        private var localEvaluation: Boolean? = null
         private var personalApiKey: String? = null
         private var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS
 
@@ -265,7 +265,13 @@ public open class PostHogConfig constructor(
 
         public fun localEvaluation(localEvaluation: Boolean): Builder = apply { this.localEvaluation = localEvaluation }
 
-        public fun personalApiKey(personalApiKey: String?): Builder = apply { this.personalApiKey = personalApiKey }
+        public fun personalApiKey(personalApiKey: String?): Builder =
+            apply {
+                this.personalApiKey = personalApiKey
+                if (localEvaluation == null) {
+                    this.localEvaluation = personalApiKey != null
+                }
+            }
 
         public fun pollIntervalSeconds(pollIntervalSeconds: Int): Builder = apply { this.pollIntervalSeconds = pollIntervalSeconds }
 
@@ -287,7 +293,7 @@ public open class PostHogConfig constructor(
                 featureFlagCacheSize = featureFlagCacheSize,
                 featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs,
                 featureFlagCalledCacheSize = featureFlagCalledCacheSize,
-                localEvaluation = localEvaluation,
+                localEvaluation = localEvaluation ?: false,
                 personalApiKey = personalApiKey,
                 pollIntervalSeconds = pollIntervalSeconds,
             )
