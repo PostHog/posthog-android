@@ -41,7 +41,6 @@ public class PostHogJavaExample {
 
         postHog.alias("distinct-id", "alias-id");
 
-
         if (postHog.isFeatureEnabled("distinct-id", "beta-feature", false)) {
             System.out.println("The feature is enabled.");
         }
@@ -52,6 +51,14 @@ public class PostHogJavaExample {
 
         System.out.println("The flag variant was: " + flagVariate);
         System.out.println("Received flag payload: " + flagPayload);
+
+        try {
+            throw new RuntimeException("Test exception");
+        } catch (Exception e) {
+            Map<String, Object> exceptionProperties = new HashMap<>();
+            exceptionProperties.put("service", "weather-api");
+            postHog.captureException(e, exceptionProperties);
+        }
 
         postHog.flush();
         postHog.close();
