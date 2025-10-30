@@ -7,6 +7,7 @@ import com.posthog.server.PostHogFeatureFlagOptions;
 import com.posthog.server.PostHogInterface;
 
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Simple Java 1.8 example demonstrating PostHog usage
@@ -68,6 +69,14 @@ public class PostHogJavaExample {
                         .build());
 
         System.out.println("File previews enabled: " + hasFilePreview);
+
+        try {
+            throw new RuntimeException("Test exception");
+        } catch (Exception e) {
+            Map<String, Object> exceptionProperties = new HashMap<>();
+            exceptionProperties.put("service", "weather-api");
+            posthog.captureException(e, exceptionProperties);
+        }
 
         posthog.flush();
         posthog.close();
