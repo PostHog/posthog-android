@@ -1,6 +1,7 @@
 ## Next
 
 - fix!: Typed `groupProperties` and `userProperties` types to match the API and other SDKs ([#312](https://github.com/PostHog/posthog-android/pull/312))
+- feat: Add `captureExceptionStateless` method for error tracking ([#313](https://github.com/PostHog/posthog-android/pull/313))
 
 ## 4.2.0 - 2025-10-23
 

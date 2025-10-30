@@ -1,6 +1,9 @@
 package com.posthog.internal.errortracking
 
-internal class ThrowableCoercer {
+import com.posthog.PostHogInternal
+
+@PostHogInternal
+public class ThrowableCoercer {
     private fun isInApp(
         className: String,
         inAppIncludes: List<String>,
@@ -19,7 +22,7 @@ internal class ThrowableCoercer {
         return false
     }
 
-    fun fromThrowableToPostHogProperties(
+    public fun fromThrowableToPostHogProperties(
         throwable: Throwable,
         inAppIncludes: List<String> = listOf(),
     ): MutableMap<String, Any> {
