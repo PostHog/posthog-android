@@ -701,4 +701,18 @@ internal class PostHogTest {
             options.groupProperties,
         )
     }
+
+    @Test
+    fun `captureException delegates to instance captureExceptionStateless with all parameters`() {
+        val mockInstance = createMockStateless()
+        val postHog = createPostHogWithMock(mockInstance)
+
+        val exception = RuntimeException("Test exception")
+        val properties = mapOf("context" to "test", "severity" to "high")
+        val distinctId = "user123"
+
+        postHog.captureException(exception, properties, distinctId)
+
+        verify(mockInstance).captureExceptionStateless(exception, properties, distinctId)
+    }
 }
