@@ -132,6 +132,18 @@ public class PostHog : PostHogInterface {
         )
     }
 
+    override fun captureException(
+        exception: Throwable,
+        properties: Map<String, Any>?,
+        distinctId: String?,
+    ) {
+        instance?.captureExceptionStateless(
+            exception,
+            properties,
+            distinctId,
+        )
+    }
+
     public companion object {
         /**
          * Set up the SDK and returns an instance that you can hold and pass it around

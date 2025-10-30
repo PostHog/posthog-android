@@ -1,6 +1,7 @@
 ## Next
 
 - fix!: Restructured `groupProperties` and `userProperties` types to match the API and other SDKs ([#312](https://github.com/PostHog/posthog-android/pull/312))
+- feat: Add `captureException` method for error tracking ([#313](https://github.com/PostHog/posthog-android/pull/313))
 
 ## 1.1.0 - 2025-10-03
 
