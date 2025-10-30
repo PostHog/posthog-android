@@ -98,4 +98,15 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
         distinctId: String,
         alias: String,
     )
+
+    /**
+     * Captures exceptions
+     * @param throwable the Throwable error
+     * @param properties the custom properties
+     */
+    public fun captureExceptionStateless(
+        throwable: Throwable,
+        properties: Map<String, Any>? = null,
+        distinctId: String? = null,
+    )
 }
