@@ -418,4 +418,50 @@ public sealed interface PostHogInterface {
      * Docs https://posthog.com/docs/feature-flags/local-evaluation
      */
     public fun reloadFeatureFlags()
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param properties the exception properties to add to the event
+     * @param distinctId the distinctId
+     */
+    public fun captureException(
+        exception: Throwable,
+        properties: Map<String, Any>? = null,
+        distinctId: String? = null,
+    )
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param properties the exception properties to add to the event
+     * @param distinctId the distinctId
+     */
+    public fun captureException(
+        exception: Throwable,
+        properties: Map<String, Any>?,
+    ) {
+        captureException(
+            exception,
+            properties,
+            null,
+        )
+    }
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param properties the exception properties to add to the event
+     * @param distinctId the distinctId
+     */
+    public fun captureException(exception: Throwable) {
+        captureException(
+            exception,
+            null,
+            null,
+        )
+    }
 }
