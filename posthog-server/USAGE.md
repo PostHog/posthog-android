@@ -175,6 +175,88 @@ postHog.capture(
 )
 ```
 
+## Exception Tracking
+
+PostHog provides automatic exception tracking to help you monitor and debug errors in your application.
+
+### Capture Exception with Distinct ID
+
+When you provide a `distinctId`, the exception is associated with a specific person profile in PostHog:
+
+#### Kotlin
+
+```kotlin
+try {
+    // Your code that might throw an exception
+    throw RuntimeException("Something went wrong")
+} catch (e: Exception) {
+    val exceptionProperties = mapOf(
+        "service" to "payment-processor",
+        "context" to "checkout_flow"
+    )
+    postHog.captureException(e, exceptionProperties, "user123")
+}
+```
+
+#### Java
+
+```java
+try {
+    // Your code that might throw an exception
+    throw new RuntimeException("Something went wrong");
+} catch (Exception e) {
+    Map<String, Object> exceptionProperties = new HashMap<>();
+    exceptionProperties.put("service", "payment-processor");
+    exceptionProperties.put("context", "checkout_flow");
+    postHog.captureException(e, exceptionProperties, "user123");
+}
+```
+
+### Capture Exception without Distinct ID (Server-side Errors)
+
+When no `distinctId` is provided, the exception is treated as originating from a non-person entity. This is ideal for server-side errors, background processes, or system-level exceptions:
+
+#### Kotlin
+
+```kotlin
+try {
+    // Server-side operation
+    processBackgroundJob()
+} catch (e: Exception) {
+    val exceptionProperties = mapOf(
+        "job_type" to "email_batch",
+    )
+    postHog.captureException(e, exceptionProperties)
+}
+```
+
+#### Java
+
+```java
+try {
+    // Server-side operation
+    processBackgroundJob();
+} catch (Exception e) {
+    Map<String, Object> exceptionProperties = new HashMap<>();
+    exceptionProperties.put("job_type", "email_batch");
+    postHog.captureException(e, exceptionProperties);
+}
+```
+
+### Simple Exception Capture
+
+You can also capture exceptions without additional properties:
+
+#### Kotlin & Java
+
+```kotlin
+try {
+    riskyOperation()
+} catch (e: Exception) {
+    postHog.captureException(e)
+}
+```
+
 ## User Identification
 
 #### Kotlin
