@@ -296,7 +296,7 @@ internal class PostHogFeatureFlags(
     /**
      * Load feature flag definitions from the API for local evaluation
      */
-    private fun loadFeatureFlagDefinitions() {
+    public fun loadFeatureFlagDefinitions() {
         if (!localEvaluation || personalApiKey == null) {
             return
         }

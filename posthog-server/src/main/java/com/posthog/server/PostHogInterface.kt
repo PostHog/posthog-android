@@ -409,4 +409,13 @@ public sealed interface PostHogInterface {
         distinctId: String,
         alias: String,
     )
+
+    /**
+     * Reloads feature flag definitions from the server for use with local evaluation.
+     * Note that feature flag definitions are automatically fetched on initialization and
+     * periodically refreshed, so this method only needs to be called if you want to force
+     * an immediate refresh.
+     * Docs https://posthog.com/docs/feature-flags/local-evaluation
+     */
+    public fun reloadFeatureFlags()
 }

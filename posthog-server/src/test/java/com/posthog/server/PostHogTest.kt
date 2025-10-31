@@ -78,48 +78,6 @@ internal class PostHogTest {
         postHog.close()
     }
 
-    @Test
-    fun `reloadFeatureFlags calls loadFeatureFlagDefinitions on PostHogFeatureFlags`() {
-        val postHog = spy(PostHog())
-
-        // Set up a mock feature flags instance
-        val mockFeatureFlags = mock<PostHogFeatureFlags>()
-
-        // Use reflection to set the featureFlags field for testing
-        val featureFlagsField = postHog.javaClass.superclass.getDeclaredField("featureFlags")
-        featureFlagsField.isAccessible = true
-        featureFlagsField.set(postHog, mockFeatureFlags)
-
-        // Call reloadFeatureFlags
-        postHog.reloadFeatureFlags()
-
-        // Verify that loadFeatureFlagDefinitions was called on the mock
-        verify(mockFeatureFlags).loadFeatureFlagDefinitions()
-    }
-
-    @Test
-    fun `reloadFeatureFlags handles null featureFlags gracefully`() {
-        val postHog = PostHog()
-
-        // Should not throw when featureFlags is null
-        postHog.reloadFeatureFlags()
-    }
-
-    @Test
-    fun `reloadFeatureFlags handles non-PostHogFeatureFlags implementation gracefully`() {
-        val postHog = spy(PostHog())
-
-        // Set up a different implementation of the feature flags interface
-        val mockFeatureFlags = mock<com.posthog.internal.PostHogFeatureFlagsInterface>()
-
-        // Use reflection to set the featureFlags field
-        val featureFlagsField = postHog.javaClass.superclass.getDeclaredField("featureFlags")
-        featureFlagsField.isAccessible = true
-        featureFlagsField.set(postHog, mockFeatureFlags)
-
-        // Should not throw - the cast will fail but be handled
-        postHog.reloadFeatureFlags()
-    }
 
     @Test
     fun `capture with timestamp passes timestamp through`() {
@@ -230,5 +188,48 @@ internal class PostHogTest {
         assertNotNull(postHog)
 
         postHogInterface.close()
+    }
+
+    @Test
+    fun `reloadFeatureFlags calls loadFeatureFlagDefinitions on PostHogFeatureFlags`() {
+        val postHog = spy(PostHog())
+
+        // Set up a mock feature flags instance
+        val mockFeatureFlags = mock<PostHogFeatureFlags>()
+
+        // Use reflection to set the featureFlags field for testing
+        val featureFlagsField = postHog.javaClass.superclass.getDeclaredField("featureFlags")
+        featureFlagsField.isAccessible = true
+        featureFlagsField.set(postHog, mockFeatureFlags)
+
+        // Call reloadFeatureFlags
+        postHog.reloadFeatureFlags()
+
+        // Verify that loadFeatureFlagDefinitions was called on the mock
+        verify(mockFeatureFlags).loadFeatureFlagDefinitions()
+    }
+
+    @Test
+    fun `reloadFeatureFlags handles null featureFlags gracefully`() {
+        val postHog = PostHog()
+
+        // Should not throw when featureFlags is null
+        postHog.reloadFeatureFlags()
+    }
+
+    @Test
+    fun `reloadFeatureFlags handles non-PostHogFeatureFlags implementation gracefully`() {
+        val postHog = spy(PostHog())
+
+        // Set up a different implementation of the feature flags interface
+        val mockFeatureFlags = mock<com.posthog.internal.PostHogFeatureFlagsInterface>()
+
+        // Use reflection to set the featureFlags field
+        val featureFlagsField = postHog.javaClass.superclass.getDeclaredField("featureFlags")
+        featureFlagsField.isAccessible = true
+        featureFlagsField.set(postHog, mockFeatureFlags)
+
+        // Should not throw - the cast will fail but be handled
+        postHog.reloadFeatureFlags()
     }
 }
