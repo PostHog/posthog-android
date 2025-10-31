@@ -1862,4 +1862,89 @@ internal class FlagEvaluatorTest {
         assertEquals(false, result)
         assertEquals(false, evaluationCache["dependency-flag"])
     }
+
+    @Test
+    internal fun testEnsureExperienceContinuityEnabled() {
+        val json =
+            """
+            {
+              "id": 1,
+              "name": "Experience Continuity Flag",
+              "key": "experience-continuity-flag",
+              "active": true,
+              "ensure_experience_continuity": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+            """.trimIndent()
+
+        val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
+
+        try {
+            evaluator.matchFeatureFlagProperties(flag, "user-123", emptyMap())
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("experience continuity enabled") ?: false)
+            assertTrue(e.message?.contains("experience-continuity-flag") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testEnsureExperienceContinuityDisabled() {
+        // Test with ensure_experience_continuity explicitly set to false
+        val jsonExplicitFalse =
+            """
+            {
+              "id": 1,
+              "name": "Normal Flag",
+              "key": "normal-flag",
+              "active": true,
+              "ensure_experience_continuity": false,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+            """.trimIndent()
+
+        val flagExplicitFalse = config.serializer.gson.fromJson(jsonExplicitFalse, FlagDefinition::class.java)
+        val resultExplicitFalse = evaluator.matchFeatureFlagProperties(flagExplicitFalse, "user-123", emptyMap())
+        assertEquals(true, resultExplicitFalse)
+
+        // Test with ensure_experience_continuity absent (should default to false)
+        val jsonAbsent =
+            """
+            {
+              "id": 2,
+              "name": "Legacy Flag",
+              "key": "legacy-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+            """.trimIndent()
+
+        val flagAbsent = config.serializer.gson.fromJson(jsonAbsent, FlagDefinition::class.java)
+        val resultAbsent = evaluator.matchFeatureFlagProperties(flagAbsent, "user-456", emptyMap())
+        assertEquals(true, resultAbsent)
+    }
 }

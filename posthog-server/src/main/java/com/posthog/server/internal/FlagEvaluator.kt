@@ -662,6 +662,10 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>? = null,
         evaluationCache: MutableMap<String, Any?>? = null,
     ): Any? {
+        if (flag.ensureExperienceContinuity) {
+            throw InconclusiveMatchException("Flag \"${flag.key}\" has experience continuity enabled")
+        }
+
         val flagConditions = flag.filters.groups ?: emptyList()
         var isInconclusive = false
 
