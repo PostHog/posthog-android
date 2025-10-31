@@ -131,6 +131,10 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         )
     }
 
+    override fun reloadFeatureFlags() {
+        (featureFlags as? PostHogFeatureFlags)?.loadFeatureFlagDefinitions()
+    }
+
     public companion object {
         /**
          * Set up the SDK and returns an instance that you can hold and pass it around
