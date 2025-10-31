@@ -42,6 +42,11 @@ internal class PostHogFeatureFlags(
 
     private var definitionsLoaded = false
 
+    @Volatile
+    private var isLoading = false
+
+    private val loadLock = Object()
+
     init {
         startPoller()
         if (!localEvaluation) {
@@ -301,17 +306,34 @@ internal class PostHogFeatureFlags(
             return
         }
 
-        synchronized(this) {
-            if (definitionsLoaded) {
-                config.logger.log("Definitions already loaded, skipping")
+        var wasWaitingForLoad = false
+
+        synchronized(loadLock) {
+            while (isLoading) {
+                wasWaitingForLoad = true
+                try {
+                    loadLock.wait()
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    config.logger.log("Interrupted while waiting for flag definitions to load")
+                    return
+                }
+            }
+
+            if (wasWaitingForLoad && flagDefinitions != null) {
+                config.logger.log("Definitions loaded by another thread, skipping duplicate request")
                 return
             }
 
-            try {
-                config.logger.log("Loading feature flags for local evaluation")
-                val apiResponse = api.localEvaluation(personalApiKey)
+            isLoading = true
+        }
 
-                if (apiResponse != null) {
+        try {
+            config.logger.log("Loading feature flags for local evaluation")
+            val apiResponse = api.localEvaluation(personalApiKey)
+
+            if (apiResponse != null) {
+                synchronized(loadLock) {
                     // apiResponse is now LocalEvaluationResponse with properly typed models
                     featureFlags = apiResponse.flags
                     flagDefinitions = apiResponse.flags?.associateBy { it.key }
@@ -327,8 +349,13 @@ internal class PostHogFeatureFlags(
                         config.logger.log("Error in onFeatureFlags callback: ${e.message}")
                     }
                 }
-            } catch (e: Throwable) {
-                config.logger.log("Failed to load feature flags for local evaluation: ${e.message}")
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Failed to load feature flags for local evaluation: ${e.message}")
+        } finally {
+            synchronized(loadLock) {
+                isLoading = false
+                loadLock.notifyAll()
             }
         }
     }

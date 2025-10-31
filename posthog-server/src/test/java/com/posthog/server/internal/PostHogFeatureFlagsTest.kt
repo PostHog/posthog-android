@@ -11,8 +11,13 @@ import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 
 internal class PostHogFeatureFlagsTest {
     @Test
@@ -637,6 +642,240 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(logger.containsLog("Local evaluation successful"))
 
         remoteConfig.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions overwrites existing definitions on reload`() {
+        val logger = TestLogger()
+
+        // Create first response with "flag-v1"
+        val firstResponse =
+            createLocalEvaluationResponse(
+                flagKey = "flag-v1",
+                aggregationGroupTypeIndex = null,
+            )
+
+        // Create second response with "flag-v2" only (no flag-v1)
+        val secondResponse =
+            createLocalEvaluationResponse(
+                flagKey = "flag-v2",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer =
+            createMockHttp(
+                jsonResponse(firstResponse),
+                jsonResponse(secondResponse),
+                jsonResponse(secondResponse), // Extra response for potential poller activity
+            )
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Wait for initial poller load to complete (loads flag-v1)
+        Thread.sleep(1000)
+
+        // Verify first flag is available (loaded by poller)
+        val firstResult =
+            featureFlags.getFeatureFlag(
+                key = "flag-v1",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+        assertEquals(true, firstResult)
+
+        // Load second set of definitions (should overwrite first with flag-v2)
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify second flag is now available
+        val secondResult =
+            featureFlags.getFeatureFlag(
+                key = "flag-v2",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+        assertEquals(true, secondResult)
+
+        // Verify first flag is no longer available (was overwritten)
+        val firstResultAfterReload =
+            featureFlags.getFeatureFlag(
+                key = "flag-v1",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+        assertEquals(false, firstResultAfterReload)
+
+        // Verify we made at least 2 API calls (poller's initial load + our manual loads)
+        assertTrue(
+            mockServer.requestCount >= 2,
+            "Expected at least 2 requests, got ${mockServer.requestCount}",
+        )
+        assertTrue(logger.containsLog("Loading feature flags for local evaluation"))
+        assertTrue(logger.containsLog("Loaded 1 feature flags for local evaluation"))
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `concurrent initial loads only make one API request`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        // Provide multiple responses in case duplicate requests happen (we want to verify they don't)
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+                jsonResponse(localEvalResponse),
+                jsonResponse(localEvalResponse),
+            )
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+
+        // Create instance and immediately try to use it
+        // This simulates the race condition where poller (starts immediately at delay=0)
+        // and first flag evaluation both try to load definitions concurrently
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Immediately trigger flag evaluation (which checks definitions and loads if needed)
+        // This happens concurrently with poller's initial load
+        val result =
+            featureFlags.getFeatureFlag(
+                key = "test-flag",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+
+        // Wait a bit to ensure both potential loads have time to complete
+        Thread.sleep(1000)
+
+        // Verify the flag works (definitions were loaded successfully)
+        assertEquals(true, result)
+
+        // Critical assertion: only 1 API request should have been made
+        // The second thread should have waited for the first to complete
+        assertEquals(
+            1,
+            mockServer.requestCount,
+            "Expected exactly 1 API request due to concurrent load deduplication, got ${mockServer.requestCount}",
+        )
+
+        // Verify we logged the skip message
+        assertTrue(
+            logger.containsLog("Definitions loaded by another thread, skipping duplicate request") ||
+                mockServer.requestCount == 1,
+            "Should either log skip message or only make 1 request",
+        )
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `multiple concurrent loadFeatureFlagDefinitions calls make only one API request`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        // Create mock server with DELAYED response (1 second) to ensure all threads enter wait state
+        val dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    Thread.sleep(1000) // Simulate slow API
+                    return MockResponse()
+                        .setResponseCode(200)
+                        .setBody(localEvalResponse)
+                }
+            }
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Shut down poller to control loading manually
+        featureFlags.shutDown()
+
+        // Launch 5 concurrent threads all calling loadFeatureFlagDefinitions
+        val threadCount = 5
+        val threads =
+            List(threadCount) {
+                Thread {
+                    featureFlags.loadFeatureFlagDefinitions()
+                }
+            }
+
+        // Start all threads simultaneously
+        threads.forEach { it.start() }
+
+        // Wait for all to complete
+        threads.forEach { it.join(5000) } // 5 sec timeout
+
+        // All threads should have completed successfully
+        threads.forEach { thread ->
+            assertFalse(
+                thread.isAlive,
+                "Thread should have completed",
+            )
+        }
+
+        // Critical assertion: only 1 API request despite 5 concurrent calls
+        assertEquals(
+            1,
+            mockServer.requestCount,
+            "Expected exactly 1 API request from $threadCount concurrent calls, got ${mockServer.requestCount}",
+        )
+
+        // Verify definitions were loaded
+        val result = featureFlags.getFeatureFlag("test-flag", false, "test-user")
+        assertEquals(true, result)
+
+        // Verify logging shows threads waited
+        val skipCount = logger.logs.count { it.contains("Definitions loaded by another thread") }
+        assertTrue(
+            skipCount >= threadCount - 1,
+            "Expected at least ${threadCount - 1} threads to skip duplicate request, but only $skipCount did",
+        )
+
         mockServer.shutdown()
     }
 }
