@@ -25,6 +25,8 @@ public class FlagDefinition(
     public val active: Boolean,
     public val filters: FlagFilters,
     public val version: Int,
+    @SerializedName("ensure_experience_continuity")
+    public val ensureExperienceContinuity: Boolean = false,
 )
 
 /**

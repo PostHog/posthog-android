@@ -262,3 +262,49 @@ public fun createMockIntegration(): com.posthog.PostHogIntegration {
         // Using default implementations from interface
     }
 }
+
+/**
+ * Creates a local evaluation API response for testing
+ */
+public fun createLocalEvaluationResponse(
+    flagKey: String,
+    aggregationGroupTypeIndex: Int? = null,
+    rolloutPercentage: Int = 100,
+): String {
+    val aggregationGroupJson =
+        if (aggregationGroupTypeIndex != null) {
+            "\"aggregation_group_type_index\": $aggregationGroupTypeIndex,"
+        } else {
+            ""
+        }
+
+    return """
+        {
+            "flags": [
+                {
+                    "id": 1,
+                    "name": "$flagKey",
+                    "key": "$flagKey",
+                    "active": true,
+                    "filters": {
+                        $aggregationGroupJson
+                        "groups": [
+                            {
+                                "properties": [],
+                                "rollout_percentage": $rolloutPercentage
+                            }
+                        ]
+                    },
+                    "version": 1
+                }
+            ],
+            "group_type_mapping": {
+                "0": "account",
+                "1": "instance",
+                "2": "organization",
+                "3": "project"
+            },
+            "cohorts": {}
+        }
+        """.trimIndent()
+}

@@ -537,6 +537,7 @@ public final class com/posthog/internal/PostHogApi {
 	public final fun batch (Ljava/util/List;)V
 	public final fun flags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
+	public final fun localEvaluation (Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationResponse;
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
 	public final fun snapshot (Ljava/util/List;)V
 }
@@ -582,12 +583,14 @@ public abstract interface class com/posthog/internal/PostHogFeatureFlagsInterfac
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
+	public abstract fun shutDown ()V
 }
 
 public final class com/posthog/internal/PostHogFeatureFlagsInterface$DefaultImpls {
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlags$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/Map;
+	public static fun shutDown (Lcom/posthog/internal/PostHogFeatureFlagsInterface;)V
 }
 
 public final class com/posthog/internal/PostHogFlagsResponse : com/posthog/internal/PostHogRemoteConfigResponse {
@@ -698,6 +701,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun setOnRemoteConfigLoaded (Lkotlin/jvm/functions/Function0;)V
+	public fun shutDown ()V
 }
 
 public class com/posthog/internal/PostHogRemoteConfigResponse {
@@ -748,6 +752,12 @@ public final class com/posthog/internal/PropertyGroup {
 	public final fun getValues ()Lcom/posthog/internal/PropertyValue;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/posthog/internal/PropertyGroupDeserializer : com/google/gson/JsonDeserializer {
+	public fun <init> ()V
+	public fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lcom/posthog/internal/PropertyGroup;
+	public synthetic fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Ljava/lang/Object;
 }
 
 public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
@@ -818,6 +828,12 @@ public final class com/posthog/internal/PropertyValue$PropertyGroups : com/posth
 	public fun hashCode ()I
 	public fun isEmpty ()Z
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/posthog/internal/PropertyValueDeserializer : com/google/gson/JsonDeserializer {
+	public fun <init> ()V
+	public fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lcom/posthog/internal/PropertyValue;
+	public synthetic fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Ljava/lang/Object;
 }
 
 public final class com/posthog/internal/VariantDefinition {

@@ -92,6 +92,9 @@ PostHogConfig config = PostHogConfig.builder("phc_your_api_key_here")
 - `flushIntervalSeconds`: Interval between automatic flushes (default: `30`)
 - `featureFlagCacheSize`: The maximum number of feature flags results to cache (default: `1000`)
 - `featureFlagCacheMaxAgeMs`: The maximum age of a feature flag cache record in memory in milliseconds (default: `300000` or five minutes)
+- `localEvaluation`: Enable local evaluation of feature flags (default: `false`)
+- `personalApiKey`: Personal API key required for local evaluation (default: `null`)
+- `pollIntervalSeconds`: Interval for polling flag definitions for local evaluation (default: `30`)
 
 ## Capturing Events
 
@@ -201,6 +204,58 @@ postHog.identify("user123", userProperties, userPropertiesSetOnce);
 ```
 
 ## Feature Flags
+
+### Local Evaluation (Experimental)
+
+Local evaluation allows the SDK to evaluate feature flags locally without making API calls for each flag check. This reduces latency and API costs.
+
+**How it works:**
+
+1. The SDK periodically polls for flag definitions from PostHog (every 30 seconds by default)
+2. Flags are evaluated locally using cached definitions and properties provided by the caller
+3. If evaluation is inconclusive (missing properties, etc.), the SDK falls back to the API
+
+**Requirements:**
+
+- A feature flags secure API key _or_ a personal API key
+  - A feature flags secure API key can be obtained via PostHog → Settings → Project → Feature Flags → Feature Flags Secure API key
+  - A personal API key can be generated via PostHog → Settings → Account → Personal API Keys
+- The `localEvaluation` config option set to `true`
+
+#### Kotlin
+
+```kotlin
+val config = PostHogConfig(
+    apiKey = "phc_your_api_key_here",
+    host = "https://your-posthog-instance.com",
+    localEvaluation = true,
+    personalApiKey = "phx_your_personal_api_key_here",
+    pollIntervalSeconds = 30  // Optional: customize polling interval
+)
+```
+
+#### Java
+
+```java
+PostHogConfig config = PostHogConfig.builder("phc_your_api_key_here")
+    .host("https://your-posthog-instance.com")
+    .localEvaluation(true)
+    .personalApiKey("phx_your_personal_api_key_here")
+    .pollIntervalSeconds(30)  // Optional: customize polling interval
+    .build();
+```
+
+**Benefits:**
+
+- **Reduced latency**: No API call needed for most flag evaluations
+- **Lower costs**: Fewer API requests in most cases
+- **Offline support**: Flags continue to work with cached definitions
+
+**Limitations:**
+
+- Requires person/group properties to be provided with each call
+- Falls back to API for cohort-based flags without local cohort data
+- May not reflect real-time flag changes (respects polling interval)
 
 ### Check if Feature is Enabled
 
