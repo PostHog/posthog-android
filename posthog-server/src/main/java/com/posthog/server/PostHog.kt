@@ -1,17 +1,16 @@
 package com.posthog.server
 
+import com.posthog.PostHog
 import com.posthog.PostHogStateless
-import com.posthog.PostHogStatelessInterface
+import com.posthog.server.internal.PostHogFeatureFlags
 
-public class PostHog : PostHogInterface {
-    private var instance: PostHogStatelessInterface? = null
-
+public class PostHog : PostHogStateless(), PostHogInterface {
     override fun <T : PostHogConfig> setup(config: T) {
-        instance = PostHogStateless.with(config.asCoreConfig())
+        super.setup(config.asCoreConfig())
     }
 
     override fun close() {
-        instance?.close()
+        super.close()
     }
 
     override fun identify(
@@ -19,7 +18,7 @@ public class PostHog : PostHogInterface {
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        instance?.identify(
+        super<PostHogStateless>.identify(
             distinctId,
             userProperties,
             userPropertiesSetOnce,
@@ -27,11 +26,11 @@ public class PostHog : PostHogInterface {
     }
 
     override fun flush() {
-        instance?.flush()
+        super.flush()
     }
 
     override fun debug(enable: Boolean) {
-        instance?.debug(enable)
+        super.debug(enable)
     }
 
     override fun capture(
@@ -43,7 +42,7 @@ public class PostHog : PostHogInterface {
         groups: Map<String, String>?,
         timestamp: java.util.Date?,
     ) {
-        instance?.captureStateless(
+        super.captureStateless(
             event,
             distinctId,
             properties,
@@ -62,14 +61,14 @@ public class PostHog : PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Boolean {
-        return instance?.isFeatureEnabledStateless(
+        return super.isFeatureEnabledStateless(
             distinctId,
             key,
             defaultValue,
             groups,
             personProperties,
             groupProperties,
-        ) ?: false
+        )
     }
 
     override fun getFeatureFlag(
@@ -80,7 +79,7 @@ public class PostHog : PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
-        return instance?.getFeatureFlagStateless(
+        return super.getFeatureFlagStateless(
             distinctId,
             key,
             defaultValue,
@@ -98,7 +97,7 @@ public class PostHog : PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
-        return instance?.getFeatureFlagPayloadStateless(
+        return super.getFeatureFlagPayloadStateless(
             distinctId,
             key,
             defaultValue,
@@ -114,7 +113,7 @@ public class PostHog : PostHogInterface {
         key: String,
         groupProperties: Map<String, Any>?,
     ) {
-        instance?.groupStateless(
+        super.groupStateless(
             distinctId,
             type,
             key,
@@ -126,7 +125,7 @@ public class PostHog : PostHogInterface {
         distinctId: String,
         alias: String,
     ) {
-        instance?.aliasStateless(
+        super.aliasStateless(
             distinctId,
             alias,
         )
