@@ -1,6 +1,6 @@
 ## Next
 
-- fix!: Typed `groupProperties` and `userProperties` types to match the API and other SDKs ([#312](https://github.com/PostHog/posthog-android/pull/312))
+- fix: Typed `groupProperties` and `userProperties` types to match the API and other SDKs ([#312](https://github.com/PostHog/posthog-android/pull/312))
 
 ## 4.2.0 - 2025-10-23
 
