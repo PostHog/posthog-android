@@ -939,6 +939,73 @@ public class PostHog private constructor(
         replayQueue?.flush()
     }
 
+    /**
+     * Sets person properties that will be included in feature flag evaluation requests.
+     *
+     * @param properties Dictionary of person properties to include in flag evaluation
+     * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
+     */
+    public fun setPersonPropertiesForFlags(
+        properties: Map<String, Any>,
+        reloadFeatureFlags: Boolean = true,
+    ) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+        if (properties.isEmpty()) return
+
+        remoteConfig?.setPersonPropertiesForFlags(properties)
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
+    }
+
+    /**
+     * Resets all person properties that were set for feature flag evaluation.
+     */
+    public fun resetPersonPropertiesForFlags() {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+
+        remoteConfig?.resetPersonPropertiesForFlags()
+    }
+
+    /**
+     * Sets properties for a specific group type to include when evaluating feature flags.
+     *
+     * @param groupType The group type identifier (e.g., "organization", "team")
+     * @param properties Dictionary of properties to set for this group type
+     * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
+     */
+    public fun setGroupPropertiesForFlags(
+        groupType: String,
+        properties: Map<String, Any>,
+        reloadFeatureFlags: Boolean = true,
+    ) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+
+        if (properties.isEmpty()) return
+
+        remoteConfig?.setGroupPropertiesForFlags(groupType, properties)
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
+    }
+
+    /**
+     * Clears group properties for feature flag evaluation.
+     *
+     * @param groupType Optional group type to clear. If null, clears all group properties.
+     */
+    public fun resetGroupPropertiesForFlags(groupType: String? = null) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+
+        remoteConfig?.resetGroupPropertiesForFlags(groupType)
+    }
+
     public override fun reset() {
         if (!isEnabled()) {
             return
