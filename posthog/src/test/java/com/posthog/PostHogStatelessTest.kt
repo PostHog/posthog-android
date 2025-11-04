@@ -107,8 +107,8 @@ internal class PostHogStatelessTest {
             defaultValue: Any?,
             distinctId: String?,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Any? {
             return flags[key] ?: defaultValue
         }
@@ -118,8 +118,8 @@ internal class PostHogStatelessTest {
             defaultValue: Any?,
             distinctId: String?,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Any? {
             return flags[key] ?: defaultValue
         }
@@ -127,8 +127,8 @@ internal class PostHogStatelessTest {
         override fun getFeatureFlags(
             distinctId: String?,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Map<String, Any> {
             return flags.toMap()
         }
@@ -1044,7 +1044,7 @@ internal class PostHogStatelessTest {
 
         val groups = mapOf("organization" to "org_123")
         val personProperties = mapOf("plan" to "premium")
-        val groupProperties = mapOf("size" to "large")
+        val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
 
         sut.isFeatureEnabledStateless(
             "user123",
@@ -1077,7 +1077,7 @@ internal class PostHogStatelessTest {
 
         val groups = mapOf("organization" to "org_123")
         val personProperties = mapOf("plan" to "premium")
-        val groupProperties = mapOf("size" to "large")
+        val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
 
         sut.getFeatureFlagStateless(
             "user123",
@@ -1110,7 +1110,7 @@ internal class PostHogStatelessTest {
 
         val groups = mapOf("organization" to "org_123")
         val personProperties = mapOf("plan" to "premium")
-        val groupProperties = mapOf("size" to "large")
+        val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
 
         sut.getFeatureFlagPayloadStateless(
             "user123",
@@ -1205,8 +1205,8 @@ internal class PostHogStatelessTest {
             key: String,
             defaultValue: Boolean,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Boolean = defaultValue
 
         override fun getFeatureFlagStateless(
@@ -1214,8 +1214,8 @@ internal class PostHogStatelessTest {
             key: String,
             defaultValue: Any?,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Any? = defaultValue
 
         override fun getFeatureFlagPayloadStateless(
@@ -1223,8 +1223,8 @@ internal class PostHogStatelessTest {
             key: String,
             defaultValue: Any?,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Any? = defaultValue
 
         override fun groupStateless(

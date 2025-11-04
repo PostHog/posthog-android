@@ -9,7 +9,12 @@ import com.posthog.generateEvent
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.StringWriter
+import java.math.BigDecimal
+import java.math.BigInteger
 import java.text.ParsePosition
+import java.util.Date
+import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -155,5 +160,119 @@ internal class PostHogSerializerTest {
             events.add(event)
         }
         assertEquals(16, events.size)
+    }
+
+    @Test
+    fun `serializes different types in personProperties`() {
+        class CustomTestData(val field1: String, val field2: Int)
+
+        val sut = getSut()
+        val personProperties =
+            mapOf<String, Any?>(
+                "string_prop" to "test_value",
+                "int_prop" to 42,
+                "long_prop" to 1234567890L,
+                "double_prop" to 3.14159,
+                "boolean_prop" to true,
+                "date_prop" to Date(1234567890000L),
+                "uuid_prop" to UUID.fromString("12345678-90ab-cdef-1234-567890abcdef"),
+                "bigint_prop" to BigInteger.valueOf(9223372036854775807L),
+                "bigdecimal_prop" to BigDecimal("123.456"),
+                "custom_prop" to CustomTestData("custom", 999),
+                "null_prop" to null,
+            )
+
+        val flagsRequest =
+            PostHogFlagsRequest(
+                apiKey = API_KEY,
+                distinctId = "test_user",
+                personProperties = personProperties,
+            )
+
+        val serialized = StringWriter()
+        sut.serialize(flagsRequest, serialized)
+        val actualJson = serialized.toString()
+        val expectedJson =
+            """
+            {
+                "${'$'}properties": {
+                    "string_prop": "test_value",
+                    "int_prop": 42,
+                    "long_prop": 1234567890,
+                    "double_prop": 3.14159,
+                    "boolean_prop": true,
+                    "date_prop": "2009-02-13T23:31:30.000Z",
+                    "uuid_prop": "12345678-90ab-cdef-1234-567890abcdef",
+                    "bigint_prop": 9223372036854775807,
+                    "bigdecimal_prop": 123.456,
+                    "custom_prop": {
+                        "field1": "custom",
+                        "field2": 999
+                    }
+                },
+                "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
+                "distinct_id": "test_user"
+            }
+            """.replace(" ", "").replace("\n", "")
+
+        assertEquals(expectedJson, actualJson)
+    }
+
+    @Test
+    fun `filters unserializable values in nested maps while preserving structure`() {
+        val sut = getSut()
+
+        // Create a nested map with an unserializable value deep in the tree
+        val unserializableValue = Thread.currentThread()
+        val properties =
+            mapOf<String, Any>(
+                "good" to "yes",
+                "bad" to
+                    mapOf<String, Any>(
+                        "good" to "yes",
+                        "bad" to unserializableValue,
+                    ),
+                "in_an_array" to
+                    listOf<Any>(
+                        "good",
+                        unserializableValue,
+                    ),
+            )
+
+        val eventUuid = UUID.fromString("12345678-90ab-cdef-1234-567890abcdef")
+        val event =
+            PostHogEvent(
+                event = "test_event",
+                distinctId = "user123",
+                properties = properties.toMutableMap(),
+                timestamp = Date(1234567890000L),
+                uuid = eventUuid,
+            )
+
+        val serialized = StringWriter()
+        sut.serialize(event, serialized)
+        val actualJson = serialized.toString()
+
+        // The result should preserve the nested "bad" map but only drop the unserializable leaf value
+        val expectedJson =
+            """
+            {
+                "event": "test_event",
+                "distinct_id": "user123",
+                "properties": {
+                    "good": "yes",
+                    "bad": {
+                        "good": "yes"
+                    },
+                    "in_an_array": [
+                        "good"
+                    ]
+                },
+                "timestamp": "2009-02-13T23:31:30.000Z",
+                "uuid": "12345678-90ab-cdef-1234-567890abcdef"
+            }
+            """.replace(" ", "").replace("\n", "")
+
+        assertEquals(expectedJson, actualJson)
     }
 }

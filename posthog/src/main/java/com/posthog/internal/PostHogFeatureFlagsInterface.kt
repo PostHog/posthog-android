@@ -9,8 +9,8 @@ public interface PostHogFeatureFlagsInterface {
         defaultValue: Any?,
         distinctId: String? = null,
         groups: Map<String, String>? = null,
-        personProperties: Map<String, String>? = null,
-        groupProperties: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any?
 
     public fun getFeatureFlagPayload(
@@ -18,15 +18,15 @@ public interface PostHogFeatureFlagsInterface {
         defaultValue: Any?,
         distinctId: String? = null,
         groups: Map<String, String>? = null,
-        personProperties: Map<String, String>? = null,
-        groupProperties: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any?
 
     public fun getFeatureFlags(
         distinctId: String? = null,
         groups: Map<String, String>? = null,
-        personProperties: Map<String, String>? = null,
-        groupProperties: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Map<String, Any>?
 
     public fun clear()

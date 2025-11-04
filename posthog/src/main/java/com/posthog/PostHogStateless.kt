@@ -400,8 +400,8 @@ public open class PostHogStateless protected constructor(
         key: String,
         defaultValue: Boolean,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Boolean {
         val value =
             getFeatureFlagStateless(
@@ -447,8 +447,8 @@ public open class PostHogStateless protected constructor(
         key: String,
         defaultValue: Any?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
@@ -473,8 +473,8 @@ public open class PostHogStateless protected constructor(
         key: String,
         defaultValue: Any?,
         groups: Map<String, String>?,
-        personProperties: Map<String, String>?,
-        groupProperties: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
@@ -589,8 +589,8 @@ public open class PostHogStateless protected constructor(
             key: String,
             defaultValue: Boolean,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Boolean =
             shared.isFeatureEnabledStateless(
                 distinctId,
@@ -606,8 +606,8 @@ public open class PostHogStateless protected constructor(
             key: String,
             defaultValue: Any?,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Any? =
             shared.getFeatureFlagStateless(
                 distinctId,
@@ -623,8 +623,8 @@ public open class PostHogStateless protected constructor(
             key: String,
             defaultValue: Any?,
             groups: Map<String, String>?,
-            personProperties: Map<String, String>?,
-            groupProperties: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
         ): Any? =
             shared.getFeatureFlagPayloadStateless(
                 distinctId,
