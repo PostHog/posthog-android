@@ -41,6 +41,8 @@ public interface PostHogPreferences {
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
+        internal const val PERSON_PROPERTIES_FOR_FLAGS = "posthog.personPropertiesForFlags"
+        internal const val GROUP_PROPERTIES_FOR_FLAGS = "posthog.groupPropertiesForFlags"
 
         public val ALL_INTERNAL_KEYS: Set<String> =
             setOf(
@@ -60,6 +62,8 @@ public interface PostHogPreferences {
                 STRINGIFIED_KEYS,
                 FEATURE_FLAG_REQUEST_ID,
                 FLAGS,
+                PERSON_PROPERTIES_FOR_FLAGS,
+                GROUP_PROPERTIES_FOR_FLAGS,
             )
     }
 }

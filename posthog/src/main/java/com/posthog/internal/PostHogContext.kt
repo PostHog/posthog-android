@@ -14,3 +14,32 @@ public interface PostHogContext {
 
     public fun getSdkInfo(): Map<String, Any>
 }
+
+/**
+ * Returns person properties context by extracting relevant properties from static context.
+ * This centralizes the logic for determining which properties should be used as person properties.
+ */
+@PostHogInternal
+public fun PostHogContext.personPropertiesContext(): Map<String, Any> {
+    val staticCtx = getStaticContext()
+    val dynamicCtx = getDynamicContext()
+    val personProperties = mutableMapOf<String, Any>()
+
+    // App information
+    staticCtx["\$app_version"]?.let { personProperties["\$app_version"] = it }
+    staticCtx["\$app_build"]?.let { personProperties["\$app_build"] = it }
+
+    // Operating system information
+    staticCtx["\$os_name"]?.let { personProperties["\$os_name"] = it }
+    staticCtx["\$os_version"]?.let { personProperties["\$os_version"] = it }
+
+    // Device information
+    staticCtx["\$device_type"]?.let { personProperties["\$device_type"] = it }
+    staticCtx["\$device_manufacturer"]?.let { personProperties["\$device_manufacturer"] = it }
+    staticCtx["\$device_model"]?.let { personProperties["\$device_model"] = it }
+
+    // Localization (from dynamic context)
+    dynamicCtx["\$locale"]?.let { personProperties["\$locale"] = it }
+
+    return personProperties
+}

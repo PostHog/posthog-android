@@ -75,6 +75,25 @@ public open class PostHogConfig(
      */
     public var evaluationEnvironments: List<String>? = null,
     /**
+     * Automatically set common device and app properties as person properties for feature flag evaluation.
+     *
+     * When enabled, the SDK will automatically set the following person properties:
+     * - $app_version: App version from package info
+     * - $app_build: App build number from package info
+     * - $os_name: Operating system name (Android)
+     * - $os_version: Operating system version
+     * - $device_type: Device type (Mobile, Tablet, TV, etc.)
+     * - $device_manufacturer: Device manufacturer
+     * - $device_model: Device model
+     * - $locale: User's current locale
+     *
+     * This helps ensure feature flags that rely on these properties work correctly
+     * without waiting for server-side processing of identify() calls.
+     *
+     * Default: true
+     */
+    public var setDefaultPersonProperties: Boolean = true,
+    /**
      * Preload PostHog remote config automatically
      * Defaults to true
      */
@@ -192,8 +211,20 @@ public open class PostHogConfig(
     /**
      * Factory to instantiate a custom [com.posthog.internal.PostHogRemoteConfigInterface] implementation.
      */
-    public val remoteConfigProvider: (PostHogConfig, PostHogApi, ExecutorService) -> PostHogFeatureFlagsInterface =
-        { config, api, executor -> PostHogRemoteConfig(config, api, executor) },
+    public val remoteConfigProvider: (
+        PostHogConfig,
+        PostHogApi,
+        ExecutorService,
+        (() -> Map<String, Any>)?,
+    ) -> PostHogFeatureFlagsInterface =
+        {
+                config,
+                api,
+                executor,
+                getDefaultPersonProperties,
+            ->
+            PostHogRemoteConfig(config, api, executor, getDefaultPersonProperties ?: { emptyMap() })
+        },
     /**
      * Factory to instantiate a custom queue implementation.
      */

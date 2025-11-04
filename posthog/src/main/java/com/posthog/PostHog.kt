@@ -21,6 +21,7 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.ThrowableCoercer
+import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
@@ -96,7 +97,10 @@ public class PostHog private constructor(
                 val api = PostHogApi(config)
                 val queue = config.queueProvider(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
                 val replayQueue = config.queueProvider(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
-                val featureFlags = config.remoteConfigProvider(config, api, remoteConfigExecutor)
+                val featureFlags =
+                    config.remoteConfigProvider(config, api, remoteConfigExecutor) {
+                        getDefaultPersonProperties()
+                    }
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -577,6 +581,16 @@ public class PostHog private constructor(
         props["alias"] = alias
 
         capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
+    }
+
+    /**
+     * Returns fresh default device and app properties for feature flag evaluation.
+     */
+    private fun getDefaultPersonProperties(): Map<String, Any> {
+        if (!isEnabled()) return emptyMap()
+        if (config?.setDefaultPersonProperties != true) return emptyMap()
+
+        return config?.context?.personPropertiesContext() ?: emptyMap()
     }
 
     public override fun identify(

@@ -18,18 +18,26 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property config the Config
  * @property api the API
  * @property executor the Executor
+ * @property getDefaultPersonProperties the lambda to get default person properties
  */
 @PostHogInternal
 public class PostHogRemoteConfig(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
+    private val getDefaultPersonProperties: () -> Map<String, Any> = { emptyMap() },
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
     private var isLoadingRemoteConfig = AtomicBoolean(false)
 
     private val featureFlagsLock = Any()
     private val remoteConfigLock = Any()
+
+    private val personPropertiesForFlagsLock = Any()
+    private var personPropertiesForFlags: MutableMap<String, Any> = mutableMapOf()
+
+    private val groupPropertiesForFlagsLock = Any()
+    private var groupPropertiesForFlags: MutableMap<String, MutableMap<String, Any>> = mutableMapOf()
 
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
@@ -60,6 +68,7 @@ public class PostHogRemoteConfig(
     init {
         preloadSessionReplayFlag()
         preloadSurveys()
+        loadCachedPropertiesForFlags()
     }
 
     private fun isRecordingActive(
@@ -333,7 +342,14 @@ public class PostHogRemoteConfig(
         }
 
         try {
-            val response = api.flags(distinctId, anonymousId = anonymousId, groups)
+            val response =
+                api.flags(
+                    distinctId,
+                    anonymousId = anonymousId,
+                    groups = groups,
+                    personProperties = getPersonPropertiesForFlags(),
+                    groupProperties = getGroupPropertiesForFlags(),
+                )
 
             response?.let {
                 synchronized(featureFlagsLock) {
@@ -638,6 +654,103 @@ public class PostHogRemoteConfig(
         }
     }
 
+    public fun setPersonPropertiesForFlags(properties: Map<String, Any>) {
+        synchronized(personPropertiesForFlagsLock) {
+            personPropertiesForFlags.putAll(properties)
+            config.cachePreferences?.setValue(
+                PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS,
+                personPropertiesForFlags as Any,
+            )
+        }
+    }
+
+    public fun resetPersonPropertiesForFlags() {
+        synchronized(personPropertiesForFlagsLock) {
+            personPropertiesForFlags.clear()
+            config.cachePreferences?.remove(PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS)
+        }
+    }
+
+    public fun setGroupPropertiesForFlags(
+        groupType: String,
+        properties: Map<String, Any>,
+    ) {
+        synchronized(groupPropertiesForFlagsLock) {
+            val existing = groupPropertiesForFlags.getOrPut(groupType) { mutableMapOf() }
+            existing.putAll(properties)
+            config.cachePreferences?.setValue(
+                PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS,
+                groupPropertiesForFlags as Any,
+            )
+        }
+    }
+
+    public fun resetGroupPropertiesForFlags(groupType: String? = null) {
+        synchronized(groupPropertiesForFlagsLock) {
+            if (groupType != null) {
+                groupPropertiesForFlags.remove(groupType)
+                config.cachePreferences?.setValue(
+                    PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS,
+                    groupPropertiesForFlags as Any,
+                )
+            } else {
+                groupPropertiesForFlags.clear()
+                config.cachePreferences?.remove(PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS)
+            }
+        }
+    }
+
+    private fun getPersonPropertiesForFlags(): Map<String, Any> {
+        synchronized(personPropertiesForFlagsLock) {
+            val properties = mutableMapOf<String, Any>()
+
+            // Always include fresh default properties if enabled
+            if (config.setDefaultPersonProperties) {
+                val defaultProperties = getDefaultPersonProperties()
+                properties.putAll(defaultProperties)
+            }
+
+            // User-set properties override default properties
+            properties.putAll(personPropertiesForFlags)
+
+            return properties
+        }
+    }
+
+    private fun getGroupPropertiesForFlags(): Map<String, Map<String, Any>> {
+        synchronized(groupPropertiesForFlagsLock) {
+            return groupPropertiesForFlags.toMap()
+        }
+    }
+
+    private fun loadCachedPropertiesForFlags() {
+        synchronized(personPropertiesForFlagsLock) {
+            @Suppress("UNCHECKED_CAST")
+            val cachedPersonProperties =
+                config.cachePreferences?.getValue(
+                    PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS,
+                ) as? Map<String, Any>
+
+            if (cachedPersonProperties != null) {
+                personPropertiesForFlags.putAll(cachedPersonProperties)
+            }
+        }
+
+        synchronized(groupPropertiesForFlagsLock) {
+            @Suppress("UNCHECKED_CAST")
+            val cachedGroupProperties =
+                config.cachePreferences?.getValue(
+                    PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS,
+                ) as? Map<String, Map<String, Any>>
+
+            if (cachedGroupProperties != null) {
+                cachedGroupProperties.forEach { (key, cachedValue) ->
+                    groupPropertiesForFlags[key] = cachedValue.toMutableMap()
+                }
+            }
+        }
+    }
+
     override fun clear() {
         synchronized(featureFlagsLock) {
             sessionReplayFlagActive = false
@@ -649,6 +762,10 @@ public class PostHogRemoteConfig(
         synchronized(remoteConfigLock) {
             clearSurveys()
         }
+
+        // Clear person and group properties for flags
+        resetPersonPropertiesForFlags()
+        resetGroupPropertiesForFlags()
 
         config.cachePreferences?.remove(SESSION_REPLAY)
     }
