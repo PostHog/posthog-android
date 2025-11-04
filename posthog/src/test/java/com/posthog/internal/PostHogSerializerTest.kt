@@ -195,7 +195,9 @@ internal class PostHogSerializerTest {
         val expectedJson =
             """
             {
-                "${'$'}properties": {
+                "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
+                "distinct_id": "test_user",
+                "person_properties": {
                     "string_prop": "test_value",
                     "int_prop": 42,
                     "long_prop": 1234567890,
@@ -209,9 +211,7 @@ internal class PostHogSerializerTest {
                         "field1": "custom",
                         "field2": 999
                     }
-                },
-                "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
-                "distinct_id": "test_user"
+                }
             }
             """.replace(" ", "").replace("\n", "")
 
