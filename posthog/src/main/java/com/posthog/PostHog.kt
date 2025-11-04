@@ -427,6 +427,9 @@ public class PostHog private constructor(
                 requirePersonProcessing("capture", ignoreMessage = true)
             }
 
+            // Automatically set person properties for feature flags during capture event
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
+
             if (newDistinctId.isBlank()) {
                 config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
                 return
@@ -593,6 +596,35 @@ public class PostHog private constructor(
         return config?.context?.personPropertiesContext() ?: emptyMap()
     }
 
+    private fun setPersonPropertiesForFlagsIfNeeded(
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+    ) {
+        if (!hasPersonProcessing()) return
+        if (userProperties.isNullOrEmpty() && userPropertiesSetOnce.isNullOrEmpty()) return
+
+        val allProperties = mutableMapOf<String, Any>()
+        userPropertiesSetOnce?.let {
+            allProperties.putAll(userPropertiesSetOnce)
+        }
+        userProperties?.let {
+            // User properties override setOnce properties
+            allProperties.putAll(userProperties)
+        }
+
+        remoteConfig?.setPersonPropertiesForFlags(allProperties)
+    }
+
+    private fun setGroupPropertiesForFlagsIfNeeded(
+        type: String,
+        groupProperties: Map<String, Any>?,
+    ) {
+        if (!hasPersonProcessing()) return
+        if (groupProperties.isNullOrEmpty()) return
+
+        remoteConfig?.setGroupPropertiesForFlags(type, groupProperties)
+    }
+
     public override fun identify(
         distinctId: String,
         userProperties: Map<String, Any>?,
@@ -649,6 +681,9 @@ public class PostHog private constructor(
                 }
             }
             this.distinctId = distinctId
+
+            // Automatically set person properties for feature flags during identify() call
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
@@ -758,6 +793,9 @@ public class PostHog private constructor(
         }
 
         super.groupStateless(this.distinctId, type, key, groupProperties)
+
+        // Automatically set group properties for feature flags
+        setGroupPropertiesForFlagsIfNeeded(type, groupProperties)
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
