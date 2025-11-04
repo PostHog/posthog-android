@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.google.gson.internal.bind.util.ISO8601Utils
+import com.posthog.internal.PostHogContext
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
@@ -86,4 +87,28 @@ public fun Buffer.unGzip(): String {
     return GzipSource(this).use { source ->
         source.buffer().use { bufferedSource -> bufferedSource.readUtf8() }
     }
+}
+
+public class TestPostHogContext : PostHogContext {
+    override fun getStaticContext(): Map<String, Any> =
+        mapOf(
+            "\$app_version" to "1.0.0",
+            "\$app_build" to "100",
+            "\$os_name" to "Android",
+            "\$os_version" to "13",
+            "\$device_type" to "Mobile",
+            "\$device_manufacturer" to "Google",
+            "\$device_model" to "Pixel 7",
+        )
+
+    override fun getDynamicContext(): Map<String, Any> =
+        mapOf(
+            "\$locale" to "en-US",
+        )
+
+    override fun getSdkInfo(): Map<String, Any> =
+        mapOf(
+            "name" to "posthog-android",
+            "version" to "1.0.0",
+        )
 }
