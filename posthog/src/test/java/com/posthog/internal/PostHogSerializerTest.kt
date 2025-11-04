@@ -217,4 +217,62 @@ internal class PostHogSerializerTest {
 
         assertEquals(expectedJson, actualJson)
     }
+
+    @Test
+    fun `filters unserializable values in nested maps while preserving structure`() {
+        val sut = getSut()
+
+        // Create a nested map with an unserializable value deep in the tree
+        val unserializableValue = Thread.currentThread()
+        val properties =
+            mapOf<String, Any>(
+                "good" to "yes",
+                "bad" to
+                    mapOf<String, Any>(
+                        "good" to "yes",
+                        "bad" to unserializableValue,
+                    ),
+                "in_an_array" to
+                    listOf<Any>(
+                        "good",
+                        unserializableValue,
+                    ),
+            )
+
+        val eventUuid = UUID.fromString("12345678-90ab-cdef-1234-567890abcdef")
+        val event =
+            PostHogEvent(
+                event = "test_event",
+                distinctId = "user123",
+                properties = properties.toMutableMap(),
+                timestamp = Date(1234567890000L),
+                uuid = eventUuid,
+            )
+
+        val serialized = StringWriter()
+        sut.serialize(event, serialized)
+        val actualJson = serialized.toString()
+
+        // The result should preserve the nested "bad" map but only drop the unserializable leaf value
+        val expectedJson =
+            """
+            {
+                "event": "test_event",
+                "distinct_id": "user123",
+                "properties": {
+                    "good": "yes",
+                    "bad": {
+                        "good": "yes"
+                    },
+                    "in_an_array": [
+                        "good"
+                    ]
+                },
+                "timestamp": "2009-02-13T23:31:30.000Z",
+                "uuid": "12345678-90ab-cdef-1234-567890abcdef"
+            }
+            """.replace(" ", "").replace("\n", "")
+
+        assertEquals(expectedJson, actualJson)
+    }
 }

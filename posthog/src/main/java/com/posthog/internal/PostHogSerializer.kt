@@ -47,6 +47,15 @@ public class PostHogSerializer(private val config: PostHogConfig) {
             // general
             setObjectToNumberStrategy(GsonNumberPolicy())
             registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
+            val mapSerializer = GsonSafeMapSerializer(config)
+            registerTypeAdapter(
+                object : TypeToken<Map<String, Any?>>() {}.type,
+                mapSerializer,
+            )
+            registerTypeAdapter(
+                object : TypeToken<MutableMap<String, Any?>>() {}.type,
+                mapSerializer,
+            )
                 .setLenient()
             // replay
             registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer(config))
