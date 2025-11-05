@@ -80,12 +80,12 @@ public open class PostHogConfig(
      * When enabled, the SDK will automatically set the following person properties:
      * - $app_version: App version from package info
      * - $app_build: App build number from package info
+     * - $app_namespace: App namespace from package info
      * - $os_name: Operating system name (Android)
      * - $os_version: Operating system version
      * - $device_type: Device type (Mobile, Tablet, TV, etc.)
-     * - $device_manufacturer: Device manufacturer
-     * - $device_model: Device model
-     * - $locale: User's current locale
+     * - $lib: The identifier of the SDK
+     * - $lib_version: The version of the SDK
      *
      * This helps ensure feature flags that rely on these properties work correctly
      * without waiting for server-side processing of identify() calls.

@@ -98,15 +98,9 @@ public class TestPostHogContext : PostHogContext {
             "\$os_name" to "Android",
             "\$os_version" to "13",
             "\$device_type" to "Mobile",
-            "\$device_manufacturer" to "Google",
-            "\$device_model" to "Pixel 7",
         )
 
-    override fun getDynamicContext(): Map<String, Any> =
-        mapOf(
-            "\$locale" to "en-US",
-            "\$timezone" to "America/Los_Angeles",
-        )
+    override fun getDynamicContext(): Map<String, Any> = emptyMap()
 
     override fun getSdkInfo(): Map<String, Any> =
         mapOf(

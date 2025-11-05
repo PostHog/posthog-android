@@ -23,7 +23,6 @@ public interface PostHogContext {
 public fun PostHogContext.personPropertiesContext(): Map<String, Any> {
     val sdkInfo = getSdkInfo()
     val staticCtx = getStaticContext()
-    val dynamicCtx = getDynamicContext()
     val personProperties = mutableMapOf<String, Any>()
 
     // App information
@@ -37,12 +36,6 @@ public fun PostHogContext.personPropertiesContext(): Map<String, Any> {
 
     // Device information
     staticCtx["\$device_type"]?.let { personProperties["\$device_type"] = it }
-    staticCtx["\$device_manufacturer"]?.let { personProperties["\$device_manufacturer"] = it }
-    staticCtx["\$device_model"]?.let { personProperties["\$device_model"] = it }
-
-    // Localization
-    dynamicCtx["\$locale"]?.let { personProperties["\$locale"] = it }
-    dynamicCtx["\$timezone"]?.let { personProperties["\$timezone"] = it }
 
     // SDK information
     sdkInfo["\$lib"]?.let { personProperties["\$lib"] = it }
