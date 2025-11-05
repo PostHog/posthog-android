@@ -48,9 +48,19 @@ internal class PostHogFeatureFlags(
     private val loadLock = Object()
 
     init {
-        startPoller()
+        try {
+            startPoller()
+        } catch (e: Throwable) {
+            config.logger.log("Poller failed to init: $e")
+            stopPoller()
+        }
+
         if (!localEvaluation) {
-            onFeatureFlags?.loaded()
+            try {
+                onFeatureFlags?.loaded()
+            } catch (e: Throwable) {
+                config.logger.log("Error in onFeatureFlags callback: ${e.message}")
+            }
         }
     }
 
@@ -404,7 +414,7 @@ internal class PostHogFeatureFlags(
             return
         }
 
-        if (personalApiKey == null) {
+        if (personalApiKey.isNullOrBlank()) {
             config.logger.log("Local evaluation enabled but no personal API key provided")
             return
         }
@@ -485,5 +495,9 @@ internal class PostHogFeatureFlags(
             flagsByKey = flags,
             evaluationCache = evaluationCache,
         )
+    }
+
+    private fun localEvaluationEnabled(): Boolean {
+        return localEvaluation && !personalApiKey.isNullOrBlank()
     }
 }
