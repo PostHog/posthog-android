@@ -826,7 +826,7 @@ internal class FlagEvaluator(
         expectedValue: Any?,
         actualValue: Any?,
     ): Boolean {
-        // String variant case - check forcccccdbbiditecffbtgnkruvgnktfrldecihggnjhguh exact match or boolean true
+        // String variant case - check for exact match or boolean true
         if (actualValue is String && actualValue.isNotEmpty()) {
             return when (expectedValue) {
                 is Boolean -> expectedValue // Any variant matches boolean true
