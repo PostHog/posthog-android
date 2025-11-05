@@ -113,7 +113,6 @@ public class PostHogAndroid private constructor() {
             }
 
             if (config.releaseIdentifier.isNullOrEmpty()) {
-                //  consider build type and variants
                 config.releaseIdentifier = "$packageName@$versionName+$buildNumber"
             }
 

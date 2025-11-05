@@ -44,6 +44,7 @@ class MyApp : Application() {
                 surveys = false
                 errorTrackingConfig.autoCapture = true
                 if (!BuildConfig.DEBUG) {
+                    // apps should consider build type and variants
                     releaseIdentifier = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE}"
                 }
             }
