@@ -344,7 +344,6 @@ internal class PostHogFeatureFlags(
 
             if (apiResponse != null) {
                 synchronized(loadLock) {
-                    // apiResponse is now LocalEvaluationResponse with properly typed models
                     featureFlags = apiResponse.flags
                     flagDefinitions = apiResponse.flags?.associateBy { it.key }
                     cohorts = apiResponse.cohorts
