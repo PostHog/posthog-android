@@ -219,7 +219,10 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param type Optional group type to clear. If null, clears all group properties.
      * @param reloadFeatureFlags Whether to automatically reload feature flags after resetting properties
      */
-    public fun resetGroupPropertiesForFlags(type: String? = null, reloadFeatureFlags: Boolean = true)
+    public fun resetGroupPropertiesForFlags(
+        type: String? = null,
+        reloadFeatureFlags: Boolean = true,
+    )
 
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?

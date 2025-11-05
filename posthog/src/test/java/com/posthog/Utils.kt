@@ -105,7 +105,7 @@ public class TestPostHogContext : PostHogContext {
     override fun getDynamicContext(): Map<String, Any> =
         mapOf(
             "\$locale" to "en-US",
-            "\$timezone" to "America/Los_Angeles"
+            "\$timezone" to "America/Los_Angeles",
         )
 
     override fun getSdkInfo(): Map<String, Any> =

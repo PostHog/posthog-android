@@ -982,7 +982,10 @@ public class PostHog private constructor(
         }
     }
 
-    public override fun resetGroupPropertiesForFlags(type: String?, reloadFeatureFlags: Boolean) {
+    public override fun resetGroupPropertiesForFlags(
+        type: String?,
+        reloadFeatureFlags: Boolean,
+    ) {
         if (!isEnabled()) return
         if (!hasPersonProcessing()) return
 
@@ -1293,7 +1296,10 @@ public class PostHog private constructor(
             shared.setGroupPropertiesForFlags(type, groupProperties, reloadFeatureFlags)
         }
 
-        public override fun resetGroupPropertiesForFlags(type: String?, reloadFeatureFlags: Boolean) {
+        public override fun resetGroupPropertiesForFlags(
+            type: String?,
+            reloadFeatureFlags: Boolean,
+        ) {
             shared.resetGroupPropertiesForFlags(type, reloadFeatureFlags)
         }
 

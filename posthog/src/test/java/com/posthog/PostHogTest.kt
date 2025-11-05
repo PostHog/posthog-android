@@ -1916,20 +1916,23 @@ internal class PostHogTest {
         assertNotNull(personProperties, "Person properties not found in request")
 
         // Verify expected default properties are set
-        assertEquals(mapOf(
-            "\$app_version" to "1.0.0",
-            "\$app_build" to "100",
-            "\$app_namespace" to "my-namespace",
-            "\$os_name" to "Android",
-            "\$os_version" to "13",
-            "\$device_type" to "Mobile",
-            "\$device_manufacturer" to "Google",
-            "\$device_model" to "Pixel 7",
-            "\$locale" to "en-US",
-            "\$timezone" to "America/Los_Angeles",
-            "\$lib" to "posthog-android",
-            "\$lib_version" to "1.2.3"
-        ), personProperties)
+        assertEquals(
+            mapOf(
+                "\$app_version" to "1.0.0",
+                "\$app_build" to "100",
+                "\$app_namespace" to "my-namespace",
+                "\$os_name" to "Android",
+                "\$os_version" to "13",
+                "\$device_type" to "Mobile",
+                "\$device_manufacturer" to "Google",
+                "\$device_model" to "Pixel 7",
+                "\$locale" to "en-US",
+                "\$timezone" to "America/Los_Angeles",
+                "\$lib" to "posthog-android",
+                "\$lib_version" to "1.2.3",
+            ),
+            personProperties,
+        )
 
         sut.close()
         http.shutdown()
