@@ -21,6 +21,7 @@ public interface PostHogContext {
  */
 @PostHogInternal
 public fun PostHogContext.personPropertiesContext(): Map<String, Any> {
+    val sdkInfo = getSdkInfo()
     val staticCtx = getStaticContext()
     val dynamicCtx = getDynamicContext()
     val personProperties = mutableMapOf<String, Any>()
@@ -28,6 +29,7 @@ public fun PostHogContext.personPropertiesContext(): Map<String, Any> {
     // App information
     staticCtx["\$app_version"]?.let { personProperties["\$app_version"] = it }
     staticCtx["\$app_build"]?.let { personProperties["\$app_build"] = it }
+    staticCtx["\$app_namespace"]?.let { personProperties["\$app_namespace"] = it }
 
     // Operating system information
     staticCtx["\$os_name"]?.let { personProperties["\$os_name"] = it }
@@ -38,8 +40,13 @@ public fun PostHogContext.personPropertiesContext(): Map<String, Any> {
     staticCtx["\$device_manufacturer"]?.let { personProperties["\$device_manufacturer"] = it }
     staticCtx["\$device_model"]?.let { personProperties["\$device_model"] = it }
 
-    // Localization (from dynamic context)
+    // Localization
     dynamicCtx["\$locale"]?.let { personProperties["\$locale"] = it }
+    dynamicCtx["\$timezone"]?.let { personProperties["\$timezone"] = it }
+
+    // SDK information
+    sdkInfo["\$lib"]?.let { personProperties["\$lib"] = it }
+    sdkInfo["\$lib_version"]?.let { personProperties["\$lib_version"] = it }
 
     return personProperties
 }

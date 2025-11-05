@@ -94,6 +94,7 @@ public class TestPostHogContext : PostHogContext {
         mapOf(
             "\$app_version" to "1.0.0",
             "\$app_build" to "100",
+            "\$app_namespace" to "my-namespace",
             "\$os_name" to "Android",
             "\$os_version" to "13",
             "\$device_type" to "Mobile",
@@ -104,11 +105,12 @@ public class TestPostHogContext : PostHogContext {
     override fun getDynamicContext(): Map<String, Any> =
         mapOf(
             "\$locale" to "en-US",
+            "\$timezone" to "America/Los_Angeles"
         )
 
     override fun getSdkInfo(): Map<String, Any> =
         mapOf(
-            "name" to "posthog-android",
-            "version" to "1.0.0",
+            "\$lib" to "posthog-android",
+            "\$lib_version" to "1.2.3",
         )
 }
