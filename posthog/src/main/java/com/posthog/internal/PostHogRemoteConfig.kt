@@ -654,12 +654,12 @@ public class PostHogRemoteConfig(
         }
     }
 
-    public fun setPersonPropertiesForFlags(properties: Map<String, Any>) {
+    public fun setPersonPropertiesForFlags(userProperties: Map<String, Any>) {
         synchronized(personPropertiesForFlagsLock) {
-            personPropertiesForFlags.putAll(properties)
+            personPropertiesForFlags.putAll(userProperties)
             config.cachePreferences?.setValue(
                 PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS,
-                personPropertiesForFlags as Any,
+                personPropertiesForFlags,
             )
         }
     }
@@ -672,26 +672,26 @@ public class PostHogRemoteConfig(
     }
 
     public fun setGroupPropertiesForFlags(
-        groupType: String,
-        properties: Map<String, Any>,
+        type: String,
+        groupProperties: Map<String, Any>,
     ) {
         synchronized(groupPropertiesForFlagsLock) {
-            val existing = groupPropertiesForFlags.getOrPut(groupType) { mutableMapOf() }
-            existing.putAll(properties)
+            val existing = groupPropertiesForFlags.getOrPut(type) { mutableMapOf() }
+            existing.putAll(groupProperties)
             config.cachePreferences?.setValue(
                 PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS,
-                groupPropertiesForFlags as Any,
+                groupPropertiesForFlags,
             )
         }
     }
 
-    public fun resetGroupPropertiesForFlags(groupType: String? = null) {
+    public fun resetGroupPropertiesForFlags(type: String? = null) {
         synchronized(groupPropertiesForFlagsLock) {
-            if (groupType != null) {
-                groupPropertiesForFlags.remove(groupType)
+            if (type != null) {
+                groupPropertiesForFlags.remove(type)
                 config.cachePreferences?.setValue(
                     PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS,
-                    groupPropertiesForFlags as Any,
+                    groupPropertiesForFlags,
                 )
             } else {
                 groupPropertiesForFlags.clear()
@@ -731,8 +731,8 @@ public class PostHogRemoteConfig(
                     PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS,
                 ) as? Map<String, Any>
 
-            if (cachedPersonProperties != null) {
-                personPropertiesForFlags.putAll(cachedPersonProperties)
+            cachedPersonProperties?.let {
+                personPropertiesForFlags.putAll(it)
             }
         }
 
@@ -743,8 +743,8 @@ public class PostHogRemoteConfig(
                     PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS,
                 ) as? Map<String, Map<String, Any>>
 
-            if (cachedGroupProperties != null) {
-                cachedGroupProperties.forEach { (key, cachedValue) ->
+            cachedGroupProperties?.let {
+                it.forEach { (key, cachedValue) ->
                     groupPropertiesForFlags[key] = cachedValue.toMutableMap()
                 }
             }
