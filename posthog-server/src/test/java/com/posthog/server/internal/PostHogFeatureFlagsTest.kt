@@ -9,15 +9,15 @@ import com.posthog.server.createMockHttp
 import com.posthog.server.createTestConfig
 import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import okhttp3.mockwebserver.Dispatcher
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
 
 internal class PostHogFeatureFlagsTest {
     @Test
@@ -667,7 +667,7 @@ internal class PostHogFeatureFlagsTest {
             createMockHttp(
                 jsonResponse(firstResponse),
                 jsonResponse(secondResponse),
-                jsonResponse(secondResponse), // Extra response for potential poller activity
+                jsonResponse(secondResponse),
             )
         val url = mockServer.url("/")
 

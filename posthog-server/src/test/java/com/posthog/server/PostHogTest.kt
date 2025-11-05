@@ -78,7 +78,6 @@ internal class PostHogTest {
         postHog.close()
     }
 
-
     @Test
     fun `capture with timestamp passes timestamp through`() {
         val config = PostHogConfig(apiKey = TEST_API_KEY)
