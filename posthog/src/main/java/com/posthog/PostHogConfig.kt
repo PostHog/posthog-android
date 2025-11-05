@@ -208,7 +208,7 @@ public open class PostHogConfig(
      * The release identifier used to identify the correct proguard mappings (mapping.txt)
      * in order to make minified stack traces into human readable stack traces
      *
-     * If not set, this will be automatically set to a composed version of your eg:
+     * If not set, this will be automatically set to a composed version of your app eg:
      * com.posthog.mobile@1.0.0+1
      * Where:
      *   'com.posthog.mobile' is the applicationId
@@ -217,6 +217,8 @@ public open class PostHogConfig(
      *
      *   It can also be a git sha, the hash of the mapping file, etc
      *   it should be the very same identifier (map-id) used to upload the mapping to the PostHog servers
+     *
+     *   Soon a Gradle plugin will be provided to do the injection of this identifier automatically
      *
      *  CLI command example:
      *   posthog-cli exp proguard upload --path "app/build/outputs/mapping/release/mapping.txt" --map-id "com.posthog.mobile@1.0.0+1"
