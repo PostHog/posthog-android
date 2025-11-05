@@ -1,4 +1,4 @@
-public final class com/posthog/server/PostHog : com/posthog/server/PostHogInterface {
+public final class com/posthog/server/PostHog : com/posthog/PostHogStateless, com/posthog/server/PostHogInterface {
 	public static final field Companion Lcom/posthog/server/PostHog$Companion;
 	public fun <init> ()V
 	public fun alias (Ljava/lang/String;Ljava/lang/String;)V
@@ -25,6 +25,7 @@ public final class com/posthog/server/PostHog : com/posthog/server/PostHogInterf
 	public fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Z
 	public fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Z)Z
 	public fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
+	public fun reloadFeatureFlags ()V
 	public fun setup (Lcom/posthog/server/PostHogConfig;)V
 	public static final fun with (Lcom/posthog/server/PostHogConfig;)Lcom/posthog/server/PostHogInterface;
 }
@@ -219,6 +220,7 @@ public abstract interface class com/posthog/server/PostHogInterface {
 	public abstract fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogFeatureFlagOptions;)Z
 	public abstract fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;Z)Z
 	public abstract fun isFeatureEnabled (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
+	public abstract fun reloadFeatureFlags ()V
 	public abstract fun setup (Lcom/posthog/server/PostHogConfig;)V
 }
 
