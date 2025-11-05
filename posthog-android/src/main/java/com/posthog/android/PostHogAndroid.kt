@@ -16,6 +16,7 @@ import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import com.posthog.android.internal.getPackageInfo
+import com.posthog.android.internal.versionCodeCompat
 import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.android.replay.internal.PostHogLogCatIntegration
 import com.posthog.android.surveys.PostHogSurveysIntegration
@@ -78,13 +79,16 @@ public class PostHogAndroid private constructor() {
 
             val packageInfo = getPackageInfo(context, config)
             val packageName = packageInfo?.packageName ?: ""
+            val versionName = packageInfo?.versionName ?: ""
+            val buildNumber = packageInfo?.versionCodeCompat() ?: 0L
 
             // only frames coming from the package name will be considered inApp by default
             if (packageName.isNotEmpty() && !packageName.startsWith("android.")) {
                 config.errorTrackingConfig.inAppIncludes.add(packageName)
             }
 
-            config.context = config.context ?: PostHogAndroidContext(context, config)
+            val androidContext = config.context ?: PostHogAndroidContext(context, config)
+            config.context = androidContext
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
             val path = File(context.cacheDir, "posthog-disk-queue")
@@ -106,6 +110,11 @@ public class PostHogAndroid private constructor() {
             if (config.sdkName != "posthog-flutter") {
                 config.sdkName = "posthog-android"
                 config.sdkVersion = BuildConfig.VERSION_NAME
+            }
+
+            if (config.releaseIdentifier.isNullOrEmpty()) {
+                //  consider build type and variants
+                config.releaseIdentifier = "$packageName@$versionName+$buildNumber"
             }
 
             val mainHandler = MainHandler()

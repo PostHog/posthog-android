@@ -22,6 +22,7 @@ internal class ThrowableCoercer {
     fun fromThrowableToPostHogProperties(
         throwable: Throwable,
         inAppIncludes: List<String> = listOf(),
+        releaseIdentifier: String? = null,
     ): MutableMap<String, Any> {
         val exceptions = mutableListOf<Map<String, Any>>()
         val throwableList = mutableListOf<Throwable>()
@@ -67,6 +68,11 @@ internal class ThrowableCoercer {
                     myFrame["module"] = frame.className
                     myFrame["function"] = frame.methodName
                     myFrame["platform"] = "java"
+
+                    // add release identifier for symbolication
+                    if (!releaseIdentifier.isNullOrEmpty()) {
+                        myFrame["map_id"] = releaseIdentifier
+                    }
 
                     if (frame.lineNumber >= 0) {
                         myFrame["lineno"] = frame.lineNumber

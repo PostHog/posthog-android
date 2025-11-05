@@ -500,6 +500,7 @@ public class PostHog private constructor(
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
                     inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
+                    releaseIdentifier = config?.releaseIdentifier,
                 )
 
             properties?.let {
