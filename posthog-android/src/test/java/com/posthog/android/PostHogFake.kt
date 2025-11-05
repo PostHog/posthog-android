@@ -72,6 +72,25 @@ public class PostHogFake : PostHogInterface {
     override fun flush() {
     }
 
+    override fun setPersonPropertiesForFlags(
+        userProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean,
+    ) {
+    }
+
+    override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
+    }
+
+    override fun setGroupPropertiesForFlags(
+        type: String,
+        groupProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean,
+    ) {
+    }
+
+    override fun resetGroupPropertiesForFlags(type: String?, reloadFeatureFlags: Boolean) {
+    }
+
     override fun reset() {
     }
 

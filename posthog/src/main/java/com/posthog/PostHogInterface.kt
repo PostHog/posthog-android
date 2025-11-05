@@ -183,6 +183,44 @@ public interface PostHogInterface : PostHogCoreInterface {
      */
     public fun getSessionId(): UUID?
 
+    /**
+     * Sets person properties that will be included in feature flag evaluation requests.
+     *
+     * @param properties Dictionary of person properties to include in flag evaluation
+     * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
+     */
+    public fun setPersonPropertiesForFlags(
+        userProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean = true,
+    )
+
+    /**
+     * Resets all person properties that were set for feature flag evaluation.
+     * @param reloadFeatureFlags Whether to automatically reload feature flags after resetting properties
+     */
+    public fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean = true)
+
+    /**
+     * Sets properties for a specific group type to include when evaluating feature flags.
+     *
+     * @param type The group type identifier (e.g., "organization", "team")
+     * @param properties Dictionary of properties to set for this group type
+     * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
+     */
+    public fun setGroupPropertiesForFlags(
+        type: String,
+        groupProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean = true,
+    )
+
+    /**
+     * Clears group properties for feature flag evaluation.
+     *
+     * @param type Optional group type to clear. If null, clears all group properties.
+     * @param reloadFeatureFlags Whether to automatically reload feature flags after resetting properties
+     */
+    public fun resetGroupPropertiesForFlags(type: String? = null, reloadFeatureFlags: Boolean = true)
+
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
 }

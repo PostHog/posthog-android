@@ -939,71 +939,58 @@ public class PostHog private constructor(
         replayQueue?.flush()
     }
 
-    /**
-     * Sets person properties that will be included in feature flag evaluation requests.
-     *
-     * @param properties Dictionary of person properties to include in flag evaluation
-     * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
-     */
-    public fun setPersonPropertiesForFlags(
-        properties: Map<String, Any>,
-        reloadFeatureFlags: Boolean = true,
+    public override fun setPersonPropertiesForFlags(
+        userProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean,
     ) {
         if (!isEnabled()) return
         if (!hasPersonProcessing()) return
-        if (properties.isEmpty()) return
+        if (userProperties.isEmpty()) return
 
-        remoteConfig?.setPersonPropertiesForFlags(properties)
+        remoteConfig?.setPersonPropertiesForFlags(userProperties)
 
         if (reloadFeatureFlags && this.reloadFeatureFlags) {
             this.reloadFeatureFlags()
         }
     }
 
-    /**
-     * Resets all person properties that were set for feature flag evaluation.
-     */
-    public fun resetPersonPropertiesForFlags() {
+    public override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
         if (!isEnabled()) return
         if (!hasPersonProcessing()) return
 
         remoteConfig?.resetPersonPropertiesForFlags()
-    }
-
-    /**
-     * Sets properties for a specific group type to include when evaluating feature flags.
-     *
-     * @param groupType The group type identifier (e.g., "organization", "team")
-     * @param properties Dictionary of properties to set for this group type
-     * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
-     */
-    public fun setGroupPropertiesForFlags(
-        groupType: String,
-        properties: Map<String, Any>,
-        reloadFeatureFlags: Boolean = true,
-    ) {
-        if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
-
-        if (properties.isEmpty()) return
-
-        remoteConfig?.setGroupPropertiesForFlags(groupType, properties)
 
         if (reloadFeatureFlags && this.reloadFeatureFlags) {
             this.reloadFeatureFlags()
         }
     }
 
-    /**
-     * Clears group properties for feature flag evaluation.
-     *
-     * @param groupType Optional group type to clear. If null, clears all group properties.
-     */
-    public fun resetGroupPropertiesForFlags(groupType: String? = null) {
+    public override fun setGroupPropertiesForFlags(
+        type: String,
+        groupProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean,
+    ) {
         if (!isEnabled()) return
         if (!hasPersonProcessing()) return
 
-        remoteConfig?.resetGroupPropertiesForFlags(groupType)
+        if (groupProperties.isEmpty()) return
+
+        remoteConfig?.setGroupPropertiesForFlags(type, groupProperties)
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
+    }
+
+    public override fun resetGroupPropertiesForFlags(type: String?, reloadFeatureFlags: Boolean) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+
+        remoteConfig?.resetGroupPropertiesForFlags(type)
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
     }
 
     public override fun reset() {
@@ -1285,6 +1272,29 @@ public class PostHog private constructor(
 
         public override fun flush() {
             shared.flush()
+        }
+
+        public override fun setPersonPropertiesForFlags(
+            userProperties: Map<String, Any>,
+            reloadFeatureFlags: Boolean,
+        ) {
+            shared.setPersonPropertiesForFlags(userProperties, reloadFeatureFlags)
+        }
+
+        public override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
+            shared.resetPersonPropertiesForFlags(reloadFeatureFlags)
+        }
+
+        public override fun setGroupPropertiesForFlags(
+            type: String,
+            groupProperties: Map<String, Any>,
+            reloadFeatureFlags: Boolean,
+        ) {
+            shared.setGroupPropertiesForFlags(type, groupProperties, reloadFeatureFlags)
+        }
+
+        public override fun resetGroupPropertiesForFlags(type: String?, reloadFeatureFlags: Boolean) {
+            shared.resetGroupPropertiesForFlags(type, reloadFeatureFlags)
         }
 
         public override fun reset() {
