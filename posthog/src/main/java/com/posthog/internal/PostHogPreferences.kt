@@ -37,12 +37,12 @@ public interface PostHogPreferences {
         internal const val FEATURE_FLAG_REQUEST_ID = "feature_flag_request_id"
         internal const val SESSION_REPLAY = "sessionReplay"
         internal const val SURVEYS = "surveys"
+        internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
+        internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
         public const val SURVEY_SEEN: String = "surveySeen"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
-        internal const val PERSON_PROPERTIES_FOR_FLAGS = "posthog.personPropertiesForFlags"
-        internal const val GROUP_PROPERTIES_FOR_FLAGS = "posthog.groupPropertiesForFlags"
 
         public val ALL_INTERNAL_KEYS: Set<String> =
             setOf(
