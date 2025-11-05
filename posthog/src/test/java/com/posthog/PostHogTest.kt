@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
+import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
@@ -55,6 +56,7 @@ internal class PostHogTest {
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
         evaluationEnvironments: List<String>? = null,
+        context: PostHogContext? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -77,6 +79,7 @@ internal class PostHogTest {
                     addBeforeSend(beforeSend)
                 }
                 this.errorTrackingConfig.inAppIncludes.add("com.posthog")
+                this.context = context
             }
         return PostHog.withInternal(
             config,
@@ -1881,5 +1884,239 @@ internal class PostHogTest {
         assertTrue(firstFrameMainException["lineno"] is Number)
 
         sut.close()
+    }
+
+    @Test
+    fun `sets default person properties on SDK setup when enabled`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = true, context = TestPostHogContext())
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // Find the flags request
+        val flagsRequest =
+            (0 until http.requestCount).asSequence()
+                .map { http.takeRequest() }
+                .firstOrNull { it.path?.contains("/flags/") == true }
+
+        assertNotNull(flagsRequest, "No flags request found")
+
+        val content = flagsRequest.body.unGzip()
+        val requestBody = serializer.deserialize<Map<String, Any>>(content.reader())
+
+        // Verify person_properties are present
+        val personProperties = requestBody["person_properties"] as? Map<*, *>
+        assertNotNull(personProperties, "Person properties not found in request")
+
+        // Verify expected default properties are set
+        assertEquals(
+            mapOf(
+                "\$app_version" to "1.0.0",
+                "\$app_build" to "100",
+                "\$app_namespace" to "my-namespace",
+                "\$os_name" to "Android",
+                "\$os_version" to "13",
+                "\$device_type" to "Mobile",
+                "\$lib" to "posthog-android",
+                "\$lib_version" to "1.2.3",
+            ),
+            personProperties,
+        )
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `does not set default person properties when disabled`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        // Create config with setDefaultPersonProperties = false
+        config =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                this.storagePrefix = tmpDir.newFolder().absolutePath
+                this.setDefaultPersonProperties = false
+                this.preloadFeatureFlags = false
+                this.context = TestPostHogContext()
+            }
+
+        val sut =
+            PostHog.withInternal(
+                config,
+                queueExecutor,
+                replayQueueExecutor,
+                remoteConfigExecutor,
+                cachedEventsExecutor,
+                true,
+            )
+
+        // Manually trigger flags reload
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // Find the flags request
+        val flagsRequest =
+            (0 until http.requestCount).asSequence()
+                .map { http.takeRequest() }
+                .firstOrNull { it.path?.contains("/flags/") == true }
+
+        assertNotNull(flagsRequest, "No flags request found")
+
+        val content = flagsRequest.body.unGzip()
+        val requestBody = serializer.deserialize<Map<String, Any>>(content.reader())
+
+        // Verify person_properties are either absent or empty
+        val personProperties = requestBody["person_properties"] as? Map<*, *>
+        // Should be null or empty since setDefaultPersonProperties is false
+        assertTrue(
+            personProperties == null || personProperties.isEmpty(),
+            "Person properties should not be set when disabled",
+        )
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `automatically sets person properties from identify call`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut =
+            getSut(url.toString(), preloadFeatureFlags = false, context = TestPostHogContext())
+
+        val userProps =
+            mapOf(
+                "email" to "user@example.com",
+                "plan" to "premium",
+                "age" to 30,
+            )
+
+        val userPropsOnce =
+            mapOf(
+                "initial_signup_date" to "2024-01-01",
+            )
+
+        // Call identify with user properties
+        sut.identify(
+            "test_user_123",
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        // Reload feature flags to trigger a flags request
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // Find the flags request
+        val flagsRequest =
+            (0 until http.requestCount).asSequence()
+                .map { http.takeRequest() }
+                .firstOrNull { it.path?.contains("/flags/") == true }
+
+        assertNotNull(flagsRequest, "No flags request found")
+
+        val content = flagsRequest.body.unGzip()
+        val requestBody = serializer.deserialize<Map<String, Any>>(content.reader())
+
+        // Verify person_properties are present
+        val personProperties = requestBody["person_properties"] as? Map<*, *>
+        assertNotNull(personProperties, "Person properties not found in request")
+
+        // Verify properties from identify() are included
+        assertEquals("user@example.com", personProperties["email"], "email should match")
+        assertEquals("premium", personProperties["plan"], "plan should match")
+        assertEquals(30, personProperties["age"], "age should match")
+
+        // Verify userPropertiesSetOnce are also included
+        assertEquals(
+            "2024-01-01",
+            personProperties["initial_signup_date"],
+            "initial_signup_date should match",
+        )
+
+        // Verify default properties are also present (merged with user properties)
+        assertNotNull(personProperties["\$app_version"], "app_version should still be present")
+        assertNotNull(personProperties["\$os_name"], "os_name should still be present")
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `person properties from identify override default properties`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut =
+            getSut(url.toString(), preloadFeatureFlags = false, context = TestPostHogContext())
+
+        // Set a property that conflicts with a default property
+        val userProps =
+            mapOf(
+                "\$device_type" to "custom_device",
+                "custom_prop" to "custom_value",
+            )
+
+        sut.identify("test_user", userProperties = userProps)
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val flagsRequest =
+            (0 until http.requestCount).asSequence()
+                .map { http.takeRequest() }
+                .firstOrNull { it.path?.contains("/flags/") == true }
+
+        assertNotNull(flagsRequest, "No flags request found")
+
+        val content = flagsRequest.body.unGzip()
+        val requestBody = serializer.deserialize<Map<String, Any>>(content.reader())
+
+        val personProperties = requestBody["person_properties"] as? Map<*, *>
+        assertNotNull(personProperties, "Person properties not found in request")
+
+        // User-provided property should override the default
+        assertEquals(
+            "custom_device",
+            personProperties["${'$'}device_type"],
+            "\$device_type should be overridden by user value",
+        )
+        assertEquals(
+            "custom_value",
+            personProperties["custom_prop"],
+            "custom_prop should be present",
+        )
+
+        // Other default properties should still be present
+        assertNotNull(personProperties["\$app_version"], "app_version should still be present")
+
+        sut.close()
+        http.shutdown()
     }
 }

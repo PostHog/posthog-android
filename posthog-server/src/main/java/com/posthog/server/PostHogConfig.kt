@@ -139,7 +139,7 @@ public open class PostHogConfig constructor(
                 encryption = encryption,
                 onFeatureFlags = onFeatureFlags,
                 proxy = proxy,
-                remoteConfigProvider = { config, api, _ ->
+                remoteConfigProvider = { config, api, _, _ ->
                     PostHogFeatureFlags(
                         config,
                         api,

@@ -34,7 +34,7 @@ internal class PostHogRemoteConfigTest {
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
-        return PostHogRemoteConfig(config!!, api, executor = executor)
+        return PostHogRemoteConfig(config!!, api, executor = executor) { emptyMap() }
     }
 
     @BeforeTest
@@ -265,5 +265,123 @@ internal class PostHogRemoteConfigTest {
     @Test
     fun `on feature flag callbacks are called after flag API call`() {
         testFlagsCallback("src/test/resources/json/basic-remote-config.json")
+    }
+
+    @Test
+    fun `setPersonPropertiesForFlags writes to preferences`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val personProps =
+            mapOf(
+                "email" to "user@example.com",
+                "plan" to "premium",
+                "age" to 30,
+            )
+
+        sut.setPersonPropertiesForFlags(personProps)
+
+        val cachedProps = preferences.getValue(PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertEquals("user@example.com", cachedProps?.get("email"))
+        assertEquals("premium", cachedProps?.get("plan"))
+        assertEquals(30, cachedProps?.get("age"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `setGroupPropertiesForFlags writes to preferences`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val orgProps = mapOf("plan" to "enterprise", "seats" to 50)
+        val teamProps = mapOf("name" to "Engineering", "size" to 10)
+
+        sut.setGroupPropertiesForFlags("organization", orgProps)
+        sut.setGroupPropertiesForFlags("team", teamProps)
+
+        val cachedProps = preferences.getValue(PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        val cachedOrgProps = cachedProps?.get("organization") as? Map<*, *>
+        val cachedTeamProps = cachedProps?.get("team") as? Map<*, *>
+
+        assertEquals("enterprise", cachedOrgProps?.get("plan"))
+        assertEquals(50, cachedOrgProps?.get("seats"))
+        assertEquals("Engineering", cachedTeamProps?.get("name"))
+        assertEquals(10, cachedTeamProps?.get("size"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `resetPersonPropertiesForFlags removes from preferences`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.setPersonPropertiesForFlags(mapOf("email" to "user@example.com"))
+
+        var cachedProps = preferences.getValue(PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertEquals("user@example.com", cachedProps?.get("email"))
+
+        sut.resetPersonPropertiesForFlags()
+
+        cachedProps = preferences.getValue(PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertTrue(cachedProps == null, "Person properties should be removed from preferences")
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `resetGroupPropertiesForFlags removes all groups from preferences`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.setGroupPropertiesForFlags("organization", mapOf("plan" to "enterprise"))
+        sut.setGroupPropertiesForFlags("team", mapOf("name" to "Engineering"))
+
+        var cachedProps = preferences.getValue(PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertTrue(cachedProps?.containsKey("organization") == true)
+        assertTrue(cachedProps?.containsKey("team") == true)
+
+        sut.resetGroupPropertiesForFlags()
+
+        cachedProps = preferences.getValue(PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertTrue(cachedProps == null, "Group properties should be removed from preferences")
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `resetGroupPropertiesForFlags removes specific group from preferences`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.setGroupPropertiesForFlags("organization", mapOf("plan" to "enterprise"))
+        sut.setGroupPropertiesForFlags("team", mapOf("name" to "Engineering"))
+
+        sut.resetGroupPropertiesForFlags("organization")
+
+        val cachedProps = preferences.getValue(PostHogPreferences.GROUP_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertFalse(cachedProps?.containsKey("organization") == true, "organization should be removed")
+        assertTrue(cachedProps?.containsKey("team") == true, "team should remain")
+
+        val teamProps = cachedProps?.get("team") as? Map<*, *>
+        assertEquals("Engineering", teamProps?.get("name"))
+
+        sut.clear()
+        http.shutdown()
     }
 }
