@@ -78,6 +78,18 @@ public class ThrowableCoercer {
                     val fileName = frame.fileName
                     if (fileName?.isNotEmpty() == true) {
                         myFrame["filename"] = fileName
+                    } else {
+                        // If the file name is not available (e.g., the application has been compiled without debug info),
+                        // substitute with class and method names.
+                        val frameClass = frame.className?.takeIf { it.isNotEmpty() }
+                        val frameMethod = frame.methodName?.takeIf { it.isNotEmpty() }
+                        val fullyQualifiedName =
+                            listOfNotNull(frameClass, frameMethod)
+                                .takeIf { it.isNotEmpty() }
+                                ?.joinToString(".")
+                        if (fullyQualifiedName?.isNotEmpty() == true) {
+                            myFrame["filename"] = fullyQualifiedName
+                        }
                     }
 
                     myFrame["in_app"] = isInApp(frame.className, inAppIncludes)

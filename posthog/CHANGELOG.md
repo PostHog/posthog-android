@@ -1,5 +1,7 @@
 ## Next
 
+- fix: Exceptions record `className.methodName` in the absence of debug information ([#317](https://github.com/PostHog/posthog-android/pull/317))
+
 ## 5.1.0 - 2025-11-06
 
 - feat: Add an optional shutdown override to `FeatureFlagInterface` ([#299](https://github.com/PostHog/posthog-android/pull/299))
