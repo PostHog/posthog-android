@@ -13,6 +13,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -835,20 +836,24 @@ internal class PostHogFeatureFlagsTest {
         // Shut down poller to control loading manually
         featureFlags.shutDown()
 
-        // Launch 5 concurrent threads all calling loadFeatureFlagDefinitions
         val threadCount = 5
+        val startLatch = CountDownLatch(threadCount)
         val threads =
             List(threadCount) {
                 Thread {
+                    // Wait for all threads to be ready before proceeding. This should reduce
+                    // any timing issues where one thread completes before others start - particularly
+                    // in CI.
+                    startLatch.countDown()
+                    startLatch.await()
                     featureFlags.loadFeatureFlagDefinitions()
                 }
             }
 
-        // Start all threads simultaneously
         threads.forEach { it.start() }
 
         // Wait for all to complete
-        threads.forEach { it.join(5000) } // 5 sec timeout
+        threads.forEach { it.join(5000) }
 
         // All threads should have completed successfully
         threads.forEach { thread ->
