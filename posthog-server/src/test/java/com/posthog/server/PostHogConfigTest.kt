@@ -476,4 +476,38 @@ internal class PostHogConfigTest {
         assertEquals(coreConfig1.apiKey, coreConfig2.apiKey)
         assertEquals(coreConfig1.host, coreConfig2.host)
     }
+
+    @Test
+    fun `builder personalApiKey enables localEvaluation when not explicitly set`() {
+        val config =
+            PostHogConfig.builder(TEST_API_KEY)
+                .personalApiKey("test-personal-api-key")
+                .build()
+
+        assertEquals("test-personal-api-key", config.personalApiKey)
+        assertEquals(true, config.localEvaluation)
+    }
+
+    @Test
+    fun `builder personalApiKey with null does not enable localEvaluation when not explicitly set`() {
+        val config =
+            PostHogConfig.builder(TEST_API_KEY)
+                .personalApiKey(null)
+                .build()
+
+        assertNull(config.personalApiKey)
+        assertEquals(false, config.localEvaluation)
+    }
+
+    @Test
+    fun `builder personalApiKey does not override explicit localEvaluation false`() {
+        val config =
+            PostHogConfig.builder(TEST_API_KEY)
+                .localEvaluation(false)
+                .personalApiKey("test-personal-api-key")
+                .build()
+
+        assertEquals("test-personal-api-key", config.personalApiKey)
+        assertEquals(false, config.localEvaluation)
+    }
 }

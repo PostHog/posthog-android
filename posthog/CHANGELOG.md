@@ -1,5 +1,9 @@
 ## Next
 
+- feat: Add an optional shutdown override to `FeatureFlagInterface` ([#299](https://github.com/PostHog/posthog-android/pull/299))
+- feat: Add `localEvaluation` to the `PostHogApi` ([#299](https://github.com/PostHog/posthog-android/pull/299))
+- feat: Add API models for local evaluation ([#299](https://github.com/PostHog/posthog-android/pull/299))
+
 ## 5.0.0 - 2025-11-05
 
 - feat: Add ability to cache properties for flags ([#315](https://github.com/PostHog/posthog-android/pull/315))
