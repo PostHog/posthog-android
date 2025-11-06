@@ -175,9 +175,9 @@ postHog.capture(
 )
 ```
 
-## Exception Tracking
+## Error Tracking
 
-PostHog provides automatic exception tracking to help you monitor and debug errors in your application.
+PostHog provides error tracking to help you monitor and debug errors in your application. Use the `captureException` API to log exceptions to PostHog.
 
 ### Capture Exception with Distinct ID
 
@@ -194,7 +194,7 @@ try {
         "service" to "payment-processor",
         "context" to "checkout_flow"
     )
-    postHog.captureException(e, exceptionProperties, "user123")
+    postHog.captureException(e, "user123", exceptionProperties)
 }
 ```
 
@@ -208,7 +208,7 @@ try {
     Map<String, Object> exceptionProperties = new HashMap<>();
     exceptionProperties.put("service", "payment-processor");
     exceptionProperties.put("context", "checkout_flow");
-    postHog.captureException(e, exceptionProperties, "user123");
+    postHog.captureException(e, "user123", exceptionProperties);
 }
 ```
 
