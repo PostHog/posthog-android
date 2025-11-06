@@ -6,19 +6,29 @@ import com.posthog.server.PostHogConfig;
 import com.posthog.server.PostHogFeatureFlagOptions;
 import com.posthog.server.PostHogInterface;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 /**
  * Simple Java 1.8 example demonstrating PostHog usage
  */
 public class PostHogJavaExample {
-
     public static void main(String[] args) {
+        Properties props = loadProperties();
+        String apiKey = props.getProperty("posthog.api.key");
+        String host = props.getProperty("posthog.host");
+
+        // Personal API key is private and sensitive, so we recommend loading it from
+        // environment variables or a secure vault
+        String personalApiKey = System.getenv("POSTHOG_PERSONAL_API_KEY");
+
         PostHogConfig config = PostHogConfig
-                .builder("phc_wxtaSxv9yC8UYxUAxNojluoAf41L8p6SJZmiTMtS8jA")
-                .personalApiKey("phs_DuaFTmUtxQNj5R2W03emB1jMLIX5XwDvrt3DKfi5uYNcxzd")
-                .host("http://localhost:8010")
+                .builder(apiKey)
+                .personalApiKey(personalApiKey)
+                .host(host)
                 .localEvaluation(true)
                 .debug(true)
                 .build();
@@ -81,4 +91,19 @@ public class PostHogJavaExample {
         posthog.flush();
         posthog.close();
     }
+
+    private static Properties loadProperties() {
+        Properties properties = new Properties();
+        try (InputStream input = PostHogJavaExample.class.getClassLoader()
+                .getResourceAsStream("application.properties")) {
+            if (input != null) {
+                properties.load(input);
+            }
+        } catch (IOException e) {
+            // If properties file not found, return empty properties
+            // Allows fallback to hardcoded defaults
+        }
+        return properties;
+    }
+
 }
