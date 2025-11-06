@@ -11,6 +11,14 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 internal class PostHogTest {
+    private fun createMockStateless(): PostHog {
+        return spy(PostHog())
+    }
+
+    private fun createPostHogWithMock(mockInstance: PostHog): PostHog {
+        return mockInstance
+    }
+
     @Test
     fun `setup creates PostHogStateless instance with core config`() {
         val config = PostHogConfig(apiKey = TEST_API_KEY)
@@ -234,15 +242,32 @@ internal class PostHogTest {
 
     @Test
     fun `captureException delegates to instance captureExceptionStateless with all parameters`() {
-        val mockInstance = createMockStateless()
-        val postHog = createPostHogWithMock(mockInstance)
+        val postHog = spy(PostHog())
 
         val exception = RuntimeException("Test exception")
         val properties = mapOf("context" to "test", "severity" to "high")
         val distinctId = "user123"
 
-        postHog.captureException(exception, properties, distinctId)
+        postHog.captureException(exception, distinctId, properties)
 
-        verify(mockInstance).captureExceptionStateless(exception, properties, distinctId)
+        verify(postHog).captureExceptionStateless(exception, distinctId, properties)
+    }
+
+    @Test
+    fun `captureException overloads`() {
+        val postHog = spy(PostHog())
+        val exception = RuntimeException("Test exception")
+        val properties = mapOf("context" to "test")
+        val distinctId = "user123"
+
+        postHog.captureException(exception)
+        postHog.captureException(exception, distinctId)
+        postHog.captureException(exception, properties)
+        postHog.captureException(exception, distinctId, properties)
+
+        verify(postHog).captureExceptionStateless(exception, null, null)
+        verify(postHog).captureExceptionStateless(exception, distinctId, null)
+        verify(postHog).captureExceptionStateless(exception, null, properties)
+        verify(postHog).captureExceptionStateless(exception, distinctId, properties)
     }
 }

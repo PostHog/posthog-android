@@ -137,13 +137,13 @@ public class PostHog : PostHogStateless(), PostHogInterface {
 
     override fun captureException(
         exception: Throwable,
-        properties: Map<String, Any>?,
         distinctId: String?,
+        properties: Map<String, Any>?,
     ) {
         super.captureExceptionStateless(
             exception,
-            properties,
-            distinctId,
+            distinctId = distinctId,
+            properties = properties,
         )
     }
 

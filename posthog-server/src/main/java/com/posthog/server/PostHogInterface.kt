@@ -423,13 +423,13 @@ public sealed interface PostHogInterface {
      * Captures an exception
      * Docs https://posthog.com/docs/error-tracking
      * @param exception the exception to capture
-     * @param properties the exception properties to add to the event
      * @param distinctId the distinctId
+     * @param properties the exception properties to add to the event
      */
     public fun captureException(
         exception: Throwable,
-        properties: Map<String, Any>? = null,
         distinctId: String? = null,
+        properties: Map<String, Any>? = null,
     )
 
     /**
@@ -441,12 +441,30 @@ public sealed interface PostHogInterface {
      */
     public fun captureException(
         exception: Throwable,
-        properties: Map<String, Any>?,
+        distinctId: String?,
     ) {
         captureException(
             exception,
-            properties,
+            distinctId,
             null,
+        )
+    }
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param distinctId the distinctId
+     * @param properties the exception properties to add to the event
+     */
+    public fun captureException(
+        exception: Throwable,
+        properties: Map<String, Any>,
+    ) {
+        captureException(
+            exception,
+            null,
+            properties,
         )
     }
 
