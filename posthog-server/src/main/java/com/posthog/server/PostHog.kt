@@ -135,6 +135,18 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         (featureFlags as? PostHogFeatureFlags)?.loadFeatureFlagDefinitions()
     }
 
+    override fun captureException(
+        exception: Throwable,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+    ) {
+        super.captureExceptionStateless(
+            exception,
+            distinctId = distinctId,
+            properties = properties,
+        )
+    }
+
     public companion object {
         /**
          * Set up the SDK and returns an instance that you can hold and pass it around

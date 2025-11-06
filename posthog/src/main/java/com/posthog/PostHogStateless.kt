@@ -12,7 +12,9 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.errortracking.ThrowableCoercer
 import java.util.Date
+import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -39,6 +41,7 @@ public open class PostHogStateless protected constructor(
     protected var featureFlags: PostHogFeatureFlagsInterface? = null
     protected var queue: PostHogQueueInterface? = null
     protected var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
+    protected val throwableCoercer: ThrowableCoercer = ThrowableCoercer()
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -516,6 +519,40 @@ public open class PostHogStateless protected constructor(
         return config as? T
     }
 
+    override fun captureExceptionStateless(
+        throwable: Throwable,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+
+        try {
+            val exceptionProperties =
+                throwableCoercer.fromThrowableToPostHogProperties(
+                    throwable,
+                    inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
+                )
+
+            properties?.let {
+                exceptionProperties.putAll(it)
+            }
+
+            var id = distinctId
+            if (id.isNullOrBlank()) {
+                exceptionProperties.set("\$process_person_profile", false)
+                id = UUID.randomUUID().toString()
+            }
+
+            captureStateless(PostHogEventName.EXCEPTION.event, distinctId = id, properties = exceptionProperties)
+        } catch (e: Throwable) {
+            // we swallow all exceptions that the SDK has thrown by trying to convert
+            // a captured exception to a PostHog exception event
+            config?.logger?.log("captureException has thrown an exception: $e.")
+        }
+    }
+
     public companion object : PostHogStatelessInterface {
         private var shared: PostHogStatelessInterface = PostHogStateless()
         private var defaultSharedInstance = shared
@@ -668,6 +705,14 @@ public open class PostHogStateless protected constructor(
 
         override fun debug(enable: Boolean) {
             shared.debug(enable)
+        }
+
+        override fun captureExceptionStateless(
+            throwable: Throwable,
+            distinctId: String?,
+            properties: Map<String, Any>?,
+        ) {
+            shared.captureExceptionStateless(throwable, distinctId, properties)
         }
     }
 }

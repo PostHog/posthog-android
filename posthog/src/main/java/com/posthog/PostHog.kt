@@ -20,7 +20,6 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
-import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.surveys.PostHogSurveysHandler
@@ -65,8 +64,6 @@ public class PostHog private constructor(
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
-
-    private val throwableCoercer = ThrowableCoercer()
 
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
