@@ -1143,7 +1143,7 @@ internal class PostHogStatelessTest {
         val exception = RuntimeException("Test exception")
         val customProperties = mapOf("custom_prop" to "custom_value")
 
-        sut.captureExceptionStateless(exception, customProperties, "user123")
+        sut.captureExceptionStateless(exception, properties = customProperties, distinctId = "user123")
 
         assertEquals(1, mockQueue.events.size)
         val event = mockQueue.events.first()
@@ -1166,7 +1166,7 @@ internal class PostHogStatelessTest {
 
         val exception = RuntimeException("Test exception")
 
-        sut.captureExceptionStateless(exception, null, "custom-user-id")
+        sut.captureExceptionStateless(exception, distinctId = "custom-user-id")
 
         assertEquals(1, mockQueue.events.size)
         val event = mockQueue.events.first()
@@ -1184,7 +1184,7 @@ internal class PostHogStatelessTest {
 
         val exception = RuntimeException("Test exception")
 
-        sut.captureExceptionStateless(exception, null, null)
+        sut.captureExceptionStateless(exception)
 
         assertEquals(1, mockQueue.events.size)
         val event = mockQueue.events.first()
@@ -1200,9 +1200,24 @@ internal class PostHogStatelessTest {
 
         val exception = RuntimeException("Test exception")
 
-        sut.captureExceptionStateless(exception, null, "user123")
+        sut.captureExceptionStateless(exception, distinctId = "user123")
 
         assertEquals(0, mockQueue.events.size)
+    }
+
+    @Test
+    fun `companion delegates captureException to instance`() {
+        val mockInstance = mock<PostHogStatelessInterface>()
+        PostHogStateless.overrideSharedInstance(mockInstance)
+
+        val exception = RuntimeException("Test exception")
+        val distinctId = "user123"
+        val properties = mapOf("custom_prop" to "custom_value")
+        PostHogStateless.captureExceptionStateless(exception, distinctId, properties)
+
+        verify(mockInstance).captureExceptionStateless(exception, distinctId, properties)
+
+        PostHogStateless.resetSharedInstance()
     }
 
     // Helper classes
@@ -1319,8 +1334,8 @@ internal class PostHogStatelessTest {
 
         override fun captureExceptionStateless(
             throwable: Throwable,
-            properties: Map<String, Any>?,
             distinctId: String?,
+            properties: Map<String, Any>?,
         ) {
             captureCalled = true
         }

@@ -521,8 +521,8 @@ public open class PostHogStateless protected constructor(
 
     override fun captureExceptionStateless(
         throwable: Throwable,
-        properties: Map<String, Any>?,
         distinctId: String?,
+        properties: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
             return
@@ -709,10 +709,10 @@ public open class PostHogStateless protected constructor(
 
         override fun captureExceptionStateless(
             throwable: Throwable,
-            properties: Map<String, Any>?,
             distinctId: String?,
+            properties: Map<String, Any>?,
         ) {
-            shared.captureExceptionStateless(throwable, properties)
+            shared.captureExceptionStateless(throwable, distinctId, properties)
         }
     }
 }

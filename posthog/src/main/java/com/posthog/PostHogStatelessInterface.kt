@@ -102,11 +102,12 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
     /**
      * Captures exceptions
      * @param throwable the Throwable error
+     * @param distinctId the distinctId of the user experiencing the error
      * @param properties the custom properties
      */
     public fun captureExceptionStateless(
         throwable: Throwable,
-        properties: Map<String, Any>? = null,
         distinctId: String? = null,
+        properties: Map<String, Any>? = null,
     )
 }
