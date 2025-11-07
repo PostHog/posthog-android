@@ -184,9 +184,9 @@ public open class PostHogConfig(
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     /**
      * Enable Surveys for Android (Intended for internal use only)
-     * 
+     *
      * Note: Not fully supported or documented yet. Primarily used by hybrid SDKs to attach a custom display logic.
-     * 
+     *
      * Requires Surveys to be enabled in the PostHog Project Settings
      * Defaults to false
      */
@@ -209,7 +209,7 @@ public open class PostHogConfig(
     public var proxy: Proxy? = null,
     /**
      * Configuration for PostHog Surveys feature. (Intended for internal use only)
-     * 
+     *
      * Note: Not fully supported or documented yet. Primarily used by hybrid SDKs to attach a custom display logic.
      */
     public var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
