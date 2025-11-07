@@ -7,6 +7,7 @@ class DoSomething {
         try {
             throw MyCustomException("Something went wrong")
         } catch (e: Throwable) {
+            e.stackTraceToString()
             PostHog.captureException(e, mapOf("my-custom-error" to true))
         }
     }
