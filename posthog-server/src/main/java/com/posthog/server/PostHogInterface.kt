@@ -409,4 +409,77 @@ public sealed interface PostHogInterface {
         distinctId: String,
         alias: String,
     )
+
+    /**
+     * Reloads feature flag definitions from the server for use with local evaluation.
+     * Note that feature flag definitions are automatically fetched on initialization and
+     * periodically refreshed, so this method only needs to be called if you want to force
+     * an immediate refresh.
+     * Docs https://posthog.com/docs/feature-flags/local-evaluation
+     */
+    public fun reloadFeatureFlags()
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param distinctId the distinctId
+     * @param properties the exception properties to add to the event
+     */
+    public fun captureException(
+        exception: Throwable,
+        distinctId: String? = null,
+        properties: Map<String, Any>? = null,
+    )
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param properties the exception properties to add to the event
+     * @param distinctId the distinctId
+     */
+    public fun captureException(
+        exception: Throwable,
+        distinctId: String?,
+    ) {
+        captureException(
+            exception,
+            distinctId,
+            null,
+        )
+    }
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param distinctId the distinctId
+     * @param properties the exception properties to add to the event
+     */
+    public fun captureException(
+        exception: Throwable,
+        properties: Map<String, Any>,
+    ) {
+        captureException(
+            exception,
+            null,
+            properties,
+        )
+    }
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param properties the exception properties to add to the event
+     * @param distinctId the distinctId
+     */
+    public fun captureException(exception: Throwable) {
+        captureException(
+            exception,
+            null,
+            null,
+        )
+    }
 }

@@ -10,12 +10,24 @@ import kotlin.test.assertEquals
 internal class PostHogFlagsRequestTest {
     @Test
     fun `sets the flags request content`() {
-        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID, anonymousId = ANON_ID, groups)
+        val personProperties = mapOf("email" to "example@example.com")
+        val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
+        val request =
+            PostHogFlagsRequest(
+                API_KEY,
+                DISTINCT_ID,
+                anonymousId = ANON_ID,
+                groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
 
         assertEquals(API_KEY, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertEquals(ANON_ID, request["\$anon_distinct_id"])
-        assertEquals(groups, request["\$groups"])
+        assertEquals(groups, request["groups"])
+        assertEquals(personProperties, request["person_properties"])
+        assertEquals(groupProperties, request["group_properties"])
     }
 
     @Test

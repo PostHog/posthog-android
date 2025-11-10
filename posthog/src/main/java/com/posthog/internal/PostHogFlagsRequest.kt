@@ -19,13 +19,13 @@ internal class PostHogFlagsRequest(
             this["\$anon_distinct_id"] = anonymousId
         }
         if (groups?.isNotEmpty() == true) {
-            this["\$groups"] = groups
+            this["groups"] = groups
         }
         if (personProperties?.isNotEmpty() == true) {
-            this["\$properties"] = personProperties
+            this["person_properties"] = personProperties
         }
         if (groupProperties?.isNotEmpty() == true) {
-            this["\$group_properties"] = groupProperties
+            this["group_properties"] = groupProperties
         }
         if (evaluationEnvironments?.isNotEmpty() == true) {
             this["evaluation_environments"] = evaluationEnvironments

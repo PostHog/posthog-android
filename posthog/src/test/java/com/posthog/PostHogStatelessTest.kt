@@ -1131,6 +1131,95 @@ internal class PostHogStatelessTest {
         )
     }
 
+    @Test
+    fun `captureExceptionStateless creates exception event with properties`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        val exception = RuntimeException("Test exception")
+        val customProperties = mapOf("custom_prop" to "custom_value")
+
+        sut.captureExceptionStateless(exception, properties = customProperties, distinctId = "user123")
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+        assertEquals("\$exception", event.event)
+        assertEquals("user123", event.distinctId)
+        assertEquals("custom_value", event.properties!!["custom_prop"])
+        assertNotNull(event.properties!!["\$exception_list"])
+        assertNotNull(event.properties!!["\$exception_level"])
+        assertNull(event.properties!!["\$process_person_profile"])
+    }
+
+    @Test
+    fun `captureExceptionStateless with distinctId uses provided distinctId`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        val exception = RuntimeException("Test exception")
+
+        sut.captureExceptionStateless(exception, distinctId = "custom-user-id")
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+        assertEquals("custom-user-id", event.distinctId)
+    }
+
+    @Test
+    fun `captureExceptionStateless without distinctId generates random UUID`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        val exception = RuntimeException("Test exception")
+
+        sut.captureExceptionStateless(exception)
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+        assertTrue(event.distinctId.isNotBlank())
+        assertTrue(event.distinctId.matches(("[0-9a-fA-F-]{36}".toRegex())))
+        assertEquals(false, event.properties!!["\$process_person_profile"])
+    }
+
+    @Test
+    fun `captureExceptionStateless does nothing when not enabled`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+
+        val exception = RuntimeException("Test exception")
+
+        sut.captureExceptionStateless(exception, distinctId = "user123")
+
+        assertEquals(0, mockQueue.events.size)
+    }
+
+    @Test
+    fun `companion delegates captureException to instance`() {
+        val mockInstance = mock<PostHogStatelessInterface>()
+        PostHogStateless.overrideSharedInstance(mockInstance)
+
+        val exception = RuntimeException("Test exception")
+        val distinctId = "user123"
+        val properties = mapOf("custom_prop" to "custom_value")
+        PostHogStateless.captureExceptionStateless(exception, distinctId, properties)
+
+        verify(mockInstance).captureExceptionStateless(exception, distinctId, properties)
+
+        PostHogStateless.resetSharedInstance()
+    }
+
     // Helper classes
     private class MockLogger : PostHogLogger {
         val messages = mutableListOf<String>()
@@ -1241,6 +1330,14 @@ internal class PostHogStatelessTest {
             alias: String,
         ) {
             aliasCalled = true
+        }
+
+        override fun captureExceptionStateless(
+            throwable: Throwable,
+            distinctId: String?,
+            properties: Map<String, Any>?,
+        ) {
+            captureCalled = true
         }
     }
 }

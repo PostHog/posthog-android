@@ -1,5 +1,9 @@
 ## Next
 
+## 3.26.0 - 2025-11-05
+
+- feat: Cache properties for flag evaluation ([#315](https://github.com/PostHog/posthog-android/pull/315))
+
 ## 3.25.0 - 2025-10-23
 
 - feat: allow override of event timestamp ([#309](https://github.com/PostHog/posthog-android/pull/309))

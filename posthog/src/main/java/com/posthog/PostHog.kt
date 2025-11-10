@@ -20,7 +20,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
-import com.posthog.internal.errortracking.ThrowableCoercer
+import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
@@ -65,8 +65,6 @@ public class PostHog private constructor(
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
 
-    private val throwableCoercer = ThrowableCoercer()
-
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
         PostHogOnFeatureFlags {
@@ -96,7 +94,10 @@ public class PostHog private constructor(
                 val api = PostHogApi(config)
                 val queue = config.queueProvider(config, api, PostHogApiEndpoint.BATCH, config.storagePrefix, queueExecutor)
                 val replayQueue = config.queueProvider(config, api, PostHogApiEndpoint.SNAPSHOT, config.replayStoragePrefix, replayExecutor)
-                val featureFlags = config.remoteConfigProvider(config, api, remoteConfigExecutor)
+                val featureFlags =
+                    config.remoteConfigProvider(config, api, remoteConfigExecutor) {
+                        getDefaultPersonProperties()
+                    }
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -423,6 +424,9 @@ public class PostHog private constructor(
                 requirePersonProcessing("capture", ignoreMessage = true)
             }
 
+            // Automatically set person properties for feature flags during capture event
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
+
             if (newDistinctId.isBlank()) {
                 config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
                 return
@@ -580,6 +584,45 @@ public class PostHog private constructor(
         capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
     }
 
+    /**
+     * Returns fresh default device and app properties for feature flag evaluation.
+     */
+    private fun getDefaultPersonProperties(): Map<String, Any> {
+        if (!isEnabled()) return emptyMap()
+        if (config?.setDefaultPersonProperties != true) return emptyMap()
+
+        return config?.context?.personPropertiesContext() ?: emptyMap()
+    }
+
+    private fun setPersonPropertiesForFlagsIfNeeded(
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+    ) {
+        if (!hasPersonProcessing()) return
+        if (userProperties.isNullOrEmpty() && userPropertiesSetOnce.isNullOrEmpty()) return
+
+        val allProperties = mutableMapOf<String, Any>()
+        userPropertiesSetOnce?.let {
+            allProperties.putAll(userPropertiesSetOnce)
+        }
+        userProperties?.let {
+            // User properties override setOnce properties
+            allProperties.putAll(userProperties)
+        }
+
+        remoteConfig?.setPersonPropertiesForFlags(allProperties)
+    }
+
+    private fun setGroupPropertiesForFlagsIfNeeded(
+        type: String,
+        groupProperties: Map<String, Any>?,
+    ) {
+        if (!hasPersonProcessing()) return
+        if (groupProperties.isNullOrEmpty()) return
+
+        remoteConfig?.setGroupPropertiesForFlags(type, groupProperties)
+    }
+
     public override fun identify(
         distinctId: String,
         userProperties: Map<String, Any>?,
@@ -636,6 +679,9 @@ public class PostHog private constructor(
                 }
             }
             this.distinctId = distinctId
+
+            // Automatically set person properties for feature flags during identify() call
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
@@ -745,6 +791,9 @@ public class PostHog private constructor(
         }
 
         super.groupStateless(this.distinctId, type, key, groupProperties)
+
+        // Automatically set group properties for feature flags
+        setGroupPropertiesForFlagsIfNeeded(type, groupProperties)
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
@@ -886,6 +935,63 @@ public class PostHog private constructor(
         }
         super.flush()
         replayQueue?.flush()
+    }
+
+    public override fun setPersonPropertiesForFlags(
+        userProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean,
+    ) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+        if (userProperties.isEmpty()) return
+
+        remoteConfig?.setPersonPropertiesForFlags(userProperties)
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
+    }
+
+    public override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+
+        remoteConfig?.resetPersonPropertiesForFlags()
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
+    }
+
+    public override fun setGroupPropertiesForFlags(
+        type: String,
+        groupProperties: Map<String, Any>,
+        reloadFeatureFlags: Boolean,
+    ) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+
+        if (groupProperties.isEmpty()) return
+
+        remoteConfig?.setGroupPropertiesForFlags(type, groupProperties)
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
+    }
+
+    public override fun resetGroupPropertiesForFlags(
+        type: String?,
+        reloadFeatureFlags: Boolean,
+    ) {
+        if (!isEnabled()) return
+        if (!hasPersonProcessing()) return
+
+        remoteConfig?.resetGroupPropertiesForFlags(type)
+
+        if (reloadFeatureFlags && this.reloadFeatureFlags) {
+            this.reloadFeatureFlags()
+        }
     }
 
     public override fun reset() {
@@ -1167,6 +1273,32 @@ public class PostHog private constructor(
 
         public override fun flush() {
             shared.flush()
+        }
+
+        public override fun setPersonPropertiesForFlags(
+            userProperties: Map<String, Any>,
+            reloadFeatureFlags: Boolean,
+        ) {
+            shared.setPersonPropertiesForFlags(userProperties, reloadFeatureFlags)
+        }
+
+        public override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
+            shared.resetPersonPropertiesForFlags(reloadFeatureFlags)
+        }
+
+        public override fun setGroupPropertiesForFlags(
+            type: String,
+            groupProperties: Map<String, Any>,
+            reloadFeatureFlags: Boolean,
+        ) {
+            shared.setGroupPropertiesForFlags(type, groupProperties, reloadFeatureFlags)
+        }
+
+        public override fun resetGroupPropertiesForFlags(
+            type: String?,
+            reloadFeatureFlags: Boolean,
+        ) {
+            shared.resetGroupPropertiesForFlags(type, reloadFeatureFlags)
         }
 
         public override fun reset() {

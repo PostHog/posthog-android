@@ -1,5 +1,15 @@
 ## Next
 
+## 5.1.0 - 2025-11-06
+
+- feat: Add an optional shutdown override to `FeatureFlagInterface` ([#299](https://github.com/PostHog/posthog-android/pull/299))
+- feat: Add `localEvaluation` to the `PostHogApi` ([#299](https://github.com/PostHog/posthog-android/pull/299))
+- feat: Add API models for local evaluation ([#299](https://github.com/PostHog/posthog-android/pull/299))
+- feat: Add `captureExceptionStateless` method for error tracking ([#313](https://github.com/PostHog/posthog-android/pull/313))
+
+## 5.0.0 - 2025-11-05
+
+- feat: Add ability to cache properties for flags ([#315](https://github.com/PostHog/posthog-android/pull/315))
 - fix: Typed `groupProperties` and `userProperties` types to match the API and other SDKs ([#312](https://github.com/PostHog/posthog-android/pull/312))
 
 ## 4.2.0 - 2025-10-23

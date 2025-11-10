@@ -78,7 +78,8 @@ public open class PostHogConfig constructor(
      */
     public var encryption: PostHogEncryption? = null,
     /**
-     * Hook that is called when feature flags are loaded
+     * Hook that is called when feature flag definitions are loaded.
+     * This is called immediately if local evaluation is not enabled.
      * Defaults to no callback
      */
     public var onFeatureFlags: PostHogOnFeatureFlags? = null,
@@ -106,6 +107,25 @@ public open class PostHogConfig constructor(
      * Defaults to 1000
      */
     public var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE,
+    /**
+     * Enable local evaluation of feature flags
+     * When enabled, the SDK periodically fetches flag definitions and evaluates flags locally
+     * without making API calls for each flag check. Falls back to API if evaluation is inconclusive.
+     * Requires personalApiKey to be set.
+     * Defaults to false
+     */
+    public var localEvaluation: Boolean = false,
+    /**
+     * Personal API key for local evaluation
+     * Required when localEvaluation is true.
+     * Defaults to null
+     */
+    public var personalApiKey: String? = null,
+    /**
+     * Interval in seconds for polling feature flag definitions for local evaluation
+     * Defaults to 30 seconds
+     */
+    public var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS,
 ) {
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
@@ -139,12 +159,16 @@ public open class PostHogConfig constructor(
                 encryption = encryption,
                 onFeatureFlags = onFeatureFlags,
                 proxy = proxy,
-                remoteConfigProvider = { config, api, _ ->
+                remoteConfigProvider = { config, api, _, _ ->
                     PostHogFeatureFlags(
                         config,
                         api,
                         cacheMaxAgeMs = featureFlagCacheMaxAgeMs,
                         cacheMaxSize = featureFlagCacheSize,
+                        localEvaluation = localEvaluation,
+                        personalApiKey = personalApiKey,
+                        pollIntervalSeconds = pollIntervalSeconds,
+                        onFeatureFlags = onFeatureFlags,
                     )
                 },
                 queueProvider = { config, api, endpoint, _, executor ->
@@ -181,6 +205,7 @@ public open class PostHogConfig constructor(
         public const val DEFAULT_FEATURE_FLAG_CACHE_SIZE: Int = 1000
         public const val DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS: Int = 5 * 60 * 1000 // 5 minutes
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
+        public const val DEFAULT_POLL_INTERVAL_SECONDS: Int = 30
 
         @JvmStatic
         public fun builder(apiKey: String): Builder = Builder(apiKey)
@@ -202,6 +227,9 @@ public open class PostHogConfig constructor(
         private var featureFlagCacheSize: Int = DEFAULT_FEATURE_FLAG_CACHE_SIZE
         private var featureFlagCacheMaxAgeMs: Int = DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS
         private var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE
+        private var localEvaluation: Boolean? = null
+        private var personalApiKey: String? = null
+        private var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS
 
         public fun host(host: String): Builder = apply { this.host = host }
 
@@ -235,6 +263,18 @@ public open class PostHogConfig constructor(
         public fun featureFlagCalledCacheSize(featureFlagCalledCacheSize: Int): Builder =
             apply { this.featureFlagCalledCacheSize = featureFlagCalledCacheSize }
 
+        public fun localEvaluation(localEvaluation: Boolean): Builder = apply { this.localEvaluation = localEvaluation }
+
+        public fun personalApiKey(personalApiKey: String?): Builder =
+            apply {
+                this.personalApiKey = personalApiKey
+                if (localEvaluation == null) {
+                    this.localEvaluation = personalApiKey != null
+                }
+            }
+
+        public fun pollIntervalSeconds(pollIntervalSeconds: Int): Builder = apply { this.pollIntervalSeconds = pollIntervalSeconds }
+
         public fun build(): PostHogConfig =
             PostHogConfig(
                 apiKey = apiKey,
@@ -253,6 +293,9 @@ public open class PostHogConfig constructor(
                 featureFlagCacheSize = featureFlagCacheSize,
                 featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs,
                 featureFlagCalledCacheSize = featureFlagCalledCacheSize,
+                localEvaluation = localEvaluation ?: false,
+                personalApiKey = personalApiKey,
+                pollIntervalSeconds = pollIntervalSeconds,
             )
     }
 }
