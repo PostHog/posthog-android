@@ -871,7 +871,8 @@ public class PostHog private constructor(
 
     private fun sendFeatureFlagCalled(
         key: String,
-        value: Any?, isForceSendFlag: Boolean
+        value: Any?,
+        isForceSendFlag: Boolean
     ) {
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
@@ -908,7 +909,8 @@ public class PostHog private constructor(
 
     public override fun getFeatureFlag(
         key: String,
-        defaultValue: Any?, isForceSendFlag: Boolean
+        defaultValue: Any?,
+        isForceSendFlag: Boolean
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
