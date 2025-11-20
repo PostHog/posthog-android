@@ -441,7 +441,7 @@ public open class PostHogStateless protected constructor(
                 // value should never be nullable anyway
                 props["\$feature_flag_response"] = value ?: ""
 
-                captureStateless("\$feature_flag_called", distinctId, properties = props)
+                captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props)
             }
         }
     }

@@ -871,13 +871,15 @@ public class PostHog private constructor(
 
     private fun sendFeatureFlagCalled(
         key: String,
-        value: Any?,
+        value: Any?, isForceSendFlag: Boolean
     ) {
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
             val values = featureFlagsCalled[key] ?: mutableListOf()
             if (values.contains(value)) {
-                shouldSendFeatureFlagEvent = false
+                if (!isForceSendFlag) {
+                    shouldSendFeatureFlagEvent = false
+                }
             } else {
                 values.add(value)
                 featureFlagsCalled[key] = values
@@ -899,22 +901,21 @@ public class PostHog private constructor(
                     props["\$feature_flag_version"] = it.metadata.version
                     props["\$feature_flag_reason"] = it.reason?.description ?: ""
                 }
-                capture("\$feature_flag_called", properties = props)
+                capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
             }
         }
     }
 
     public override fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
+        defaultValue: Any?, isForceSendFlag: Boolean
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
         val value = remoteConfig?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
-        sendFeatureFlagCalled(key, value)
-
+        sendFeatureFlagCalled(key, value, isForceSendFlag)
         return value
     }
 
@@ -1262,8 +1263,8 @@ public class PostHog private constructor(
 
         public override fun getFeatureFlag(
             key: String,
-            defaultValue: Any?,
-        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue)
+            defaultValue: Any?, isForceSendFlag: Boolean
+        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, isForceSendFlag)
 
         public override fun getFeatureFlagPayload(
             key: String,
