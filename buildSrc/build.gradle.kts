@@ -19,7 +19,7 @@ dependencies {
     // there's no 1.8.22 for dokka yet
     val dokkaVersion = "1.8.20"
     // 8.3+ throws Could not determine the dependencies of task ':posthog:generateJvmTestLintModel'.
-    implementation("com.android.tools.build:gradle:8.2.2")
+    implementation("com.android.tools.build:gradle:8.11.0")
     // kotlin version has to match kotlinCompilerExtensionVersion
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
 
