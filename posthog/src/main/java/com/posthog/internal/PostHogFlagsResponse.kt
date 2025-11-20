@@ -21,4 +21,5 @@ public data class PostHogFlagsResponse(
     val flags: Map<String, FeatureFlag>? = null,
     val quotaLimited: List<String>? = null,
     val requestId: String?,
+    val evaluatedAt: Long?,
 ) : PostHogRemoteConfigResponse()

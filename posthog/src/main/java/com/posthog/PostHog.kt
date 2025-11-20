@@ -888,12 +888,14 @@ public class PostHog private constructor(
             remoteConfig?.let {
                 val flagDetails = it.getFlagDetails(key)
                 val requestId = it.getRequestId()
+                val evaluatedAt = it.getEvaluatedAt()
 
                 val props = mutableMapOf<String, Any>()
                 props["\$feature_flag"] = key
                 // value should never be nullabe anyway
                 props["\$feature_flag_response"] = value ?: ""
                 props["\$feature_flag_request_id"] = requestId ?: ""
+                props["\$feature_flag_evaluated_at"] = evaluatedAt ?: ""
                 flagDetails?.let {
                     props["\$feature_flag_id"] = it.metadata.id
                     props["\$feature_flag_version"] = it.metadata.version

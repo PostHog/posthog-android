@@ -5,6 +5,7 @@ import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_AT
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
@@ -46,6 +47,7 @@ public class PostHogRemoteConfig(
     // But for now, we need to support both for back compatibility
     private var flags: Map<String, Any>? = null
     private var requestId: String? = null
+    private var evaluatedAt: Long? = null
 
     private var surveys: List<Survey>? = null
 
@@ -501,12 +503,14 @@ public class PostHogRemoteConfig(
                 ) as? Map<String, Any?> ?: mapOf()
 
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
+            val cachedEvaluatedAt = preferences.getValue(FEATURE_FLAG_EVALUATED_AT) as? Long
 
             synchronized(featureFlagsLock) {
                 this.flags = flags
                 this.featureFlags = featureFlags
                 this.featureFlagPayloads = payloads
                 this.requestId = cachedRequestId
+                this.evaluatedAt = cachedEvaluatedAt
                 isFeatureFlagsLoaded = true
             }
         }
@@ -548,6 +552,11 @@ public class PostHogRemoteConfig(
                 this.requestId = newResponse.requestId
                 this.requestId?.let { requestId ->
                     config.cachePreferences?.setValue(FEATURE_FLAG_REQUEST_ID, requestId as Any)
+                }
+                // Store the evaluatedAt in the cache.
+                this.evaluatedAt = newResponse.evaluatedAt
+                this.evaluatedAt?.let { evaluatedAt ->
+                    config.cachePreferences?.setValue(FEATURE_FLAG_EVALUATED_AT, evaluatedAt as Any)
                 }
             }
             return newResponse
@@ -625,6 +634,13 @@ public class PostHogRemoteConfig(
         }
     }
 
+    public fun getEvaluatedAt(): Long? {
+        loadFeatureFlagsFromCacheIfNeeded()
+        synchronized(featureFlagsLock) {
+            return evaluatedAt
+        }
+    }
+
     public fun getFlagDetails(key: String): FeatureFlag? {
         loadFeatureFlagsFromCacheIfNeeded()
 
@@ -645,12 +661,14 @@ public class PostHogRemoteConfig(
         this.featureFlagPayloads = null
         this.flags = null
         this.requestId = null
+        this.evaluatedAt = null
 
         config.cachePreferences?.let { preferences ->
             preferences.remove(FLAGS)
             preferences.remove(FEATURE_FLAGS)
             preferences.remove(FEATURE_FLAGS_PAYLOAD)
             preferences.remove(FEATURE_FLAG_REQUEST_ID)
+            preferences.remove(FEATURE_FLAG_EVALUATED_AT)
         }
     }
 
