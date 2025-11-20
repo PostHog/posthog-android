@@ -1249,8 +1249,8 @@ internal class FlagEvaluatorTest {
                 emptyMap(),
             )
 
-        // When dependency evaluates to false, the dependency check fails regardless of expected value
-        assertFalse(result)
+        // When dependency evaluates to false and we expect false, the check should succeed
+        assertTrue(result)
         assertEquals(false, evaluationCache["dependency-flag"])
     }
 
@@ -1946,5 +1946,77 @@ internal class FlagEvaluatorTest {
         val flagAbsent = config.serializer.gson.fromJson(jsonAbsent, FlagDefinition::class.java)
         val resultAbsent = evaluator.matchFeatureFlagProperties(flagAbsent, "user-456", emptyMap())
         assertEquals(true, resultAbsent)
+    }
+
+    @Test
+    internal fun testBooleanFlagDependencyMatchesFalse() {
+        // Regression test for bug: Boolean flag should match false expectation
+        // This reproduces the scenario where:
+        // - base-flag has 0% rollout (evaluates to false)
+        // - dependent-flag checks if base-flag evaluates to false
+        // - Expected: dependent-flag should be true (condition matches)
+
+        val baseFlagJson =
+            """
+            {
+              "id": 1,
+              "name": "Base Flag",
+              "key": "base-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "rollout_percentage": 0
+                  }
+                ]
+              },
+              "version": 1
+            }
+            """.trimIndent()
+
+        val dependentFlagJson =
+            """
+            {
+              "id": 2,
+              "name": "Dependent Flag",
+              "key": "dependent-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "base-flag",
+                        "value": false,
+                        "operator": "flag_evaluates_to",
+                        "type": "flag",
+                        "dependency_chain": ["base-flag"]
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+            """.trimIndent()
+
+        val baseFlag = config.serializer.gson.fromJson(baseFlagJson, FlagDefinition::class.java)
+        val dependentFlag = config.serializer.gson.fromJson(dependentFlagJson, FlagDefinition::class.java)
+        val flagsByKey = mapOf("base-flag" to baseFlag, "dependent-flag" to dependentFlag)
+        val evaluationCache = mutableMapOf<String, Any?>()
+
+        val result =
+            evaluator.matchFeatureFlagProperties(
+                dependentFlag,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+                flagsByKey,
+                evaluationCache,
+            )
+
+        assertEquals(true, result)
+        assertEquals(false, evaluationCache["base-flag"])
     }
 }

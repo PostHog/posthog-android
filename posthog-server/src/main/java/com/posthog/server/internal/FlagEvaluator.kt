@@ -782,8 +782,9 @@ internal class FlagEvaluator(
             if (cachedResult == null) {
                 // Previously inconclusive - raise error again
                 throw InconclusiveMatchException("Flag dependency '$depFlagKey' was previously inconclusive")
-            } else if (cachedResult == false) {
-                // Definitive False result - dependency failed
+            } else if (cachedResult == false && depFlagKey != property.key) {
+                // Definitive false result for intermediate dependency - chain failed
+                // Only return false early if this is NOT the final flag we're checking
                 return false
             }
         }
