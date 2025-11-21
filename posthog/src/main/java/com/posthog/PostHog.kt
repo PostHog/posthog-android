@@ -872,6 +872,7 @@ public class PostHog private constructor(
     private fun sendFeatureFlagCalled(
         key: String,
         value: Any?,
+        isSendFlag: () -> Boolean?
     ) {
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
@@ -884,7 +885,7 @@ public class PostHog private constructor(
             }
         }
 
-        if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
+        if (config?.sendFeatureFlagEvent == true && (shouldSendFeatureFlagEvent || isSendFlag() == true)) {
             remoteConfig?.let {
                 val flagDetails = it.getFlagDetails(key)
                 val requestId = it.getRequestId()
@@ -899,7 +900,7 @@ public class PostHog private constructor(
                     props["\$feature_flag_version"] = it.metadata.version
                     props["\$feature_flag_reason"] = it.reason?.description ?: ""
                 }
-                capture("\$feature_flag_called", properties = props)
+                capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
             }
         }
     }
@@ -907,14 +908,14 @@ public class PostHog private constructor(
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
+        isSendFlag: () -> Boolean?
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
         val value = remoteConfig?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
-        sendFeatureFlagCalled(key, value)
-
+        sendFeatureFlagCalled(key, value, isSendFlag)
         return value
     }
 
@@ -1263,7 +1264,8 @@ public class PostHog private constructor(
         public override fun getFeatureFlag(
             key: String,
             defaultValue: Any?,
-        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue)
+            isSendFlag: () -> Boolean?
+        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, isSendFlag)
 
         public override fun getFeatureFlagPayload(
             key: String,
