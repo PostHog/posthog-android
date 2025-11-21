@@ -432,6 +432,8 @@ public open class PostHogStateless protected constructor(
         distinctId: String,
         key: String,
         value: Any?,
+        requestId: String? = null,
+        evaluatedAt: Long? = null,
     ) {
         if (config?.sendFeatureFlagEvent == true) {
             val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
@@ -440,6 +442,8 @@ public open class PostHogStateless protected constructor(
                 props["\$feature_flag"] = key
                 // value should never be nullable anyway
                 props["\$feature_flag_response"] = value ?: ""
+                props["\$feature_flag_request_id"] = requestId ?: ""
+                props["\$feature_flag_evaluated_at"] = evaluatedAt ?: ""
 
                 captureStateless("\$feature_flag_called", distinctId, properties = props)
             }
@@ -467,7 +471,15 @@ public open class PostHogStateless protected constructor(
                 groupProperties,
             ) ?: defaultValue
 
-        sendFeatureFlagCalled(distinctId, key, value)
+        // Get requestId and evaluatedAt if using PostHogFeatureFlags (server SDK)
+        var requestId: String? = null
+        var evaluatedAt: Long? = null
+        if (featureFlags is com.posthog.server.internal.PostHogFeatureFlags) {
+            requestId = featureFlags.getRequestId(distinctId, groups, personProperties, groupProperties)
+            evaluatedAt = featureFlags.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
+        }
+
+        sendFeatureFlagCalled(distinctId, key, value, requestId, evaluatedAt)
 
         return value
     }

@@ -9,6 +9,8 @@ internal data class FeatureFlagCacheEntry(
     val flags: Map<String, FeatureFlag>?,
     val timestamp: Long,
     val expiresAt: Long,
+    val requestId: String? = null,
+    val evaluatedAt: Long? = null,
 ) {
     /**
      * Check if this cache entry has expired
@@ -21,6 +23,8 @@ internal data class FeatureFlagCacheEntry(
         var result = flags?.hashCode() ?: 0
         result = 31 * result + (timestamp xor (timestamp ushr 32)).toInt()
         result = 31 * result + (expiresAt xor (expiresAt ushr 32)).toInt()
+        result = 31 * result + (requestId?.hashCode() ?: 0)
+        result = 31 * result + (evaluatedAt?.hashCode() ?: 0)
         return result
     }
 
@@ -31,6 +35,8 @@ internal data class FeatureFlagCacheEntry(
         if (flags != other.flags) return false
         if (timestamp != other.timestamp) return false
         if (expiresAt != other.expiresAt) return false
+        if (requestId != other.requestId) return false
+        if (evaluatedAt != other.evaluatedAt) return false
 
         return true
     }
