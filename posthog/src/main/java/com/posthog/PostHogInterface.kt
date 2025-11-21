@@ -58,11 +58,12 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found
-     * @param isForceSendFlag the flag for sending the event ignoring the cache, default value is false (the flag will be checked in the cache by key and values)
+     * @param isSendFlag (optional) If {isSendFlag: false}, we won't send an $feature_flag_call event to PostHog.
      */
     public fun getFeatureFlag(
         key: String,
-        defaultValue: Any? = null, isForceSendFlag: Boolean = false
+        defaultValue: Any? = null,
+        isSendFlag: () -> Boolean? = {  null }
     ): Any?
 
     /**

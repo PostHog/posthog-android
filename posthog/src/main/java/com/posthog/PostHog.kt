@@ -872,22 +872,20 @@ public class PostHog private constructor(
     private fun sendFeatureFlagCalled(
         key: String,
         value: Any?,
-        isForceSendFlag: Boolean
+        isSendFlag: () -> Boolean?
     ) {
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
             val values = featureFlagsCalled[key] ?: mutableListOf()
             if (values.contains(value)) {
-                if (!isForceSendFlag) {
-                    shouldSendFeatureFlagEvent = false
-                }
+                shouldSendFeatureFlagEvent = false
             } else {
                 values.add(value)
                 featureFlagsCalled[key] = values
             }
         }
 
-        if (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent) {
+        if (config?.sendFeatureFlagEvent == true && (shouldSendFeatureFlagEvent || isSendFlag() == true)) {
             remoteConfig?.let {
                 val flagDetails = it.getFlagDetails(key)
                 val requestId = it.getRequestId()
@@ -910,14 +908,14 @@ public class PostHog private constructor(
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
-        isForceSendFlag: Boolean
+        isSendFlag: () -> Boolean?
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
         }
         val value = remoteConfig?.getFeatureFlag(key, defaultValue) ?: defaultValue
 
-        sendFeatureFlagCalled(key, value, isForceSendFlag)
+        sendFeatureFlagCalled(key, value, isSendFlag)
         return value
     }
 
@@ -1265,8 +1263,9 @@ public class PostHog private constructor(
 
         public override fun getFeatureFlag(
             key: String,
-            defaultValue: Any?, isForceSendFlag: Boolean
-        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, isForceSendFlag)
+            defaultValue: Any?,
+            isSendFlag: () -> Boolean?
+        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, isSendFlag)
 
         public override fun getFeatureFlagPayload(
             key: String,
