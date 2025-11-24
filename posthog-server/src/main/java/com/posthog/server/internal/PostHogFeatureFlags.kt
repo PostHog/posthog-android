@@ -503,7 +503,7 @@ internal class PostHogFeatureFlags(
     /**
      * Get the requestId from the cache for the given distinctId and groups
      */
-    fun getRequestId(
+    override fun getRequestId(
         distinctId: String?,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
@@ -525,7 +525,7 @@ internal class PostHogFeatureFlags(
     /**
      * Get the evaluatedAt from the cache for the given distinctId and groups
      */
-    fun getEvaluatedAt(
+    override fun getEvaluatedAt(
         distinctId: String?,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
