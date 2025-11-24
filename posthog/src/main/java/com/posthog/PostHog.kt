@@ -875,33 +875,35 @@ public class PostHog private constructor(
         value: Any?,
         sendFeatureFlagEvent: Boolean?
     ) {
-        var shouldSendFeatureFlagEvent = true
-        synchronized(featureFlagsCalledLock) {
-            val values = featureFlagsCalled[key] ?: mutableListOf()
-            if (values.contains(value)) {
-                shouldSendFeatureFlagEvent = false
-            } else {
-                values.add(value)
-                featureFlagsCalled[key] = values
-            }
-        }
-
-        if (sendFeatureFlagEvent == true || (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent)) {
-            remoteConfig?.let {
-                val flagDetails = it.getFlagDetails(key)
-                val requestId = it.getRequestId()
-
-                val props = mutableMapOf<String, Any>()
-                props["\$feature_flag"] = key
-                // value should never be nullabe anyway
-                props["\$feature_flag_response"] = value ?: ""
-                props["\$feature_flag_request_id"] = requestId ?: ""
-                flagDetails?.let {
-                    props["\$feature_flag_id"] = it.metadata.id
-                    props["\$feature_flag_version"] = it.metadata.version
-                    props["\$feature_flag_reason"] = it.reason?.description ?: ""
+        if (sendFeatureFlagEvent == true || config?.sendFeatureFlagEvent == true) {
+            var shouldSendFeatureFlagEvent = true
+            synchronized(featureFlagsCalledLock) {
+                val values = featureFlagsCalled[key] ?: mutableListOf()
+                if (values.contains(value)) {
+                    shouldSendFeatureFlagEvent = false
+                } else {
+                    values.add(value)
+                    featureFlagsCalled[key] = values
                 }
-                capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
+            }
+
+            if (shouldSendFeatureFlagEvent) {
+                remoteConfig?.let {
+                    val flagDetails = it.getFlagDetails(key)
+                    val requestId = it.getRequestId()
+
+                    val props = mutableMapOf<String, Any>()
+                    props["\$feature_flag"] = key
+                    // value should never be nullabe anyway
+                    props["\$feature_flag_response"] = value ?: ""
+                    props["\$feature_flag_request_id"] = requestId ?: ""
+                    flagDetails?.let {
+                        props["\$feature_flag_id"] = it.metadata.id
+                        props["\$feature_flag_version"] = it.metadata.version
+                        props["\$feature_flag_reason"] = it.reason?.description ?: ""
+                    }
+                    capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
+                }
             }
         }
     }
