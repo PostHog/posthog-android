@@ -1,5 +1,9 @@
 ## Next
 
+## 2.1.0 - 2025-11-24
+
+- feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
+
 ## 2.0.0 - 2025-11-06
 
 - feat: Add local evaluation for feature flags ([#299](https://github.com/PostHog/posthog-android/issues/299))
