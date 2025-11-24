@@ -471,13 +471,9 @@ public open class PostHogStateless protected constructor(
                 groupProperties,
             ) ?: defaultValue
 
-        // Get requestId and evaluatedAt if using PostHogFeatureFlags (server SDK)
-        var requestId: String? = null
-        var evaluatedAt: Long? = null
-        if (featureFlags is com.posthog.server.internal.PostHogFeatureFlags) {
-            requestId = featureFlags.getRequestId(distinctId, groups, personProperties, groupProperties)
-            evaluatedAt = featureFlags.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
-        }
+        // Get requestId and evaluatedAt from feature flags
+        val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
+        val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
 
         sendFeatureFlagCalled(distinctId, key, value, requestId, evaluatedAt)
 

@@ -627,14 +627,24 @@ public class PostHogRemoteConfig(
 
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
-    public fun getRequestId(): String? {
+    override fun getRequestId(
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): String? {
         loadFeatureFlagsFromCacheIfNeeded()
         synchronized(featureFlagsLock) {
             return requestId
         }
     }
 
-    public fun getEvaluatedAt(): Long? {
+    override fun getEvaluatedAt(
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): Long? {
         loadFeatureFlagsFromCacheIfNeeded()
         synchronized(featureFlagsLock) {
             return evaluatedAt
