@@ -442,8 +442,8 @@ public open class PostHogStateless protected constructor(
                 props["\$feature_flag"] = key
                 // value should never be nullable anyway
                 props["\$feature_flag_response"] = value ?: ""
-                props["\$feature_flag_request_id"] = requestId ?: ""
-                props["\$feature_flag_evaluated_at"] = evaluatedAt ?: ""
+                requestId?.let { props["\$feature_flag_request_id"] = it }
+                evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
 
                 captureStateless("\$feature_flag_called", distinctId, properties = props)
             }

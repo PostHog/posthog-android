@@ -894,8 +894,8 @@ public class PostHog private constructor(
                 props["\$feature_flag"] = key
                 // value should never be nullabe anyway
                 props["\$feature_flag_response"] = value ?: ""
-                props["\$feature_flag_request_id"] = requestId ?: ""
-                props["\$feature_flag_evaluated_at"] = evaluatedAt ?: ""
+                requestId?.let { props["\$feature_flag_request_id"] = it }
+                evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
                 flagDetails?.let {
                     props["\$feature_flag_id"] = it.metadata.id
                     props["\$feature_flag_version"] = it.metadata.version
