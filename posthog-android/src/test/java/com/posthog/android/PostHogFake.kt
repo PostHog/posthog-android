@@ -51,7 +51,7 @@ public class PostHogFake : PostHogInterface {
     override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
-        sendFeatureFlagEvent:Boolean?
+        sendFeatureFlagEvent: Boolean?
     ): Boolean {
         return false
     }

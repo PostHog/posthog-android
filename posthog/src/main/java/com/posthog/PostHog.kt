@@ -855,7 +855,7 @@ public class PostHog private constructor(
     public override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
-        sendFeatureFlagEvent:Boolean?
+        sendFeatureFlagEvent: Boolean?
     ): Boolean {
         val value = getFeatureFlag(key, defaultValue, sendFeatureFlagEvent)
 
@@ -873,7 +873,7 @@ public class PostHog private constructor(
     private fun sendFeatureFlagCalled(
         key: String,
         value: Any?,
-        sendFeatureFlagEvent:Boolean?
+        sendFeatureFlagEvent: Boolean?
     ) {
         var shouldSendFeatureFlagEvent = true
         synchronized(featureFlagsCalledLock) {
@@ -886,7 +886,7 @@ public class PostHog private constructor(
             }
         }
 
-        if(sendFeatureFlagEvent == true || (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent)){
+        if (sendFeatureFlagEvent == true || (config?.sendFeatureFlagEvent == true && shouldSendFeatureFlagEvent)) {
             remoteConfig?.let {
                 val flagDetails = it.getFlagDetails(key)
                 val requestId = it.getRequestId()
@@ -1260,7 +1260,7 @@ public class PostHog private constructor(
         public override fun isFeatureEnabled(
             key: String,
             defaultValue: Boolean,
-            sendFeatureFlagEvent:Boolean?
+            sendFeatureFlagEvent: Boolean?
         ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue, sendFeatureFlagEvent = sendFeatureFlagEvent)
 
         public override fun getFeatureFlag(
