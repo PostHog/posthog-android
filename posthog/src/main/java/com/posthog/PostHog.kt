@@ -855,8 +855,9 @@ public class PostHog private constructor(
     public override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
+        sendFeatureFlagEvent:Boolean?
     ): Boolean {
-        val value = getFeatureFlag(key, defaultValue)
+        val value = getFeatureFlag(key, defaultValue, sendFeatureFlagEvent)
 
         if (value is Boolean) {
             return value
@@ -1259,7 +1260,8 @@ public class PostHog private constructor(
         public override fun isFeatureEnabled(
             key: String,
             defaultValue: Boolean,
-        ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue)
+            sendFeatureFlagEvent:Boolean?
+        ): Boolean = shared.isFeatureEnabled(key, defaultValue = defaultValue, sendFeatureFlagEvent = sendFeatureFlagEvent)
 
         public override fun getFeatureFlag(
             key: String,

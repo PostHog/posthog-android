@@ -47,10 +47,12 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
+     * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_call event to PostHog.
      */
     public fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean = false,
+        sendFeatureFlagEvent: Boolean? = null
     ): Boolean
 
     /**
