@@ -58,9 +58,9 @@ The release workflow uses a Sonatype user token for authentication when publishi
    - Generate a new user token
    - Copy the username and password values
 
-2. **Update GitHub repository secrets**:
+2. **Update GitHub org secrets**:
    - Request temporary access if needed
-   - Go to [Repository Settings > Secrets and variables > Actions](https://github.com/PostHog/posthog-android/settings/secrets/actions)
+   - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) - target the desired repository only
    - Update `SONATYPE_USERNAME` and `SONATYPE_PASSWORD` from previous step
 
 4. **Revoke the old token (previous owner)**:
@@ -81,4 +81,40 @@ These environment variables are then read and used in [PostHogPublishConfig.kt](
 ```kotlin
 val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
 val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
+```
+
+# Rotating GPG
+
+The release workflow uses a GPG key to sign artifacts when publishing to Maven Central.
+
+1. **Generate a new GPG key**:
+   - Install and use [GPG Keychain](https://gpgtools.org/)
+   - Use your PostHog email
+   - A strong password (save in your password manager)
+   - Default key type: RSA and RSA
+   - Length: 4096
+   - Remove expiration
+   - Upload the key to a public server after creation
+  
+2. **Update GitHub org secrets**:
+   - Request temporary access if needed
+   - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) - target the desired repository only
+   - Update `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` from previous step
+  
+3. **Revoke the old GPG key (previous owner)**:
+   - Go to [GPG Keychain](https://gpgtools.org/)
+   - Revoke the GPG key
+   - Update the key to a public server after revoking
+
+```yaml
+env:
+   GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+   GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+```
+
+These environment variables are then read and used in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/buildSrc/src/main/java/PostHogPublishConfig.kt#L115-L116):
+
+```kotlin
+val privateKey = System.getenv("GPG_PRIVATE_KEY")
+val password = System.getenv("GPG_PASSPHRASE")
 ```
