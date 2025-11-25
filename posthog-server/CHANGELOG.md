@@ -1,5 +1,7 @@
 ## Next
 
+## 2.0.1 - 2025-11-24
+
 - fix: Local evaluation properly handles cases when flag dependency should be false ([#320](https://github.com/PostHog/posthog-android/pull/320))
 
 ## 2.0.0 - 2025-11-06
