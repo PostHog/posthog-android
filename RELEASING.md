@@ -1,43 +1,66 @@
 # Releasing
 
+Since `main` is protected, releases are done via pull requests.
+
 ### Core module (posthog):
 
 1. Update `posthog/CHANGELOG.md` with the version and date
-2. Commit the changes
-3. Run: `./scripts/prepare-release.sh core 3.23.0`
-   - This bumps version, commits, and pushes with tag `core-v3.23.0`
-4. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
-5. Choose a release name (e.g. `core-v3.23.0`), and the tag you just created, ideally the same.
-6. Write a description of the release.
-7. Publish the release.
-8. A GitHub action triggers `make releaseCore` automatically
-9. Done.
+2. Run: `./scripts/prepare-release.sh core 3.23.0`
+   - This creates a release branch, bumps version, commits, and pushes
+3. Create a PR from the release branch to `main`
+4. Get approval and merge the PR
+5. After merge, create and push the tag from `main`:
+   ```bash
+   git checkout main && git pull
+   git tag -a core-v3.23.0 -m "core 3.23.0"
+   git push --tags
+   ```
+6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
+7. Choose the tag you just created (e.g. `core-v3.23.0`) and use it as the release name
+8. Write a description of the release
+9. Publish the release
+10. A GitHub action triggers `make releaseCore` automatically
+11. Done
 
 ### Android module (posthog-android):
 
 1. Update `posthog-android/CHANGELOG.md` with the version and date
-2. Commit the changes
-3. Run: `./scripts/prepare-release.sh android 3.23.0`
-   - This bumps version, commits, and pushes with tag `android-v3.23.0`
-4. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
-5. Choose a release name (e.g. `android-v3.23.0`), and the tag you just created, ideally the same.
-6. Write a description of the release.
-7. Publish the release.
-8. A GitHub action triggers `make releaseAndroid` automatically
-9. Done.
+2. Run: `./scripts/prepare-release.sh android 3.23.0`
+   - This creates a release branch, bumps version, commits, and pushes
+3. Create a PR from the release branch to `main`
+4. Get approval and merge the PR
+5. After merge, create and push the tag from `main`:
+   ```bash
+   git checkout main && git pull
+   git tag -a android-v3.23.0 -m "android 3.23.0"
+   git push --tags
+   ```
+6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
+7. Choose the tag you just created (e.g. `android-v3.23.0`) and use it as the release name
+8. Write a description of the release
+9. Publish the release
+10. A GitHub action triggers `make releaseAndroid` automatically
+11. Done
 
 ### Server module (posthog-server):
 
 1. Update `posthog-server/CHANGELOG.md` with the version and date
-2. Commit the changes
-3. Run: `./scripts/prepare-release.sh server 1.0.1`
-   - This bumps version, commits, and pushes with tag `server-v1.0.1`
-4. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
-5. Choose a release name (e.g. `server-v1.0.1`), and the tag you just created, ideally the same.
-6. Write a description of the release.
-7. Publish the release.
-8. A GitHub action triggers `make releaseServer` automatically
-9. Done.
+2. Run: `./scripts/prepare-release.sh server 1.0.1`
+   - This creates a release branch, bumps version, commits, and pushes
+3. Create a PR from the release branch to `main`
+4. Get approval and merge the PR
+5. After merge, create and push the tag from `main`:
+   ```bash
+   git checkout main && git pull
+   git tag -a server-v1.0.1 -m "server 1.0.1"
+   git push --tags
+   ```
+6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
+7. Choose the tag you just created (e.g. `server-v1.0.1`) and use it as the release name
+8. Write a description of the release
+9. Publish the release
+10. A GitHub action triggers `make releaseServer` automatically
+11. Done
 
 ## Tag Naming Convention
 
