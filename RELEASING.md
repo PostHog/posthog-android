@@ -72,11 +72,11 @@ The user token is used in [release.yml](https://github.com/PostHog/posthog-andro
 
 ```yaml
 env:
-      SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-      SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+   SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+   SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
 ```
 
-These environment variables are then read in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/buildSrc/src/main/java/PostHogPublishConfig.kt#L128-L129):
+These environment variables are then read and used in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/buildSrc/src/main/java/PostHogPublishConfig.kt#L128-L129):
 
 ```kotlin
 val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
