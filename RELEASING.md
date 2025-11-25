@@ -46,3 +46,39 @@
 - `server-v1.0.1` → releases only posthog-server module
 
 Preview releases follow the pattern `core-v3.0.0-alpha.1`, `android-v3.0.0-beta.1`, `server-v1.0.0-alpha.1`, etc.
+
+# Rotating Sonatype User Token
+
+The release workflow uses a Sonatype user token for authentication when publishing to Maven Central.
+
+
+1. **Generate a new user token**:
+   - Go to [Mavel Central Repository](https://central.sonatype.com/usertoken)
+   - Log in with PostHog credentials
+   - Generate a new user token
+   - Copy the username and password values
+
+2. **Update GitHub repository secrets**:
+   - Request temporary access if needed
+   - Go to [Repository Settings > Secrets and variables > Actions](https://github.com/PostHog/posthog-android/settings/secrets/actions)
+   - Update `SONATYPE_USERNAME` and `SONATYPE_PASSWORD` from previous step
+
+4. **Revoke the old token (previous owner)**:
+   - Go to [Mavel Central Repository](https://central.sonatype.com/usertoken)
+   - Revoke any previous tokens used
+
+
+The user token is used in [release.yml](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/.github/workflows/release.yml#L25-L26) as environment variables for Maven Central authentication:
+
+```yaml
+env:
+   SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+   SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+```
+
+These environment variables are then read and used in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/buildSrc/src/main/java/PostHogPublishConfig.kt#L128-L129):
+
+```kotlin
+val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
+val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
+```
