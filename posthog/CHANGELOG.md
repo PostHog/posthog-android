@@ -1,5 +1,10 @@
 ## Next
 
+## 5.2.0 - 2025-11-24
+
+- feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
+
+
 ## 5.1.0 - 2025-11-06
 
 - feat: Add an optional shutdown override to `FeatureFlagInterface` ([#299](https://github.com/PostHog/posthog-android/pull/299))

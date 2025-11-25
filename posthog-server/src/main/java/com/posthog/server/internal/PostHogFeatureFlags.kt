@@ -259,7 +259,7 @@ internal class PostHogFeatureFlags(
         return try {
             val response = api.flags(distinctId, null, groups, personProperties, groupProperties)
             val flags = response?.flags
-            cache.put(cacheKey, flags)
+            cache.put(cacheKey, flags, response?.requestId, response?.evaluatedAt)
             flags
         } catch (e: Throwable) {
             config.logger.log("Loading remote feature flags failed: $e")
@@ -498,5 +498,49 @@ internal class PostHogFeatureFlags(
 
     private fun localEvaluationEnabled(): Boolean {
         return localEvaluation && !personalApiKey.isNullOrBlank()
+    }
+
+    /**
+     * Get the requestId from the cache for the given distinctId and groups
+     */
+    override fun getRequestId(
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): String? {
+        if (distinctId == null) {
+            return null
+        }
+        val cacheKey =
+            FeatureFlagCacheKey(
+                distinctId = distinctId,
+                groups = groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
+        return cache.getEntry(cacheKey)?.requestId
+    }
+
+    /**
+     * Get the evaluatedAt from the cache for the given distinctId and groups
+     */
+    override fun getEvaluatedAt(
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): Long? {
+        if (distinctId == null) {
+            return null
+        }
+        val cacheKey =
+            FeatureFlagCacheKey(
+                distinctId = distinctId,
+                groups = groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
+        return cache.getEntry(cacheKey)?.evaluatedAt
     }
 }

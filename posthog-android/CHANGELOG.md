@@ -1,5 +1,9 @@
 ## Next
 
+## 3.27.0 - 2025-11-24
+
+- feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
+
 ## 3.26.0 - 2025-11-05
 
 - feat: Cache properties for flag evaluation ([#315](https://github.com/PostHog/posthog-android/pull/315))

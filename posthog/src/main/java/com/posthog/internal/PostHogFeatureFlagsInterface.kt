@@ -34,4 +34,18 @@ public interface PostHogFeatureFlagsInterface {
     public fun shutDown() {
         // no-op by default
     }
+
+    public fun getRequestId(
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+    ): String?
+
+    public fun getEvaluatedAt(
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+    ): Long?
 }
