@@ -875,7 +875,11 @@ public class PostHog private constructor(
         value: Any?,
         sendFeatureFlagEvent: Boolean?
     ) {
-        if ((sendFeatureFlagEvent?:config?.sendFeatureFlagEvent) == true) {
+        val effectiveSendFeatureFlagEvent = sendFeatureFlagEvent
+            ?: config?.sendFeatureFlagEvent
+            ?: false
+
+        if (effectiveSendFeatureFlagEvent) {
             var shouldSendFeatureFlagEvent = true
             synchronized(featureFlagsCalledLock) {
                 val values = featureFlagsCalled[key] ?: mutableListOf()
