@@ -124,7 +124,7 @@ fun NexusPublishExtension.postHogConfig() {
     repositories {
         sonatype {
             stagingProfileId.set("1dbefd58b2cdd")
-            // created using manoel at posthog.com
+            // created using yiannis at posthog.com
             val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
             val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
             if (sonatypeUsername != null) username.set(sonatypeUsername)
