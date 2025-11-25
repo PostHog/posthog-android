@@ -58,7 +58,7 @@ The release workflow uses a Sonatype user token for authentication when publishi
    - Generate a new user token
    - Copy the username and password values
 
-2. **Update GitHub repository secrets**:
+2. **Update GitHub org secrets**:
    - Request temporary access if needed
    - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) - target the desired repository only
    - Update `SONATYPE_USERNAME` and `SONATYPE_PASSWORD` from previous step
@@ -96,7 +96,7 @@ The release workflow uses a GPG key to sign artifacts when publishing to Maven C
    - Remove expiration
    - Upload the key to a public server after creation
   
-2. **Update GitHub repository secrets**:
+2. **Update GitHub org secrets**:
    - Request temporary access if needed
    - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) - target the desired repository only
    - Update `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` from previous step
