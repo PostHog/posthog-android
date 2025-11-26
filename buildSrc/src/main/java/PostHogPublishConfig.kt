@@ -112,6 +112,7 @@ fun SigningExtension.postHogConfig(
     variantName: String,
     publishingExtension: PublishingExtension,
 ) {
+    // created using manoel at posthog.com
     val privateKey = System.getenv("GPG_PRIVATE_KEY")
     val password = System.getenv("GPG_PASSPHRASE")
     // releases are only signed on CI, so skip this locally
