@@ -11,15 +11,32 @@ cd $SCRIPT_DIR/..
 
 MODULE="$1"
 NEW_VERSION="$2"
+BRANCH_NAME="release/${MODULE}-v${NEW_VERSION}"
+
+# ensure we're on main and up to date
+git checkout main
+git pull
+
+# create release branch
+git checkout -b "$BRANCH_NAME"
 
 # bump version
 ./scripts/bump-version.sh $MODULE $NEW_VERSION
 
-# commit changes
-./scripts/commit-code.sh
+# commit and push release branch
+git commit -am "chore(release): bump ${MODULE} to ${NEW_VERSION}"
+git push -u origin "$BRANCH_NAME"
 
-# create and push tag
-./scripts/create-tag.sh $MODULE $NEW_VERSION
+PR_URL="https://github.com/PostHog/posthog-android/compare/main...release%2F${MODULE}-v${NEW_VERSION}?expand=1"
 
-echo "Done! Created tag ${MODULE}-v${NEW_VERSION}"
-echo "Go create a GitHub release with this tag to trigger deployment."
+echo ""
+echo "Done! Created release branch: $BRANCH_NAME"
+echo ""
+echo "Next steps:"
+echo "  1. Create a PR: $PR_URL"
+echo "  2. Get approval and merge the PR"
+echo "  3. After merge, create and push the tag:"
+echo "     git checkout main && git pull"
+echo "     git tag -a ${MODULE}-v${NEW_VERSION} -m \"${MODULE} ${NEW_VERSION}\""
+echo "     git push --tags"
+echo "  4. Create a GitHub release with the tag to trigger deployment"
