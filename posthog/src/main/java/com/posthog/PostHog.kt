@@ -915,7 +915,7 @@ public class PostHog private constructor(
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
-        sendFeatureFlagEvent:Boolean?
+        sendFeatureFlagEvent: Boolean?
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
