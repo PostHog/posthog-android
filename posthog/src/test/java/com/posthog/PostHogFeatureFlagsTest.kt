@@ -87,7 +87,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `getFeatureFlag captures feature flag event if sendFeatureFlagEvent=true and config_sendFeatureFlagEvent=false`() {
+    fun `check function getFeatureFlag where sendFeatureFlagEvent=true and config_sendFeatureFlagEvent=false`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
@@ -119,14 +119,14 @@ internal class PostHogFeatureFlagsTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        val theEvent = batch.batch.first()
-        assertEquals("\$feature_flag_called", theEvent.event)
-
+        val theEvent = batch.batch.firstOrNull()
+        assertEquals("\$feature_flag_called", theEvent?.event)
+        assertEquals(1, batch.batch.size)
         sut.close()
     }
 
     @Test
-    fun `getFeatureFlag captures feature flag event if sendFeatureFlagEvent=false and config_sendFeatureFlagEvent=false`() {
+    fun `check function getFeatureFlag where sendFeatureFlagEvent=false and config_sendFeatureFlagEvent=false`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
@@ -149,7 +149,6 @@ internal class PostHogFeatureFlagsTest {
         // remove from the http queue
         http.takeRequest()
         sut.getFeatureFlag("splashScreenName", sendFeatureFlagEvent = false)
-
         sut.capture("test_event")
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -158,14 +157,14 @@ internal class PostHogFeatureFlagsTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        val theEvent = batch.batch.first()
-        assertNotEquals("\$feature_flag_called", theEvent.event)
-        assertEquals("test_event", theEvent.event)
+        val theEvent = batch.batch.firstOrNull()
+        assertEquals(1, batch.batch.size)
+        assertEquals("test_event", theEvent?.event)
         sut.close()
     }
 
     @Test
-    fun `getFeatureFlag captures feature flag event if sendFeatureFlagEvent=null and config_sendFeatureFlagEvent=false`() {
+    fun `check function getFeatureFlag where sendFeatureFlagEvent=null and config_sendFeatureFlagEvent=false`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
@@ -202,14 +201,14 @@ internal class PostHogFeatureFlagsTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        val theEvent = batch.batch.first()
-        assertNotEquals("\$feature_flag_called", theEvent.event)
-        assertEquals("test_event", theEvent.event)
+        val theEvent = batch.batch.firstOrNull()
+        assertEquals("test_event", theEvent?.event)
+        assertEquals(1, batch.batch.size)
         sut.close()
     }
 
     @Test
-    fun `getFeatureFlag captures feature flag event if sendFeatureFlagEvent=false and config_sendFeatureFlagEvent=true`() {
+    fun `check function getFeatureFlag where sendFeatureFlagEvent=false and config_sendFeatureFlagEvent=true`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
@@ -241,15 +240,15 @@ internal class PostHogFeatureFlagsTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        val theEvent = batch.batch.first()
-        assertNotEquals("\$feature_flag_called", theEvent.event)
-        assertEquals("test_event", theEvent.event)
-
+        val theEvent = batch.batch.firstOrNull()
+        assertNotEquals("\$feature_flag_called", theEvent?.event)
+        assertEquals("test_event", theEvent?.event)
+        assertEquals(1, batch.batch.size)
         sut.close()
     }
 
     @Test
-    fun `getFeatureFlag captures feature flag event if sendFeatureFlagEvent=true and config_sendFeatureFlagEvent=true`() {
+    fun `check function getFeatureFlag where sendFeatureFlagEvent=true and config_sendFeatureFlagEvent=true`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
@@ -280,13 +279,14 @@ internal class PostHogFeatureFlagsTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        val theEvent = batch.batch.first()
-        assertEquals("\$feature_flag_called", theEvent.event)
+        val theEvent = batch.batch.firstOrNull()
+        assertEquals("\$feature_flag_called", theEvent?.event)
+        assertEquals(1, batch.batch.size)
         sut.close()
     }
 
     @Test
-    fun `getFeatureFlag captures feature flag event if sendFeatureFlagEvent=null and config_sendFeatureFlagEvent=true`() {
+    fun `check function getFeatureFlag where sendFeatureFlagEvent=null and config_sendFeatureFlagEvent=true`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
 
@@ -322,9 +322,9 @@ internal class PostHogFeatureFlagsTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        val theEvent = batch.batch.first()
-        assertEquals("\$feature_flag_called", theEvent.event)
-
+        val theEvent = batch.batch.firstOrNull()
+        assertEquals("\$feature_flag_called", theEvent?.event)
+        assertEquals(1, batch.batch.size)
         sut.close()
     }
 }
