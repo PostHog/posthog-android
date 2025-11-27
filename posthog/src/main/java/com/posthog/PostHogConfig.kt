@@ -239,7 +239,6 @@ public open class PostHogConfig(
      * Configuration for PostHog Error Tracking feature.
      */
     public val errorTrackingConfig: PostHogErrorTrackingConfig = PostHogErrorTrackingConfig(),
-
     /**
      * The release identifier used to identify the correct proguard mappings (mapping.txt)
      * in order to make minified stack traces into human readable stack traces
