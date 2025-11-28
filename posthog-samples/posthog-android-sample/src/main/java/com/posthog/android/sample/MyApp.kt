@@ -43,10 +43,6 @@ class MyApp : Application() {
                 sessionReplayConfig.screenshot = true
                 surveys = false
                 errorTrackingConfig.autoCapture = true
-                if (!BuildConfig.DEBUG) {
-                    // apps should consider build type and variants
-                    releaseIdentifier = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE}"
-                }
             }
         PostHogAndroid.setup(this, config)
     }

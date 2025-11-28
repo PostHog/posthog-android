@@ -13,6 +13,7 @@ import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
 import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
+import com.posthog.android.internal.PostHogMetaPropertiesApplier
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.appContext
 import com.posthog.android.internal.getPackageInfo
@@ -112,9 +113,9 @@ public class PostHogAndroid private constructor() {
                 config.sdkVersion = BuildConfig.VERSION_NAME
             }
 
-            if (config.releaseIdentifier.isNullOrEmpty()) {
-                config.releaseIdentifier = "$packageName@$versionName+$buildNumber"
-            }
+            val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
+            val metaPropertiesApplier = PostHogMetaPropertiesApplier()
+            metaPropertiesApplier.applyToConfig(context, config, releaseIdentifierFallback)
 
             val mainHandler = MainHandler()
             config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
