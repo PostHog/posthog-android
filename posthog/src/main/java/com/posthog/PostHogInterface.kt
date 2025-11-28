@@ -52,7 +52,7 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean = false,
-        sendFeatureFlagEvent: Boolean? = null
+        sendFeatureFlagEvent: Boolean? = null,
     ): Boolean
 
     /**
@@ -65,7 +65,7 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun getFeatureFlag(
         key: String,
         defaultValue: Any? = null,
-        sendFeatureFlagEvent: Boolean? = null
+        sendFeatureFlagEvent: Boolean? = null,
     ): Any?
 
     /**

@@ -95,11 +95,11 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi)
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
-                .setBody("")
+                .setBody(""),
         )
         val url = http.url("/")
         val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false)
@@ -134,11 +134,11 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi)
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
-                .setBody("")
+                .setBody(""),
         )
         val url = http.url("/")
         val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false)
@@ -172,18 +172,19 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi)
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
-                .setBody("")
+                .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(
-            url.toString(),
-            preloadFeatureFlags = false,
-            sendFeatureFlagEvent = false
-        )
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                sendFeatureFlagEvent = false,
+            )
 
         sut.reloadFeatureFlags()
 
@@ -216,11 +217,11 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi)
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
-                .setBody("")
+                .setBody(""),
         )
         val url = http.url("/")
         val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
@@ -256,11 +257,11 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi)
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
-                .setBody("")
+                .setBody(""),
         )
         val url = http.url("/")
         val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
@@ -294,18 +295,19 @@ internal class PostHogFeatureFlagsTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi)
+                        .setBody(responseFlagsApi),
             )
         http.enqueue(
             MockResponse()
-                .setBody("")
+                .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(
-            url.toString(),
-            preloadFeatureFlags = false,
-            sendFeatureFlagEvent = true
-        )
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                sendFeatureFlagEvent = true,
+            )
 
         sut.reloadFeatureFlags()
 

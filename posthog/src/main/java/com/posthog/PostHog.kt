@@ -93,20 +93,22 @@ public class PostHog private constructor(
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
                 val api = PostHogApi(config)
-                val queue = config.queueProvider(
-                    config,
-                    api,
-                    PostHogApiEndpoint.BATCH,
-                    config.storagePrefix,
-                    queueExecutor
-                )
-                val replayQueue = config.queueProvider(
-                    config,
-                    api,
-                    PostHogApiEndpoint.SNAPSHOT,
-                    config.replayStoragePrefix,
-                    replayExecutor
-                )
+                val queue =
+                    config.queueProvider(
+                        config,
+                        api,
+                        PostHogApiEndpoint.BATCH,
+                        config.storagePrefix,
+                        queueExecutor,
+                    )
+                val replayQueue =
+                    config.queueProvider(
+                        config,
+                        api,
+                        PostHogApiEndpoint.SNAPSHOT,
+                        config.replayStoragePrefix,
+                        replayExecutor,
+                    )
                 val featureFlags =
                     config.remoteConfigProvider(config, api, remoteConfigExecutor) {
                         getDefaultPersonProperties()
@@ -191,10 +193,11 @@ public class PostHog private constructor(
                 // only because of testing in isolation, this flag is always enabled
                 if (reloadFeatureFlags) {
                     when {
-                        config.remoteConfig -> loadRemoteConfigRequest(
-                            internalOnFeatureFlagsLoaded,
-                            config.onFeatureFlags
-                        )
+                        config.remoteConfig ->
+                            loadRemoteConfigRequest(
+                                internalOnFeatureFlagsLoaded,
+                                config.onFeatureFlags,
+                            )
 
                         config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
                     }
@@ -720,13 +723,13 @@ public class PostHog private constructor(
 
     private fun hasPersonProcessing(): Boolean {
         return !(
-                config?.personProfiles == PersonProfiles.NEVER ||
-                        (
-                                config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
-                                        !isIdentified &&
-                                        !isPersonProcessingEnabled
-                                )
+            config?.personProfiles == PersonProfiles.NEVER ||
+                (
+                    config?.personProfiles == PersonProfiles.IDENTIFIED_ONLY &&
+                        !isIdentified &&
+                        !isPersonProcessingEnabled
                 )
+        )
     }
 
     private fun requirePersonProcessing(
@@ -824,7 +827,7 @@ public class PostHog private constructor(
         }
         loadFeatureFlagsRequest(
             internalOnFeatureFlags = internalOnFeatureFlagsLoaded,
-            onFeatureFlags = onFeatureFlags
+            onFeatureFlags = onFeatureFlags,
         )
     }
 
@@ -875,14 +878,14 @@ public class PostHog private constructor(
             anonymousId = anonymousId,
             groups,
             internalOnFeatureFlags,
-            onFeatureFlags
+            onFeatureFlags,
         )
     }
 
     public override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,
-        sendFeatureFlagEvent: Boolean?
+        sendFeatureFlagEvent: Boolean?,
     ): Boolean {
         val value = getFeatureFlag(key, defaultValue, sendFeatureFlagEvent)
 
@@ -900,11 +903,12 @@ public class PostHog private constructor(
     private fun sendFeatureFlagCalled(
         key: String,
         value: Any?,
-        sendFeatureFlagEvent: Boolean?
+        sendFeatureFlagEvent: Boolean?,
     ) {
-        val effectiveSendFeatureFlagEvent = sendFeatureFlagEvent
-            ?: config?.sendFeatureFlagEvent
-            ?: false
+        val effectiveSendFeatureFlagEvent =
+            sendFeatureFlagEvent
+                ?: config?.sendFeatureFlagEvent
+                ?: false
 
         if (effectiveSendFeatureFlagEvent) {
             var shouldSendFeatureFlagEvent = true
@@ -942,7 +946,7 @@ public class PostHog private constructor(
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
-        sendFeatureFlagEvent: Boolean?
+        sendFeatureFlagEvent: Boolean?,
     ): Any? {
         if (!isEnabled()) {
             return defaultValue
@@ -1293,17 +1297,18 @@ public class PostHog private constructor(
         public override fun isFeatureEnabled(
             key: String,
             defaultValue: Boolean,
-            sendFeatureFlagEvent: Boolean?
-        ): Boolean = shared.isFeatureEnabled(
-            key,
-            defaultValue = defaultValue,
-            sendFeatureFlagEvent = sendFeatureFlagEvent
-        )
+            sendFeatureFlagEvent: Boolean?,
+        ): Boolean =
+            shared.isFeatureEnabled(
+                key,
+                defaultValue = defaultValue,
+                sendFeatureFlagEvent = sendFeatureFlagEvent,
+            )
 
         public override fun getFeatureFlag(
             key: String,
             defaultValue: Any?,
-            sendFeatureFlagEvent: Boolean?
+            sendFeatureFlagEvent: Boolean?,
         ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, sendFeatureFlagEvent)
 
         public override fun getFeatureFlagPayload(
