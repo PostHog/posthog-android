@@ -1,3 +1,5 @@
+// adapted from https://github.com/getsentry/sentry-android-gradle-plugin/blob/0ce926822756c8379e281bed8c33237a400c9582/plugin-build/src/main/kotlin/io/sentry/android/gradle/util/Files.kt#L5
+
 package com.posthog.android
 
 import com.posthog.android.PostHogGenerateMapIdTask.Companion.POSTHOG_PROGUARD_MAPPING_MAP_ID_PROPERTY

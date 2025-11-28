@@ -1,3 +1,5 @@
+// adapted from https://github.com/getsentry/sentry-android-gradle-plugin/blob/0ce926822756c8379e281bed8c33237a400c9582/plugin-build/src/main/kotlin/io/sentry/android/gradle/tasks/SentryCliExecTask.kt#L13
+
 package com.posthog.android
 
 import org.apache.tools.ant.taskdefs.condition.Os

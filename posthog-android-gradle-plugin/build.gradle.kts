@@ -1,6 +1,12 @@
+version = properties["androidPluginVersion"].toString()
+
 plugins {
     `kotlin-dsl`
     id("java-gradle-plugin")
+
+    // publish
+    `maven-publish`
+    signing
 }
 
 gradlePlugin {
