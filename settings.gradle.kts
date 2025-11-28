@@ -23,3 +23,6 @@ include(":posthog-server")
 include(":posthog-samples:posthog-android-sample")
 include(":posthog-samples:posthog-java-sample")
 include(":posthog-samples:posthog-spring-sample")
+
+// Include the plugin as a composite build
+includeBuild("posthog-android-gradle-plugin")

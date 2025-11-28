@@ -45,6 +45,7 @@ Please add an entry to the appropriate changelog:
 - \`posthog/CHANGELOG.md\` (core module)
 - \`posthog-android/CHANGELOG.md\` (android module)
 - \`posthog-server/CHANGELOG.md\` (server module)
+- \`posthog-android-gradle-plugin/CHANGELOG.md\` (android plugin module)
 
 Make sure the entry includes this PR's number.
 Example:

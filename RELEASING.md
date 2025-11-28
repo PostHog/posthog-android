@@ -62,13 +62,34 @@ Since `main` is protected, releases are done via pull requests.
 10. A GitHub action triggers `make releaseServer` automatically
 11. Done
 
+### Android plugin module (posthog-android-gradle-plugin):
+
+1. Update `posthog-android-gradle-plugin/CHANGELOG.md` with the version and date
+2. Run: `./scripts/prepare-release.sh androidPlugin 1.0.1`
+   - This creates a release branch, bumps version, commits, and pushes
+3. Create a PR from the release branch to `main`
+4. Get approval and merge the PR
+5. After merge, create and push the tag from `main`:
+   ```bash
+   git checkout main && git pull
+   git tag -a androidPlugin-v1.0.1 -m "androidPlugin 1.0.1"
+   git push --tags
+   ```
+6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
+7. Choose the tag you just created (e.g. `androidPlugin-v1.0.1`) and use it as the release name
+8. Write a description of the release
+9. Publish the release
+10. A GitHub action triggers `make releaseAndroidPlugin` automatically
+11. Done
+
 ## Tag Naming Convention
 
 - `core-v3.23.0` → releases only posthog core module
 - `android-v3.23.0` → releases only posthog-android module
 - `server-v1.0.1` → releases only posthog-server module
+- `androidPlugin-v1.0.1` → releases only posthog-android-gradle-plugin module
 
-Preview releases follow the pattern `core-v3.0.0-alpha.1`, `android-v3.0.0-beta.1`, `server-v1.0.0-alpha.1`, etc.
+Preview releases follow the pattern `core-v3.0.0-alpha.1`, `android-v3.0.0-beta.1`, `server-v1.0.0-alpha.1`, `androidPlugin-v1.0.0-alpha.1`, etc.
 
 # Rotating Sonatype User Token
 

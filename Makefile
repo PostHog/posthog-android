@@ -32,6 +32,9 @@ dryReleaseAndroid:
 dryReleaseServer:
 	./gradlew :posthog-server:publishToMavenLocal
 
+dryReleaseAndroidPlugin:
+	./gradlew :posthog-android-gradle-plugin:publishToMavenLocal
+
 release:
 	./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
 
@@ -43,6 +46,9 @@ releaseAndroid:
 
 releaseServer:
 	./gradlew :posthog-server:publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+releaseAndroidPlugin:
+	./gradlew :posthog-android-gradle-plugin:publishToSonatype closeAndReleaseSonatypeStagingRepository
 
 testReport:
 	./gradlew koverHtmlReport
