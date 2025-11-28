@@ -19,7 +19,7 @@ import java.io.File
 import java.util.Properties
 
 @CacheableTask
-abstract class InjectPostHogMetaPropertiesIntoAssetsTask : DefaultTask() {
+internal abstract class InjectPostHogMetaPropertiesIntoAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     @get:InputFiles
     abstract val inputDir: DirectoryProperty

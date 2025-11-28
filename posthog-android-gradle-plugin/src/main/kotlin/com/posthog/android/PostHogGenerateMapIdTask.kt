@@ -15,7 +15,7 @@ import org.gradle.work.DisableCachingByDefault
 import java.util.UUID
 
 @DisableCachingByDefault
-abstract class PostHogGenerateMapIdTask : PropertiesFileOutputTask() {
+internal abstract class PostHogGenerateMapIdTask : PropertiesFileOutputTask() {
     init {
         description =
             "Generates a unique build ID to be used when uploading the PostHog mapping file"

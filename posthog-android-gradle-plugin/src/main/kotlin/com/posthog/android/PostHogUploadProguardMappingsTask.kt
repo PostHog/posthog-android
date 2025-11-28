@@ -14,7 +14,7 @@ import org.gradle.api.tasks.TaskProvider
 import org.gradle.work.DisableCachingByDefault
 
 @DisableCachingByDefault(because = "Uploads should not be cached")
-abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
+internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
     init {
         description = "Uploads the proguard mappings file to PostHog"
 

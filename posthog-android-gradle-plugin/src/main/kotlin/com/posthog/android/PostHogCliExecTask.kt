@@ -7,7 +7,7 @@ import org.gradle.api.tasks.Exec
 import org.gradle.work.DisableCachingByDefault
 
 @DisableCachingByDefault(because = "abstract task, should not be used directly")
-abstract class PostHogCliExecTask : Exec() {
+internal abstract class PostHogCliExecTask : Exec() {
     override fun exec() {
         computeCommandLineArgs().let {
             commandLine(it)

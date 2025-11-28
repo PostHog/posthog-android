@@ -14,7 +14,7 @@ import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 
-fun TaskProvider<out Task>.hookWithMinifyTasks(
+internal fun TaskProvider<out Task>.hookWithMinifyTasks(
     project: Project,
     variantName: String,
 ) {
@@ -30,7 +30,7 @@ fun TaskProvider<out Task>.hookWithMinifyTasks(
     }
 }
 
-fun TaskProvider<out Task>.hookWithAssembleTasks(
+internal fun TaskProvider<out Task>.hookWithAssembleTasks(
     project: Project,
     variant: ApplicationVariant,
 ) {
@@ -52,7 +52,7 @@ fun TaskProvider<out Task>.hookWithAssembleTasks(
     }
 }
 
-fun ApplicationVariant.mappingFileProvider(project: Project): Provider<FileCollection> =
+internal fun ApplicationVariant.mappingFileProvider(project: Project): Provider<FileCollection> =
     project.provider {
         project.files(artifacts.get(SingleArtifact.OBFUSCATION_MAPPING_FILE))
     }

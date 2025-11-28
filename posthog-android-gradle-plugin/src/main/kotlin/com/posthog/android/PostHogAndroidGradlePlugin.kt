@@ -13,7 +13,7 @@ import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 
-class PostHogAndroidGradlePlugin : Plugin<Project> {
+internal class PostHogAndroidGradlePlugin : Plugin<Project> {
     override fun apply(project: Project) {
         if (!project.plugins.hasPlugin("com.android.application")) {
             project.logger.warn(
