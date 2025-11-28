@@ -1,9 +1,12 @@
 package com.posthog.android
 
+import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import com.android.build.api.variant.ApplicationVariant
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.Task
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
@@ -29,17 +32,45 @@ class PostHogAndroidGradlePlugin : Plugin<Project> {
                     return@onVariants
                 }
 
-//                val tasksGeneratingProperties = mutableListOf<TaskProvider<out PropertiesFileOutputTask>>()
+                val tasksGeneratingProperties = mutableListOf<TaskProvider<out PropertiesFileOutputTask>>()
 
                 // TODO: skip variants, skip autoUpload, release info, allow failure, debug mode
 
                 val paths = OutputPaths(project, variant.name)
                 val generateMapIdTask = generateMapIdTask(project, variant, paths)
+                tasksGeneratingProperties.add(generateMapIdTask)
 
                 variant.apply {
+                    val injectAssetsTask =
+                        InjectPostHogMetaPropertiesIntoAssetsTask.register(
+                            project = project,
+                            tasksGeneratingProperties = tasksGeneratingProperties,
+                            taskSuffix = variant.name,
+                        )
+
+                    assetsWiredWithDirectories(
+                        variant = variant,
+                        task = injectAssetsTask,
+                        inputDir = InjectPostHogMetaPropertiesIntoAssetsTask::inputDir,
+                        outputDir = InjectPostHogMetaPropertiesIntoAssetsTask::outputDir,
+                    )
+
+                    // TODO: flutter doesn't use the transform API, and manually wires up task dependencies
                 }
             }
         }
+    }
+
+    private fun <T : Task> assetsWiredWithDirectories(
+        variant: ApplicationVariant,
+        task: TaskProvider<T>,
+        inputDir: (T) -> DirectoryProperty,
+        outputDir: (T) -> DirectoryProperty,
+    ) {
+        variant.artifacts
+            .use(task)
+            .wiredWithDirectories(inputDir, outputDir)
+            .toTransform(SingleArtifact.ASSETS)
     }
 
     private fun generateMapIdTask(

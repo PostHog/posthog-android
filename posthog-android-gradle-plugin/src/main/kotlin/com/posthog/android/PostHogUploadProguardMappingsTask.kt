@@ -56,7 +56,6 @@ abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
                 firstExistingFile
             }
 
-//        args.add("posthog-cli")
         args.add("exp proguard upload")
         args.add("--map-id")
         args.add(uuid)

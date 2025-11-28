@@ -6,8 +6,6 @@ import com.posthog.android.PostHogTasksProvider.getAssembleTaskProvider
 import com.posthog.android.PostHogTasksProvider.getBundleTask
 import com.posthog.android.PostHogTasksProvider.getInstallTaskProvider
 import com.posthog.android.PostHogTasksProvider.getMinifyTask
-import com.posthog.android.PostHogTasksProvider.getPackageBundleTask
-import com.posthog.android.PostHogTasksProvider.getPreBundleTask
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.file.FileCollection
@@ -27,29 +25,6 @@ fun TaskProvider<out Task>.hookWithMinifyTasks(
         minifyTask?.configure {
             finalizedBy(this@hookWithMinifyTasks)
         }
-    }
-}
-
-fun TaskProvider<out Task>.hookWithPackageTasks(
-    project: Project,
-    variant: ApplicationVariant,
-) {
-    val variantName = variant.name
-    val preBundleTaskProvider =
-        withLogging(project.logger, "preBundleTask") { getPreBundleTask(project, variantName) }
-    val packageBundleTaskProvider =
-        withLogging(project.logger, "packageBundleTask") { getPackageBundleTask(project, variantName) }
-
-    // To include proguard uuid file into aab, run before bundle task.
-    preBundleTaskProvider?.configure {
-        dependsOn(this@hookWithPackageTasks)
-    }
-    // The package task will only be executed if the generateUuidTask has already been executed.
-    // getPackageProvider(variant)?.configure { task -> task.dependsOn(this) }
-
-    // App bundle has different package task
-    packageBundleTaskProvider?.configure {
-        dependsOn(this@hookWithPackageTasks)
     }
 }
 

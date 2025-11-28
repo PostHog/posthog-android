@@ -33,34 +33,10 @@ internal object PostHogTasksProvider {
      * @return the task or null otherwise
      */
     @JvmStatic
-    fun getPreBundleTask(
-        project: Project,
-        variantName: String,
-    ): TaskProvider<Task>? = project.findTask(listOf("build${variantName.capitalized}PreBundle"))
-
-    /**
-     * Returns the pre bundle task for the given project and variant.
-     *
-     * @return the task or null otherwise
-     */
-    @JvmStatic
     fun getBundleTask(
         project: Project,
         variantName: String,
     ): TaskProvider<Task>? = project.findTask(listOf("bundle${variantName.capitalized}"))
-
-    /**
-     * Returns the package bundle task (App Bundle only)
-     *
-     * @return the package task or null if not found
-     */
-    @JvmStatic
-    fun getPackageBundleTask(
-        project: Project,
-        variantName: String,
-    ): TaskProvider<Task>? =
-        // for APK it uses getPackageProvider
-        project.findTask(listOf("package${variantName.capitalized}Bundle"))
 
     /**
      * Returns the assemble task provider
@@ -86,17 +62,15 @@ internal object PostHogTasksProvider {
 
     /** @return the first task found in the list or null */
     private fun Project.findTask(taskName: List<String>): TaskProvider<Task>? =
-        taskName
-            .mapNotNull {
-                try {
-                    project.tasks.named(it)
-                } catch (e: UnknownTaskException) {
-                    null
-                }
+        taskName.firstNotNullOfOrNull {
+            try {
+                project.tasks.named(it)
+            } catch (e: UnknownTaskException) {
+                null
             }
-            .firstOrNull()
+        }
 
-    internal val String.capitalized: String
+    private val String.capitalized: String
         get() = this.capitalizeUS()
 }
 

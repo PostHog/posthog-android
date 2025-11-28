@@ -76,7 +76,7 @@ abstract class InjectPostHogMetaPropertiesIntoAssetsTask : DefaultTask() {
             taskSuffix: String = "",
         ): TaskProvider<InjectPostHogMetaPropertiesIntoAssetsTask> {
             val inputFiles: List<Provider<RegularFile>> =
-                tasksGeneratingProperties.mapNotNull { it.flatMap { task -> task.outputFile } }
+                tasksGeneratingProperties.map { it.flatMap { task -> task.outputFile } }
             return project.tasks.register(
                 "injectPostHogMetaPropertiesIntoAssets$taskSuffix",
                 InjectPostHogMetaPropertiesIntoAssetsTask::class.java,
