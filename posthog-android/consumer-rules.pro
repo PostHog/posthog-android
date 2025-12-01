@@ -97,4 +97,8 @@
 # used in reflection to check if compose is available at runtime
 -keepnames class androidx.compose.ui.platform.AndroidComposeView
 
+# Uncomment this to preserve the line number information for
+# debugging stack traces.
+-keepattributes SourceFile,LineNumberTable
+
 ##---------------End: proguard configuration for okhttp3  ----------

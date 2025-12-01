@@ -1,5 +1,6 @@
 ## Next
 
+- feat: proguard support ([#316](https://github.com/PostHog/posthog-android/pull/316))
 - feat: add param sendFeatureFlagEvent in function getFeatureFlag() for override config's
   sendFeatureFlagEvent ([#319](https://github.com/PostHog/posthog-android/pull/319))
 
