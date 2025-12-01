@@ -1,6 +1,6 @@
 ## Next
 
-- add param sendFeatureFlagEvent in function getFeatureFlag() for override config's
+- feat: add param sendFeatureFlagEvent in function getFeatureFlag() for override config's
   sendFeatureFlagEvent ([#319](https://github.com/PostHog/posthog-android/pull/319))
 
 ## 3.26.0 - 2025-11-05
