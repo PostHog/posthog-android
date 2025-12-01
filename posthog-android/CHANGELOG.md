@@ -1,5 +1,7 @@
 ## Next
 
+- feat: proguard support ([#316](https://github.com/PostHog/posthog-android/pull/316))
+
 ## 3.26.0 - 2025-11-05
 
 - feat: Cache properties for flag evaluation ([#315](https://github.com/PostHog/posthog-android/pull/315))
