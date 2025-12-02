@@ -139,6 +139,8 @@ The release workflow uses a GPG key to sign artifacts when publishing to Maven C
    - Length: 4096
    - Remove expiration
    - Upload the key to a public server after creation
+   - List your keys - `gpg --list-secret-keys`
+   - Export the private key (ASCII armored) - `gpg --export-secret-keys --armor $ID` (Including the 'BEGIN PGP PRIVATE KEY BLOCK' and 'END PGP PRIVATE KEY BLOCK' lines)
   
 2. **Update GitHub org secrets**:
    - Request temporary access if needed
