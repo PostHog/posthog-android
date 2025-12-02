@@ -132,14 +132,17 @@ val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
 The release workflow uses a GPG key to sign artifacts when publishing to Maven Central.
 
 1. **Generate a new GPG key**:
-   - Install and use [GPG Keychain](https://gpgtools.org/)
+   - Follow [this](https://central.sonatype.org/publish/requirements/gpg/) tutorial
+   - `gpg --full-generate-key`
    - Use your PostHog email
    - A strong password (save in your password manager)
    - Default key type: RSA and RSA
    - Length: 4096
    - Remove expiration
-   - Upload the key to a public server after creation
-   - List your keys - `gpg --list-secret-keys`
+   - After creation, save the revocation certificate (check gpg output with the $ID.rev file path) in your password manager
+   - Upload the key to a [public server](https://central.sonatype.org/publish/requirements/gpg/#distributing-your-public-key)
+   - `gpg --keyserver keys.openpgp.org --send-keys $ID`
+   - Visit [URL](visit url: https://keyserver.ubuntu.com/pks/lookup?search=$email&op=index) and confirm email (change $email to your email)
    - Export the private key (ASCII armored) - `gpg --export-secret-keys --armor $ID` (Including the 'BEGIN PGP PRIVATE KEY BLOCK' and 'END PGP PRIVATE KEY BLOCK' lines)
   
 2. **Update GitHub org secrets**:
