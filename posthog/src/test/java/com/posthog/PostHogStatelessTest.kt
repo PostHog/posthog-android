@@ -133,6 +133,24 @@ internal class PostHogStatelessTest {
             return flags.toMap()
         }
 
+        override fun getRequestId(
+            distinctId: String?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
+        ): String? {
+            return null
+        }
+
+        override fun getEvaluatedAt(
+            distinctId: String?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
+        ): Long? {
+            return null
+        }
+
         override fun clear() {
             flags.clear()
         }

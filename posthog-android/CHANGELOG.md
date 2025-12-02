@@ -1,5 +1,11 @@
 ## Next
 
+## 3.28.0 - 2025-12-01
+
+- feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
+
+## 3.27.0 - 2025-11-24
+
 - feat: proguard support ([#316](https://github.com/PostHog/posthog-android/pull/316))
 - feat: add param sendFeatureFlagEvent in function getFeatureFlag() for override config's
   sendFeatureFlagEvent ([#319](https://github.com/PostHog/posthog-android/pull/319))

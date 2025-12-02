@@ -39,12 +39,32 @@ internal class PostHogFeatureFlagCache(
     }
 
     /**
+     * Get full cache entry (including requestId and evaluatedAt) if present and not expired
+     */
+    @Synchronized
+    fun getEntry(key: FeatureFlagCacheKey): FeatureFlagCacheEntry? {
+        val entry = cache[key]
+        if (entry == null) {
+            return null
+        }
+
+        if (entry.isExpired()) {
+            cache.remove(key)
+            return null
+        }
+
+        return entry
+    }
+
+    /**
      * Put feature flags into cache with current timestamp
      */
     @Synchronized
     fun put(
         key: FeatureFlagCacheKey,
         flags: Map<String, FeatureFlag>?,
+        requestId: String? = null,
+        evaluatedAt: Long? = null,
     ) {
         val currentTime = System.currentTimeMillis()
         val entry =
@@ -52,6 +72,8 @@ internal class PostHogFeatureFlagCache(
                 flags = flags,
                 timestamp = currentTime,
                 expiresAt = currentTime + maxAgeMs,
+                requestId = requestId,
+                evaluatedAt = evaluatedAt,
             )
 
         cache[key] = entry
