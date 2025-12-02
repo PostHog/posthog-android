@@ -73,13 +73,11 @@ publishing {
     publications {
         // Configure the automatic plugin publication
         withType<MavenPublication> {
-            if (name == "pluginMaven") {
-                groupId = "com.posthog"
-                version = project.version.toString()
-                // Add dokka artifacts to the plugin publication
-                artifact(dokkaJavadocJar)
-                artifact(dokkaHtmlJar)
-            }
+            groupId = "com.posthog"
+            version = project.version.toString()
+            // Add dokka artifacts to the plugin publication
+            artifact(dokkaJavadocJar)
+            artifact(dokkaHtmlJar)
         }
     }
 
