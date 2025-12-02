@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.net.URI
 
 version = properties["androidPluginVersion"].toString()
 
@@ -10,6 +11,7 @@ plugins {
     `maven-publish`
     signing
     id("org.jetbrains.dokka")
+    id("io.github.gradle-nexus.publish-plugin") version "1.3.0"
 }
 
 java {
@@ -65,6 +67,22 @@ gradlePlugin {
             id = "com.posthog.android"
             implementationClass = "com.posthog.android.PostHogAndroidGradlePlugin"
             displayName = "PostHog Android Gradle Plugin"
+        }
+    }
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            stagingProfileId.set("1dbefd58b2cdd")
+            // created using yiannis at posthog.com
+            val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
+            val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
+            if (sonatypeUsername != null) username.set(sonatypeUsername)
+            if (sonatypePassword != null) password.set(sonatypePassword)
+            // https://central.sonatype.org/news/20250326_ossrh_sunset/
+            nexusUrl.set(URI("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+            snapshotRepositoryUrl.set(URI("https://central.sonatype.com/repository/maven-snapshots/"))
         }
     }
 }
