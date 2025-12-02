@@ -134,11 +134,11 @@ afterEvaluate {
 
     // Fix specific plugin marker publication dependencies
     tasks.findByName("publishPluginMavenPublicationToMavenLocal")?.dependsOn(
-        "signPostHogAndroidPluginPluginMarkerMavenPublication"
+        "signPostHogAndroidPluginPluginMarkerMavenPublication",
     )
     tasks.findByName("publishPostHogAndroidPluginPluginMarkerMavenPublicationToMavenLocal")?.dependsOn(
         "signPostHogAndroidPluginPluginMarkerMavenPublication",
-        "signPluginMavenPublication"
+        "signPluginMavenPublication",
     )
 }
 
