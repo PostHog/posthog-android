@@ -26,7 +26,7 @@ case "$MODULE" in
     perl -pi -e "s/serverVersion=.*/serverVersion=$NEW_VERSION/g" $GRADLE_FILEPATH
     ;;
   "androidPlugin")
-    perl -pi -e "s/androidPluginVersion=.*/androidPluginVersion=$NEW_VERSION/g" $GRADLE_FILEPATH
+    perl -pi -e "s/androidPluginVersion=.*/androidPluginVersion=$NEW_VERSION/g" "posthog-android-gradle-plugin/$GRADLE_FILEPATH"
     ;;
   *)
     echo "Usage: $0 {core|android|server} <version>"
