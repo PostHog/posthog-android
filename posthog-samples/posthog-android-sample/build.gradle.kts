@@ -1,6 +1,10 @@
 plugins {
     id("com.android.application")
     kotlin("android")
+    // so we don't upload mappings from our release builds on CI
+    if (!PosthogBuildConfig.isCI()) {
+        id("com.posthog.android")
+    }
 }
 
 android {

@@ -14,9 +14,10 @@ kotlin {
 
 dependencies {
     // do not upgrade to >= 1.9 otherwise it does not work with Kotlin 1.7
-    // also update PosthogBuildConfig.Kotlin.KOTLIN
+    // also update PosthogBuildConfig.Kotlin.KOTLIN and posthog-android-gradle-plugin
     val kotlinVersion = "1.8.22"
     // there's no 1.8.22 for dokka yet
+    // also update posthog-android-gradle-plugin
     val dokkaVersion = "1.8.20"
     // 8.3+ throws Could not determine the dependencies of task ':posthog:generateJvmTestLintModel'.
     implementation("com.android.tools.build:gradle:8.2.2")
