@@ -1,5 +1,9 @@
 ## Next
 
+## 2.2.0 - 2025-12-01
+
+- feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
+
 ## 2.0.1 - 2025-11-24
 
 - fix: Local evaluation properly handles cases when flag dependency should be false ([#320](https://github.com/PostHog/posthog-android/pull/320))
