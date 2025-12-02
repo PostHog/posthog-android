@@ -1,6 +1,8 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URI
 
+val postHogGroupId = "com.posthog"
+group = postHogGroupId
 version = properties["androidPluginVersion"].toString()
 
 plugins {
@@ -75,7 +77,7 @@ nexusPublishing {
     repositories {
         sonatype {
             stagingProfileId.set("1dbefd58b2cdd")
-            // created using yiannis at posthog.com
+            // created using manoel at posthog.com
             val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
             val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
             if (sonatypeUsername != null) username.set(sonatypeUsername)
@@ -87,51 +89,52 @@ nexusPublishing {
     }
 }
 
+val publishName = "maven"
 publishing {
     publications {
         // Configure the automatic plugin publication
-        withType<MavenPublication> {
-            groupId = "com.posthog"
+        create<MavenPublication>(publishName) {
+            groupId = postHogGroupId
             version = project.version.toString()
             // Add dokka artifacts to the plugin publication
+            from(components["java"])
             artifact(dokkaJavadocJar)
             artifact(dokkaHtmlJar)
-        }
-    }
 
-    publications.withType<MavenPublication> {
-        pom {
-            val repo = "posthog-android"
-            name.set(project.name)
-            description.set("PostHog Android Gradle Plugin")
-            url.set("https://github.com/postHog/$repo")
-
-            licenses {
-                license {
-                    name.set("MIT")
-                    url.set("http://opensource.org/licenses/MIT")
-                }
-            }
-            organization {
-                name.set("PostHog")
-                url.set("https://posthog.com")
-            }
-            developers {
-                developer {
-                    name.set("PostHog")
-                    email.set("engineering@posthog.com")
-                    organization.set("PostHog")
-                    organizationUrl.set("https://posthog.com")
-                }
-            }
-
-            scm {
+            pom {
+                val repo = "posthog-android"
+                name.set(project.name)
+                description.set("PostHog Android Gradle Plugin")
                 url.set("https://github.com/postHog/$repo")
-                connection.set("scm:git:git@github.com:PostHog/$repo.git")
-                developerConnection.set("scm:git:git@github.com:PostHog/$repo.git")
+
+                licenses {
+                    license {
+                        name.set("MIT")
+                        url.set("http://opensource.org/licenses/MIT")
+                    }
+                }
+                organization {
+                    name.set("PostHog")
+                    url.set("https://posthog.com")
+                }
+                developers {
+                    developer {
+                        name.set("PostHog")
+                        email.set("engineering@posthog.com")
+                        organization.set("PostHog")
+                        organizationUrl.set("https://posthog.com")
+                    }
+                }
+
+                scm {
+                    url.set("https://github.com/postHog/$repo")
+                    connection.set("scm:git:git@github.com:PostHog/$repo.git")
+                    developerConnection.set("scm:git:git@github.com:PostHog/$repo.git")
+                }
             }
         }
     }
+
     signing {
         // created using manoel at posthog.com
         val privateKey = System.getenv("GPG_PRIVATE_KEY")
@@ -140,24 +143,8 @@ publishing {
         isRequired = System.getenv("CI")?.toBoolean() ?: false
         useInMemoryPgpKeys(privateKey, password)
         // Sign all publications
-        sign(publishing.publications)
+        sign(publishing.publications.getByName(publishName))
     }
-}
-
-// Fix task dependencies for signing
-afterEvaluate {
-    tasks.withType<PublishToMavenRepository> {
-        dependsOn(tasks.withType<Sign>())
-    }
-
-    // Fix specific plugin marker publication dependencies
-    tasks.findByName("publishPluginMavenPublicationToMavenLocal")?.dependsOn(
-        "signPostHogAndroidPluginPluginMarkerMavenPublication",
-    )
-    tasks.findByName("publishPostHogAndroidPluginPluginMarkerMavenPublicationToMavenLocal")?.dependsOn(
-        "signPostHogAndroidPluginPluginMarkerMavenPublication",
-        "signPluginMavenPublication",
-    )
 }
 
 dependencies {
