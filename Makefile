@@ -48,7 +48,7 @@ releaseServer:
 	./gradlew :posthog-server:publishToSonatype closeAndReleaseSonatypeStagingRepository
 
 releaseAndroidPlugin:
-	./gradlew :posthog-android-gradle-plugin:publishToSonatype closeAndReleaseSonatypeStagingRepository
+	./gradlew :posthog-android-gradle-plugin:publishToSonatype :posthog-android-gradle-plugin:closeAndReleaseSonatypeStagingRepository
 
 testReport:
 	./gradlew koverHtmlReport

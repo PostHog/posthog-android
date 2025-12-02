@@ -1,7 +1,45 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URI
 
+val postHogGroupId = "com.posthog"
+group = postHogGroupId
 version = properties["androidPluginVersion"].toString()
+
+// Extension function for common POM configuration
+fun MavenPom.configurePom(
+    projectName: String,
+    projectDescription: String,
+) {
+    val repo = "posthog-android"
+    name.set(projectName)
+    description.set(projectDescription)
+    url.set("https://github.com/postHog/$repo")
+
+    licenses {
+        license {
+            name.set("MIT")
+            url.set("http://opensource.org/licenses/MIT")
+        }
+    }
+    organization {
+        name.set("PostHog")
+        url.set("https://posthog.com")
+    }
+    developers {
+        developer {
+            name.set("PostHog")
+            email.set("engineering@posthog.com")
+            organization.set("PostHog")
+            organizationUrl.set("https://posthog.com")
+        }
+    }
+
+    scm {
+        url.set("https://github.com/postHog/$repo")
+        connection.set("scm:git:git@github.com:PostHog/$repo.git")
+        developerConnection.set("scm:git:git@github.com:PostHog/$repo.git")
+    }
+}
 
 plugins {
     `kotlin-dsl`
@@ -75,7 +113,7 @@ nexusPublishing {
     repositories {
         sonatype {
             stagingProfileId.set("1dbefd58b2cdd")
-            // created using yiannis at posthog.com
+            // created using manoel at posthog.com
             val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
             val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
             if (sonatypeUsername != null) username.set(sonatypeUsername)
@@ -89,75 +127,47 @@ nexusPublishing {
 
 publishing {
     publications {
-        // Configure the automatic plugin publication
+        // Configure all publications with common POM data
         withType<MavenPublication> {
-            groupId = "com.posthog"
+            groupId = postHogGroupId
             version = project.version.toString()
-            // Add dokka artifacts to the plugin publication
+        }
+    }
+
+    // Configure specific publications after they're created
+    afterEvaluate {
+        publications.named<MavenPublication>("pluginMaven") {
             artifact(dokkaJavadocJar)
             artifact(dokkaHtmlJar)
-        }
-    }
 
-    publications.withType<MavenPublication> {
-        pom {
-            val repo = "posthog-android"
-            name.set(project.name)
-            description.set("PostHog Android Gradle Plugin")
-            url.set("https://github.com/postHog/$repo")
-
-            licenses {
-                license {
-                    name.set("MIT")
-                    url.set("http://opensource.org/licenses/MIT")
-                }
-            }
-            organization {
-                name.set("PostHog")
-                url.set("https://posthog.com")
-            }
-            developers {
-                developer {
-                    name.set("PostHog")
-                    email.set("engineering@posthog.com")
-                    organization.set("PostHog")
-                    organizationUrl.set("https://posthog.com")
-                }
-            }
-
-            scm {
-                url.set("https://github.com/postHog/$repo")
-                connection.set("scm:git:git@github.com:PostHog/$repo.git")
-                developerConnection.set("scm:git:git@github.com:PostHog/$repo.git")
+            pom {
+                configurePom(
+                    "PostHog Android Gradle Plugin",
+                    "PostHog Android Gradle Plugin for build-time integration",
+                )
             }
         }
-    }
-    signing {
-        // created using manoel at posthog.com
-        val privateKey = System.getenv("GPG_PRIVATE_KEY")
-        val password = System.getenv("GPG_PASSPHRASE")
-        // releases are only signed on CI, so skip this locally
-        isRequired = System.getenv("CI")?.toBoolean() ?: false
-        useInMemoryPgpKeys(privateKey, password)
-        // Sign all publications
-        sign(publishing.publications)
+
+        publications.named<MavenPublication>("postHogAndroidPluginPluginMarkerMaven") {
+            pom {
+                configurePom(
+                    "PostHog Android Gradle Plugin (Gradle Plugin)",
+                    "Gradle plugin marker for PostHog Android Gradle Plugin",
+                )
+            }
+        }
     }
 }
 
-// Fix task dependencies for signing
-afterEvaluate {
-    tasks.withType<PublishToMavenRepository> {
-        dependsOn(tasks.withType<Sign>())
-    }
-
-    // Fix specific plugin marker publication dependencies
-    tasks.findByName("publishPluginMavenPublicationToMavenLocal")?.dependsOn(
-        "signPostHogAndroidPluginPluginMarkerMavenPublication",
-    )
-    tasks.findByName("publishPostHogAndroidPluginPluginMarkerMavenPublicationToMavenLocal")?.dependsOn(
-        "signPostHogAndroidPluginPluginMarkerMavenPublication",
-        "signPluginMavenPublication",
-    )
+signing {
+    // created using manoel at posthog.com
+    val privateKey = System.getenv("GPG_PRIVATE_KEY")
+    val password = System.getenv("GPG_PASSPHRASE")
+    // releases are only signed on CI, so skip this locally
+    isRequired = System.getenv("CI")?.toBoolean() ?: false
+    useInMemoryPgpKeys(privateKey, password)
+    // Sign all publications
+    sign(publishing.publications)
 }
 
 dependencies {
