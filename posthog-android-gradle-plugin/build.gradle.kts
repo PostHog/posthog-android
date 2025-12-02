@@ -126,6 +126,22 @@ publishing {
     }
 }
 
+// Fix task dependencies for signing
+afterEvaluate {
+    tasks.withType<PublishToMavenRepository> {
+        dependsOn(tasks.withType<Sign>())
+    }
+
+    // Fix specific plugin marker publication dependencies
+    tasks.findByName("publishPluginMavenPublicationToMavenLocal")?.dependsOn(
+        "signPostHogAndroidPluginPluginMarkerMavenPublication"
+    )
+    tasks.findByName("publishPostHogAndroidPluginPluginMarkerMavenPublicationToMavenLocal")?.dependsOn(
+        "signPostHogAndroidPluginPluginMarkerMavenPublication",
+        "signPluginMavenPublication"
+    )
+}
+
 dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
