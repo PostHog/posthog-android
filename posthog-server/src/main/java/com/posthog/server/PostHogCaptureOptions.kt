@@ -14,6 +14,7 @@ public class PostHogCaptureOptions private constructor(
     public val userPropertiesSetOnce: Map<String, Any>?,
     public val groups: Map<String, String>?,
     public val timestamp: Date? = null,
+    public val sendFeatureFlags: Boolean = false,
 ) {
     public class Builder {
         public var properties: MutableMap<String, Any>? = null
@@ -21,6 +22,7 @@ public class PostHogCaptureOptions private constructor(
         public var userPropertiesSetOnce: MutableMap<String, Any>? = null
         public var groups: MutableMap<String, String>? = null
         public var timestamp: Date? = null
+        public var sendFeatureFlags: Boolean = false
 
         /**
          * Add a single custom property to the capture options
@@ -155,6 +157,17 @@ public class PostHogCaptureOptions private constructor(
             return this
         }
 
+        /**
+         * When true, enriches the event with all evaluated feature flags.
+         * Adds `$feature/{flagName}` properties for each flag and
+         * `$active_feature_flags` array containing names of all truthy flags.
+         * @see <a href="https://posthog.com/docs/feature-flags">Documentation: Feature Flags</a>
+         */
+        public fun sendFeatureFlags(sendFeatureFlags: Boolean): Builder {
+            this.sendFeatureFlags = sendFeatureFlags
+            return this
+        }
+
         public fun build(): PostHogCaptureOptions =
             PostHogCaptureOptions(
                 properties,
@@ -162,6 +175,7 @@ public class PostHogCaptureOptions private constructor(
                 userPropertiesSetOnce,
                 groups,
                 timestamp,
+                sendFeatureFlags,
             )
     }
 

@@ -1,14 +1,19 @@
 package com.posthog.server
 
 import com.posthog.server.internal.PostHogFeatureFlags
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.verify
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 internal class PostHogTest {
     private fun createMockStateless(): PostHog {
@@ -269,5 +274,286 @@ internal class PostHogTest {
         verify(postHog).captureExceptionStateless(exception, distinctId, null)
         verify(postHog).captureExceptionStateless(exception, null, properties)
         verify(postHog).captureExceptionStateless(exception, distinctId, properties)
+    }
+
+    @Test
+    fun `capture with sendFeatureFlags false does not enrich properties`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.capture(
+            "user123",
+            "test_event",
+            PostHogCaptureOptions.builder()
+                .property("custom", "value")
+                .sendFeatureFlags(false)
+                .build(),
+        )
+
+        val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(request, "Expected /batch request within 5 seconds")
+
+        val props = request.parseBatch().firstEventProperties()
+        assertFalse(
+            props.keys.any { it.startsWith("\$feature/") },
+            "Event should not contain \$feature/ properties when sendFeatureFlags is false",
+        )
+        assertFalse(
+            props.containsKey("\$active_feature_flags"),
+            "Event should not contain \$active_feature_flags when sendFeatureFlags is false",
+        )
+        assertEquals("value", props["custom"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `capture with sendFeatureFlags true enriches event with feature flag properties`() {
+        val localEvalResponse = createLocalEvaluationResponse("test-flag")
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(localEvalResponse))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .personalApiKey("phx_test_personal_api_key")
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.capture(
+            "user123",
+            "test_event",
+            PostHogCaptureOptions.builder()
+                .property("custom", "value")
+                .sendFeatureFlags(true)
+                .build(),
+        )
+
+        // Skip /local_evaluation request
+        mockServer.takeRequest(5, TimeUnit.SECONDS)
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val props = batchRequest.parseBatch().firstEventProperties()
+
+        @Suppress("UNCHECKED_CAST")
+        val activeFlags = props["\$active_feature_flags"] as? List<String>
+
+        assertEquals(true, props["\$feature/test-flag"])
+        assertNotNull(activeFlags, "Expected \$active_feature_flags to be present")
+        assertTrue(activeFlags.contains("test-flag"))
+        assertEquals("value", props["custom"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `capture with sendFeatureFlags uses local evaluation and does not call flags endpoint`() {
+        val localEvalResponse = createLocalEvaluationResponse("test-flag")
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(localEvalResponse))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .personalApiKey("phx_test_personal_api_key")
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.capture(
+            distinctId = "user123",
+            event = "test_event",
+            properties = mapOf("custom" to "value"),
+            sendFeatureFlags = true,
+        )
+
+        // Collect all requests
+        val requests = mutableListOf<RecordedRequest>()
+        var request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        while (request != null) {
+            requests.add(request)
+            request = mockServer.takeRequest(100, TimeUnit.MILLISECONDS)
+        }
+
+        assertTrue(
+            requests.any { it.path?.contains("/local_evaluation") == true },
+            "Expected /local_evaluation to be called",
+        )
+        assertTrue(
+            requests.any { it.path?.contains("/batch") == true },
+            "Expected /batch to be called",
+        )
+        assertFalse(
+            requests.any { it.path?.contains("/flags") == true },
+            "Expected /flags to NOT be called when local evaluation is enabled",
+        )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `capture with sendFeatureFlags without local evaluation calls flags endpoint`() {
+        val flagsResponse = createFlagsResponse("test-flag")
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(flagsResponse))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.capture(
+            distinctId = "user123",
+            event = "test_event",
+            properties = mapOf("custom" to "value"),
+            sendFeatureFlags = true,
+        )
+
+        val requests = mutableListOf<RecordedRequest>()
+        var request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        while (request != null) {
+            requests.add(request)
+            request = mockServer.takeRequest(100, TimeUnit.MILLISECONDS)
+        }
+
+        assertTrue(
+            requests.any { it.path?.contains("/flags") == true },
+            "Expected /flags to be called when local evaluation is not enabled",
+        )
+        assertFalse(
+            requests.any {
+                it.path?.contains("/local_evaluation") == true
+            },
+            "Expected /local_evaluation to NOT be called without personalApiKey",
+        )
+        assertTrue(
+            requests.any { it.path?.contains("/batch") == true },
+            "Expected /batch to be called",
+        )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `capture with sendFeatureFlags includes truthy flags in active_feature_flags and excludes falsy`() {
+        val localEvalResponse =
+            """
+            {
+                "flags": [
+                    {
+                        "id": 1,
+                        "name": "enabled-flag",
+                        "key": "enabled-flag",
+                        "active": true,
+                        "filters": {
+                            "groups": [{ "properties": [], "rollout_percentage": 100 }]
+                        },
+                        "version": 1
+                    },
+                    {
+                        "id": 2,
+                        "name": "disabled-flag",
+                        "key": "disabled-flag",
+                        "active": false,
+                        "filters": {
+                            "groups": [{ "properties": [], "rollout_percentage": 100 }]
+                        },
+                        "version": 1
+                    },
+                    {
+                        "id": 3,
+                        "name": "variant-flag",
+                        "key": "variant-flag",
+                        "active": true,
+                        "filters": {
+                            "multivariate": {
+                                "variants": [
+                                    { "key": "control", "rollout_percentage": 0 },
+                                    { "key": "test-variant", "rollout_percentage": 100 }
+                                ]
+                            },
+                            "groups": [{ "properties": [], "rollout_percentage": 100 }]
+                        },
+                        "version": 1
+                    }
+                ],
+                "group_type_mapping": {},
+                "cohorts": {}
+            }
+            """.trimIndent()
+
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(localEvalResponse))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .personalApiKey("phx_test_personal_api_key")
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.capture(
+            distinctId = "user123",
+            event = "test_event",
+            sendFeatureFlags = true,
+        )
+
+        // Skip /local_evaluation request
+        mockServer.takeRequest(5, TimeUnit.SECONDS)
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val props = batchRequest.parseBatch().firstEventProperties()
+
+        @Suppress("UNCHECKED_CAST")
+        val activeFlags = props["\$active_feature_flags"] as? List<String>
+
+        assertEquals(true, props["\$feature/enabled-flag"])
+        assertEquals(false, props["\$feature/disabled-flag"])
+        assertEquals("test-variant", props["\$feature/variant-flag"])
+        assertNotNull(activeFlags, "Expected \$active_feature_flags to be present")
+        assertTrue(activeFlags.contains("enabled-flag"), "enabled-flag should be in active flags")
+        assertTrue(activeFlags.contains("variant-flag"), "variant-flag should be in active flags")
+        assertFalse(activeFlags.contains("disabled-flag"), "disabled-flag should NOT be in active flags")
+
+        postHog.close()
+        mockServer.shutdown()
     }
 }

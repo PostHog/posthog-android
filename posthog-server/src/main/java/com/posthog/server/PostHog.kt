@@ -41,11 +41,25 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
         timestamp: java.util.Date?,
+        sendFeatureFlags: Boolean,
     ) {
+        val mergedProperties =
+            if (sendFeatureFlags) {
+                mergeFeatureFlagProperties(
+                    distinctId = distinctId,
+                    groups = groups,
+                    userProperties = userProperties,
+                    groupProperties = null,
+                    properties = properties,
+                )
+            } else {
+                properties
+            }
+
         super.captureStateless(
             event,
             distinctId,
-            properties,
+            mergedProperties,
             userProperties,
             userPropertiesSetOnce,
             groups,
@@ -145,6 +159,45 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             distinctId = distinctId,
             properties = properties,
         )
+    }
+
+    private fun mergeFeatureFlagProperties(
+        distinctId: String,
+        groups: Map<String, String>?,
+        userProperties: Map<String, Any>?,
+        groupProperties: Map<String, Map<String, Any>>?,
+        properties: Map<String, Any>?,
+    ): Map<String, Any> {
+        val props = properties?.toMutableMap() ?: mutableMapOf()
+        val flags =
+            (featureFlags as? PostHogFeatureFlags)?.getFeatureFlags(
+                distinctId = distinctId,
+                groups = groups,
+                groupProperties = groupProperties,
+                personProperties = userProperties,
+            )
+
+        if (flags != null && flags.isNotEmpty()) {
+            val activeFlags = mutableListOf<String>()
+
+            for ((key, flag) in flags) {
+                val flagValue: Any = flag.variant ?: flag.enabled
+                props["\$feature/$key"] = flagValue
+                val isActive =
+                    when (flagValue) {
+                        is Boolean -> flagValue
+                        is String -> flagValue.isNotEmpty()
+                        else -> true
+                    }
+                if (isActive) {
+                    activeFlags.add(key)
+                }
+            }
+
+            props["\$active_feature_flags"] = activeFlags
+        }
+
+        return props
     }
 
     public companion object {

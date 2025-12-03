@@ -70,10 +70,13 @@ public sealed interface PostHogInterface {
     /**
      * Captures events
      * @param distinctId the distinctId of the user performing the event
+     * @param event the event name
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param timestamp the timestamp for the event
+     * @param sendFeatureFlags when true, enriches the event with feature flag properties
      */
     @JvmSynthetic
     public fun capture(
@@ -84,13 +87,14 @@ public sealed interface PostHogInterface {
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
         timestamp: Date? = null,
+        sendFeatureFlags: Boolean = false,
     )
 
     /**
      * Captures events
-     * @param event the event name
      * @param distinctId the distinctId
-     * @param options the capture options containing properties, userProperties, userPropertiesSetOnce, and groups
+     * @param event the event name
+     * @param options the capture options containing properties, userProperties, userPropertiesSetOnce, groups, and sendFeatureFlags
      */
     public fun capture(
         distinctId: String,
@@ -105,6 +109,7 @@ public sealed interface PostHogInterface {
             options.userPropertiesSetOnce,
             options.groups,
             options.timestamp,
+            options.sendFeatureFlags,
         )
     }
 
