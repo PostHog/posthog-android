@@ -1,9 +1,8 @@
 ## Next
 
-## 5.2.0 - 2025-11-24
+## 5.2.0 - 2025-12-03
 
 - feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
-
 
 ## 5.1.0 - 2025-11-06
 
