@@ -159,3 +159,6 @@ gradle-app.setting
 **/bin/
 # But keep the root bin directory
 !/bin/
+
+# vscode
+.vscode/settings.json

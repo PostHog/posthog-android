@@ -19,4 +19,4 @@ public open class PostHogAndroidConfig
         public var captureDeepLinks: Boolean = true,
         public var captureScreenViews: Boolean = true,
         public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
-    ) : PostHogConfig(apiKey, host)
+    ) : PostHogConfig(apiKey = apiKey, host = host)
