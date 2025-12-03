@@ -149,9 +149,6 @@ publishing {
         }
 
         publications.named<MavenPublication>("postHogAndroidPluginPluginMarkerMaven") {
-            // Override the group ID to match the main plugin publication
-            groupId = postHogGroupId
-
             pom {
                 configurePom(
                     "PostHog Android Gradle Plugin (Gradle Plugin)",
