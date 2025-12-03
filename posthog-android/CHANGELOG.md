@@ -1,5 +1,7 @@
 ## Next
 
+- fix: attempt to fix NoSuchMethodError PostHogAndroidConfig
+
 ## 3.27.0 - 2025-12-02
 
 - feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
