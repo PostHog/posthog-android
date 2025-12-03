@@ -1,6 +1,6 @@
 ## Next
 
-- fix: attempt to fix NoSuchMethodError PostHogAndroidConfig
+- fix: attempt to fix NoSuchMethodError PostHogAndroidConfig ([#342](https://github.com/PostHog/posthog-android/pull/342))
 
 ## 3.27.0 - 2025-12-02
 
