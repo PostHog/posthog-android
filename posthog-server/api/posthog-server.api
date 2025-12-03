@@ -4,7 +4,7 @@ public final class com/posthog/server/PostHog : com/posthog/PostHogStateless, co
 	public fun alias (Ljava/lang/String;Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogCaptureOptions;)V
-	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
+	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Z)V
 	public fun captureException (Ljava/lang/Throwable;)V
 	public fun captureException (Ljava/lang/Throwable;Ljava/lang/String;)V
 	public fun captureException (Ljava/lang/Throwable;Ljava/lang/String;Ljava/util/Map;)V
@@ -40,10 +40,11 @@ public final class com/posthog/server/PostHog$Companion {
 
 public final class com/posthog/server/PostHogCaptureOptions {
 	public static final field Companion Lcom/posthog/server/PostHogCaptureOptions$Companion;
-	public synthetic fun <init> (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public static final fun builder ()Lcom/posthog/server/PostHogCaptureOptions$Builder;
 	public final fun getGroups ()Ljava/util/Map;
 	public final fun getProperties ()Ljava/util/Map;
+	public final fun getSendFeatureFlags ()Z
 	public final fun getTimestamp ()Ljava/util/Date;
 	public final fun getUserProperties ()Ljava/util/Map;
 	public final fun getUserPropertiesSetOnce ()Ljava/util/Map;
@@ -54,6 +55,7 @@ public final class com/posthog/server/PostHogCaptureOptions$Builder {
 	public final fun build ()Lcom/posthog/server/PostHogCaptureOptions;
 	public final fun getGroups ()Ljava/util/Map;
 	public final fun getProperties ()Ljava/util/Map;
+	public final fun getSendFeatureFlags ()Z
 	public final fun getTimestamp ()Ljava/util/Date;
 	public final fun getUserProperties ()Ljava/util/Map;
 	public final fun getUserPropertiesSetOnce ()Ljava/util/Map;
@@ -61,8 +63,10 @@ public final class com/posthog/server/PostHogCaptureOptions$Builder {
 	public final fun groups (Ljava/util/Map;)Lcom/posthog/server/PostHogCaptureOptions$Builder;
 	public final fun properties (Ljava/util/Map;)Lcom/posthog/server/PostHogCaptureOptions$Builder;
 	public final fun property (Ljava/lang/String;Ljava/lang/Object;)Lcom/posthog/server/PostHogCaptureOptions$Builder;
+	public final fun sendFeatureFlags (Z)Lcom/posthog/server/PostHogCaptureOptions$Builder;
 	public final fun setGroups (Ljava/util/Map;)V
 	public final fun setProperties (Ljava/util/Map;)V
+	public final fun setSendFeatureFlags (Z)V
 	public final fun setTimestamp (Ljava/util/Date;)V
 	public final fun setUserProperties (Ljava/util/Map;)V
 	public final fun setUserPropertiesSetOnce (Ljava/util/Map;)V
@@ -203,7 +207,7 @@ public abstract interface class com/posthog/server/PostHogInterface {
 	public abstract fun alias (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun capture (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun capture (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogCaptureOptions;)V
-	public abstract synthetic fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
+	public abstract synthetic fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Z)V
 	public abstract fun captureException (Ljava/lang/Throwable;)V
 	public abstract fun captureException (Ljava/lang/Throwable;Ljava/lang/String;)V
 	public abstract fun captureException (Ljava/lang/Throwable;Ljava/lang/String;Ljava/util/Map;)V
@@ -235,7 +239,7 @@ public abstract interface class com/posthog/server/PostHogInterface {
 public final class com/posthog/server/PostHogInterface$DefaultImpls {
 	public static fun capture (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;)V
 	public static fun capture (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/server/PostHogCaptureOptions;)V
-	public static synthetic fun capture$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)V
+	public static synthetic fun capture$default (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ZILjava/lang/Object;)V
 	public static fun captureException (Lcom/posthog/server/PostHogInterface;Ljava/lang/Throwable;)V
 	public static fun captureException (Lcom/posthog/server/PostHogInterface;Ljava/lang/Throwable;Ljava/lang/String;)V
 	public static fun captureException (Lcom/posthog/server/PostHogInterface;Ljava/lang/Throwable;Ljava/util/Map;)V
