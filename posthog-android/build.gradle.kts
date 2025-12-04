@@ -2,7 +2,7 @@
 
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
 
-version = properties["androidVersion"].toString()
+version = PosthogBuildConfig.version("posthog-android")
 
 plugins {
     id("com.android.library")

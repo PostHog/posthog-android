@@ -3,7 +3,7 @@
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-version = properties["serverVersion"].toString()
+version = PosthogBuildConfig.version("posthog-server")
 
 plugins {
     `java-library`

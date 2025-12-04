@@ -1,6 +1,24 @@
+import groovy.json.JsonSlurper
 import org.gradle.api.JavaVersion
+import java.io.File
 
 object PosthogBuildConfig {
+
+    /**
+     * Reads a module version from .release-please-manifest.json
+     *
+     * @param key The module key in the manifest (e.g., "posthog", "posthog-android")
+     * @return The version string
+     */
+    fun version(key: String): String {
+        val manifestFile = File(System.getProperty("user.dir"), ".release-please-manifest.json")
+        if (!manifestFile.exists()) {
+            error("Release manifest not found: ${manifestFile.absolutePath}")
+        }
+        val versions = JsonSlurper().parseText(manifestFile.readText()) as Map<*, *>
+        return versions[key]?.toString()
+            ?: error("Version for '$key' not found in manifest")
+    }
     fun shouldSkipDebugVariant(name: String): Boolean {
         return isCI() && name == "debug"
     }

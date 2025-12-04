@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "ea03a27a80e3d25c19a40e84abb35340b386892a",
+  "release-type": "simple",
+  "packages": {
+    "posthog": {
+      "component": "core"
+    },
+    "posthog-android": {
+      "component": "android"
+    },
+    "posthog-server": {
+      "component": "server"
+    },
+    "posthog-android-gradle-plugin": {
+      "component": "androidPlugin"
+    }
+  }
+}

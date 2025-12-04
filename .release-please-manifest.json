@@ -1,0 +1,6 @@
+{
+  "posthog": "5.2.0",
+  "posthog-android": "3.27.2",
+  "posthog-server": "2.0.1",
+  "posthog-android-gradle-plugin": "1.0.2"
+}
