@@ -277,7 +277,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `capture with sendFeatureFlags false does not enrich properties`() {
+    fun `capture with appendFeatureFlags false does not enrich properties`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(MockResponse().setResponseCode(200))
         mockServer.start()
@@ -296,7 +296,7 @@ internal class PostHogTest {
             "test_event",
             PostHogCaptureOptions.builder()
                 .property("custom", "value")
-                .sendFeatureFlags(false)
+                .appendFeatureFlags(false)
                 .build(),
         )
 
@@ -306,11 +306,11 @@ internal class PostHogTest {
         val props = request.parseBatch().firstEventProperties()
         assertFalse(
             props.keys.any { it.startsWith("\$feature/") },
-            "Event should not contain \$feature/ properties when sendFeatureFlags is false",
+            "Event should not contain \$feature/ properties when appendFeatureFlags is false",
         )
         assertFalse(
             props.containsKey("\$active_feature_flags"),
-            "Event should not contain \$active_feature_flags when sendFeatureFlags is false",
+            "Event should not contain \$active_feature_flags when appendFeatureFlags is false",
         )
         assertEquals("value", props["custom"])
 
@@ -319,7 +319,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `capture with sendFeatureFlags true enriches event with feature flag properties`() {
+    fun `capture with appendFeatureFlags true enriches event with feature flag properties`() {
         val localEvalResponse = createLocalEvaluationResponse("test-flag")
         val mockServer = MockWebServer()
         mockServer.enqueue(jsonResponse(localEvalResponse))
@@ -341,7 +341,7 @@ internal class PostHogTest {
             "test_event",
             PostHogCaptureOptions.builder()
                 .property("custom", "value")
-                .sendFeatureFlags(true)
+                .appendFeatureFlags(true)
                 .build(),
         )
 
@@ -366,7 +366,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `capture with sendFeatureFlags uses local evaluation and does not call flags endpoint`() {
+    fun `capture with appendFeatureFlags uses local evaluation and does not call flags endpoint`() {
         val localEvalResponse = createLocalEvaluationResponse("test-flag")
         val mockServer = MockWebServer()
         mockServer.enqueue(jsonResponse(localEvalResponse))
@@ -387,7 +387,7 @@ internal class PostHogTest {
             distinctId = "user123",
             event = "test_event",
             properties = mapOf("custom" to "value"),
-            sendFeatureFlags = true,
+            appendFeatureFlags = true,
         )
 
         // Collect all requests
@@ -416,7 +416,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `capture with sendFeatureFlags without local evaluation calls flags endpoint`() {
+    fun `capture with appendFeatureFlags without local evaluation calls flags endpoint`() {
         val flagsResponse = createFlagsResponse("test-flag")
         val mockServer = MockWebServer()
         mockServer.enqueue(jsonResponse(flagsResponse))
@@ -436,7 +436,7 @@ internal class PostHogTest {
             distinctId = "user123",
             event = "test_event",
             properties = mapOf("custom" to "value"),
-            sendFeatureFlags = true,
+            appendFeatureFlags = true,
         )
 
         val requests = mutableListOf<RecordedRequest>()
@@ -466,7 +466,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `capture with sendFeatureFlags includes truthy flags in active_feature_flags and excludes falsy`() {
+    fun `capture with appendFeatureFlags includes truthy flags in active_feature_flags and excludes falsy`() {
         val localEvalResponse =
             """
             {
@@ -531,7 +531,7 @@ internal class PostHogTest {
         postHog.capture(
             distinctId = "user123",
             event = "test_event",
-            sendFeatureFlags = true,
+            appendFeatureFlags = true,
         )
 
         // Skip /local_evaluation request

@@ -41,10 +41,10 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
         timestamp: java.util.Date?,
-        sendFeatureFlags: Boolean,
+        appendFeatureFlags: Boolean,
     ) {
         val mergedProperties =
-            if (sendFeatureFlags) {
+            if (appendFeatureFlags) {
                 mergeFeatureFlagProperties(
                     distinctId = distinctId,
                     groups = groups,

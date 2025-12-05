@@ -177,7 +177,7 @@ postHog.capture(
 
 ### Enriching Events with Feature Flags
 
-You can automatically enrich captured events with the user's current feature flag values by setting `sendFeatureFlags` to `true`. This adds `$feature/flag_name` properties for each flag and an `$active_feature_flags` array containing all enabled flags.
+You can automatically enrich captured events with the user's current feature flag values by setting `appendFeatureFlags` to `true`. This adds `$feature/flag_name` properties for each flag and an `$active_feature_flags` array containing all enabled flags.
 
 This is useful for analyzing how feature flags correlate with user behavior without manually tracking flag states.
 
@@ -188,7 +188,7 @@ postHog.capture(
     distinctId = "user123",
     event = "purchase_completed",
     properties = mapOf("amount" to 99.99),
-    sendFeatureFlags = true
+    appendFeatureFlags = true
 )
 ```
 
@@ -201,12 +201,12 @@ postHog.capture(
     PostHogCaptureOptions
         .builder()
         .property("amount", 99.99)
-        .sendFeatureFlags(true)
+        .appendFeatureFlags(true)
         .build()
 );
 ```
 
-When `sendFeatureFlags` is `true`, the SDK will fetch feature flags for the user (or use locally evaluated flags if local evaluation is enabled) and include them in the event properties.
+When `appendFeatureFlags` is `true`, the SDK will fetch feature flags for the user (or use locally evaluated flags if local evaluation is enabled) and include them in the event properties.
 
 ## Error Tracking
 
