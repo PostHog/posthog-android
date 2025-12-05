@@ -1,8 +1,7 @@
 ## Next
 
-## 2.2.0 - 2025-12-01
-
-- feat: include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
+- feat: Include `evaluated_at` properties in `$feature_flag_called` events ([#321](https://github.com/PostHog/posthog-android/pull/321))
+- feat: Add `appendFeatureFlags` optional boolean to `capture` ([#347](https://github.com/PostHog/posthog-android/pull/347))
 
 ## 2.0.1 - 2025-11-24
 

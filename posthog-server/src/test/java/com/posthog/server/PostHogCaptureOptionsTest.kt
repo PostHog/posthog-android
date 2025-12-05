@@ -581,4 +581,43 @@ internal class PostHogCaptureOptionsTest {
         assertEquals(date, optionsFromLong.timestamp)
         assertEquals(date, optionsFromInstant.timestamp)
     }
+
+    @Test
+    fun `appendFeatureFlags defaults to false`() {
+        val options = PostHogCaptureOptions.builder().build()
+
+        assertEquals(false, options.appendFeatureFlags)
+    }
+
+    @Test
+    fun `appendFeatureFlags can be set to true`() {
+        val options =
+            PostHogCaptureOptions.builder()
+                .appendFeatureFlags(true)
+                .build()
+
+        assertEquals(true, options.appendFeatureFlags)
+    }
+
+    @Test
+    fun `appendFeatureFlags returns builder for chaining`() {
+        val builder = PostHogCaptureOptions.builder()
+        val result = builder.appendFeatureFlags(true)
+
+        assertEquals(builder, result)
+    }
+
+    @Test
+    fun `appendFeatureFlags can be combined with other options`() {
+        val options =
+            PostHogCaptureOptions.builder()
+                .property("key", "value")
+                .appendFeatureFlags(true)
+                .timestamp(Date(1234567890L))
+                .build()
+
+        assertEquals(mapOf("key" to "value"), options.properties)
+        assertEquals(true, options.appendFeatureFlags)
+        assertEquals(Date(1234567890L), options.timestamp)
+    }
 }
