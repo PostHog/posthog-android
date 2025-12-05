@@ -526,6 +526,19 @@ public final class com/posthog/internal/FlagProperty {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/posthog/internal/LocalEvaluationApiResponse {
+	public static final field Companion Lcom/posthog/internal/LocalEvaluationApiResponse$Companion;
+	public synthetic fun <init> (Lcom/posthog/internal/LocalEvaluationResponse;Ljava/lang/String;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getEtag ()Ljava/lang/String;
+	public final fun getResult ()Lcom/posthog/internal/LocalEvaluationResponse;
+	public final fun getWasModified ()Z
+}
+
+public final class com/posthog/internal/LocalEvaluationApiResponse$Companion {
+	public final fun notModified (Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
+	public final fun success (Lcom/posthog/internal/LocalEvaluationResponse;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
+}
+
 public final class com/posthog/internal/LocalEvaluationResponse {
 	public fun <init> (Ljava/util/List;Ljava/util/Map;Ljava/util/Map;)V
 	public final fun component1 ()Ljava/util/List;
@@ -564,7 +577,8 @@ public final class com/posthog/internal/PostHogApi {
 	public final fun batch (Ljava/util/List;)V
 	public final fun flags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
-	public final fun localEvaluation (Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationResponse;
+	public final fun localEvaluation (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
+	public static synthetic fun localEvaluation$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/LocalEvaluationApiResponse;
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
 	public final fun snapshot (Ljava/util/List;)V
 }

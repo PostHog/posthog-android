@@ -1,5 +1,5 @@
 # PostHog Configuration
-# Update these values with your PostHog credentials
+# Copy this file to application.properties and update with your values
 
 # Your project API key (found in PostHog -> Settings -> Project -> Project API Key)
 posthog.api.key=phc_your_project_api_key_here
@@ -12,3 +12,6 @@ posthog.host=https://us.i.posthog.com
 
 # Note: Personal API key for local evaluation should be set via environment variable:
 # export POSTHOG_PERSONAL_API_KEY=phx_your_personal_api_key_here
+#
+# Personal API keys can be created at:
+# https://us.posthog.com/settings/user-api-keys

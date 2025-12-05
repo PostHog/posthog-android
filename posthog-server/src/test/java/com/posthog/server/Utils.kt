@@ -256,6 +256,30 @@ public fun jsonResponse(body: String): MockResponse {
 }
 
 /**
+ * Creates a MockResponse with JSON content type and ETag header
+ */
+public fun jsonResponseWithEtag(
+    body: String,
+    etag: String,
+): MockResponse {
+    return MockResponse()
+        .setBody(body)
+        .setHeader("Content-Type", "application/json")
+        .setHeader("ETag", etag)
+}
+
+/**
+ * Creates a 304 Not Modified response with optional ETag header
+ */
+public fun notModifiedResponse(etag: String? = null): MockResponse {
+    val response = MockResponse().setResponseCode(304)
+    if (etag != null) {
+        response.setHeader("ETag", etag)
+    }
+    return response
+}
+
+/**
  * Creates a MockResponse with error status
  */
 public fun errorResponse(

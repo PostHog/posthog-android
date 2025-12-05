@@ -14,7 +14,10 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 internal class PostHogApiTest {
     private fun getSut(
@@ -178,5 +181,133 @@ internal class PostHogApiTest {
         assertEquals(port, request.requestUrl?.port)
         assertEquals(hostname, request.requestUrl?.host)
         server.shutdown()
+    }
+
+    // Local Evaluation ETag Tests
+
+    private fun createLocalEvaluationJson(): String =
+        """
+        {
+            "flags": [
+                {
+                    "id": 1,
+                    "name": "test-flag",
+                    "key": "test-flag",
+                    "active": true,
+                    "filters": {
+                        "groups": [
+                            {
+                                "properties": [],
+                                "rollout_percentage": 100
+                            }
+                        ]
+                    },
+                    "version": 1
+                }
+            ],
+            "group_type_mapping": {},
+            "cohorts": {}
+        }
+        """.trimIndent()
+
+    @Test
+    fun `localEvaluation sends If-None-Match header when ETag provided`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(createLocalEvaluationJson())
+                        .setHeader("ETag", "\"new-etag\""),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val response = sut.localEvaluation("test-personal-key", etag = "\"previous-etag\"")
+
+        val request = http.takeRequest()
+
+        assertEquals("\"previous-etag\"", request.headers["If-None-Match"])
+        assertEquals("\"new-etag\"", response.etag)
+        assertTrue(response.wasModified)
+        assertNotNull(response.result)
+    }
+
+    @Test
+    fun `localEvaluation handles 304 Not Modified`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(304)
+                        .setHeader("ETag", "\"same-etag\""),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val response = sut.localEvaluation("test-personal-key", etag = "\"same-etag\"")
+
+        assertFalse(response.wasModified)
+        assertEquals("\"same-etag\"", response.etag)
+        assertNull(response.result)
+    }
+
+    @Test
+    fun `localEvaluation preserves request ETag on 304 when server omits ETag header`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(304),
+                // No ETag header in response
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val response = sut.localEvaluation("test-personal-key", etag = "\"original-etag\"")
+
+        assertFalse(response.wasModified)
+        // Should preserve the original ETag from the request
+        assertEquals("\"original-etag\"", response.etag)
+        assertNull(response.result)
+    }
+
+    @Test
+    fun `localEvaluation works without ETag parameter`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(createLocalEvaluationJson())
+                        .setHeader("ETag", "\"first-etag\""),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val response = sut.localEvaluation("test-personal-key")
+
+        val request = http.takeRequest()
+
+        assertNull(request.headers["If-None-Match"])
+        assertEquals("\"first-etag\"", response.etag)
+        assertTrue(response.wasModified)
+        assertNotNull(response.result)
+    }
+
+    @Test
+    fun `localEvaluation throws on error response`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(401).setBody("Unauthorized"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.localEvaluation("test-personal-key")
+            }
+        assertEquals(401, exc.statusCode)
     }
 }
