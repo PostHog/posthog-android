@@ -6,7 +6,9 @@ import com.posthog.internal.FeatureFlag
 import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogFeatureFlagsInterface
+import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PropertyGroup
+import java.io.IOException
 
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
@@ -46,6 +48,13 @@ internal class PostHogFeatureFlags(
     private var isLoading = false
 
     private val loadLock = Object()
+
+    /**
+     * ETag for conditional requests to reduce bandwidth when polling for feature flags.
+     * When flags haven't changed, the server returns 304 Not Modified instead of the full payload.
+     */
+    @Volatile
+    private var etag: String? = null
 
     init {
         try {
@@ -301,6 +310,7 @@ internal class PostHogFeatureFlags(
 
     override fun clear() {
         cache.clear()
+        etag = null
         config.logger.log("Feature flags cache cleared")
     }
 
@@ -309,7 +319,8 @@ internal class PostHogFeatureFlags(
     }
 
     /**
-     * Load feature flag definitions from the API for local evaluation
+     * Load feature flag definitions from the API for local evaluation.
+     * Uses ETag for conditional requests to reduce bandwidth when flags haven't changed.
      */
     public fun loadFeatureFlagDefinitions() {
         if (!localEvaluation || personalApiKey == null) {
@@ -340,27 +351,50 @@ internal class PostHogFeatureFlags(
 
         try {
             config.logger.log("Loading feature flags for local evaluation")
-            val apiResponse = api.localEvaluation(personalApiKey)
+            val response = api.localEvaluation(personalApiKey, etag)
 
-            if (apiResponse != null) {
-                synchronized(loadLock) {
-                    featureFlags = apiResponse.flags
-                    flagDefinitions = apiResponse.flags?.associateBy { it.key }
-                    cohorts = apiResponse.cohorts
-                    groupTypeMapping = apiResponse.groupTypeMapping
+            // If 304 Not Modified, keep using cached data (update ETag if server sent a new one)
+            if (!response.wasModified) {
+                etag = response.etag ?: etag
+                config.logger.log("Feature flags not modified, using cached definitions")
+                return
+            }
 
-                    config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
+            // On failure (no result), preserve existing ETag for retry
+            val apiResponse = response.result
+            if (apiResponse == null) {
+                return
+            }
 
-                    definitionsLoaded = true
-                    try {
-                        onFeatureFlags?.loaded()
-                    } catch (e: Throwable) {
-                        config.logger.log("Error in onFeatureFlags callback: ${e.message}")
-                    }
+            // Success: update ETag (or clear if server stopped sending one)
+            etag = response.etag
+
+            synchronized(loadLock) {
+                featureFlags = apiResponse.flags
+                flagDefinitions = apiResponse.flags?.associateBy { it.key }
+                cohorts = apiResponse.cohorts
+                groupTypeMapping = apiResponse.groupTypeMapping
+
+                config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
+
+                definitionsLoaded = true
+                try {
+                    onFeatureFlags?.loaded()
+                } catch (e: Throwable) {
+                    config.logger.log("Error in onFeatureFlags callback: ${e.message}")
                 }
             }
-        } catch (e: Throwable) {
+        } catch (e: PostHogApiError) {
+            // Clear ETag on API errors (4xx/5xx) so next request starts fresh
+            etag = null
             config.logger.log("Failed to load feature flags for local evaluation: ${e.message}")
+        } catch (e: IOException) {
+            // Preserve ETag on network errors - likely transient, retry with same ETag
+            config.logger.log("Network error loading feature flags (will retry): ${e.message}")
+        } catch (e: Throwable) {
+            // Clear ETag on unexpected errors
+            etag = null
+            config.logger.log("Unexpected error loading feature flags: ${e.message}")
         } finally {
             synchronized(loadLock) {
                 isLoading = false

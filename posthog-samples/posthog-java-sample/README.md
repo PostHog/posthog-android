@@ -1,68 +1,94 @@
 # PostHog Java Sample
 
-This is a simple Java 1.8 example demonstrating how to use the PostHog Server library.
+Interactive Java example demonstrating the PostHog Server SDK.
 
-## Overview
+## Features
 
-This sample shows:
-- Basic PostHog configuration
-- Event capture
-- Event capture with properties
-- User identification
-- User properties
-- Feature flags
-- Group analytics
+This sample demonstrates:
+
+- **Event Capture** - Track user actions and custom events
+- **User Identification** - Identify users and set properties
+- **Group Analytics** - Associate users with companies/organizations
+- **Feature Flags** - Remote and local evaluation
+- **Local Evaluation with ETag Polling** - Bandwidth-efficient flag polling
+- **Error Tracking** - Capture and report exceptions
+
+## Setup
+
+1. Copy the example properties file and configure your API keys:
+
+   ```bash
+   cp src/main/resources/application.properties.example src/main/resources/application.properties
+   ```
+
+2. Edit `application.properties` with your PostHog project API key:
+
+   ```properties
+   posthog.api.key=phc_your_project_api_key_here
+   posthog.host=https://us.i.posthog.com
+   ```
+
+3. (Optional) For local evaluation, set your personal API key:
+
+   ```bash
+   export POSTHOG_PERSONAL_API_KEY=phx_your_personal_api_key_here
+   ```
+
+   Personal API keys can be created at: <https://us.posthog.com/settings/user-api-keys>
 
 ## Running the Example
 
-1. Update the API key in `PostHogJavaExample.java`:
-   ```java
-   PostHogConfig config = new PostHogConfig("your_actual_api_key_here")
-   ```
-
-2. Run the example:
-   ```bash
-   ./gradlew :posthog-samples:posthog-java-sample:run
-   ```
-
-## Key Features Demonstrated
-
-### Event Tracking
-```java
-// Simple event
-postHog.capture("button_clicked");
-
-// Event with properties
-Map<String, Object> properties = new HashMap<>();
-properties.put("button_name", "signup");
-postHog.capture("button_clicked", properties);
+```bash
+./gradlew :posthog-samples:posthog-java-sample:run --console=plain
 ```
 
-### User Management
-```java
-// Identify user
-postHog.identify("user123");
+You'll see an interactive menu:
 
-// Set user properties
-Map<String, Object> userProperties = new HashMap<>();
-userProperties.put("email", "user@example.com");
-postHog.capture("$set", userProperties);
+```text
+PostHog Java SDK Demo - Choose an example to run:
+
+1. Capture events
+2. Identify users
+3. Feature flags (remote evaluation)
+4. Local evaluation with ETag polling
+5. Run all examples
+6. Exit
 ```
 
-### Feature Flags
-```java
-boolean isEnabled = postHog.isFeatureEnabled("new_feature", false);
-Object flagValue = postHog.getFeatureFlag("new_feature");
+## Examples
+
+### 1. Capture Events
+
+Demonstrates basic event tracking with properties.
+
+### 2. Identify Users
+
+Shows user identification, group association, and aliasing.
+
+### 3. Feature Flags (Remote Evaluation)
+
+Fetches feature flag values from the PostHog API.
+
+### 4. Local Evaluation with ETag Polling
+
+Demonstrates local feature flag evaluation with ETag support for bandwidth optimization.
+This example polls every 5 seconds for 30 seconds so you can observe:
+
+- First poll: Full response with flag definitions
+- Subsequent polls: HTTP 304 Not Modified (if flags unchanged)
+
+Watch the debug logs for messages like:
+
+```text
+Feature flags not modified (304), using cached data
 ```
 
-### Groups
-```java
-Map<String, Object> groupProperties = new HashMap<>();
-groupProperties.put("name", "Acme Corp");
-postHog.group("company", "company_123", groupProperties);
-```
+### 5. Run All Examples
+
+Runs all examples in sequence.
 
 ## Requirements
 
-- Java 1.8 or higher
-- PostHog API key
+- Java 8 or higher
+- PostHog project API key
+- (Optional) Personal API key for local evaluation
