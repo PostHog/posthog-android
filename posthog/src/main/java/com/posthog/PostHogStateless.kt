@@ -445,7 +445,7 @@ public open class PostHogStateless protected constructor(
                 requestId?.let { props["\$feature_flag_request_id"] = it }
                 evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
 
-                captureStateless("\$feature_flag_called", distinctId, properties = props)
+                captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props)
             }
         }
     }
