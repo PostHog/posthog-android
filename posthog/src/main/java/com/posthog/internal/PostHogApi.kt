@@ -248,7 +248,8 @@ public class PostHogApi(
                 val result: LocalEvaluationResponse? = config.serializer.deserialize(body.charStream().buffered())
                 return LocalEvaluationApiResponse.success(result, responseEtag)
             }
-            return LocalEvaluationApiResponse.success(null, responseEtag)
+            // Empty body on success is anomalous - clear ETag to force fresh fetch next time
+            return LocalEvaluationApiResponse.success(null, null)
         }
     }
 

@@ -1252,5 +1252,4 @@ internal class PostHogFeatureFlagsTest {
 
         mockServer.shutdown()
     }
-
 }

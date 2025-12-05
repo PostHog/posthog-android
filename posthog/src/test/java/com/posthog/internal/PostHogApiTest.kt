@@ -185,7 +185,8 @@ internal class PostHogApiTest {
 
     // Local Evaluation ETag Tests
 
-    private fun createLocalEvaluationJson(): String = """
+    private fun createLocalEvaluationJson(): String =
+        """
         {
             "flags": [
                 {
@@ -207,15 +208,17 @@ internal class PostHogApiTest {
             "group_type_mapping": {},
             "cohorts": {}
         }
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `localEvaluation sends If-None-Match header when ETag provided`() {
-        val http = mockHttp(
-            response = MockResponse()
-                .setBody(createLocalEvaluationJson())
-                .setHeader("ETag", "\"new-etag\"")
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(createLocalEvaluationJson())
+                        .setHeader("ETag", "\"new-etag\""),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -232,11 +235,13 @@ internal class PostHogApiTest {
 
     @Test
     fun `localEvaluation handles 304 Not Modified`() {
-        val http = mockHttp(
-            response = MockResponse()
-                .setResponseCode(304)
-                .setHeader("ETag", "\"same-etag\"")
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(304)
+                        .setHeader("ETag", "\"same-etag\""),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -250,11 +255,13 @@ internal class PostHogApiTest {
 
     @Test
     fun `localEvaluation preserves request ETag on 304 when server omits ETag header`() {
-        val http = mockHttp(
-            response = MockResponse()
-                .setResponseCode(304)
-            // No ETag header in response
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(304),
+                // No ETag header in response
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -269,11 +276,13 @@ internal class PostHogApiTest {
 
     @Test
     fun `localEvaluation works without ETag parameter`() {
-        val http = mockHttp(
-            response = MockResponse()
-                .setBody(createLocalEvaluationJson())
-                .setHeader("ETag", "\"first-etag\"")
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(createLocalEvaluationJson())
+                        .setHeader("ETag", "\"first-etag\""),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -295,9 +304,10 @@ internal class PostHogApiTest {
 
         val sut = getSut(host = url.toString())
 
-        val exc = assertThrows(PostHogApiError::class.java) {
-            sut.localEvaluation("test-personal-key")
-        }
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.localEvaluation("test-personal-key")
+            }
         assertEquals(401, exc.statusCode)
     }
 }

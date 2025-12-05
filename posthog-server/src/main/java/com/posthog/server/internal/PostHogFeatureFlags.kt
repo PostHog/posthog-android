@@ -5,8 +5,8 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.FeatureFlag
 import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
-import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogApiError
+import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PropertyGroup
 import java.io.IOException
 

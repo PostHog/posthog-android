@@ -1,7 +1,6 @@
 ## Next
 
 - feat: Add ETag support for local evaluation polling to reduce bandwidth when flags haven't changed ([#350](https://github.com/PostHog/posthog-android/pull/350))
-- fix: Preserve ETag on transient network errors instead of clearing it ([#350](https://github.com/PostHog/posthog-android/pull/350))
 
 ## 2.1.0 - 2025-12-05
 
