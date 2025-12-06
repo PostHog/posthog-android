@@ -1,9 +1,14 @@
+import groovy.json.JsonSlurper
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URI
 
 val postHogGroupId = "com.posthog"
 group = postHogGroupId
-version = properties["androidPluginVersion"].toString()
+
+val manifest = file("../.release-please-manifest.json")
+val versions = JsonSlurper().parseText(manifest.readText()) as Map<*, *>
+version = versions["posthog-android-gradle-plugin"]?.toString()
+    ?: error("Version for 'posthog-android-gradle-plugin' not found in manifest")
 
 // Extension function for common POM configuration
 fun MavenPom.configurePom(
