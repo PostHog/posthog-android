@@ -195,21 +195,46 @@ public class PostHogApi(
         }
     }
 
+    /**
+     * Fetches feature flag definitions for local evaluation.
+     *
+     * @param personalApiKey The personal API key for authentication.
+     * @param etag Optional ETag from a previous request for conditional fetching.
+     * @return A [LocalEvaluationApiResponse] containing the feature flags, ETag, and modification status.
+     */
     @Throws(PostHogApiError::class, IOException::class)
-    public fun localEvaluation(personalApiKey: String): LocalEvaluationResponse? {
+    public fun localEvaluation(
+        personalApiKey: String,
+        etag: String? = null,
+    ): LocalEvaluationApiResponse {
         val url = "$theHost/api/feature_flag/local_evaluation/?token=${config.apiKey}&send_cohorts"
 
-        val request =
+        val requestBuilder =
             Request.Builder()
                 .url(url)
                 .header("User-Agent", config.userAgent)
                 .header("Content-Type", APP_JSON_UTF_8)
                 .header("Authorization", "Bearer $personalApiKey")
-                .get()
-                .build()
+
+        // Add If-None-Match header for conditional request if we have an ETag
+        if (!etag.isNullOrEmpty()) {
+            requestBuilder.header("If-None-Match", etag)
+        }
+
+        val request = requestBuilder.get().build()
 
         client.newCall(request).execute().use {
             val response = logResponse(it)
+
+            // Get ETag from response (may be present even on 304)
+            val responseEtag = response.header("ETag")
+
+            // Handle 304 Not Modified - flags haven't changed
+            if (response.code == 304) {
+                config.logger.log("Feature flags not modified (304), using cached data")
+                // Preserve the original ETag if the server didn't return one
+                return LocalEvaluationApiResponse.notModified(responseEtag ?: etag)
+            }
 
             if (!response.isSuccessful) {
                 throw PostHogApiError(
@@ -220,9 +245,11 @@ public class PostHogApi(
             }
 
             response.body?.let { body ->
-                return config.serializer.deserialize(body.charStream().buffered())
+                val result: LocalEvaluationResponse? = config.serializer.deserialize(body.charStream().buffered())
+                return LocalEvaluationApiResponse.success(result, responseEtag)
             }
-            return null
+            // Empty body on success is anomalous - clear ETag to force fresh fetch next time
+            return LocalEvaluationApiResponse.success(null, null)
         }
     }
 

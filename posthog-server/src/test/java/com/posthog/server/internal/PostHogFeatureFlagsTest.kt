@@ -9,6 +9,8 @@ import com.posthog.server.createMockHttp
 import com.posthog.server.createTestConfig
 import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
+import com.posthog.server.jsonResponseWithEtag
+import com.posthog.server.notModifiedResponse
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -880,6 +882,373 @@ internal class PostHogFeatureFlagsTest {
             skipCount >= threadCount - 1,
             "Expected at least ${threadCount - 1} threads to skip duplicate request, but only $skipCount did",
         )
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local evaluation sends ETag on subsequent requests`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer = MockWebServer()
+        mockServer.start()
+
+        // First response with ETag
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"abc123\""))
+        // Second response is 304 Not Modified
+        mockServer.enqueue(notModifiedResponse("\"abc123\""))
+
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Shut down poller to control loading manually
+        featureFlags.shutDown()
+
+        // First load - should receive ETag
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Second load - should send If-None-Match and receive 304
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify we made 2 requests
+        assertEquals(2, mockServer.requestCount)
+
+        // Verify the second request included the If-None-Match header
+        mockServer.takeRequest() // First request
+        val secondRequest = mockServer.takeRequest()
+        assertEquals("\"abc123\"", secondRequest.getHeader("If-None-Match"))
+
+        // Verify we logged the 304 response
+        assertTrue(logger.containsLog("Feature flags not modified"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local evaluation uses cached data on 304 Not Modified`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer = MockWebServer()
+        mockServer.start()
+
+        // First response with ETag
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"abc123\""))
+        // Second response is 304 Not Modified
+        mockServer.enqueue(notModifiedResponse("\"abc123\""))
+
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Shut down poller to control loading manually
+        featureFlags.shutDown()
+
+        // First load
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify flag works after first load
+        val result1 =
+            featureFlags.getFeatureFlag(
+                key = "test-flag",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+        assertEquals(true, result1)
+
+        // Second load - gets 304, should still use cached data
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify flag still works after 304
+        val result2 =
+            featureFlags.getFeatureFlag(
+                key = "test-flag",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+        assertEquals(true, result2)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local evaluation clears ETag on error`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer = MockWebServer()
+        mockServer.start()
+
+        // First response with ETag
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"abc123\""))
+        // Second response is an error
+        mockServer.enqueue(errorResponse(500, "Internal Server Error"))
+        // Third response - should NOT have If-None-Match since ETag was cleared
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"def456\""))
+
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Shut down poller to control loading manually
+        featureFlags.shutDown()
+
+        // First load - gets ETag
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Second load - gets error, should clear ETag
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Third load - should NOT send If-None-Match
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify we made 3 requests
+        assertEquals(3, mockServer.requestCount)
+
+        // Verify the third request did NOT include If-None-Match (ETag was cleared on error)
+        mockServer.takeRequest() // First request
+        mockServer.takeRequest() // Second request (error)
+        val thirdRequest = mockServer.takeRequest()
+        assertNull(thirdRequest.getHeader("If-None-Match"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `clear also clears ETag`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer = MockWebServer()
+        mockServer.start()
+
+        // First response with ETag
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"abc123\""))
+        // Second response after clear - should NOT have If-None-Match
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"def456\""))
+
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Shut down poller to control loading manually
+        featureFlags.shutDown()
+
+        // First load - gets ETag
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Clear cache and ETag
+        featureFlags.clear()
+
+        // Second load - should NOT send If-None-Match
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify we made 2 requests
+        assertEquals(2, mockServer.requestCount)
+
+        // Verify the second request did NOT include If-None-Match (ETag was cleared)
+        mockServer.takeRequest() // First request
+        val secondRequest = mockServer.takeRequest()
+        assertNull(secondRequest.getHeader("If-None-Match"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `ETag polling reduces bandwidth when flags unchanged`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer = MockWebServer()
+        mockServer.start()
+
+        // First response with ETag and full body
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"etag-v1\""))
+        // Subsequent responses are 304 Not Modified (no body, minimal bandwidth)
+        mockServer.enqueue(notModifiedResponse("\"etag-v1\""))
+        mockServer.enqueue(notModifiedResponse("\"etag-v1\""))
+        mockServer.enqueue(notModifiedResponse("\"etag-v1\""))
+
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Shut down poller to control loading manually
+        featureFlags.shutDown()
+
+        // Load multiple times
+        repeat(4) {
+            featureFlags.loadFeatureFlagDefinitions()
+        }
+
+        // Verify we made 4 requests
+        assertEquals(4, mockServer.requestCount)
+
+        // First request has no If-None-Match
+        val firstRequest = mockServer.takeRequest()
+        assertNull(firstRequest.getHeader("If-None-Match"))
+
+        // Subsequent requests have If-None-Match with ETag
+        repeat(3) {
+            val request = mockServer.takeRequest()
+            assertEquals("\"etag-v1\"", request.getHeader("If-None-Match"))
+        }
+
+        // Verify flag still works
+        val result =
+            featureFlags.getFeatureFlag(
+                key = "test-flag",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+        assertEquals(true, result)
+
+        // Verify we logged the not modified messages (both API and feature flags layer log)
+        val apiNotModifiedCount = logger.countLogs("Feature flags not modified (304)")
+        val featureFlagsNotModifiedCount = logger.countLogs("using cached definitions")
+        assertEquals(3, apiNotModifiedCount, "Expected 3 API-level 'not modified' log messages")
+        assertEquals(3, featureFlagsNotModifiedCount, "Expected 3 feature flags 'cached definitions' log messages")
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local evaluation updates ETag when flags change`() {
+        val logger = TestLogger()
+        val firstResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag-v1",
+                aggregationGroupTypeIndex = null,
+            )
+        val secondResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag-v2",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer = MockWebServer()
+        mockServer.start()
+
+        // First response with ETag v1
+        mockServer.enqueue(jsonResponseWithEtag(firstResponse, "\"etag-v1\""))
+        // Second response: flags changed, new ETag v2
+        mockServer.enqueue(jsonResponseWithEtag(secondResponse, "\"etag-v2\""))
+        // Third response: 304 with the new ETag
+        mockServer.enqueue(notModifiedResponse("\"etag-v2\""))
+
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        // Shut down poller to control loading manually
+        featureFlags.shutDown()
+
+        // First load - gets etag-v1
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify first request has no If-None-Match
+        val firstRequest = mockServer.takeRequest()
+        assertNull(firstRequest.getHeader("If-None-Match"))
+
+        // Second load - gets new data and etag-v2
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify second request sent old ETag
+        val secondRequest = mockServer.takeRequest()
+        assertEquals("\"etag-v1\"", secondRequest.getHeader("If-None-Match"))
+
+        // Third load - should send new ETag and get 304
+        featureFlags.loadFeatureFlagDefinitions()
+
+        // Verify third request sent new ETag
+        val thirdRequest = mockServer.takeRequest()
+        assertEquals("\"etag-v2\"", thirdRequest.getHeader("If-None-Match"))
+
+        // Verify the new flag is available
+        val result = featureFlags.getFeatureFlag("test-flag-v2", false, "test-user")
+        assertEquals(true, result)
 
         mockServer.shutdown()
     }

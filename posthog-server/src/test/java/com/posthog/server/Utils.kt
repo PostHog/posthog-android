@@ -1,11 +1,15 @@
 package com.posthog.server
 
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.google.gson.internal.bind.util.ISO8601Utils
+import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.internal.PostHogLogger
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import okio.Buffer
 import okio.GzipSource
 import okio.buffer
@@ -75,6 +79,33 @@ public fun Buffer.unGzip(): String {
     return GzipSource(this).use { source ->
         source.buffer().use { bufferedSource -> bufferedSource.readUtf8() }
     }
+}
+
+private val gson = Gson()
+
+/**
+ * Represents a captured batch request with parsed events
+ */
+public class BatchRequest(private val json: JsonObject) {
+    public val batch: List<JsonObject> by lazy {
+        json.getAsJsonArray("batch")?.map { it.asJsonObject } ?: emptyList()
+    }
+
+    public val firstEvent: JsonObject?
+        get() = batch.firstOrNull()
+
+    public fun firstEventProperties(): Map<String, Any?> {
+        val props = firstEvent?.getAsJsonObject("properties") ?: return emptyMap()
+        return gson.fromJson(props, object : TypeToken<Map<String, Any?>>() {}.type)
+    }
+}
+
+/**
+ * Parse batch request body into structured format
+ */
+public fun RecordedRequest.parseBatch(): BatchRequest {
+    val bodyString = body.unGzip()
+    return BatchRequest(gson.fromJson(bodyString, JsonObject::class.java))
 }
 
 /**
@@ -222,6 +253,30 @@ public fun jsonResponse(body: String): MockResponse {
     return MockResponse()
         .setBody(body)
         .setHeader("Content-Type", "application/json")
+}
+
+/**
+ * Creates a MockResponse with JSON content type and ETag header
+ */
+public fun jsonResponseWithEtag(
+    body: String,
+    etag: String,
+): MockResponse {
+    return MockResponse()
+        .setBody(body)
+        .setHeader("Content-Type", "application/json")
+        .setHeader("ETag", etag)
+}
+
+/**
+ * Creates a 304 Not Modified response with optional ETag header
+ */
+public fun notModifiedResponse(etag: String? = null): MockResponse {
+    val response = MockResponse().setResponseCode(304)
+    if (etag != null) {
+        response.setHeader("ETag", etag)
+    }
+    return response
 }
 
 /**
