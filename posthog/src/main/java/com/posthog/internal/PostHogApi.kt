@@ -298,12 +298,13 @@ public class PostHogApi(
     ) {
         val pushRequest =
             mapOf(
+                "api_key" to config.apiKey,
                 "distinct_id" to distinctId,
                 "token" to token,
                 "platform" to "android",
             )
 
-        val url = "$theHost/api/projects/${config.apiKey}/push_subscriptions/register/"
+        val url = "$theHost/sdk/push_subscriptions/register/"
         logRequest(pushRequest, url)
 
         val request =
