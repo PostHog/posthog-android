@@ -10,11 +10,11 @@ object PosthogBuildConfig {
     }
 
     object Build {
-        val JAVA_VERSION = JavaVersion.VERSION_1_8
+        val JAVA_VERSION = JavaVersion.VERSION_17
     }
 
     object Android {
-        val COMPILE_SDK = 33
+        val COMPILE_SDK = 36
 
         // when changing this, remember to check the ANIMAL_SNIFFER_SDK_VERSION
         // Session Replay (addOnFrameMetricsAvailableListener requires API 26)
