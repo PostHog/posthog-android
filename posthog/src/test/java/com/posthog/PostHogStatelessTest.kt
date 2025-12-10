@@ -1357,5 +1357,11 @@ internal class PostHogStatelessTest {
         ) {
             captureCalled = true
         }
+
+        override fun setFcmTokenStateless(
+            distinctId: String,
+            token: String,
+        ) {
+        }
     }
 }

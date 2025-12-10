@@ -1159,6 +1159,14 @@ public class PostHog private constructor(
         return PostHogSessionManager.getActiveSessionId()
     }
 
+    override fun setFcmToken(token: String) {
+        if (!isEnabled()) {
+            return
+        }
+
+        setFcmTokenStateless(distinctId, token)
+    }
+
     public companion object : PostHogInterface {
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
@@ -1383,6 +1391,10 @@ public class PostHog private constructor(
 
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
+        }
+
+        override fun setFcmToken(token: String) {
+            shared.setFcmToken(token)
         }
     }
 }

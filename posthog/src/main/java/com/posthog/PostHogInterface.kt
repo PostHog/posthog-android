@@ -224,6 +224,13 @@ public interface PostHogInterface : PostHogCoreInterface {
         reloadFeatureFlags: Boolean = true,
     )
 
+    /**
+     * Registers an FCM token for push notifications.
+     * The token is stored locally and sent to the PostHog backend.
+     * @param token the FCM token
+     */
+    public fun setFcmToken(token: String)
+
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
 }

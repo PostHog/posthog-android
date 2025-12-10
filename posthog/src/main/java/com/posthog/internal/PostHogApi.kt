@@ -290,4 +290,31 @@ public class PostHogApi(
             }
         }
     }
+
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun registerPushSubscription(
+        distinctId: String,
+        token: String,
+    ) {
+        val pushRequest =
+            mapOf(
+                "distinct_id" to distinctId,
+                "token" to token,
+                "platform" to "android",
+            )
+
+        val url = "$theHost/api/projects/${config.apiKey}/push_subscriptions/register/"
+        logRequest(pushRequest, url)
+
+        val request =
+            makeRequest(url) {
+                config.serializer.serialize(pushRequest, it.bufferedWriter())
+            }
+
+        client.newCall(request).execute().use {
+            val response = logResponse(it)
+
+            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
+        }
+    }
 }

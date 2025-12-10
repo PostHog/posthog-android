@@ -7,6 +7,7 @@ import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPrintLogger
@@ -40,6 +41,7 @@ public open class PostHogStateless protected constructor(
 
     protected var featureFlags: PostHogFeatureFlagsInterface? = null
     protected var queue: PostHogQueueInterface? = null
+    protected var api: PostHogApi? = null
     protected var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
     protected val throwableCoercer: ThrowableCoercer = ThrowableCoercer()
 
@@ -81,6 +83,7 @@ public open class PostHogStateless protected constructor(
 
                 this.config = config
                 this.queue = queue
+                this.api = api
                 this.featureFlags = remoteConfig
                 this.featureFlagsCalled =
                     PostHogFeatureFlagCalledCache(config.featureFlagCalledCacheSize)
@@ -561,6 +564,40 @@ public open class PostHogStateless protected constructor(
         }
     }
 
+    public override fun setFcmTokenStateless(
+        distinctId: String,
+        token: String,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+
+        if (config?.optOut == true) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        if (token.isBlank()) {
+            config?.logger?.log("setFcmToken call not allowed, token is blank.")
+            return
+        }
+
+        if (distinctId.isBlank()) {
+            config?.logger?.log("setFcmToken call not allowed, distinctId is blank.")
+            return
+        }
+
+        getPreferences().setValue(FCM_TOKEN, token)
+
+        queueExecutor.execute {
+            try {
+                api?.registerPushSubscription(distinctId, token)
+            } catch (e: Throwable) {
+                config?.logger?.log("Failed to register push subscription: $e.")
+            }
+        }
+    }
+
     public companion object : PostHogStatelessInterface {
         private var shared: PostHogStatelessInterface = PostHogStateless()
         private var defaultSharedInstance = shared
@@ -721,6 +758,13 @@ public open class PostHogStateless protected constructor(
             properties: Map<String, Any>?,
         ) {
             shared.captureExceptionStateless(throwable, distinctId, properties)
+        }
+
+        override fun setFcmTokenStateless(
+            distinctId: String,
+            token: String,
+        ) {
+            shared.setFcmTokenStateless(distinctId, token)
         }
     }
 }

@@ -110,4 +110,15 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
         distinctId: String? = null,
         properties: Map<String, Any>? = null,
     )
+
+    /**
+     * Registers an FCM token for push notifications.
+     * The token is sent to the PostHog backend associated with the given distinctId.
+     * @param distinctId the distinctId of the user
+     * @param token the FCM token
+     */
+    public fun setFcmTokenStateless(
+        distinctId: String,
+        token: String,
+    )
 }
