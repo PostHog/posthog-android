@@ -434,16 +434,25 @@ public open class PostHogStateless protected constructor(
         value: Any?,
         requestId: String? = null,
         evaluatedAt: Long? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ) {
         if (config?.sendFeatureFlagEvent == true) {
             val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
             if (isNewlySeen) {
                 val props = mutableMapOf<String, Any>()
                 props["\$feature_flag"] = key
-                // value should never be nullable anyway
                 props["\$feature_flag_response"] = value ?: ""
                 requestId?.let { props["\$feature_flag_request_id"] = it }
                 evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
+                featureFlags?.getFeatureFlagError(
+                    key,
+                    distinctId,
+                    groups,
+                    personProperties,
+                    groupProperties,
+                )?.let { props["\$feature_flag_error"] = it }
 
                 captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props)
             }
@@ -475,7 +484,7 @@ public open class PostHogStateless protected constructor(
         val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
         val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
 
-        sendFeatureFlagCalled(distinctId, key, value, requestId, evaluatedAt)
+        sendFeatureFlagCalled(distinctId, key, value, requestId, evaluatedAt, groups, personProperties, groupProperties)
 
         return value
     }
