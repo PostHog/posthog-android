@@ -41,8 +41,10 @@ internal class PostHogFeatureFlags(
 
     private val evaluator: FlagEvaluator = FlagEvaluator(config)
 
+    @Volatile
     private var poller: LocalEvaluationPoller? = null
 
+    @Volatile
     private var definitionsLoaded = false
 
     @Volatile
