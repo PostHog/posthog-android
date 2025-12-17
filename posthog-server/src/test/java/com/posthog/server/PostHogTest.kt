@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.server.internal.FeatureFlagError
 import com.posthog.server.internal.PostHogFeatureFlags
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -552,6 +553,49 @@ internal class PostHogTest {
         assertTrue(activeFlags.contains("enabled-flag"), "enabled-flag should be in active flags")
         assertTrue(activeFlags.contains("variant-flag"), "variant-flag should be in active flags")
         assertFalse(activeFlags.contains("disabled-flag"), "disabled-flag should NOT be in active flags")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `feature flag API error sends feature_flag_called event with feature_flag_error to batch`() {
+        val mockServer = MockWebServer()
+        // First request: /flags returns 500 error
+        mockServer.enqueue(errorResponse(500, "Internal Server Error"))
+        // Second request: /batch returns success
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .build(),
+            )
+
+        // This will hit /flags (which returns 500) and then send $feature_flag_called to /batch
+        postHog.getFeatureFlag("user123", "test-flag")
+
+        // First request should be /flags
+        val flagsRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(flagsRequest, "Expected /flags request")
+        assertTrue(flagsRequest.path?.contains("/flags") == true, "First request should be /flags")
+
+        // Second request should be /batch with $feature_flag_called event
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+        assertTrue(batchRequest.path?.contains("/batch") == true, "Second request should be /batch")
+
+        val batch = batchRequest.parseBatch()
+        val featureFlagEvent = batch.findEvent("\$feature_flag_called")
+        assertNotNull(featureFlagEvent, "Expected \$feature_flag_called event in batch")
+
+        val props = batch.eventProperties("\$feature_flag_called")
+        assertEquals("test-flag", props["\$feature_flag"])
+        assertEquals(FeatureFlagError.apiError(500), props["\$feature_flag_error"])
 
         postHog.close()
         mockServer.shutdown()

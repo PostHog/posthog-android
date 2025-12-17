@@ -98,6 +98,21 @@ public class BatchRequest(private val json: JsonObject) {
         val props = firstEvent?.getAsJsonObject("properties") ?: return emptyMap()
         return gson.fromJson(props, object : TypeToken<Map<String, Any?>>() {}.type)
     }
+
+    /**
+     * Find an event by name
+     */
+    public fun findEvent(eventName: String): JsonObject? {
+        return batch.find { it.get("event")?.asString == eventName }
+    }
+
+    /**
+     * Get properties for an event by name
+     */
+    public fun eventProperties(eventName: String): Map<String, Any?> {
+        val props = findEvent(eventName)?.getAsJsonObject("properties") ?: return emptyMap()
+        return gson.fromJson(props, object : TypeToken<Map<String, Any?>>() {}.type)
+    }
 }
 
 /**
@@ -242,6 +257,112 @@ public fun createEmptyFlagsResponse(): String {
     return """
         {
             "flags": {}
+        }
+        """.trimIndent()
+}
+
+/**
+ * Creates a flags response with errors while computing
+ */
+public fun createFlagsResponseWithErrors(
+    flagKey: String? = null,
+    enabled: Boolean = true,
+    variant: String? = null,
+): String {
+    val flagsJson =
+        if (flagKey != null) {
+            val variantJson = if (variant != null) "\"$variant\"" else "null"
+            """
+            "$flagKey": {
+                "key": "$flagKey",
+                "enabled": $enabled,
+                "variant": $variantJson,
+                "metadata": {
+                    "version": 1,
+                    "payload": null,
+                    "id": 1
+                },
+                "reason": {
+                    "kind": "condition_match",
+                    "condition_match_type": "Test condition",
+                    "condition_index": 0
+                }
+            }
+            """.trimIndent()
+        } else {
+            ""
+        }
+
+    val flagsBlock =
+        if (flagKey != null) {
+            """
+            "flags": {
+                $flagsJson
+            },
+            """.trimIndent()
+        } else {
+            """
+            "flags": {},
+            """.trimIndent()
+        }
+
+    return """
+        {
+            $flagsBlock
+            "errorsWhileComputingFlags": true
+        }
+        """.trimIndent()
+}
+
+/**
+ * Creates a flags response with quota limited error
+ */
+public fun createFlagsResponseWithQuotaLimited(
+    flagKey: String? = null,
+    enabled: Boolean = true,
+    variant: String? = null,
+): String {
+    val flagsJson =
+        if (flagKey != null) {
+            val variantJson = if (variant != null) "\"$variant\"" else "null"
+            """
+            "$flagKey": {
+                "key": "$flagKey",
+                "enabled": $enabled,
+                "variant": $variantJson,
+                "metadata": {
+                    "version": 1,
+                    "payload": null,
+                    "id": 1
+                },
+                "reason": {
+                    "kind": "condition_match",
+                    "condition_match_type": "Test condition",
+                    "condition_index": 0
+                }
+            }
+            """.trimIndent()
+        } else {
+            ""
+        }
+
+    val flagsBlock =
+        if (flagKey != null) {
+            """
+            "flags": {
+                $flagsJson
+            },
+            """.trimIndent()
+        } else {
+            """
+            "flags": {},
+            """.trimIndent()
+        }
+
+    return """
+        {
+            $flagsBlock
+            "quotaLimited": ["feature_flags"]
         }
         """.trimIndent()
 }
