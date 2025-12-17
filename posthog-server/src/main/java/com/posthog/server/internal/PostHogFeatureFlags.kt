@@ -19,6 +19,7 @@ internal class PostHogFeatureFlags(
     private val personalApiKey: String? = null,
     private val pollIntervalSeconds: Int = 30,
     private val onFeatureFlags: PostHogOnFeatureFlags? = null,
+    private val pollerEnabled: Boolean = true,
 ) : PostHogFeatureFlagsInterface {
     private val cache =
         PostHogFeatureFlagCache(
@@ -443,7 +444,7 @@ internal class PostHogFeatureFlags(
      * Start the poller for local evaluation if enabled
      */
     private fun startPoller() {
-        if (!localEvaluation) {
+        if (!localEvaluation || !pollerEnabled) {
             return
         }
 
