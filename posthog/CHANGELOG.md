@@ -1,5 +1,7 @@
 ## Next
 
+- feat: `$feature_flag_called` events can now report `$feature_flag_error` properties by implementing `getFeatureFlagError` ([#355](https://github.com/PostHog/posthog-android/pull/355))
+
 ## 6.0.0 - 2025-12-19
 
 - feat: Add ETag support for local evaluation polling to reduce bandwidth ([#350](https://github.com/PostHog/posthog-android/pull/350))
