@@ -397,6 +397,7 @@ internal class PostHogFeatureFlagsTest {
 
         val config = createTestConfig(logger, url.toString())
         val api = PostHogApi(config)
+        val loadedLatch = CountDownLatch(1)
         val remoteConfig =
             PostHogFeatureFlags(
                 config,
@@ -406,10 +407,12 @@ internal class PostHogFeatureFlagsTest {
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
                 pollIntervalSeconds = 30,
+                onFeatureFlags = { loadedLatch.countDown() },
             )
 
-        // Wait for poller to load
-        Thread.sleep(2000)
+        // Wait for poller to call onFeatureFlags callback
+        val loaded = loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertTrue(loaded, "Expected onFeatureFlags callback to be called by poller")
 
         // Check that we made the API call
         assertTrue(
@@ -417,16 +420,105 @@ internal class PostHogFeatureFlagsTest {
             "Expected at least 1 request, got ${mockServer.requestCount}",
         )
         assertTrue(logger.containsLog("Loading feature flags for local evaluation"))
-        assertTrue(
-            logger.containsLog("Loaded 1 feature flags for local evaluation") ||
-                logger.logs.any {
-                    it.contains(
-                        "Loaded",
-                    )
-                },
-        )
+        assertTrue(logger.containsLog("Loaded 1 feature flags for local evaluation"))
 
         remoteConfig.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `poller does not start when pollerEnabled is false`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+            )
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollIntervalSeconds = 1,
+                pollerEnabled = false,
+            )
+
+        // Wait to ensure poller doesn't start
+        Thread.sleep(1000)
+
+        // Verify poller did NOT start (no automatic API calls)
+        assertEquals(
+            0,
+            mockServer.requestCount,
+            "Expected poller to not start (0 requests), but got ${mockServer.requestCount}",
+        )
+        assertFalse(logger.containsLog("Loading feature flags for local evaluation"))
+
+        // Manual load should still work
+        featureFlags.loadFeatureFlagDefinitions()
+        assertEquals(1, mockServer.requestCount, "Manual load should work when poller is disabled")
+        assertTrue(logger.containsLog("Loading feature flags for local evaluation"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `poller starts when pollerEnabled is true (default)`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "test-flag",
+                aggregationGroupTypeIndex = null,
+            )
+
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+            )
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val loadedLatch = CountDownLatch(1)
+
+        // Create with default pollerEnabled (should be true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollIntervalSeconds = 1,
+                onFeatureFlags = { loadedLatch.countDown() },
+                // pollerEnabled defaults to true - not specified
+            )
+
+        // Wait for poller to call onFeatureFlags callback
+        val loaded = loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertTrue(loaded, "Expected onFeatureFlags callback to be called by poller")
+
+        // Verify poller started and made API call
+        assertTrue(
+            mockServer.requestCount >= 1,
+            "Expected poller to start and make at least 1 request, got ${mockServer.requestCount}",
+        )
+        assertTrue(logger.containsLog("Loading feature flags for local evaluation"))
+
+        featureFlags.shutDown()
         mockServer.shutdown()
     }
 
@@ -833,10 +925,8 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
-
-        // Shut down poller to control loading manually
-        featureFlags.shutDown()
 
         val threadCount = 5
         val startLatch = CountDownLatch(threadCount)
@@ -915,10 +1005,8 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
-
-        // Shut down poller to control loading manually
-        featureFlags.shutDown()
 
         // First load - should receive ETag
         featureFlags.loadFeatureFlagDefinitions()
@@ -969,10 +1057,8 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
-
-        // Shut down poller to control loading manually
-        featureFlags.shutDown()
 
         // First load
         featureFlags.loadFeatureFlagDefinitions()
@@ -1032,10 +1118,8 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
-
-        // Shut down poller to control loading manually
-        featureFlags.shutDown()
 
         // First load - gets ETag
         featureFlags.loadFeatureFlagDefinitions()
@@ -1087,10 +1171,8 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
-
-        // Shut down poller to control loading manually
-        featureFlags.shutDown()
 
         // First load - gets ETag
         featureFlags.loadFeatureFlagDefinitions()
@@ -1143,10 +1225,8 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
-
-        // Shut down poller to control loading manually
-        featureFlags.shutDown()
 
         // Load multiple times
         repeat(4) {
@@ -1220,10 +1300,8 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
-
-        // Shut down poller to control loading manually
-        featureFlags.shutDown()
 
         // First load - gets etag-v1
         featureFlags.loadFeatureFlagDefinitions()
