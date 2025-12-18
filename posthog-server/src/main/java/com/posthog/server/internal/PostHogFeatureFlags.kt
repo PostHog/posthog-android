@@ -19,6 +19,7 @@ internal class PostHogFeatureFlags(
     private val personalApiKey: String? = null,
     private val pollIntervalSeconds: Int = 30,
     private val onFeatureFlags: PostHogOnFeatureFlags? = null,
+    private val pollerEnabled: Boolean = true,
 ) : PostHogFeatureFlagsInterface {
     private val cache =
         PostHogFeatureFlagCache(
@@ -40,8 +41,10 @@ internal class PostHogFeatureFlags(
 
     private val evaluator: FlagEvaluator = FlagEvaluator(config)
 
+    @Volatile
     private var poller: LocalEvaluationPoller? = null
 
+    @Volatile
     private var definitionsLoaded = false
 
     @Volatile
@@ -374,15 +377,15 @@ internal class PostHogFeatureFlags(
                 flagDefinitions = apiResponse.flags?.associateBy { it.key }
                 cohorts = apiResponse.cohorts
                 groupTypeMapping = apiResponse.groupTypeMapping
-
-                config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
-
                 definitionsLoaded = true
-                try {
-                    onFeatureFlags?.loaded()
-                } catch (e: Throwable) {
-                    config.logger.log("Error in onFeatureFlags callback: ${e.message}")
-                }
+            }
+
+            config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
+
+            try {
+                onFeatureFlags?.loaded()
+            } catch (e: Throwable) {
+                config.logger.log("Error in onFeatureFlags callback: ${e.message}")
             }
         } catch (e: PostHogApiError) {
             // Clear ETag on API errors (4xx/5xx) so next request starts fresh
@@ -443,7 +446,7 @@ internal class PostHogFeatureFlags(
      * Start the poller for local evaluation if enabled
      */
     private fun startPoller() {
-        if (!localEvaluation) {
+        if (!localEvaluation || !pollerEnabled) {
             return
         }
 
