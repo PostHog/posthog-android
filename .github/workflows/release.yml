@@ -4,6 +4,10 @@ on:
     # runs for stable and pre-releases
     types: [published]
 
+permissions:
+  contents: read
+  actions: write  # for cancel-workflow-action
+
 jobs:
   cancel-previous-workflow:
     runs-on: ubuntu-latest
