@@ -3,6 +3,8 @@
 - feat: Add ETag support for local evaluation polling to reduce bandwidth ([#350](https://github.com/PostHog/posthog-android/pull/350))
 - **breaking** (internal): `PostHogApi.localEvaluation()` now returns `LocalEvaluationApiResponse` instead of `LocalEvaluationResponse?` ([#350](https://github.com/PostHog/posthog-android/pull/350))
 - **breaking** (internal): `LocalEvaluationApiResponse.isNotModified` renamed to `wasModified` (inverted) ([#350](https://github.com/PostHog/posthog-android/pull/350))
+- feat: add `sendFeatureFlagEvent` properties in function getFeatureFlag() and isFeatureEnabled() for override config's
+  sendFeatureFlagEvent ([#319](https://github.com/PostHog/posthog-android/pull/319))
 
 ## 5.2.0 - 2025-12-03
 
