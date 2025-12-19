@@ -48,4 +48,14 @@ public interface PostHogFeatureFlagsInterface {
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Long?
+
+    public fun getFeatureFlagError(
+        key: String,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+    ): String? {
+        return null
+    }
 }

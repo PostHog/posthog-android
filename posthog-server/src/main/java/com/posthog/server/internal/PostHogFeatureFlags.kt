@@ -7,8 +7,12 @@ import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PostHogFeatureFlagsInterface
+import com.posthog.internal.PostHogFlagsResponse
 import com.posthog.internal.PropertyGroup
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
@@ -271,12 +275,50 @@ internal class PostHogFeatureFlags(
         return try {
             val response = api.flags(distinctId, null, groups, personProperties, groupProperties)
             val flags = response?.flags
-            cache.put(cacheKey, flags, response?.requestId, response?.evaluatedAt)
+            cache.put(
+                cacheKey,
+                flags,
+                response?.requestId,
+                response?.evaluatedAt,
+                computeResponseError(response),
+            )
             flags
+        } catch (e: SocketTimeoutException) {
+            config.logger.log("Loading remote feature flags timed out: $e")
+            cache.put(cacheKey, null, error = FeatureFlagError.TIMEOUT)
+            null
+        } catch (e: ConnectException) {
+            config.logger.log("Loading remote feature flags connection failed: $e")
+            cache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
+            null
+        } catch (e: UnknownHostException) {
+            config.logger.log("Loading remote feature flags DNS lookup failed: $e")
+            cache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
+            null
+        } catch (e: PostHogApiError) {
+            config.logger.log("Loading remote feature flags API error: $e")
+            cache.put(cacheKey, null, error = FeatureFlagError.apiError(e.statusCode))
+            null
         } catch (e: Throwable) {
             config.logger.log("Loading remote feature flags failed: $e")
+            cache.put(cacheKey, null, error = FeatureFlagError.UNKNOWN_ERROR)
             null
         }
+    }
+
+    /**
+     * Compute error string from a successful API response.
+     * Returns null if there are no errors in the response.
+     */
+    private fun computeResponseError(response: PostHogFlagsResponse?): String? {
+        val errors = mutableListOf<String>()
+        if (response?.errorsWhileComputingFlags == true) {
+            errors.add(FeatureFlagError.ERRORS_WHILE_COMPUTING)
+        }
+        if (response?.quotaLimited?.contains("feature_flags") == true) {
+            errors.add(FeatureFlagError.QUOTA_LIMITED)
+        }
+        return if (errors.isNotEmpty()) errors.joinToString(",") else null
     }
 
     override fun getFeatureFlags(
@@ -579,5 +621,57 @@ internal class PostHogFeatureFlags(
                 groupProperties = groupProperties,
             )
         return cache.getEntry(cacheKey)?.evaluatedAt
+    }
+
+    /**
+     * Get feature flag error for the given flag key and user context.
+     * Returns a comma-separated string of error types if any errors occurred during evaluation.
+     *
+     * Possible error values:
+     * - "errors_while_computing_flags": Server returned errorsWhileComputingFlags=true
+     * - "flag_missing": Requested flag not in API response
+     * - "quota_limited": Rate/quota limit exceeded
+     * - "timeout": Request timed out
+     * - "connection_error": Network connectivity issue
+     * - "api_error_XXX": API returned error with status code XXX
+     * - "unknown_error": Unexpected error
+     *
+     * Multiple errors are joined with commas, e.g., "errors_while_computing_flags,flag_missing"
+     */
+    override fun getFeatureFlagError(
+        key: String,
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): String? {
+        if (distinctId == null) {
+            return null
+        }
+
+        val cacheKey =
+            FeatureFlagCacheKey(
+                distinctId = distinctId,
+                groups = groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
+
+        val entry = cache.getEntry(cacheKey) ?: return FeatureFlagError.UNKNOWN_ERROR
+
+        // If request failed entirely (flags is null), return the cached error
+        if (entry.flags == null) {
+            return entry.error ?: FeatureFlagError.UNKNOWN_ERROR
+        }
+
+        // Request succeeded - check for flag_missing (key-specific, computed at query time)
+        val flagMissing = !entry.flags.containsKey(key)
+
+        return when {
+            entry.error == null && !flagMissing -> null
+            entry.error == null -> FeatureFlagError.FLAG_MISSING
+            !flagMissing -> entry.error
+            else -> "${entry.error},${FeatureFlagError.FLAG_MISSING}"
+        }
     }
 }
