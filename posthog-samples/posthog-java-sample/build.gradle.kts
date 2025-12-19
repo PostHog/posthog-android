@@ -12,6 +12,10 @@ application {
     mainClass.set("com.posthog.java.sample.PostHogJavaExample")
 }
 
+tasks.named<JavaExec>("run") {
+    standardInput = System.`in`
+}
+
 dependencies {
     implementation(project(":posthog-server"))
     implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
