@@ -1,5 +1,7 @@
 ## Next
 
+## 3.28.0 - 2025-12-19
+
 - feat: add `sendFeatureFlagEvent` properties in function getFeatureFlag() and isFeatureEnabled() for override config's
   sendFeatureFlagEvent ([#319](https://github.com/PostHog/posthog-android/pull/319))
 
