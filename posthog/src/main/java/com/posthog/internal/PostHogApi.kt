@@ -39,7 +39,7 @@ public class PostHogApi(
     }
 
     private val client: OkHttpClient =
-        OkHttpClient.Builder()
+        config.httpClient ?: OkHttpClient.Builder()
             .proxy(config.proxy)
             .addInterceptor(GzipRequestInterceptor(config))
             .build()

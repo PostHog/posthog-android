@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  test-harness:
+    image: posthog-sdk-test-harness:latest
+    command: ["--sdk-type", "server"]
+    depends_on:
+      - adapter
+      - mock-server
+    environment:
+      - ADAPTER_URL=http://adapter:8080
+      - MOCK_SERVER_URL=http://mock-server:8081
+    networks:
+      - test-network
+
+  adapter:
+    build:
+      context: ..
+      dockerfile: sdk_compliance_adapter/Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - test-network
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xmx512m
+
+  mock-server:
+    image: posthog-sdk-test-harness:latest
+    command: ["mock-server"]
+    ports:
+      - "8081:8081"
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
