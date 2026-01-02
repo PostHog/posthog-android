@@ -1,18 +1,14 @@
 plugins {
-    kotlin("jvm") version "1.9.22"
+    kotlin("jvm")
     application
 }
 
 group = "com.posthog.compliance"
 version = "1.0.0"
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
-    // PostHog Server SDK (simpler for testing)
-    implementation(project(":posthog-server"))
+    // PostHog Core SDK
+    implementation(project(":posthog"))
 
     // Ktor server
     val ktorVersion = "2.3.7"
@@ -41,4 +37,9 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 java {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
+}
+
+// Disable API validation for test adapter
+tasks.matching { it.name == "apiCheck" || it.name == "apiDump" }.configureEach {
+    enabled = false
 }

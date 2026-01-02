@@ -2,6 +2,7 @@ package com.posthog.compliance
 
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
+import com.posthog.internal.GzipRequestInterceptor
 import io.ktor.http.*
 import io.ktor.serialization.gson.*
 import io.ktor.server.application.*
@@ -13,6 +14,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import okhttp3.Interceptor
 import okhttp3.Response
+import com.posthog.internal.PostHogContext
 import java.util.*
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -87,11 +89,21 @@ data class SuccessResponse(
     val success: Boolean
 )
 
+// Minimal context for testing (provides $lib and $lib_version)
+class TestPostHogContext(private val sdkName: String, private val sdkVersion: String) : PostHogContext {
+    override fun getStaticContext(): Map<String, Any> = emptyMap()
+    override fun getDynamicContext(): Map<String, Any> = emptyMap()
+    override fun getSdkInfo(): Map<String, Any> = mapOf(
+        "\$lib" to sdkName,
+        "\$lib_version" to sdkVersion
+    )
+}
+
 // Global state
 object AdapterContext {
     val state = AdapterState()
     val lock = ReentrantLock()
-    var postHog: PostHog? = null
+    var postHog: com.posthog.PostHogInterface? = null
     val capturedEvents = mutableListOf<String>() // Store UUIDs of captured events
 }
 
@@ -214,20 +226,35 @@ fun main() {
                     // Close existing instance if any
                     AdapterContext.postHog?.close()
 
-                    // Create OkHttpClient with tracking interceptor
+                    // Create config first (needed for GzipRequestInterceptor)
+                    val tempConfig = PostHogConfig(apiKey = req.api_key, host = req.host)
+
+                    // Create OkHttpClient with tracking interceptor first, then gzip
+                    // Order matters: TrackingInterceptor reads uncompressed body, GzipInterceptor compresses it
                     val httpClient = okhttp3.OkHttpClient.Builder()
                         .addInterceptor(TrackingInterceptor())
+                        .addInterceptor(GzipRequestInterceptor(tempConfig))
                         .build()
 
                     // Create new config
+                    val flushIntervalMs = req.flush_interval_ms ?: 100
+                    val flushIntervalSeconds = maxOf(1, flushIntervalMs / 1000) // Min 1 second
+
                     val config = PostHogConfig(
                         apiKey = req.api_key,
                         host = req.host,
-                        flushAt = req.flush_at ?: 1, // Flush immediately for tests
-                        flushIntervalSeconds = (req.flush_interval_ms ?: 100) / 1000,
+                        flushAt = req.flush_at ?: 1,
+                        flushIntervalSeconds = flushIntervalSeconds,
                         debug = true,
-                        httpClient = httpClient
+                        httpClient = httpClient,
+                        preloadFeatureFlags = false // Disable to avoid 404 on /flags/
                     )
+
+                    // Set storage prefix for file-backed queue
+                    config.storagePrefix = "/tmp/posthog-queue"
+
+                    // Set minimal context to provide $lib and $lib_version
+                    config.context = TestPostHogContext("posthog-android", "3.28.0")
 
                     // Add beforeSend hook to track captured events
                     config.addBeforeSend { event ->
@@ -254,21 +281,24 @@ fun main() {
                 println("[ADAPTER] Capturing event: ${req.event} for user: ${req.distinct_id}")
 
                 val ph = AdapterContext.lock.withLock {
-                    AdapterContext.postHog ?: run {
-                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "SDK not initialized"))
-                        return@post
-                    }
+                    AdapterContext.postHog
                 }
 
-                // Set distinct_id
-                ph.identify(req.distinct_id)
+                if (ph == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "SDK not initialized"))
+                    return@post
+                }
 
                 // Remember the count before capturing
                 val beforeCount = AdapterContext.capturedEvents.size
 
-                // Capture event
+                // Capture event with distinct_id parameter (don't call identify separately)
                 val properties = req.properties?.toMutableMap() ?: mutableMapOf()
-                ph.capture(req.event, properties)
+                ph.capture(
+                    event = req.event,
+                    distinctId = req.distinct_id,
+                    properties = properties
+                )
 
                 // Get the UUID that was just captured (via beforeSend hook)
                 val uuid = AdapterContext.lock.withLock {

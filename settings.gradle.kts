@@ -18,7 +18,6 @@ rootProject.name = "PostHog"
 include(":posthog")
 include(":posthog-android")
 include(":posthog-server")
-include(":sdk_compliance_adapter")
 
 // samples
 include(":posthog-samples:posthog-android-sample")
