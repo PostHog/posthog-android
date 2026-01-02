@@ -15,6 +15,10 @@ on:
       - '.github/workflows/sdk-compliance-tests.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   test-android-sdk:
     uses: PostHog/posthog-sdk-test-harness/.github/workflows/test-sdk-action.yml@main
