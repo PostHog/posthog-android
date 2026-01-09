@@ -4,6 +4,8 @@ import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
@@ -57,6 +59,7 @@ internal class PostHogTest {
         beforeSend: PostHogBeforeSend? = null,
         evaluationEnvironments: List<String>? = null,
         context: PostHogContext? = null,
+        personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -80,6 +83,7 @@ internal class PostHogTest {
                 }
                 this.errorTrackingConfig.inAppIncludes.add("com.posthog")
                 this.context = context
+                this.personProfiles = personProfiles
             }
         return PostHog.withInternal(
             config,
@@ -2115,6 +2119,55 @@ internal class PostHogTest {
 
         // Other default properties should still be present
         assertNotNull(personProperties["\$app_version"], "app_version should still be present")
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `setPersonPropertiesForFlags works without person processing`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut =
+            getSut(
+                url.toString(),
+                cachePreferences = cachePreferences,
+                personProfiles = PersonProfiles.NEVER,
+                preloadFeatureFlags = false,
+            )
+
+        sut.setPersonPropertiesForFlags(mapOf("email" to "test@example.com", "plan" to "pro"))
+
+        val cachedProps = cachePreferences.getValue(PERSON_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertEquals("test@example.com", cachedProps?.get("email"))
+        assertEquals("pro", cachedProps?.get("plan"))
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `setGroupPropertiesForFlags works without person processing`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut =
+            getSut(
+                url.toString(),
+                cachePreferences = cachePreferences,
+                personProfiles = PersonProfiles.NEVER,
+                preloadFeatureFlags = false,
+            )
+
+        sut.setGroupPropertiesForFlags("company", mapOf("name" to "Acme", "plan" to "enterprise"))
+
+        val cachedProps = cachePreferences.getValue(GROUP_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        val companyProps = cachedProps?.get("company") as? Map<*, *>
+        assertEquals("Acme", companyProps?.get("name"))
+        assertEquals("enterprise", companyProps?.get("plan"))
 
         sut.close()
         http.shutdown()

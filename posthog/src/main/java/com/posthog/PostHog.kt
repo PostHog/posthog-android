@@ -618,7 +618,6 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>? = null,
     ) {
-        if (!hasPersonProcessing()) return
         if (userProperties.isNullOrEmpty() && userPropertiesSetOnce.isNullOrEmpty()) return
 
         val allProperties = mutableMapOf<String, Any>()
@@ -637,7 +636,6 @@ public class PostHog private constructor(
         type: String,
         groupProperties: Map<String, Any>?,
     ) {
-        if (!hasPersonProcessing()) return
         if (groupProperties.isNullOrEmpty()) return
 
         remoteConfig?.setGroupPropertiesForFlags(type, groupProperties)
@@ -983,7 +981,6 @@ public class PostHog private constructor(
         reloadFeatureFlags: Boolean,
     ) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
         if (userProperties.isEmpty()) return
 
         remoteConfig?.setPersonPropertiesForFlags(userProperties)
@@ -995,7 +992,6 @@ public class PostHog private constructor(
 
     public override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
 
         remoteConfig?.resetPersonPropertiesForFlags()
 
@@ -1010,7 +1006,6 @@ public class PostHog private constructor(
         reloadFeatureFlags: Boolean,
     ) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
 
         if (groupProperties.isEmpty()) return
 
@@ -1026,7 +1021,6 @@ public class PostHog private constructor(
         reloadFeatureFlags: Boolean,
     ) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
 
         remoteConfig?.resetGroupPropertiesForFlags(type)
 
