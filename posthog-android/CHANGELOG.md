@@ -1,5 +1,7 @@
 ## Next
 
+## 3.28.1 - 2026-01-09
+
 - fix: Allow flag property overrides via `setPersonPropertiesForFlags`, `setGroupPropertiesForFlags` without person processing ([#365](https://github.com/PostHog/posthog-android/issues/365))
 
 ## 3.28.0 - 2025-12-19
