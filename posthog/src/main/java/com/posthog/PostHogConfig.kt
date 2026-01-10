@@ -208,6 +208,19 @@ public open class PostHogConfig(
      */
     public var proxy: Proxy? = null,
     /**
+     * Optional custom OkHttpClient for HTTP requests.
+     *
+     * When set, the SDK will use this client instead of creating its own.
+     * The provided client should be configured with any necessary interceptors,
+     * timeouts, and other settings required for your use case.
+     *
+     * Note: If both `proxy` and `httpClient` are set, the `httpClient` takes precedence
+     * and the `proxy` setting will be ignored.
+     *
+     * Default: `null` (SDK creates its own client).
+     */
+    public var httpClient: okhttp3.OkHttpClient? = null,
+    /**
      * Configuration for PostHog Surveys feature. (Intended for internal use only)
      *
      * Note: Not fully supported or documented yet. Primarily used by hybrid SDKs to attach a custom display logic.
