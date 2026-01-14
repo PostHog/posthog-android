@@ -57,7 +57,7 @@ internal class PostHogTest {
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
-        evaluationEnvironments: List<String>? = null,
+        evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
         personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     ): PostHogInterface {
@@ -76,7 +76,7 @@ internal class PostHogTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
-                this.evaluationEnvironments = evaluationEnvironments
+                this.evaluationContexts = evaluationContexts
                 this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
@@ -533,7 +533,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `includes evaluation_environments in feature flag request when configured`() {
+    fun `includes evaluation_contexts in feature flag request when configured`() {
         val http =
             mockHttp(
                 response =
@@ -546,7 +546,7 @@ internal class PostHogTest {
             getSut(
                 url.toString(),
                 preloadFeatureFlags = false,
-                evaluationEnvironments = listOf("production", "web", "checkout"),
+                evaluationContexts = listOf("production", "web", "checkout"),
             )
 
         sut.reloadFeatureFlags()
@@ -558,8 +558,8 @@ internal class PostHogTest {
         val flagsRequest = serializer.deserialize<Map<String, Any>>(body.reader())
 
         @Suppress("UNCHECKED_CAST")
-        val evaluationEnvironments = flagsRequest["evaluation_environments"] as? List<String>
-        assertEquals(listOf("production", "web", "checkout"), evaluationEnvironments)
+        val evaluationContexts = flagsRequest["evaluation_contexts"] as? List<String>
+        assertEquals(listOf("production", "web", "checkout"), evaluationContexts)
 
         sut.close()
     }

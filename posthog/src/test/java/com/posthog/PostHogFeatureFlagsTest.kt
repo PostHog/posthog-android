@@ -45,7 +45,7 @@ internal class PostHogFeatureFlagsTest {
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
-        evaluationEnvironments: List<String>? = null,
+        evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
     ): PostHogInterface {
         config =
@@ -63,7 +63,7 @@ internal class PostHogFeatureFlagsTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
-                this.evaluationEnvironments = evaluationEnvironments
+                this.evaluationContexts = evaluationContexts
                 this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
