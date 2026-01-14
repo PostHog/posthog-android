@@ -106,6 +106,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getErrorTrackingConfig ()Lcom/posthog/errortracking/PostHogErrorTrackingConfig;
+	public final fun getEvaluationContexts ()Ljava/util/List;
 	public final fun getEvaluationEnvironments ()Ljava/util/List;
 	public final fun getFeatureFlagCalledCacheSize ()I
 	public final fun getFlushAt ()I
@@ -147,6 +148,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
+	public final fun setEvaluationContexts (Ljava/util/List;)V
 	public final fun setEvaluationEnvironments (Ljava/util/List;)V
 	public final fun setFeatureFlagCalledCacheSize (I)V
 	public final fun setFlushAt (I)V
