@@ -1,6 +1,5 @@
 ## Next
 
-## 3.29.0 - 2026-01-14
 
 - rename `evaluation_environments` to `evaluation_contexts` ([#368](https://github.com/PostHog/posthog-android/pull/368))
 
