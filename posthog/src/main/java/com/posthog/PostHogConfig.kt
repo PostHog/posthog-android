@@ -388,7 +388,6 @@ public open class PostHogConfig(
     public var evaluationEnvironments: List<String>?
         get() = evaluationContexts
         set(value) {
-            logger.log("evaluationEnvironments is deprecated. Use evaluationContexts instead.")
             evaluationContexts = value
         }
 
