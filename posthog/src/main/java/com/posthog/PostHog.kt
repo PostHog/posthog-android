@@ -22,6 +22,7 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
+import com.posthog.internal.sortMapRecursively
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
@@ -773,16 +774,16 @@ public class PostHog private constructor(
     /**
      * Computes a hash for deduplicating setPersonProperties calls.
      * Similar to the JS SDK, this creates a JSON string representation of the properties.
-     * Keys are sorted to ensure deterministic hashing regardless of map insertion order.
+     * Keys are sorted recursively to ensure deterministic hashing regardless of map insertion order.
      */
     private fun getPersonPropertiesHash(
         distinctId: String,
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
     ): String {
-        // Sort keys to ensure deterministic hashing regardless of map insertion order
-        val sortedSet = userPropertiesToSet?.toSortedMap()
-        val sortedSetOnce = userPropertiesToSetOnce?.toSortedMap()
+        // Sort keys recursively to ensure deterministic hashing regardless of map insertion order
+        val sortedSet = userPropertiesToSet?.let { sortMapRecursively(it) }
+        val sortedSetOnce = userPropertiesToSetOnce?.let { sortMapRecursively(it) }
 
         // Create a consistent JSON-like string representation similar to JS SDK's jsonStringify
         val hashData =

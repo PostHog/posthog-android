@@ -2460,4 +2460,32 @@ internal class PostHogTest {
 
         sut.close()
     }
+
+    @Test
+    fun `setPersonProperties deduplicates calls with nested maps in different order`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Create two maps with nested maps in different key order
+        val nested1 = linkedMapOf("city" to "London", "country" to "UK", "zip" to "12345")
+        val nested2 = linkedMapOf("zip" to "12345", "city" to "London", "country" to "UK")
+
+        val userPropertiesToSet1 = linkedMapOf("name" to "John", "address" to nested1)
+        val userPropertiesToSet2 = linkedMapOf("address" to nested2, "name" to "John")
+
+        // First call
+        sut.setPersonProperties(userPropertiesToSet1)
+
+        // Second call with same data but different key order at both levels - should be deduplicated
+        sut.setPersonProperties(userPropertiesToSet2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Only one event should be sent since the content is the same
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
 }
