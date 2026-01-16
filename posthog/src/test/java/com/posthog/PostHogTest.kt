@@ -2410,4 +2410,54 @@ internal class PostHogTest {
         sut.close()
         http.shutdown()
     }
+
+    @Test
+    fun `setPersonProperties deduplicates calls with same properties in different order`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Create two maps with the same data but potentially different insertion order
+        val userPropertiesToSet1 = linkedMapOf("email" to "user@example.com", "plan" to "premium", "name" to "John")
+        val userPropertiesToSet2 = linkedMapOf("plan" to "premium", "name" to "John", "email" to "user@example.com")
+
+        // First call
+        sut.setPersonProperties(userPropertiesToSet1)
+
+        // Second call with same data but different key order - should be deduplicated
+        sut.setPersonProperties(userPropertiesToSet2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Only one event should be sent since the content is the same
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties deduplicates calls with same setOnce properties in different order`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Create two maps with the same data but potentially different insertion order
+        val userPropertiesToSetOnce1 = linkedMapOf("initial_url" to "/blog", "referrer" to "google", "campaign" to "summer")
+        val userPropertiesToSetOnce2 = linkedMapOf("campaign" to "summer", "initial_url" to "/blog", "referrer" to "google")
+
+        // First call
+        sut.setPersonProperties(userPropertiesToSetOnce = userPropertiesToSetOnce1)
+
+        // Second call with same data but different key order - should be deduplicated
+        sut.setPersonProperties(userPropertiesToSetOnce = userPropertiesToSetOnce2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Only one event should be sent since the content is the same
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
 }

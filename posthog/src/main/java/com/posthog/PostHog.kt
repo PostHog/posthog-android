@@ -773,18 +773,24 @@ public class PostHog private constructor(
     /**
      * Computes a hash for deduplicating setPersonProperties calls.
      * Similar to the JS SDK, this creates a JSON string representation of the properties.
+     * Keys are sorted to ensure deterministic hashing regardless of map insertion order.
      */
     private fun getPersonPropertiesHash(
         distinctId: String,
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
     ): String {
+        // Sort keys to ensure deterministic hashing regardless of map insertion order
+        val sortedSet = userPropertiesToSet?.toSortedMap()
+        val sortedSetOnce = userPropertiesToSetOnce?.toSortedMap()
+
         // Create a consistent JSON-like string representation similar to JS SDK's jsonStringify
-        val hashData = mapOf(
-            "distinct_id" to distinctId,
-            "userPropertiesToSet" to userPropertiesToSet,
-            "userPropertiesToSetOnce" to userPropertiesToSetOnce,
-        )
+        val hashData =
+            sortedMapOf(
+                "distinct_id" to distinctId,
+                "userPropertiesToSet" to sortedSet,
+                "userPropertiesToSetOnce" to sortedSetOnce,
+            )
         return config?.serializer?.serializeObject(hashData) ?: hashData.toString()
     }
 
