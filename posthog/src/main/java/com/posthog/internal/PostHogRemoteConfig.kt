@@ -357,10 +357,9 @@ public class PostHogRemoteConfig(
                 synchronized(featureFlagsLock) {
                     if (it.quotaLimited?.contains("feature_flags") == true) {
                         config.logger.log(
-                            """Feature flags are quota limited, clearing existing flags.
+                            """Feature flags are quota limited, flags could not be updated.
                                     Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
                         )
-                        clearFlags()
                         return@let
                     }
 
