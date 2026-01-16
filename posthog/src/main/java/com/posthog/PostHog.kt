@@ -714,7 +714,7 @@ public class PostHog private constructor(
             // otherwise they have to reset and identify again
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
             capture(
-                "\$set",
+                PostHogEventName.SET.event,
                 distinctId = distinctId,
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
