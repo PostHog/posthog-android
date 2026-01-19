@@ -22,6 +22,11 @@ val config = PostHogConfig(apiKey).apply {
 
 No immediate action required - existing code using `evaluationEnvironments` will continue to work with a deprecation warning.
 
+## 6.2.0 - 2025-01-19
+
+- feat: implement setPersonProps method ([#369](https://github.com/PostHog/posthog-android/pull/369))
+- fix: Retain cached flags when quota limited ([#372](https://github.com/PostHog/posthog-android/pull/372))
+
 ## 6.1.0 - 2025-01-09
 
 - fix: Allow flag property overrides via `setPersonPropertiesForFlags`, `setGroupPropertiesForFlags` without person processing ([#365](https://github.com/PostHog/posthog-android/issues/365))

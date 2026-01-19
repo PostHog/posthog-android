@@ -35,6 +35,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun resetPersonPropertiesForFlags (Z)V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;Z)V
+	public fun setPersonProperties (Ljava/util/Map;Ljava/util/Map;)V
 	public fun setPersonPropertiesForFlags (Ljava/util/Map;Z)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
 	public fun startSession ()V
@@ -73,6 +74,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public final fun resetSharedInstance ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;Z)V
+	public fun setPersonProperties (Ljava/util/Map;Ljava/util/Map;)V
 	public fun setPersonPropertiesForFlags (Ljava/util/Map;Z)V
 	public fun setup (Lcom/posthog/PostHogConfig;)V
 	public fun startSession ()V
@@ -288,6 +290,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun resetPersonPropertiesForFlags (Z)V
 	public abstract fun screen (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;Z)V
+	public abstract fun setPersonProperties (Ljava/util/Map;Ljava/util/Map;)V
 	public abstract fun setPersonPropertiesForFlags (Ljava/util/Map;Z)V
 	public abstract fun startSession ()V
 	public abstract fun startSessionReplay (Z)V
@@ -307,6 +310,7 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun resetPersonPropertiesForFlags$default (Lcom/posthog/PostHogInterface;ZILjava/lang/Object;)V
 	public static synthetic fun screen$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun setGroupPropertiesForFlags$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ZILjava/lang/Object;)V
+	public static synthetic fun setPersonProperties$default (Lcom/posthog/PostHogInterface;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun setPersonPropertiesForFlags$default (Lcom/posthog/PostHogInterface;Ljava/util/Map;ZILjava/lang/Object;)V
 	public static synthetic fun startSessionReplay$default (Lcom/posthog/PostHogInterface;ZILjava/lang/Object;)V
 }
