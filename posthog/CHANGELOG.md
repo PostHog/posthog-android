@@ -1,6 +1,7 @@
 ## Next
 
 - feat: implement setPersonProps method ([#369](https://github.com/PostHog/posthog-android/pull/369))
+- fix: Retain cached flags when quota limited ([#372](https://github.com/PostHog/posthog-android/pull/372))
 
 ## 6.1.0 - 2025-01-09
 
