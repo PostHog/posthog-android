@@ -1,5 +1,27 @@
 ## Next
 
+### Changed
+- Renamed `evaluationEnvironments` to `evaluationContexts` for clearer semantics ([#368](https://github.com/PostHog/posthog-android/pull/368)). The term "contexts" better reflects that this feature is for specifying evaluation contexts (e.g., "web", "mobile", "checkout") rather than deployment environments (e.g., "staging", "production").
+- The API now sends `evaluation_contexts` instead of `evaluation_environments` to the server.
+
+### Deprecated
+- `PostHogConfig.evaluationEnvironments` is now deprecated in favor of `PostHogConfig.evaluationContexts`. The old property will continue to work and will log a deprecation warning. It will be removed in a future major version.
+
+### Migration Guide
+```kotlin
+// Before
+val config = PostHogConfig(apiKey).apply {
+    evaluationEnvironments = listOf("production", "web", "checkout")
+}
+
+// After
+val config = PostHogConfig(apiKey).apply {
+    evaluationContexts = listOf("production", "web", "checkout")
+}
+```
+
+No immediate action required - existing code using `evaluationEnvironments` will continue to work with a deprecation warning.
+
 ## 6.2.0 - 2025-01-19
 
 - feat: implement setPersonProps method ([#369](https://github.com/PostHog/posthog-android/pull/369))
