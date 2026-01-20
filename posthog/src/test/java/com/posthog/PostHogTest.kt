@@ -3,6 +3,8 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN_LAST_UPDATED
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
@@ -2605,6 +2607,177 @@ internal class PostHogTest {
         assertEquals("\$set", batch.batch[0].event)
         assertEquals(userPropertiesToSet, batch.batch[0].properties!!["\$set"])
         assertEquals(userPropertiesToSetOnce, batch.batch[0].properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken successfully registers token`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http = mockHttp(
+            response =
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(responseBody),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val result = sut.registerPushToken("test-fcm-token")
+
+        // Wait for background thread to complete
+        Thread.sleep(100)
+
+        assertTrue(result)
+        assertEquals(1, http.requestCount)
+
+        val request = http.takeRequest()
+        assertEquals("/api/sdk/push_subscriptions/register", request.path)
+        assertEquals("POST", request.method)
+
+        // Verify request body contains expected fields
+        val requestBody = request.body.readUtf8()
+        assertTrue(requestBody.contains("\"api_key\""))
+        assertTrue(requestBody.contains("\"distinct_id\""))
+        assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
+        assertTrue(requestBody.contains("\"platform\":\"android\""))
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken returns false when SDK is disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        sut.close()
+
+        val result = sut.registerPushToken("test-fcm-token")
+
+        assertFalse(result)
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `registerPushToken returns false for blank token`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val result = sut.registerPushToken("")
+
+        assertFalse(result)
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken skips registration when token unchanged and less than 24 hours`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http = mockHttp(
+            total = 2,
+            response =
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(responseBody),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // First registration
+        val result1 = sut.registerPushToken("test-fcm-token")
+        Thread.sleep(100) // Wait for background thread
+        assertTrue(result1)
+        assertEquals(1, http.requestCount)
+
+        // Second registration with same token immediately - should skip API call
+        val result2 = sut.registerPushToken("test-fcm-token")
+        Thread.sleep(100) // Wait for background thread
+        assertTrue(result2)
+        // Should not make a second request when token is unchanged and less than 24 hours
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken registers again when token changes`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http = mockHttp(
+            total = 2,
+            response =
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(responseBody),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // First registration
+        val result1 = sut.registerPushToken("test-fcm-token-1")
+        Thread.sleep(100) // Wait for background thread
+        assertTrue(result1)
+        assertEquals(1, http.requestCount)
+
+        // Second registration with different token - should register again
+        val result2 = sut.registerPushToken("test-fcm-token-2")
+        Thread.sleep(100) // Wait for background thread
+        assertTrue(result2)
+        assertEquals(2, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken returns false on API error`() {
+        val http = mockHttp(
+            response =
+                MockResponse()
+                    .setResponseCode(400)
+                    .setBody("Bad Request"),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val result = sut.registerPushToken("test-fcm-token")
+
+        Thread.sleep(100) // Wait for background thread
+        assertFalse(result)
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken stores token and timestamp in preferences`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http = mockHttp(
+            response =
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(responseBody),
+        )
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
+
+        sut.registerPushToken("test-fcm-token")
+        Thread.sleep(100) // Wait for background thread
+
+        val storedToken = preferences.getValue(FCM_TOKEN) as? String
+        val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long
+
+        assertEquals("test-fcm-token", storedToken)
+        assertNotNull(lastUpdated)
+        assertTrue(lastUpdated!! > 0)
 
         sut.close()
     }

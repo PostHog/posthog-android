@@ -310,4 +310,67 @@ internal class PostHogApiTest {
             }
         assertEquals(401, exc.statusCode)
     }
+
+    @Test
+    fun `registerPushSubscription returns successful response`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http = mockHttp(
+            response =
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(responseBody),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.registerPushSubscription("test-distinct-id", "test-fcm-token")
+
+        val request = http.takeRequest()
+
+        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
+        assertEquals("POST", request.method)
+        assertEquals("/api/sdk/push_subscriptions/register", request.path)
+        assertEquals("gzip", request.headers["Content-Encoding"])
+        assertEquals("gzip", request.headers["Accept-Encoding"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+
+        // Verify request body contains expected fields
+        val requestBody = request.body.readUtf8()
+        assertTrue(requestBody.contains("\"api_key\":\"$API_KEY\""))
+        assertTrue(requestBody.contains("\"distinct_id\":\"test-distinct-id\""))
+        assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
+        assertTrue(requestBody.contains("\"platform\":\"android\""))
+    }
+
+    @Test
+    fun `registerPushSubscription throws if not successful`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("Bad Request"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.registerPushSubscription("test-distinct-id", "test-fcm-token")
+            }
+        assertEquals(400, exc.statusCode)
+        assertEquals("Client Error", exc.message)
+        assertNotNull(exc.body)
+    }
+
+    @Test
+    fun `registerPushSubscription throws on 401 unauthorized`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(401).setBody("""{"error": "Invalid API key"}"""))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.registerPushSubscription("test-distinct-id", "test-fcm-token")
+            }
+        assertEquals(401, exc.statusCode)
+        assertEquals("Client Error", exc.message)
+    }
 }

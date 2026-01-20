@@ -224,6 +224,19 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean = true)
 
     /**
+     * Registers a push notification token (FCM token) with PostHog.
+     * The SDK will automatically rate-limit registrations to once per day unless the token has changed.
+     *
+     * Users should retrieve the FCM token using:
+     * - Java: `FirebaseMessaging.getInstance().getToken()`
+     * - Kotlin: `Firebase.messaging.token`
+     *
+     * @param token The FCM registration token
+     * @return true if registration was successful, false otherwise
+     */
+    public fun registerPushToken(token: String): Boolean
+
+    /**
      * Sets properties for a specific group type to include when evaluating feature flags.
      *
      * @param type The group type identifier (e.g., "organization", "team")

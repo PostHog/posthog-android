@@ -2,6 +2,11 @@
     <string name="app_name">PostHog Android Sample</string>
     <string name="text">Text</string>
 
+    <!-- Notification channel for push notifications -->
+    <string name="default_notification_channel_id">posthog_default_channel</string>
+    <string name="default_notification_channel_name">PostHog Notifications</string>
+    <string name="default_notification_channel_description">Notifications from PostHog</string>
+
     <string-array name="array_name">
         <item>Array Item One</item>
         <item>Array Item Two</item>
