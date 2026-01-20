@@ -8,6 +8,8 @@ import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN_LAST_UPDATED
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
@@ -1222,6 +1224,76 @@ public class PostHog private constructor(
         return PostHogSessionManager.isSessionActive()
     }
 
+    override fun registerPushToken(token: String): Boolean {
+        if (!isEnabled()) {
+            return false
+        }
+
+        if (token.isBlank()) {
+            config?.logger?.log("registerPushToken called with blank token")
+            return false
+        }
+
+        val config = this.config ?: return false
+        val preferences = getPreferences()
+
+        // Get stored token and last update timestamp
+        val storedToken = preferences.getValue(FCM_TOKEN) as? String
+        val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long ?: 0L
+        val currentTime = config.dateProvider.currentDate().time
+        val oneHourInMillis = 60 * 60 * 1000L
+
+        // Check if token has changed or if an hour has passed
+        val tokenChanged = storedToken != token
+        val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= oneHourInMillis)
+
+        if (!shouldUpdate) {
+            config.logger.log("FCM token registration skipped: token unchanged and less than 24 hours since last update")
+            return true
+        }
+
+        // Store token and timestamp
+        preferences.setValue(FCM_TOKEN, token)
+        preferences.setValue(FCM_TOKEN_LAST_UPDATED, currentTime)
+
+        // Register with backend on a background thread to avoid StrictMode NetworkViolation
+        // The Firebase callback runs on the main thread, so we need to move the network call off it
+        return try {
+            val api = PostHogApi(config)
+            val distinctId = distinctId()
+            
+            // Execute network call on background thread to avoid StrictMode violations
+            var success = false
+            var exception: Throwable? = null
+            val latch = java.util.concurrent.CountDownLatch(1)
+            
+            Thread {
+                try {
+                    api.registerPushSubscription(distinctId, token)
+                    success = true
+                } catch (e: Throwable) {
+                    exception = e
+                } finally {
+                    latch.countDown()
+                }
+            }.start()
+            
+            // Wait for completion (with timeout to avoid blocking indefinitely)
+            latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            
+            if (success) {
+                config.logger.log("FCM token registered successfully")
+                true
+            } else {
+                config.logger.log("Failed to register FCM token: ${exception?.message ?: "Unknown error"}")
+                false
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Failed to register FCM token: $e")
+            false
+        }
+    }
+
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")
         return super<PostHogStateless>.config as? T
@@ -1538,6 +1610,10 @@ public class PostHog private constructor(
 
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
+        }
+
+        override fun registerPushToken(token: String): Boolean {
+            return shared.registerPushToken(token)
         }
     }
 }

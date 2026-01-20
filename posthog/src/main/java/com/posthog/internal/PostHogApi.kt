@@ -7,6 +7,7 @@ import com.posthog.PostHogConfig.Companion.DEFAULT_US_ASSETS_HOST
 import com.posthog.PostHogConfig.Companion.DEFAULT_US_HOST
 import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -14,6 +15,7 @@ import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
+import okio.buffer
 import java.io.IOException
 import java.io.OutputStream
 
@@ -63,6 +65,9 @@ public class PostHogApi(
                 config.serializer.serialize(batch, it.bufferedWriter())
             }
 
+        // Tag thread for StrictMode compliance before making network call
+        tagThreadForStrictMode()
+        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -85,6 +90,9 @@ public class PostHogApi(
                 config.serializer.serialize(events, it.bufferedWriter())
             }
 
+        // Tag thread for StrictMode compliance before making network call
+        tagThreadForStrictMode()
+        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -141,6 +149,9 @@ public class PostHogApi(
                 config.serializer.serialize(flagsRequest, it.bufferedWriter())
             }
 
+        // Tag thread for StrictMode compliance before making network call
+        tagThreadForStrictMode()
+        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -177,6 +188,9 @@ public class PostHogApi(
                 .get()
                 .build()
 
+        // Tag thread for StrictMode compliance before making network call
+        tagThreadForStrictMode()
+        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -223,6 +237,9 @@ public class PostHogApi(
 
         val request = requestBuilder.get().build()
 
+        // Tag thread for StrictMode compliance before making network call
+        tagThreadForStrictMode()
+        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -250,6 +267,55 @@ public class PostHogApi(
             }
             // Empty body on success is anomalous - clear ETag to force fresh fetch next time
             return LocalEvaluationApiResponse.success(null, null)
+        }
+    }
+
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun registerPushSubscription(
+        distinctId: String,
+        token: String,
+    ) {
+        val pushSubscriptionRequest =
+            PostHogPushSubscriptionRequest(
+                api_key = config.apiKey,
+                distinct_id = distinctId,
+                token = token,
+                platform = "android",
+            )
+
+        val url = "$theHost/api/sdk/push_subscriptions/register"
+        
+        logRequest(pushSubscriptionRequest, url)
+
+        val request =
+            makeRequest(url) {
+                config.serializer.serialize(pushSubscriptionRequest, it.bufferedWriter())
+            }
+
+        // Tag thread for StrictMode compliance before making network call
+        tagThreadForStrictMode()
+        
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw PostHogApiError(response.code, response.message, response.body)
+            }
+        }
+    }
+    
+    /**
+     * Tags the current thread for StrictMode compliance on Android
+     * This prevents "Untagged socket detected" warnings
+     */
+    private fun tagThreadForStrictMode() {
+        try {
+            // Use reflection to set traffic stats tag if available (Android only)
+            val trafficStatsClass = Class.forName("android.net.TrafficStats")
+            val setThreadStatsTagMethod = trafficStatsClass.getMethod("setThreadStatsTag", Int::class.javaPrimitiveType)
+            setThreadStatsTagMethod.invoke(null, 0xFFFF) // Use a non-zero tag
+        } catch (e: ClassNotFoundException) {
+            // TrafficStats not available (not Android) - this is expected on non-Android platforms
+        } catch (e: Exception) {
+            // Other exceptions (NoSuchMethodException, etc.) - ignore silently
         }
     }
 

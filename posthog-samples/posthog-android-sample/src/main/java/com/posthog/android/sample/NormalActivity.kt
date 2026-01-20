@@ -1,9 +1,15 @@
 package com.posthog.android.sample
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.posthog.PostHog
 import com.posthog.PostHogOkHttpInterceptor
 import okhttp3.OkHttpClient
@@ -15,10 +21,23 @@ class NormalActivity : ComponentActivity() {
             .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
             .build()
 
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            Log.d(TAG, "FCM POST_NOTIFICATIONS permission granted")
+        } else {
+            Log.w(TAG, "FCM POST_NOTIFICATIONS permission denied - notifications will not be displayed")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.normal_activity)
+
+        // Request notification permission for Android 13+ (API 33+)
+        requestNotificationPermission()
 
 //        val webview = findViewById<WebView>(R.id.webview)
 //        webview.loadUrl("https://www.google.com")
@@ -74,5 +93,28 @@ class NormalActivity : ComponentActivity() {
                 Toast.makeText(this, "Network requests are disabled by feature flag: `enable_network_request`", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    Log.d(TAG, "FCM POST_NOTIFICATIONS permission already granted")
+                }
+                else -> {
+                    Log.d(TAG, "FCM Requesting POST_NOTIFICATIONS permission")
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        } else {
+            Log.d(TAG, "FCM POST_NOTIFICATIONS permission not required (Android < 13)")
+        }
+    }
+
+    companion object {
+        private const val TAG = "NormalActivity"
     }
 }

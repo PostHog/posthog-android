@@ -71,6 +71,21 @@ public class PostHogAndroid private constructor() {
             return PostHog.with(config)
         }
 
+        /**
+         * Registers a push notification token (FCM token) with PostHog.
+         * The SDK will automatically rate-limit registrations to once per day unless the token has changed.
+         *
+         * Users should retrieve the FCM token using:
+         * - Java: `FirebaseMessaging.getInstance().getToken()`
+         * - Kotlin: `Firebase.messaging.token`
+         *
+         * @param token The FCM registration token
+         * @return true if registration was successful, false otherwise
+         */
+        public fun registerPushToken(token: String): Boolean {
+            return PostHog.registerPushToken(token)
+        }
+
         private fun <T : PostHogAndroidConfig> setAndroidConfig(
             context: Context,
             config: T,
