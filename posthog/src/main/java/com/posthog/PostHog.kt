@@ -721,7 +721,7 @@ public class PostHog private constructor(
                 )
             ) {
                 capture(
-                    "\$set",
+                    PostHogEventName.SET.event,
                     distinctId = distinctId,
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
