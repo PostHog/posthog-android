@@ -1,4 +1,5 @@
 ## Next
+- Allow collecting FCM device token in SDK ([#376](https://github.com/PostHog/posthog-android/pull/376))
 
 ### Added
 - Allow collecting FCM device token in SDK core ([#396](https://github.com/PostHog/posthog-android/pull/396))
