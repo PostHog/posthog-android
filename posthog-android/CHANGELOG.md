@@ -1,4 +1,5 @@
 ## Next
+- Allow collecting FCM device token in SDK ([#376](https://github.com/PostHog/posthog-android/pull/376))
 
 - fix: Session Replay masks only the text area for EditText, Button, and CompoundButton (CheckBox, RadioButton, Switch) instead of the entire component bounds ([#400](https://github.com/PostHog/posthog-android/pull/400))
 
