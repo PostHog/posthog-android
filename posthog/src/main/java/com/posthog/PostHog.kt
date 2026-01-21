@@ -713,12 +713,20 @@ public class PostHog private constructor(
             // we need to make sure the user props update is for the same user
             // otherwise they have to reset and identify again
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
-            capture(
-                PostHogEventName.SET.event,
-                distinctId = distinctId,
-                userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce,
-            )
+            if (shouldCapturePersonPropertiesEvent(
+                    distinctId,
+                    userProperties,
+                    userPropertiesSetOnce,
+                    "A duplicate identify call was made with the same properties. The \$set event has been ignored.",
+                )
+            ) {
+                capture(
+                    PostHogEventName.SET.event,
+                    distinctId = distinctId,
+                    userProperties = userProperties,
+                    userPropertiesSetOnce = userPropertiesSetOnce,
+                )
+            }
             // Note we don't reload flags on property changes as these get processed async
         } else {
             config?.logger?.log("already identified with id: $distinctId.")
@@ -743,15 +751,14 @@ public class PostHog private constructor(
 
         val currentDistinctId = this.distinctId
 
-        // Calculate hash to deduplicate calls with the same properties
-        val hash = getPersonPropertiesHash(currentDistinctId, userPropertiesToSet, userPropertiesToSetOnce)
-
-        synchronized(cachedPersonPropertiesLock) {
-            if (cachedPersonPropertiesHash == hash) {
-                config?.logger?.log("A duplicate setPersonProperties call was made with the same properties. It has been ignored.")
-                return
-            }
-            cachedPersonPropertiesHash = hash
+        if (!shouldCapturePersonPropertiesEvent(
+                currentDistinctId,
+                userPropertiesToSet,
+                userPropertiesToSetOnce,
+                "A duplicate setPersonProperties call was made with the same properties. It has been ignored.",
+            )
+        ) {
+            return
         }
 
         // Update person properties for flags (setOnce properties are applied first, then set properties override)
@@ -793,6 +800,29 @@ public class PostHog private constructor(
                 "userPropertiesToSetOnce" to sortedSetOnce,
             )
         return config?.serializer?.serializeObject(hashData) ?: hashData.toString()
+    }
+
+    /**
+     * Checks if person properties have changed by comparing hash values.
+     * Updates the cached hash if different and returns true if the event should be captured.
+     * Returns false if the hash matches (duplicate call), logging the provided message.
+     */
+    private fun shouldCapturePersonPropertiesEvent(
+        distinctId: String,
+        userPropertiesToSet: Map<String, Any>?,
+        userPropertiesToSetOnce: Map<String, Any>?,
+        duplicateLogMessage: String,
+    ): Boolean {
+        val hash = getPersonPropertiesHash(distinctId, userPropertiesToSet, userPropertiesToSetOnce)
+
+        synchronized(cachedPersonPropertiesLock) {
+            if (cachedPersonPropertiesHash == hash) {
+                config?.logger?.log(duplicateLogMessage)
+                return false
+            }
+            cachedPersonPropertiesHash = hash
+        }
+        return true
     }
 
     private fun hasPersonProcessing(): Boolean {
