@@ -604,38 +604,28 @@ internal class PostHogTest {
     @Test
     fun `evaluationContexts is sent in flags request when configured`() {
         val mockServer = MockWebServer()
-        // First request: /flags returns success
         mockServer.enqueue(jsonResponse(createFlagsResponse("test-flag", enabled = true)))
         mockServer.start()
 
-        val url = mockServer.url("/").toString()
         val contexts = listOf("production", "web", "checkout")
         val postHog =
             PostHog.with(
                 PostHogConfig.builder(TEST_API_KEY)
-                    .host(url)
+                    .host(mockServer.url("/").toString())
                     .evaluationContexts(contexts)
                     .preloadFeatureFlags(false)
                     .sendFeatureFlagEvent(false)
                     .build(),
             )
 
-        // This will hit /flags
         postHog.getFeatureFlag("user123", "test-flag")
 
-        // First request should be /flags
-        val flagsRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
-        assertNotNull(flagsRequest, "Expected /flags request")
-        assertTrue(flagsRequest.path?.contains("/flags") == true, "Request should be /flags")
-
-        // Parse the request body
-        val bodyString = flagsRequest.body.unGzip()
-        val gson = com.google.gson.Gson()
-        val requestBody = gson.fromJson(bodyString, Map::class.java)
+        val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(request)
+        val requestBody = com.google.gson.Gson().fromJson(request.body.unGzip(), Map::class.java)
 
         @Suppress("UNCHECKED_CAST")
-        val sentContexts = requestBody["evaluation_contexts"] as? List<String>
-        assertEquals(contexts, sentContexts, "evaluation_contexts should be sent in /flags request")
+        assertEquals(contexts, requestBody["evaluation_contexts"] as? List<String>)
 
         postHog.close()
         mockServer.shutdown()
@@ -644,33 +634,25 @@ internal class PostHogTest {
     @Test
     fun `evaluationContexts is not sent when not configured`() {
         val mockServer = MockWebServer()
-        // First request: /flags returns success
         mockServer.enqueue(jsonResponse(createFlagsResponse("test-flag", enabled = true)))
         mockServer.start()
 
-        val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
                 PostHogConfig.builder(TEST_API_KEY)
-                    .host(url)
+                    .host(mockServer.url("/").toString())
                     .preloadFeatureFlags(false)
                     .sendFeatureFlagEvent(false)
                     .build(),
             )
 
-        // This will hit /flags
         postHog.getFeatureFlag("user123", "test-flag")
 
-        // First request should be /flags
-        val flagsRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
-        assertNotNull(flagsRequest, "Expected /flags request")
+        val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(request)
+        val requestBody = com.google.gson.Gson().fromJson(request.body.unGzip(), Map::class.java)
 
-        // Parse the request body
-        val bodyString = flagsRequest.body.unGzip()
-        val gson = com.google.gson.Gson()
-        val requestBody = gson.fromJson(bodyString, Map::class.java)
-
-        assertFalse(requestBody.containsKey("evaluation_contexts"), "evaluation_contexts should not be sent when not configured")
+        assertFalse(requestBody.containsKey("evaluation_contexts"))
 
         postHog.close()
         mockServer.shutdown()

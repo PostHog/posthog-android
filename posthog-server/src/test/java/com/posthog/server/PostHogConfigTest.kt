@@ -512,72 +512,32 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `constructor sets evaluationContexts when provided`() {
-        val contexts = listOf("production", "web", "checkout")
-        val config = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
+    fun `evaluationContexts defaults to null and can be set via constructor`() {
+        val defaultConfig = PostHogConfig(apiKey = TEST_API_KEY)
+        assertNull(defaultConfig.evaluationContexts)
 
-        assertEquals(contexts, config.evaluationContexts)
-    }
-
-    @Test
-    fun `constructor defaults evaluationContexts to null`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-
-        assertNull(config.evaluationContexts)
-    }
-
-    @Test
-    fun `asCoreConfig propagates evaluationContexts to core config`() {
-        val contexts = listOf("production", "web", "checkout")
-        val config = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
-
-        val coreConfig = config.asCoreConfig()
-
-        assertEquals(contexts, coreConfig.evaluationContexts)
-    }
-
-    @Test
-    fun `asCoreConfig propagates null evaluationContexts to core config`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-
-        val coreConfig = config.asCoreConfig()
-
-        assertNull(coreConfig.evaluationContexts)
-    }
-
-    @Test
-    fun `builder evaluationContexts method sets value and returns builder`() {
         val contexts = listOf("production", "web")
-        val builder = PostHogConfig.builder(TEST_API_KEY)
-        val result = builder.evaluationContexts(contexts)
-        assertEquals(builder, result)
-
-        val config = builder.build()
-        assertEquals(contexts, config.evaluationContexts)
+        val configWithContexts = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
+        assertEquals(contexts, configWithContexts.evaluationContexts)
     }
 
     @Test
-    fun `builder evaluationContexts method allows null value`() {
-        val config =
-            PostHogConfig.builder(TEST_API_KEY)
-                .evaluationContexts(null)
-                .build()
+    fun `asCoreConfig propagates evaluationContexts`() {
+        val contexts = listOf("production", "web")
+        val config = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
+        assertEquals(contexts, config.asCoreConfig().evaluationContexts)
 
-        assertNull(config.evaluationContexts)
+        val nullConfig = PostHogConfig(apiKey = TEST_API_KEY)
+        assertNull(nullConfig.asCoreConfig().evaluationContexts)
     }
 
     @Test
-    fun `builder allows method chaining with evaluationContexts`() {
-        val contexts = listOf("staging", "mobile")
-        val config =
-            PostHogConfig.builder(TEST_API_KEY)
-                .host("https://custom.host.com")
-                .evaluationContexts(contexts)
-                .debug(true)
-                .build()
-
-        assertEquals("https://custom.host.com", config.host)
+    fun `builder evaluationContexts method sets value`() {
+        val contexts = listOf("production", "web")
+        val config = PostHogConfig.builder(TEST_API_KEY).evaluationContexts(contexts).build()
         assertEquals(contexts, config.evaluationContexts)
-        assertEquals(true, config.debug)
+
+        val nullConfig = PostHogConfig.builder(TEST_API_KEY).evaluationContexts(null).build()
+        assertNull(nullConfig.evaluationContexts)
     }
 }
