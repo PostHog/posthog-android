@@ -126,6 +126,14 @@ public open class PostHogConfig constructor(
      * Defaults to 30 seconds
      */
     public var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS,
+    /**
+     * Optional list of evaluation context tags for feature flag evaluation
+     * When specified, only feature flags that have at least one matching evaluation tag will be evaluated
+     * Feature flags with no evaluation tags will always be evaluated for backward compatibility
+     * Example: listOf("production", "web", "checkout")
+     * Defaults to null (evaluate all flags)
+     */
+    public var evaluationContexts: List<String>? = null,
 ) {
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
@@ -180,6 +188,9 @@ public open class PostHogConfig constructor(
         beforeSendCallbacks.forEach { coreConfig.addBeforeSend(it) }
         integrations.forEach { coreConfig.addIntegration(it) }
 
+        // Set evaluation contexts
+        coreConfig.evaluationContexts = evaluationContexts
+
         // Set SDK identification
         coreConfig.sdkName = BuildConfig.SDK_NAME
         coreConfig.sdkVersion = BuildConfig.VERSION_NAME
@@ -230,6 +241,7 @@ public open class PostHogConfig constructor(
         private var localEvaluation: Boolean? = null
         private var personalApiKey: String? = null
         private var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS
+        private var evaluationContexts: List<String>? = null
 
         public fun host(host: String): Builder = apply { this.host = host }
 
@@ -275,6 +287,8 @@ public open class PostHogConfig constructor(
 
         public fun pollIntervalSeconds(pollIntervalSeconds: Int): Builder = apply { this.pollIntervalSeconds = pollIntervalSeconds }
 
+        public fun evaluationContexts(evaluationContexts: List<String>?): Builder = apply { this.evaluationContexts = evaluationContexts }
+
         public fun build(): PostHogConfig =
             PostHogConfig(
                 apiKey = apiKey,
@@ -296,6 +310,7 @@ public open class PostHogConfig constructor(
                 localEvaluation = localEvaluation ?: false,
                 personalApiKey = personalApiKey,
                 pollIntervalSeconds = pollIntervalSeconds,
+                evaluationContexts = evaluationContexts,
             )
     }
 }
