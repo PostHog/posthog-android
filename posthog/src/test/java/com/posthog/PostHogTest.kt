@@ -850,13 +850,11 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 3)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
 
         // First identify - captures $identify event
         sut.identify(
             DISTINCT_ID,
-            userProperties = userProps,
-            userPropertiesSetOnce = userPropsOnce,
         )
 
         // Second identify with same distinctId - captures $set event (first time with these props)
@@ -898,8 +896,6 @@ internal class PostHogTest {
         // First identify
         sut.identify(
             DISTINCT_ID,
-            userProperties = userProps,
-            userPropertiesSetOnce = userPropsOnce,
         )
 
         // Second identify with same distinctId - captures $set event
@@ -2583,7 +2579,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 3)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 1)
 
         val userPropertiesToSet = mapOf("email" to "user@example.com", "plan" to "premium")
         val userPropertiesToSetOnce = mapOf("initial_url" to "/blog")
