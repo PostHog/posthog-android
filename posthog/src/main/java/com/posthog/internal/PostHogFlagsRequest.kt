@@ -11,10 +11,18 @@ internal class PostHogFlagsRequest(
     personProperties: Map<String, Any?>? = null,
     groupProperties: Map<String, Map<String, Any?>>? = null,
     evaluationContexts: List<String>? = null,
+    lib: String? = null,
+    libVersion: String? = null,
 ) : HashMap<String, Any>() {
     init {
         this["api_key"] = apiKey
         this["distinct_id"] = distinctId
+        if (!lib.isNullOrBlank()) {
+            this["\$lib"] = lib
+        }
+        if (!libVersion.isNullOrBlank()) {
+            this["\$lib_version"] = libVersion
+        }
         if (!anonymousId.isNullOrBlank()) {
             this["\$anon_distinct_id"] = anonymousId
         }

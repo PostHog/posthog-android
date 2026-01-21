@@ -113,7 +113,7 @@ public class PostHogApi(
 
         return Request.Builder()
             .url(url)
-            .header("User-Agent", config.userAgent)
+            .header("User-Agent", config.getUserAgent())
             .post(requestBody)
             .build()
     }
@@ -135,6 +135,8 @@ public class PostHogApi(
                 personProperties,
                 groupProperties,
                 config.evaluationContexts,
+                lib = config.sdkName,
+                libVersion = config.sdkVersion,
             )
 
         val url = "$theHost/flags/?v=2&config=true"
@@ -178,7 +180,7 @@ public class PostHogApi(
         val request =
             Request.Builder()
                 .url("$host/array/${config.apiKey}/config")
-                .header("User-Agent", config.userAgent)
+                .header("User-Agent", config.getUserAgent())
                 .header("Content-Type", APP_JSON_UTF_8)
                 .get()
                 .build()
@@ -220,7 +222,7 @@ public class PostHogApi(
         val requestBuilder =
             Request.Builder()
                 .url(url)
-                .header("User-Agent", config.userAgent)
+                .header("User-Agent", config.getUserAgent())
                 .header("Content-Type", APP_JSON_UTF_8)
                 .header("Authorization", "Bearer $personalApiKey")
 
@@ -266,6 +268,16 @@ public class PostHogApi(
     private fun logResponse(response: Response): Response {
         if (config.debug) {
             try {
+                // Log response headers
+                val responseHeaders = response.headers
+                val responseHeaderStrings = responseHeaders.names().map { name -> "$name: ${responseHeaders[name]}" }
+                config.logger.log("Response headers for ${response.request.url}: ${responseHeaderStrings.joinToString(", ")}")
+
+                // Log the final request headers (after interceptors like gzip)
+                val finalRequestHeaders = response.request.headers
+                val finalRequestHeaderStrings = finalRequestHeaders.names().map { name -> "$name: ${finalRequestHeaders[name]}" }
+                config.logger.log("Final request headers for ${response.request.url}: ${finalRequestHeaderStrings.joinToString(", ")}")
+
                 val responseBody = response.body ?: return response
                 val mediaType = responseBody.contentType()
                 val content =
