@@ -812,6 +812,122 @@ internal class PostHogStatelessTest {
     }
 
     @Test
+    fun `feature flag called events propagate userProperties and groups`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlag("test_flag", "variant_a")
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        val groups = mapOf("organization" to "org_123")
+        val personProperties = mapOf<String, Any?>("plan" to "premium", "role" to "admin")
+
+        // Access feature flag with groups and person properties
+        sut.getFeatureFlagStateless(
+            "user123",
+            "test_flag",
+            null,
+            groups,
+            personProperties,
+            null,
+        )
+
+        // Should generate feature flag called event with propagated properties
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+        assertEquals("\$feature_flag_called", event.event)
+        assertEquals("user123", event.distinctId)
+        assertEquals("test_flag", event.properties!!["\$feature_flag"])
+        assertEquals("variant_a", event.properties!!["\$feature_flag_response"])
+
+        // Check that groups are propagated
+        assertEquals(mapOf("organization" to "org_123"), event.properties!!["\$groups"])
+
+        // Check that userProperties are propagated (as $set)
+        @Suppress("UNCHECKED_CAST")
+        val setProps = event.properties!!["\$set"] as? Map<String, Any>
+        assertNotNull(setProps)
+        assertEquals("premium", setProps["plan"])
+        assertEquals("admin", setProps["role"])
+    }
+
+    @Test
+    fun `feature flag called events filter out null values from personProperties`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlag("test_flag", true)
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        val personProperties = mapOf<String, Any?>("plan" to "premium", "nullable" to null)
+
+        // Access feature flag with person properties containing null
+        sut.isFeatureEnabledStateless(
+            "user123",
+            "test_flag",
+            false,
+            null,
+            personProperties,
+            null,
+        )
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+
+        // Check that userProperties are propagated without null values
+        @Suppress("UNCHECKED_CAST")
+        val setProps = event.properties!!["\$set"] as? Map<String, Any>
+        assertNotNull(setProps)
+        assertEquals("premium", setProps["plan"])
+        assertFalse(setProps.containsKey("nullable"))
+    }
+
+    @Test
+    fun `feature flag called events handle null personProperties gracefully`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlag("test_flag", true)
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        val groups = mapOf("organization" to "org_123")
+
+        // Access feature flag with null person properties
+        sut.isFeatureEnabledStateless(
+            "user123",
+            "test_flag",
+            false,
+            groups,
+            null,
+            null,
+        )
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+
+        // Check that groups are still propagated
+        assertEquals(mapOf("organization" to "org_123"), event.properties!!["\$groups"])
+
+        // Check that $set is not present when personProperties is null
+        assertNull(event.properties!!["\$set"])
+    }
+
+    @Test
     fun `feature flag called events not sent when disabled`() {
         val mockQueue = MockQueue()
         val mockFeatureFlags = MockFeatureFlags()
