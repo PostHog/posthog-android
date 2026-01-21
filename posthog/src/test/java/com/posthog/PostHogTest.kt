@@ -2577,4 +2577,39 @@ internal class PostHogTest {
 
         sut.close()
     }
+
+    @Test
+    fun `does not capture duplicate set event if setPersonProperties called with same properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 3)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com", "plan" to "premium")
+        val userPropertiesToSetOnce = mapOf("initial_url" to "/blog")
+
+        // First call - should capture $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        // Second call with same properties - should NOT capture another $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        // Third call with same properties - should NOT capture another $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        // Should only have 1 event - the duplicate $set events should be ignored
+        assertEquals(1, batch.batch.size)
+        assertEquals("\$set", batch.batch[0].event)
+        assertEquals(userPropertiesToSet, batch.batch[0].properties!!["\$set"])
+        assertEquals(userPropertiesToSetOnce, batch.batch[0].properties!!["\$set_once"])
+
+        sut.close()
+    }
 }
