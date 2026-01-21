@@ -846,6 +846,91 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `does not capture duplicate set event if identify called with same properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        // First identify - captures $identify event
+        sut.identify(
+            DISTINCT_ID,
+        )
+
+        // Second identify with same distinctId - captures $set event (first time with these props)
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        // Third identify with same distinctId and same properties - should NOT capture another $set event
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        // Should only have 2 events: $identify and $set (the duplicate $set should be ignored)
+        assertEquals(2, batch.batch.size)
+        assertEquals("\$identify", batch.batch[0].event)
+        assertEquals("\$set", batch.batch[1].event)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures set event after properties change in identify`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 3)
+
+        // First identify
+        sut.identify(
+            DISTINCT_ID,
+        )
+
+        // Second identify with same distinctId - captures $set event
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        // Third identify with same distinctId but DIFFERENT properties - should capture another $set event
+        val newUserProps = mapOf("different" to "value")
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = newUserProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        // Should have 3 events: $identify, $set, $set (different props)
+        assertEquals(3, batch.batch.size)
+        assertEquals("\$identify", batch.batch[0].event)
+        assertEquals("\$set", batch.batch[1].event)
+        assertEquals("\$set", batch.batch[2].event)
+        assertEquals(newUserProps, batch.batch[2].properties!!["\$set"])
+
+        sut.close()
+    }
+
+    @Test
     fun `does not capture a set event if different user`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -2485,6 +2570,41 @@ internal class PostHogTest {
 
         // Only one event should be sent since the content is the same
         assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture duplicate set event if setPersonProperties called with same properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 1)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com", "plan" to "premium")
+        val userPropertiesToSetOnce = mapOf("initial_url" to "/blog")
+
+        // First call - should capture $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        // Second call with same properties - should NOT capture another $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        // Third call with same properties - should NOT capture another $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        // Should only have 1 event - the duplicate $set events should be ignored
+        assertEquals(1, batch.batch.size)
+        assertEquals("\$set", batch.batch[0].event)
+        assertEquals(userPropertiesToSet, batch.batch[0].properties!!["\$set"])
+        assertEquals(userPropertiesToSetOnce, batch.batch[0].properties!!["\$set_once"])
 
         sut.close()
     }

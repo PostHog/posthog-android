@@ -1,5 +1,7 @@
 ## Next
 
+- chore: do not capture $set events if user props have not changed ([#375](https://github.com/PostHog/posthog-android/pull/375))
+
 ### Changed
 - Renamed `evaluationEnvironments` to `evaluationContexts` for clearer semantics ([#368](https://github.com/PostHog/posthog-android/pull/368)). The term "contexts" better reflects that this feature is for specifying evaluation contexts (e.g., "web", "mobile", "checkout") rather than deployment environments (e.g., "staging", "production").
 - The API now sends `evaluation_contexts` instead of `evaluation_environments` to the server.
