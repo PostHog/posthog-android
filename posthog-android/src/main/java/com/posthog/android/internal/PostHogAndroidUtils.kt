@@ -158,23 +158,27 @@ internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String?
 @Suppress("DEPRECATION")
 internal fun Intent.getReferrerInfo(config: PostHogAndroidConfig): Map<String, String> {
     val referrerInfoMap = mutableMapOf<String, String>()
-    val referrer: Uri?
-    val referrerName: String?
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
-        referrer = this.getParcelableExtra(Intent.EXTRA_REFERRER)
-        referrerName = this.getStringExtra(Intent.EXTRA_REFERRER_NAME)
-    } else {
-        referrer = this.getParcelableExtra("android.intent.extra.REFERRER")
-        referrerName = this.getStringExtra("android.intent.extra.REFERRER_NAME")
-    }
-    referrer?.let {
-        referrerInfoMap["\$referrer"] = referrer.toString()
-        referrer.host?.let { referrerInfoMap["\$referring_domain"] = it }
-    } ?: referrerName?.let {
-        referrerInfoMap["\$referrer"] = referrerName
-        referrerName.tryParse(config)?.let { uri ->
-            uri.host?.let { referrerInfoMap["\$referring_domain"] = it }
+    try {
+        val referrer: Uri?
+        val referrerName: String?
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+            referrer = this.getParcelableExtra(Intent.EXTRA_REFERRER)
+            referrerName = this.getStringExtra(Intent.EXTRA_REFERRER_NAME)
+        } else {
+            referrer = this.getParcelableExtra("android.intent.extra.REFERRER")
+            referrerName = this.getStringExtra("android.intent.extra.REFERRER_NAME")
         }
+        referrer?.let {
+            referrerInfoMap["\$referrer"] = referrer.toString()
+            referrer.host?.let { referrerInfoMap["\$referring_domain"] = it }
+        } ?: referrerName?.let {
+            referrerInfoMap["\$referrer"] = referrerName
+            referrerName.tryParse(config)?.let { uri ->
+                uri.host?.let { referrerInfoMap["\$referring_domain"] = it }
+            }
+        }
+    } catch (e: Throwable) {
+        config.logger.log("Error reading referrer info from Intent extras: $e.")
     }
     return referrerInfoMap
 }
