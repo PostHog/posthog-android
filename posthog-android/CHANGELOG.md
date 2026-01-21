@@ -1,5 +1,6 @@
 ## Next
 
+- fix: handle corrupted Intent bundles with duplicate keys in referrer info ([#377](https://github.com/PostHog/posthog-android/pull/377))
 - chore: do not capture $set events if user props have not changed ([#375](https://github.com/PostHog/posthog-android/pull/375))
 
 ## 3.29.0 - 2026-01-19
