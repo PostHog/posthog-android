@@ -454,7 +454,16 @@ public open class PostHogStateless protected constructor(
                     groupProperties,
                 )?.let { props["\$feature_flag_error"] = it }
 
-                captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props)
+                val userProps = personProperties
+                    ?.filterValues { it != null }
+                    ?.mapValues { it.value!! }
+                captureStateless(
+                    PostHogEventName.FEATURE_FLAG_CALLED.event,
+                    distinctId,
+                    properties = props,
+                    userProperties = userProps,
+                    groups = groups,
+                )
             }
         }
     }
