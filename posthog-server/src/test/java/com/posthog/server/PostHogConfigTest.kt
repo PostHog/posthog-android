@@ -5,7 +5,9 @@ import java.net.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 internal class PostHogConfigTest {
     @Test
@@ -509,5 +511,19 @@ internal class PostHogConfigTest {
 
         assertEquals("test-personal-api-key", config.personalApiKey)
         assertEquals(false, config.localEvaluation)
+    }
+
+    // User-Agent tests
+
+    @Test
+    fun `asCoreConfig sets userAgent to posthog-java format`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val coreConfig = config.asCoreConfig()
+
+        // Should use "posthog-java" format for server-side runtime detection
+        // The userAgent should start with "posthog-java/" to be recognized by PostHog
+        val userAgent = coreConfig.userAgent
+        assertNotNull(userAgent)
+        assertTrue(userAgent.startsWith("posthog-java/"), "Expected userAgent to start with 'posthog-java/', got: $userAgent")
     }
 }

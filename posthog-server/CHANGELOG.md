@@ -1,5 +1,6 @@
 ## Next
 
+- fix: Use `posthog-java` User-Agent for server-side runtime detection ([#386](https://github.com/PostHog/posthog-android/pull/386))
 - feat: Add ETag support for local evaluation polling to reduce bandwidth when flags haven't changed ([#350](https://github.com/PostHog/posthog-android/pull/350))
 - feat: `$feature_flag_called` events now report `$feature_flag_error` property ([#355](https://github.com/PostHog/posthog-android/pull/355))
 

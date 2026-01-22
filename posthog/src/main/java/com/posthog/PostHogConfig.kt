@@ -277,10 +277,14 @@ public open class PostHogConfig(
     @PostHogInternal
     public var sdkVersion: String = BuildConfig.VERSION_NAME
 
-    internal val userAgent: String
-        get() {
-            return "$sdkName/$sdkVersion"
-        }
+    // Can be overridden by SDK modules for custom User-Agent header
+    // If null, defaults to "$sdkName/$sdkVersion"
+    @PostHogInternal
+    public var userAgent: String? = null
+
+    internal fun getUserAgent(): String {
+        return userAgent ?: "$sdkName/$sdkVersion"
+    }
 
     @PostHogInternal
     public var legacyStoragePrefix: String? = null

@@ -109,7 +109,7 @@ public class PostHogApi(
 
         return Request.Builder()
             .url(url)
-            .header("User-Agent", config.userAgent)
+            .header("User-Agent", config.getUserAgent())
             .post(requestBody)
             .build()
     }
@@ -172,7 +172,7 @@ public class PostHogApi(
         val request =
             Request.Builder()
                 .url("$host/array/${config.apiKey}/config")
-                .header("User-Agent", config.userAgent)
+                .header("User-Agent", config.getUserAgent())
                 .header("Content-Type", APP_JSON_UTF_8)
                 .get()
                 .build()
@@ -212,7 +212,7 @@ public class PostHogApi(
         val requestBuilder =
             Request.Builder()
                 .url(url)
-                .header("User-Agent", config.userAgent)
+                .header("User-Agent", config.getUserAgent())
                 .header("Content-Type", APP_JSON_UTF_8)
                 .header("Authorization", "Bearer $personalApiKey")
 

@@ -183,6 +183,10 @@ public open class PostHogConfig constructor(
         // Set SDK identification
         coreConfig.sdkName = BuildConfig.SDK_NAME
         coreConfig.sdkVersion = BuildConfig.VERSION_NAME
+        // Use posthog-java User-Agent for server-side runtime detection.
+        // This enables proper library bucketing and allows users to migrate to posthog-java.
+        // See: https://github.com/PostHog/posthog/pull/45652#issuecomment-3786852092
+        coreConfig.userAgent = "posthog-java/${BuildConfig.VERSION_NAME}"
         coreConfig.context = PostHogServerContext(coreConfig)
 
         return coreConfig
