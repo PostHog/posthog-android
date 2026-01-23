@@ -2,7 +2,7 @@
 
 - feat: Add ETag support for local evaluation polling to reduce bandwidth when flags haven't changed ([#350](https://github.com/PostHog/posthog-android/pull/350))
 - feat: `$feature_flag_called` events now report `$feature_flag_error` property ([#355](https://github.com/PostHog/posthog-android/pull/355))
-- feat: Add `evaluationContexts` support to `PostHogConfig` for server-side evaluation contexts
+- feat: Add `evaluationContexts` support to `PostHogConfig` for server-side evaluation contexts ([#385](https://github.com/PostHog/posthog-android/pull/385))
 
 ## 2.1.0 - 2025-12-05
 
