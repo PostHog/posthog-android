@@ -5,6 +5,7 @@ import com.posthog.BuildConfig
 import com.posthog.PostHogConfig
 import com.posthog.generateEvent
 import com.posthog.mockHttp
+import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
@@ -337,7 +338,7 @@ internal class PostHogApiTest {
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
 
         // Verify request body contains expected fields
-        val requestBody = request.body.readUtf8()
+        val requestBody = request.body.unGzip()
         assertTrue(requestBody.contains("\"api_key\":\"$API_KEY\""))
         assertTrue(requestBody.contains("\"distinct_id\":\"test-distinct-id\""))
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))

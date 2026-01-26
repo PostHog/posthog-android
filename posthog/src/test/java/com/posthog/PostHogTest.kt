@@ -2638,7 +2638,7 @@ internal class PostHogTest {
         assertEquals("POST", request.method)
 
         // Verify request body contains expected fields
-        val requestBody = request.body.readUtf8()
+        val requestBody = request.body.unGzip()
         assertTrue(requestBody.contains("\"api_key\""))
         assertTrue(requestBody.contains("\"distinct_id\""))
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
