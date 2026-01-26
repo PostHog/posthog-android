@@ -1,5 +1,4 @@
 ## Next
-- Allow collecting FCM device token in SDK ([#376](https://github.com/PostHog/posthog-android/pull/376))
 
 ## 3.29.1 - 2026-01-21
 

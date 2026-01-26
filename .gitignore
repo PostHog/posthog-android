@@ -162,6 +162,3 @@ gradle-app.setting
 
 # vscode
 .vscode/settings.json
-
-# Firebase configuration (contains sensitive project info)
-**/google-services.json
