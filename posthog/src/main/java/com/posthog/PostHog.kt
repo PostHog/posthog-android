@@ -14,6 +14,7 @@ import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueueInterface
@@ -1249,7 +1250,7 @@ public class PostHog private constructor(
         val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= oneHourInMillis)
 
         if (!shouldUpdate) {
-            config.logger.log("FCM token registration skipped: token unchanged and less than 24 hours since last update")
+            config.logger.log("FCM token registration skipped: token unchanged and less than hour since last update")
             return true
         }
 
@@ -1263,37 +1264,42 @@ public class PostHog private constructor(
             val api = PostHogApi(config)
             val distinctId = distinctId()
             
-            // Execute network call on background thread to avoid StrictMode violations
-            var success = false
-            var exception: Throwable? = null
-            val latch = java.util.concurrent.CountDownLatch(1)
-            
-            Thread {
-                try {
-                    api.registerPushSubscription(distinctId, token)
-                    success = true
-                } catch (e: Throwable) {
-                    exception = e
-                } finally {
-                    latch.countDown()
-                }
-            }.start()
-            
-            // Wait for completion (with timeout to avoid blocking indefinitely)
-            latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
-            
-            if (success) {
-                config.logger.log("FCM token registered successfully")
+            // Use ExecutorService for more idiomatic async handling with timeout
+            val executor = Executors.newSingleThreadExecutor(
+                PostHogThreadFactory("PostHogFCMTokenRegistration")
+            )
+            val future = executor.submit<Boolean> {
+                api.registerPushSubscription(distinctId, token)
                 true
-            } else {
-                config.logger.log("Failed to register FCM token: ${exception?.message ?: "Unknown error"}")
+            }
+            try {
+                // Wait for completion with timeout (5 seconds)
+                val success = future.get(5, java.util.concurrent.TimeUnit.SECONDS)
+                
+                config.logger.log("FCM token registered successfully")
+                success
+            } catch (e: java.util.concurrent.TimeoutException) {
+                config.logger.log("Failed to register FCM token: Timeout after 5 seconds")
+                // Cancel the task after it timed out
+                future.cancel(true)
                 false
+            } catch (e: java.util.concurrent.ExecutionException) {
+                // Extract the underlying exception from ExecutionException
+                val cause = e.cause ?: e
+                config.logger.log("Failed to register FCM token: ${cause.message ?: "Unknown error"}")
+                false
+            } catch (e: Throwable) {
+                config.logger.log("Failed to register FCM token: ${e.message ?: "Unknown error"}")
+                false
+            } finally {
+                executor.shutdown()
             }
         } catch (e: Throwable) {
             config.logger.log("Failed to register FCM token: $e")
             false
         }
     }
+
 
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")

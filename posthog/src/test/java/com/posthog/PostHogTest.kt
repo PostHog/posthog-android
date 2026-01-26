@@ -2676,7 +2676,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `registerPushToken skips registration when token unchanged and less than 24 hours`() {
+    fun `registerPushToken skips registration when token unchanged and less than 1 hour`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
         val http = mockHttp(
             total = 2,
@@ -2699,7 +2699,7 @@ internal class PostHogTest {
         val result2 = sut.registerPushToken("test-fcm-token")
         Thread.sleep(100) // Wait for background thread
         assertTrue(result2)
-        // Should not make a second request when token is unchanged and less than 24 hours
+        // Should not make a second request when token is unchanged and less than 1 hour
         assertEquals(1, http.requestCount)
 
         sut.close()
