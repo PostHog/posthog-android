@@ -1258,17 +1258,19 @@ public class PostHog private constructor(
         return try {
             val api = PostHogApi(config)
             val distinctId = distinctId()
-            
-            val executor = Executors.newSingleThreadExecutor(
-                PostHogThreadFactory("PostHogFCMTokenRegistration")
-            )
-            val future = executor.submit<Boolean> {
-                api.registerPushSubscription(distinctId, token)
-                true
-            }
+
+            val executor =
+                Executors.newSingleThreadExecutor(
+                    PostHogThreadFactory("PostHogFCMTokenRegistration"),
+                )
+            val future =
+                executor.submit<Boolean> {
+                    api.registerPushSubscription(distinctId, token)
+                    true
+                }
             try {
                 val success = future.get(5, java.util.concurrent.TimeUnit.SECONDS)
-                
+
                 if (success) {
                     preferences.setValue(FCM_TOKEN, token)
                     preferences.setValue(FCM_TOKEN_LAST_UPDATED, currentTime)
@@ -1294,7 +1296,6 @@ public class PostHog private constructor(
             false
         }
     }
-
 
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")

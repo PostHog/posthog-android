@@ -314,12 +314,13 @@ internal class PostHogApiTest {
     @Test
     fun `registerPushSubscription returns successful response`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
-        val http = mockHttp(
-            response =
-                MockResponse()
-                    .setResponseCode(200)
-                    .setBody(responseBody),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
