@@ -1247,10 +1247,11 @@ public class PostHog private constructor(
             return
         }
 
-        val config = this.config ?: run {
-            callback?.invoke(false)
-            return
-        }
+        val config =
+            this.config ?: run {
+                callback?.invoke(false)
+                return
+            }
         val preferences = getPreferences()
 
         synchronized(pushTokenLock) {
@@ -1375,7 +1376,7 @@ public class PostHog private constructor(
         private var defaultSharedInstance = shared
 
         private val apiKeys = mutableSetOf<String>()
-        
+
         private const val ONE_HOUR_IN_MILLIS = 60 * 60 * 1000L
 
         @PostHogVisibleForTesting
@@ -1407,9 +1408,10 @@ public class PostHog private constructor(
             featureFlagsExecutor: ExecutorService,
             cachedEventsExecutor: ExecutorService,
             reloadFeatureFlags: Boolean,
-            pushTokenExecutor: ExecutorService = Executors.newSingleThreadExecutor(
-                PostHogThreadFactory("PostHogFCMTokenRegistration"),
-            ),
+            pushTokenExecutor: ExecutorService =
+                Executors.newSingleThreadExecutor(
+                    PostHogThreadFactory("PostHogFCMTokenRegistration"),
+                ),
         ): PostHogInterface {
             val instance =
                 PostHog(
