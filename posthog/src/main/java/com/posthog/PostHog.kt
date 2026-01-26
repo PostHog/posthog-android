@@ -1057,10 +1057,11 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        val value = remoteConfig?.getFeatureFlag(key, defaultValue) ?: defaultValue
+        val result = remoteConfig?.getFeatureFlagResult(key)
+        val flagValue = result?.value ?: defaultValue
 
-        sendFeatureFlagCalled(key, value, sendFeatureFlagEvent)
-        return value
+        sendFeatureFlagCalled(key, flagValue, sendFeatureFlagEvent)
+        return flagValue
     }
 
     public override fun getFeatureFlagPayload(
@@ -1070,7 +1071,7 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        return remoteConfig?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
+        return remoteConfig?.getFeatureFlagResult(key)?.payload ?: defaultValue
     }
 
     public override fun flush() {

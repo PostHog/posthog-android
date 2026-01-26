@@ -90,6 +90,7 @@ internal class PostHogStatelessTest {
 
     private class MockFeatureFlags : PostHogFeatureFlagsInterface {
         private val flags = mutableMapOf<String, Any>()
+        private val payloads = mutableMapOf<String, Any?>()
 
         fun setFlag(
             key: String,
@@ -98,30 +99,61 @@ internal class PostHogStatelessTest {
             flags[key] = value
         }
 
+        fun setFlagWithPayload(
+            key: String,
+            flagValue: Any,
+            payload: Any?,
+        ) {
+            flags[key] = flagValue
+            payloads[key] = payload
+        }
+
         fun clearFlag(key: String) {
             flags.remove(key)
+            payloads.remove(key)
         }
 
-        override fun getFeatureFlag(
+        override fun getFeatureFlagResult(
             key: String,
-            defaultValue: Any?,
             distinctId: String?,
             groups: Map<String, String>?,
             personProperties: Map<String, Any?>?,
             groupProperties: Map<String, Map<String, Any?>>?,
-        ): Any? {
-            return flags[key] ?: defaultValue
+        ): FeatureFlagResult? {
+            val value = flags[key] ?: return null
+            val payload = payloads[key]
+
+            val (enabled, variant) =
+                when (value) {
+                    is Boolean -> value to null
+                    is String -> true to value
+                    else -> return null
+                }
+
+            return FeatureFlagResult(key, enabled, variant, payload)
         }
 
-        override fun getFeatureFlagPayload(
+        fun getFeatureFlag(
             key: String,
-            defaultValue: Any?,
-            distinctId: String?,
-            groups: Map<String, String>?,
-            personProperties: Map<String, Any?>?,
-            groupProperties: Map<String, Map<String, Any?>>?,
+            defaultValue: Any? = null,
+            distinctId: String? = null,
+            groups: Map<String, String>? = null,
+            personProperties: Map<String, Any?>? = null,
+            groupProperties: Map<String, Map<String, Any?>>? = null,
         ): Any? {
-            return flags[key] ?: defaultValue
+            val result = getFeatureFlagResult(key, distinctId, groups, personProperties, groupProperties)
+            return result?.value ?: defaultValue
+        }
+
+        fun getFeatureFlagPayload(
+            key: String,
+            defaultValue: Any? = null,
+            distinctId: String? = null,
+            groups: Map<String, String>? = null,
+            personProperties: Map<String, Any?>? = null,
+            groupProperties: Map<String, Map<String, Any?>>? = null,
+        ): Any? {
+            return getFeatureFlagResult(key, distinctId, groups, personProperties, groupProperties)?.payload ?: defaultValue
         }
 
         override fun getFeatureFlags(
@@ -153,6 +185,7 @@ internal class PostHogStatelessTest {
 
         override fun clear() {
             flags.clear()
+            payloads.clear()
         }
     }
 
@@ -435,7 +468,7 @@ internal class PostHogStatelessTest {
     @Test
     fun `getFeatureFlagPayloadStateless returns correct value`() {
         val mockFeatureFlags = MockFeatureFlags()
-        mockFeatureFlags.setFlag("payload_flag", mapOf("key" to "value"))
+        mockFeatureFlags.setFlagWithPayload("payload_flag", true, mapOf("key" to "value"))
 
         sut = createStatelessInstance()
         config = createConfig()
@@ -1073,9 +1106,8 @@ internal class PostHogStatelessTest {
             groupProperties,
         )
 
-        verify(mockFeatureFlags).getFeatureFlag(
+        verify(mockFeatureFlags).getFeatureFlagResult(
             "test_flag",
-            false,
             "user123",
             groups,
             personProperties,
@@ -1106,9 +1138,8 @@ internal class PostHogStatelessTest {
             groupProperties,
         )
 
-        verify(mockFeatureFlags).getFeatureFlag(
+        verify(mockFeatureFlags).getFeatureFlagResult(
             "test_flag",
-            "default",
             "user123",
             groups,
             personProperties,
@@ -1139,9 +1170,8 @@ internal class PostHogStatelessTest {
             groupProperties,
         )
 
-        verify(mockFeatureFlags).getFeatureFlagPayload(
+        verify(mockFeatureFlags).getFeatureFlagResult(
             "test_flag",
-            null,
             "user123",
             groups,
             personProperties,

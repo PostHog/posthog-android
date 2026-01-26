@@ -1,26 +1,17 @@
 package com.posthog.internal
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHogInternal
 
 @PostHogInternal
 public interface PostHogFeatureFlagsInterface {
-    public fun getFeatureFlag(
+    public fun getFeatureFlagResult(
         key: String,
-        defaultValue: Any?,
         distinctId: String? = null,
         groups: Map<String, String>? = null,
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
-    ): Any?
-
-    public fun getFeatureFlagPayload(
-        key: String,
-        defaultValue: Any?,
-        distinctId: String? = null,
-        groups: Map<String, String>? = null,
-        personProperties: Map<String, Any?>? = null,
-        groupProperties: Map<String, Map<String, Any?>>? = null,
-    ): Any?
+    ): FeatureFlagResult?
 
     public fun getFeatureFlags(
         distinctId: String? = null,
