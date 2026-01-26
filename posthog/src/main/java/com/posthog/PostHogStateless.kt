@@ -470,23 +470,22 @@ public open class PostHogStateless protected constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        val value =
-            featureFlags?.getFeatureFlag(
+        val result =
+            featureFlags?.getFeatureFlagResult(
                 key,
-                defaultValue,
                 distinctId,
                 groups,
                 personProperties,
                 groupProperties,
-            ) ?: defaultValue
-
+            )
         // Get requestId and evaluatedAt from feature flags
         val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
         val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
+        val flagValue = result?.value ?: defaultValue
 
-        sendFeatureFlagCalled(distinctId, key, value, requestId, evaluatedAt, groups, personProperties, groupProperties)
+        sendFeatureFlagCalled(distinctId, key, flagValue, requestId, evaluatedAt, groups, personProperties, groupProperties)
 
-        return value
+        return flagValue
     }
 
     public override fun getFeatureFlagPayloadStateless(
@@ -500,14 +499,13 @@ public open class PostHogStateless protected constructor(
         if (!isEnabled()) {
             return defaultValue
         }
-        return featureFlags?.getFeatureFlagPayload(
+        return featureFlags?.getFeatureFlagResult(
             key,
-            defaultValue,
             distinctId,
             groups,
             personProperties,
             groupProperties,
-        ) ?: defaultValue
+        )?.payload ?: defaultValue
     }
 
     public override fun flush() {

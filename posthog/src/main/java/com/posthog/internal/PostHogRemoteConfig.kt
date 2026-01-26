@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
@@ -569,46 +570,64 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun readFeatureFlag(
+    override fun getFeatureFlagResult(
         key: String,
-        defaultValue: Any?,
-        flags: Map<String, Any?>?,
-    ): Any? {
-        val value: Any?
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): FeatureFlagResult? {
+        loadFeatureFlagsFromCacheIfNeeded()
 
         synchronized(featureFlagsLock) {
-            value = flags?.get(key)
+            val value = featureFlags?.get(key) ?: return null
+            val payload = featureFlagPayloads?.get(key)
+
+            val (enabled, variant) =
+                when (value) {
+                    is Boolean -> value to null
+                    is String -> true to value
+                    else -> return null
+                }
+
+            return FeatureFlagResult(key, enabled, variant, payload)
         }
-
-        return value ?: defaultValue
     }
 
-    override fun getFeatureFlag(
+    public fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
-        distinctId: String?,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any? {
-        // since we pass featureFlags as a value, we need to load it from cache if needed
-        loadFeatureFlagsFromCacheIfNeeded()
-
-        return readFeatureFlag(key, defaultValue, featureFlags)
+        val result =
+            getFeatureFlagResult(
+                key,
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+        return result?.value ?: defaultValue
     }
 
-    override fun getFeatureFlagPayload(
+    public fun getFeatureFlagPayload(
         key: String,
-        defaultValue: Any?,
-        distinctId: String?,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any? {
-        // since we pass featureFlags as a value, we need to load it from cache if needed
-        loadFeatureFlagsFromCacheIfNeeded()
-
-        return readFeatureFlag(key, defaultValue, featureFlagPayloads)
+        return getFeatureFlagResult(
+            key,
+            distinctId,
+            groups,
+            personProperties,
+            groupProperties,
+        )?.payload ?: defaultValue
     }
 
     override fun getFeatureFlags(
