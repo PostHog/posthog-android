@@ -225,7 +225,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Registers a push notification token (FCM token) with PostHog.
-     * The SDK will automatically rate-limit registrations to once per day unless the token has changed.
+     * The SDK will automatically rate-limit registrations to once per hour unless the token has changed.
      *
      * Users should retrieve the FCM token using:
      * - Java: `FirebaseMessaging.getInstance().getToken()`
