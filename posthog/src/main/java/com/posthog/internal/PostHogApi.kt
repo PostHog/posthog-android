@@ -277,30 +277,10 @@ public class PostHogApi(
                 config.serializer.serialize(pushSubscriptionRequest, it.bufferedWriter())
             }
 
-        // Tag thread for StrictMode compliance before making network call
-        tagThreadForStrictMode()
-        
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw PostHogApiError(response.code, response.message, response.body)
             }
-        }
-    }
-    
-    /**
-     * Tags the current thread for StrictMode compliance on Android
-     * This prevents "Untagged socket detected" warnings
-     */
-    private fun tagThreadForStrictMode() {
-        try {
-            // Use reflection to set traffic stats tag if available (Android only)
-            val trafficStatsClass = Class.forName("android.net.TrafficStats")
-            val setThreadStatsTagMethod = trafficStatsClass.getMethod("setThreadStatsTag", Int::class.javaPrimitiveType)
-            setThreadStatsTagMethod.invoke(null, 0xFFFF) // Use a non-zero tag
-        } catch (e: ClassNotFoundException) {
-            // TrafficStats not available (not Android) - this is expected on non-Android platforms
-        } catch (e: Exception) {
-            // Other exceptions (NoSuchMethodException, etc.) - ignore silently
         }
     }
 

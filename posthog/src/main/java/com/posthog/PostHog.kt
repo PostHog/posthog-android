@@ -14,7 +14,6 @@ import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
-import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueueInterface
@@ -1254,17 +1253,12 @@ public class PostHog private constructor(
             return true
         }
 
-        // Store token and timestamp
-        preferences.setValue(FCM_TOKEN, token)
-        preferences.setValue(FCM_TOKEN_LAST_UPDATED, currentTime)
-
         // Register with backend on a background thread to avoid StrictMode NetworkViolation
         // The Firebase callback runs on the main thread, so we need to move the network call off it
         return try {
             val api = PostHogApi(config)
             val distinctId = distinctId()
             
-            // Use ExecutorService for more idiomatic async handling with timeout
             val executor = Executors.newSingleThreadExecutor(
                 PostHogThreadFactory("PostHogFCMTokenRegistration")
             )
@@ -1273,18 +1267,19 @@ public class PostHog private constructor(
                 true
             }
             try {
-                // Wait for completion with timeout (5 seconds)
                 val success = future.get(5, java.util.concurrent.TimeUnit.SECONDS)
                 
-                config.logger.log("FCM token registered successfully")
+                if (success) {
+                    preferences.setValue(FCM_TOKEN, token)
+                    preferences.setValue(FCM_TOKEN_LAST_UPDATED, currentTime)
+                    config.logger.log("FCM token registered successfully")
+                }
                 success
             } catch (e: java.util.concurrent.TimeoutException) {
                 config.logger.log("Failed to register FCM token: Timeout after 5 seconds")
-                // Cancel the task after it timed out
                 future.cancel(true)
                 false
             } catch (e: java.util.concurrent.ExecutionException) {
-                // Extract the underlying exception from ExecutionException
                 val cause = e.cause ?: e
                 config.logger.log("Failed to register FCM token: ${cause.message ?: "Unknown error"}")
                 false
