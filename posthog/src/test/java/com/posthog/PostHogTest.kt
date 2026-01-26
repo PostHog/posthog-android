@@ -2614,12 +2614,13 @@ internal class PostHogTest {
     @Test
     fun `registerPushToken successfully registers token`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
-        val http = mockHttp(
-            response =
-                MockResponse()
-                    .setResponseCode(200)
-                    .setBody(responseBody),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -2678,13 +2679,14 @@ internal class PostHogTest {
     @Test
     fun `registerPushToken skips registration when token unchanged and less than 1 hour`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
-        val http = mockHttp(
-            total = 2,
-            response =
-                MockResponse()
-                    .setResponseCode(200)
-                    .setBody(responseBody),
-        )
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -2708,13 +2710,14 @@ internal class PostHogTest {
     @Test
     fun `registerPushToken registers again when token changes`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
-        val http = mockHttp(
-            total = 2,
-            response =
-                MockResponse()
-                    .setResponseCode(200)
-                    .setBody(responseBody),
-        )
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -2736,12 +2739,13 @@ internal class PostHogTest {
 
     @Test
     fun `registerPushToken returns false on API error`() {
-        val http = mockHttp(
-            response =
-                MockResponse()
-                    .setResponseCode(400)
-                    .setBody("Bad Request"),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(400)
+                        .setBody("Bad Request"),
+            )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -2758,12 +2762,13 @@ internal class PostHogTest {
     @Test
     fun `registerPushToken stores token and timestamp in preferences`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
-        val http = mockHttp(
-            response =
-                MockResponse()
-                    .setResponseCode(200)
-                    .setBody(responseBody),
-        )
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
         val url = http.url("/")
         val preferences = PostHogMemoryPreferences()
 
@@ -2777,7 +2782,7 @@ internal class PostHogTest {
 
         assertEquals("test-fcm-token", storedToken)
         assertNotNull(lastUpdated)
-        assertTrue(lastUpdated!! > 0)
+        assertTrue(lastUpdated > 0)
 
         sut.close()
     }

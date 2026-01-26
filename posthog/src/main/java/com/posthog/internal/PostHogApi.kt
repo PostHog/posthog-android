@@ -7,7 +7,6 @@ import com.posthog.PostHogConfig.Companion.DEFAULT_US_ASSETS_HOST
 import com.posthog.PostHogConfig.Companion.DEFAULT_US_HOST
 import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
-import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -15,7 +14,6 @@ import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
-import okio.buffer
 import java.io.IOException
 import java.io.OutputStream
 
@@ -269,7 +267,7 @@ public class PostHogApi(
             )
 
         val url = "$theHost/api/sdk/push_subscriptions/register"
-        
+
         logRequest(pushSubscriptionRequest, url)
 
         val request =
