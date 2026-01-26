@@ -65,9 +65,6 @@ public class PostHogApi(
                 config.serializer.serialize(batch, it.bufferedWriter())
             }
 
-        // Tag thread for StrictMode compliance before making network call
-        tagThreadForStrictMode()
-        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -90,9 +87,6 @@ public class PostHogApi(
                 config.serializer.serialize(events, it.bufferedWriter())
             }
 
-        // Tag thread for StrictMode compliance before making network call
-        tagThreadForStrictMode()
-        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -149,9 +143,6 @@ public class PostHogApi(
                 config.serializer.serialize(flagsRequest, it.bufferedWriter())
             }
 
-        // Tag thread for StrictMode compliance before making network call
-        tagThreadForStrictMode()
-        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -188,9 +179,6 @@ public class PostHogApi(
                 .get()
                 .build()
 
-        // Tag thread for StrictMode compliance before making network call
-        tagThreadForStrictMode()
-        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -237,9 +225,6 @@ public class PostHogApi(
 
         val request = requestBuilder.get().build()
 
-        // Tag thread for StrictMode compliance before making network call
-        tagThreadForStrictMode()
-        
         client.newCall(request).execute().use {
             val response = logResponse(it)
 

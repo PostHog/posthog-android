@@ -1,18 +1,6 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath("com.google.gms:google-services:4.4.0")
-    }
-}
-
 plugins {
     id("com.android.application")
     kotlin("android")
-    // TODOdin: Add to gitignore and document that it's needed?
-    id("com.google.gms.google-services")
     // so we don't upload mappings from our release builds on CI
     if (!PosthogBuildConfig.isCI()) {
         id("com.posthog.android")
@@ -98,15 +86,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
     implementation("com.squareup.okhttp3:okhttp")
-    
-    // Firebase dependencies for push notifications
-    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
-    implementation("com.google.firebase:firebase-messaging")
-    // Firebase Analytics (optional - suppresses the analytics library warning)
-    // Uncomment if you want to use Firebase Analytics
-    // implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.android.gms:play-services-tasks:18.0.2")
-    
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.12")
