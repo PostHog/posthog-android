@@ -38,6 +38,7 @@ internal class PostHogTest {
     private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
+    private val pushTokenExecutor = Executors.newSingleThreadExecutor(PostHogThreadFactory("TestPushToken"))
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
@@ -94,6 +95,7 @@ internal class PostHogTest {
             remoteConfigExecutor,
             cachedEventsExecutor,
             reloadFeatureFlags,
+            pushTokenExecutor,
         )
     }
 
@@ -2052,6 +2054,7 @@ internal class PostHogTest {
                 remoteConfigExecutor,
                 cachedEventsExecutor,
                 true,
+                pushTokenExecutor,
             )
 
         // Manually trigger flags reload
@@ -2625,12 +2628,15 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        val result = sut.registerPushToken("test-fcm-token")
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token") { success ->
+            callbackResult = success
+        }
 
         // Wait for background thread to complete
         Thread.sleep(100)
 
-        assertTrue(result)
+        assertEquals(true, callbackResult)
         assertEquals(1, http.requestCount)
 
         val request = http.takeRequest()
@@ -2648,29 +2654,35 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `registerPushToken returns false when SDK is disabled`() {
+    fun `registerPushToken calls callback with false when SDK is disabled`() {
         val http = mockHttp()
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
         sut.close()
 
-        val result = sut.registerPushToken("test-fcm-token")
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token") { success ->
+            callbackResult = success
+        }
 
-        assertFalse(result)
+        assertEquals(false, callbackResult)
         assertEquals(0, http.requestCount)
     }
 
     @Test
-    fun `registerPushToken returns false for blank token`() {
+    fun `registerPushToken calls callback with false for blank token`() {
         val http = mockHttp()
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        val result = sut.registerPushToken("")
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("") { success ->
+            callbackResult = success
+        }
 
-        assertFalse(result)
+        assertEquals(false, callbackResult)
         assertEquals(0, http.requestCount)
 
         sut.close()
@@ -2692,15 +2704,21 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         // First registration
-        val result1 = sut.registerPushToken("test-fcm-token")
+        var callbackResult1: Boolean? = null
+        sut.registerPushToken("test-fcm-token") { success ->
+            callbackResult1 = success
+        }
         Thread.sleep(100) // Wait for background thread
-        assertTrue(result1)
+        assertEquals(true, callbackResult1)
         assertEquals(1, http.requestCount)
 
         // Second registration with same token immediately - should skip API call
-        val result2 = sut.registerPushToken("test-fcm-token")
+        var callbackResult2: Boolean? = null
+        sut.registerPushToken("test-fcm-token") { success ->
+            callbackResult2 = success
+        }
         Thread.sleep(100) // Wait for background thread
-        assertTrue(result2)
+        assertEquals(null, callbackResult2) // null means skipped
         // Should not make a second request when token is unchanged and less than 1 hour
         assertEquals(1, http.requestCount)
 
@@ -2723,22 +2741,28 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         // First registration
-        val result1 = sut.registerPushToken("test-fcm-token-1")
+        var callbackResult1: Boolean? = null
+        sut.registerPushToken("test-fcm-token-1") { success ->
+            callbackResult1 = success
+        }
         Thread.sleep(100) // Wait for background thread
-        assertTrue(result1)
+        assertEquals(true, callbackResult1)
         assertEquals(1, http.requestCount)
 
         // Second registration with different token - should register again
-        val result2 = sut.registerPushToken("test-fcm-token-2")
+        var callbackResult2: Boolean? = null
+        sut.registerPushToken("test-fcm-token-2") { success ->
+            callbackResult2 = success
+        }
         Thread.sleep(100) // Wait for background thread
-        assertTrue(result2)
+        assertEquals(true, callbackResult2)
         assertEquals(2, http.requestCount)
 
         sut.close()
     }
 
     @Test
-    fun `registerPushToken returns false on API error`() {
+    fun `registerPushToken calls callback with false on API error`() {
         val http =
             mockHttp(
                 response =
@@ -2750,10 +2774,13 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        val result = sut.registerPushToken("test-fcm-token")
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token") { success ->
+            callbackResult = success
+        }
 
         Thread.sleep(100) // Wait for background thread
-        assertFalse(result)
+        assertEquals(false, callbackResult)
         assertEquals(1, http.requestCount)
 
         sut.close()

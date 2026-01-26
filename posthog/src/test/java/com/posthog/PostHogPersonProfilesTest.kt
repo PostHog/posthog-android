@@ -48,7 +48,7 @@ internal class PostHogPersonProfilesTest {
             replayQueueExecutor,
             remoteConfigExecutor,
             cachedEventsExecutor,
-            false,
+            reloadFeatureFlags = false,
         )
     }
 
