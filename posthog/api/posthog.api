@@ -42,6 +42,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun optIn ()V
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
+	public fun registerPushToken (Ljava/lang/String;)Z
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -80,6 +81,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun optOut ()V
 	public final fun overrideSharedInstance (Lcom/posthog/PostHogInterface;)V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
+	public fun registerPushToken (Ljava/lang/String;)Z
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -297,6 +299,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun isSessionActive ()Z
 	public abstract fun isSessionReplayActive ()Z
 	public abstract fun register (Ljava/lang/String;Ljava/lang/Object;)V
+	public abstract fun registerPushToken (Ljava/lang/String;)Z
 	public abstract fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public abstract fun reset ()V
 	public abstract fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -598,6 +601,7 @@ public final class com/posthog/internal/PostHogApi {
 	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public final fun localEvaluation (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
 	public static synthetic fun localEvaluation$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/LocalEvaluationApiResponse;
+	public final fun registerPushSubscription (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
 	public final fun snapshot (Ljava/util/List;)V
 }
@@ -746,6 +750,23 @@ public final class com/posthog/internal/PostHogPrintLogger : com/posthog/interna
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public fun isEnabled ()Z
 	public fun log (Ljava/lang/String;)V
+}
+
+public final class com/posthog/internal/PostHogPushSubscriptionRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/PostHogPushSubscriptionRequest;
+	public static synthetic fun copy$default (Lcom/posthog/internal/PostHogPushSubscriptionRequest;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/PostHogPushSubscriptionRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApi_key ()Ljava/lang/String;
+	public final fun getDistinct_id ()Ljava/lang/String;
+	public final fun getPlatform ()Ljava/lang/String;
+	public final fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public abstract interface class com/posthog/internal/PostHogQueueInterface {
