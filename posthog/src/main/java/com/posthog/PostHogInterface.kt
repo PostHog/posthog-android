@@ -4,6 +4,12 @@ import java.util.Date
 import java.util.UUID
 
 /**
+ * Callback for push token registration results.
+ * @param success `true` if registration succeeded, `false` if it failed, or `null` if registration was skipped (e.g., token unchanged).
+ */
+public typealias PostHogPushTokenCallback = (success: Boolean?) -> Unit
+
+/**
  * The PostHog SDK entry point
  */
 public interface PostHogInterface : PostHogCoreInterface {
@@ -227,14 +233,19 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Registers a push notification token (FCM token) with PostHog.
      * The SDK will automatically rate-limit registrations to once per hour unless the token has changed.
      *
+     * Registration is performed asynchronously. Use the optional callback to be notified of success or failure.
+     *
      * Users should retrieve the FCM token using:
      * - Java: `FirebaseMessaging.getInstance().getToken()`
      * - Kotlin: `Firebase.messaging.token`
      *
      * @param token The FCM registration token
-     * @return true if registration was successful, false otherwise
+     * @param callback Optional callback to be notified when registration completes. Called with `true` on success, `false` on failure, or `null` if registration was skipped (e.g., token unchanged).
      */
-    public fun registerPushToken(token: String): Boolean
+    public fun registerPushToken(
+        token: String,
+        callback: PostHogPushTokenCallback? = null,
+    )
 
     /**
      * Sets properties for a specific group type to include when evaluating feature flags.
