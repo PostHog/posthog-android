@@ -89,6 +89,10 @@ public class PostHogFake : PostHogInterface {
     override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
     }
 
+    override fun registerPushToken(token: String): Boolean {
+        return true
+    }
+
     override fun setGroupPropertiesForFlags(
         type: String,
         groupProperties: Map<String, Any>,
