@@ -257,6 +257,7 @@ public class PostHogApi(
     public fun registerPushSubscription(
         distinctId: String,
         token: String,
+        firebaseAppId: String,
     ) {
         val pushSubscriptionRequest =
             PostHogPushSubscriptionRequest(
@@ -264,6 +265,7 @@ public class PostHogApi(
                 distinct_id = distinctId,
                 token = token,
                 platform = "android",
+                firebase_app_id = firebaseAppId,
             )
 
         val url = "$theHost/api/sdk/push_subscriptions/register"

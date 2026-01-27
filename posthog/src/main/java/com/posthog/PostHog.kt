@@ -1235,6 +1235,7 @@ public class PostHog private constructor(
 
     override fun registerPushToken(
         token: String,
+        firebaseAppId: String,
         callback: PostHogPushTokenCallback?,
     ) {
         if (!isEnabled()) {
@@ -1244,6 +1245,12 @@ public class PostHog private constructor(
 
         if (token.isBlank()) {
             config?.logger?.log("registerPushToken called with blank token")
+            callback?.invoke(false)
+            return
+        }
+
+        if (firebaseAppId.isBlank()) {
+            config?.logger?.log("registerPushToken called with blank firebaseAppId")
             callback?.invoke(false)
             return
         }
@@ -1281,7 +1288,7 @@ public class PostHog private constructor(
                 return@executeSafely
             }
             try {
-                this.api.registerPushSubscription(distinctId, token)
+                this.api.registerPushSubscription(distinctId, token, firebaseAppId)
                 config.logger.log("FCM token registered successfully")
                 callback?.invoke(true)
             } catch (e: PostHogApiError) {
@@ -1621,9 +1628,10 @@ public class PostHog private constructor(
 
         override fun registerPushToken(
             token: String,
+            firebaseAppId: String,
             callback: PostHogPushTokenCallback?,
         ) {
-            shared.registerPushToken(token, callback)
+            shared.registerPushToken(token, firebaseAppId, callback)
         }
     }
 }
