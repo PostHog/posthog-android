@@ -1293,9 +1293,17 @@ public class PostHog private constructor(
                 callback?.invoke(true)
             } catch (e: PostHogApiError) {
                 config.logger.log("Failed to register FCM token: ${e.message} (code: ${e.statusCode})")
+                synchronized(pushTokenLock) {
+                    preferences.remove(FCM_TOKEN)
+                    preferences.remove(FCM_TOKEN_LAST_UPDATED)
+                }
                 callback?.invoke(false)
             } catch (e: Throwable) {
                 config.logger.log("Failed to register FCM token: ${e.message ?: "Unknown error"}")
+                synchronized(pushTokenLock) {
+                    preferences.remove(FCM_TOKEN)
+                    preferences.remove(FCM_TOKEN_LAST_UPDATED)
+                }
                 callback?.invoke(false)
             }
         }
