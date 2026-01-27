@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.google.gson.annotations.SerializedName
 import com.posthog.PostHogInternal
 
 /**
@@ -7,9 +8,12 @@ import com.posthog.PostHogInternal
  */
 @PostHogInternal
 public data class PostHogPushSubscriptionRequest(
-    val api_key: String,
-    val distinct_id: String,
+    @SerializedName("api_key")
+    val apiKey: String,
+    @SerializedName("distinct_id")
+    val distinctId: String,
     val token: String,
     val platform: String,
-    val firebase_app_id: String,
+    @SerializedName("firebase_app_id")
+    val firebaseAppId: String,
 )

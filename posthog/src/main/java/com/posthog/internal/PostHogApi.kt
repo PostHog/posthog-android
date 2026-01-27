@@ -261,11 +261,11 @@ public class PostHogApi(
     ) {
         val pushSubscriptionRequest =
             PostHogPushSubscriptionRequest(
-                api_key = config.apiKey,
-                distinct_id = distinctId,
+                apiKey = config.apiKey,
+                distinctId = distinctId,
                 token = token,
                 platform = "android",
-                firebase_app_id = firebaseAppId,
+                firebaseAppId = firebaseAppId,
             )
 
         val url = "$theHost/api/sdk/push_subscriptions/register"
