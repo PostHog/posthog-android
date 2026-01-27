@@ -3,11 +3,14 @@ package com.posthog
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN_LAST_UPDATED
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
@@ -20,6 +23,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.executeSafely
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.sortMapRecursively
@@ -47,6 +51,10 @@ public class PostHog private constructor(
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("PostHogSendCachedEventsThread"),
         ),
+    private val pushTokenExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor(
+            PostHogThreadFactory("PostHogFCMTokenRegistration"),
+        ),
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface, PostHogStateless() {
     private val anonymousLock = Any()
@@ -56,9 +64,11 @@ public class PostHog private constructor(
 
     private val featureFlagsCalledLock = Any()
     private val cachedPersonPropertiesLock = Any()
+    private val pushTokenLock = Any()
 
     private var remoteConfig: PostHogRemoteConfig? = null
     private var replayQueue: PostHogQueueInterface? = null
+    private lateinit var api: PostHogApi
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     // Used to deduplicate setPersonProperties calls
@@ -97,11 +107,11 @@ public class PostHog private constructor(
 
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
-                val api = PostHogApi(config)
+                this.api = PostHogApi(config)
                 val queue =
                     config.queueProvider(
                         config,
-                        api,
+                        this.api,
                         PostHogApiEndpoint.BATCH,
                         config.storagePrefix,
                         queueExecutor,
@@ -109,13 +119,13 @@ public class PostHog private constructor(
                 val replayQueue =
                     config.queueProvider(
                         config,
-                        api,
+                        this.api,
                         PostHogApiEndpoint.SNAPSHOT,
                         config.replayStoragePrefix,
                         replayExecutor,
                     )
                 val featureFlags =
-                    config.remoteConfigProvider(config, api, remoteConfigExecutor) {
+                    config.remoteConfigProvider(config, this.api, remoteConfigExecutor) {
                         getDefaultPersonProperties()
                     }
 
@@ -133,7 +143,7 @@ public class PostHog private constructor(
                 val sendCachedEventsIntegration =
                     PostHogSendCachedEventsIntegration(
                         config,
-                        api,
+                        this.api,
                         startDate,
                         cachedEventsExecutor,
                     )
@@ -1222,6 +1232,82 @@ public class PostHog private constructor(
         return PostHogSessionManager.isSessionActive()
     }
 
+    override fun registerPushToken(
+        token: String,
+        firebaseAppId: String,
+        callback: PostHogPushTokenCallback?,
+    ) {
+        if (!isEnabled()) {
+            callback?.invoke(false)
+            return
+        }
+
+        if (token.isBlank()) {
+            config?.logger?.log("registerPushToken called with blank token")
+            callback?.invoke(false)
+            return
+        }
+
+        if (firebaseAppId.isBlank()) {
+            config?.logger?.log("registerPushToken called with blank firebaseAppId")
+            callback?.invoke(false)
+            return
+        }
+
+        val config =
+            this.config ?: run {
+                callback?.invoke(false)
+                return
+            }
+        val preferences = getPreferences()
+
+        synchronized(pushTokenLock) {
+            val storedToken = preferences.getValue(FCM_TOKEN) as? String
+            val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long ?: 0L
+            val currentTime = config.dateProvider.currentDate().time
+
+            val tokenChanged = storedToken != token
+            val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= ONE_HOUR_IN_MILLIS)
+
+            if (!shouldUpdate) {
+                config.logger.log("FCM token registration skipped: token unchanged and less than hour since last update")
+                callback?.invoke(null)
+                return
+            }
+
+            preferences.setValue(FCM_TOKEN, token)
+            preferences.setValue(FCM_TOKEN_LAST_UPDATED, currentTime)
+        }
+
+        val distinctId = distinctId()
+        pushTokenExecutor.executeSafely {
+            if (!isEnabled()) {
+                config.logger.log("FCM token registration skipped: SDK is disabled")
+                callback?.invoke(false)
+                return@executeSafely
+            }
+            try {
+                this.api.registerPushSubscription(distinctId, token, firebaseAppId)
+                config.logger.log("FCM token registered successfully")
+                callback?.invoke(true)
+            } catch (e: PostHogApiError) {
+                config.logger.log("Failed to register FCM token: ${e.message} (code: ${e.statusCode})")
+                synchronized(pushTokenLock) {
+                    preferences.remove(FCM_TOKEN)
+                    preferences.remove(FCM_TOKEN_LAST_UPDATED)
+                }
+                callback?.invoke(false)
+            } catch (e: Throwable) {
+                config.logger.log("Failed to register FCM token: ${e.message ?: "Unknown error"}")
+                synchronized(pushTokenLock) {
+                    preferences.remove(FCM_TOKEN)
+                    preferences.remove(FCM_TOKEN_LAST_UPDATED)
+                }
+                callback?.invoke(false)
+            }
+        }
+    }
+
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")
         return super<PostHogStateless>.config as? T
@@ -1306,6 +1392,8 @@ public class PostHog private constructor(
 
         private val apiKeys = mutableSetOf<String>()
 
+        private const val ONE_HOUR_IN_MILLIS = 60 * 60 * 1000L
+
         @PostHogVisibleForTesting
         public fun overrideSharedInstance(postHog: PostHogInterface) {
             shared = postHog
@@ -1335,6 +1423,10 @@ public class PostHog private constructor(
             featureFlagsExecutor: ExecutorService,
             cachedEventsExecutor: ExecutorService,
             reloadFeatureFlags: Boolean,
+            pushTokenExecutor: ExecutorService =
+                Executors.newSingleThreadExecutor(
+                    PostHogThreadFactory("PostHogFCMTokenRegistration"),
+                ),
         ): PostHogInterface {
             val instance =
                 PostHog(
@@ -1342,6 +1434,7 @@ public class PostHog private constructor(
                     replayExecutor,
                     featureFlagsExecutor,
                     cachedEventsExecutor,
+                    pushTokenExecutor,
                     reloadFeatureFlags = reloadFeatureFlags,
                 )
             instance.setup(config)
@@ -1538,6 +1631,14 @@ public class PostHog private constructor(
 
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
+        }
+
+        override fun registerPushToken(
+            token: String,
+            firebaseAppId: String,
+            callback: PostHogPushTokenCallback?,
+        ) {
+            shared.registerPushToken(token, firebaseAppId, callback)
         }
     }
 }

@@ -3,6 +3,8 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
+import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN_LAST_UPDATED
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
@@ -36,6 +38,7 @@ internal class PostHogTest {
     private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
+    private val pushTokenExecutor = Executors.newSingleThreadExecutor(PostHogThreadFactory("TestPushToken"))
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
     private lateinit var config: PostHogConfig
 
@@ -92,6 +95,7 @@ internal class PostHogTest {
             remoteConfigExecutor,
             cachedEventsExecutor,
             reloadFeatureFlags,
+            pushTokenExecutor,
         )
     }
 
@@ -2050,6 +2054,7 @@ internal class PostHogTest {
                 remoteConfigExecutor,
                 cachedEventsExecutor,
                 true,
+                pushTokenExecutor,
             )
 
         // Manually trigger flags reload
@@ -2605,6 +2610,251 @@ internal class PostHogTest {
         assertEquals("\$set", batch.batch[0].event)
         assertEquals(userPropertiesToSet, batch.batch[0].properties!!["\$set"])
         assertEquals(userPropertiesToSetOnce, batch.batch[0].properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken successfully registers token`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
+            callbackResult = success
+        }
+
+        // Wait for background thread to complete
+        Thread.sleep(100)
+
+        assertEquals(true, callbackResult)
+        assertEquals(1, http.requestCount)
+
+        val request = http.takeRequest()
+        assertEquals("/api/sdk/push_subscriptions/register", request.path)
+        assertEquals("POST", request.method)
+
+        // Verify request body contains expected fields
+        val requestBody = request.body.unGzip()
+        assertTrue(requestBody.contains("\"api_key\""))
+        assertTrue(requestBody.contains("\"distinct_id\""))
+        assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
+        assertTrue(requestBody.contains("\"platform\":\"android\""))
+        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-app-id\""))
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken calls callback with false when SDK is disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        sut.close()
+
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
+            callbackResult = success
+        }
+
+        assertEquals(false, callbackResult)
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `registerPushToken calls callback with false for blank token`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("", "test-firebase-app-id") { success ->
+            callbackResult = success
+        }
+
+        assertEquals(false, callbackResult)
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken calls callback with false for blank firebaseAppId`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token", "") { success ->
+            callbackResult = success
+        }
+
+        assertEquals(false, callbackResult)
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken skips registration when token unchanged and less than 1 hour`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // First registration
+        var callbackResult1: Boolean? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
+            callbackResult1 = success
+        }
+        Thread.sleep(100) // Wait for background thread
+        assertEquals(true, callbackResult1)
+        assertEquals(1, http.requestCount)
+
+        // Second registration with same token immediately - should skip API call
+        var callbackResult2: Boolean? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
+            callbackResult2 = success
+        }
+        Thread.sleep(100) // Wait for background thread
+        assertEquals(null, callbackResult2) // null means skipped
+        // Should not make a second request when token is unchanged and less than 1 hour
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken registers again when token changes`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // First registration
+        var callbackResult1: Boolean? = null
+        sut.registerPushToken("test-fcm-token-1", "test-firebase-app-id") { success ->
+            callbackResult1 = success
+        }
+        Thread.sleep(100) // Wait for background thread
+        assertEquals(true, callbackResult1)
+        assertEquals(1, http.requestCount)
+
+        // Second registration with different token - should register again
+        var callbackResult2: Boolean? = null
+        sut.registerPushToken("test-fcm-token-2", "test-firebase-app-id") { success ->
+            callbackResult2 = success
+        }
+        Thread.sleep(100) // Wait for background thread
+        assertEquals(true, callbackResult2)
+        assertEquals(2, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken calls callback with false on API error`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(400)
+                        .setBody("Bad Request"),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
+            callbackResult = success
+        }
+
+        Thread.sleep(100) // Wait for background thread
+        assertEquals(false, callbackResult)
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken clears preferences on API error`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(400)
+                        .setBody("Bad Request"),
+            )
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
+
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
+        Thread.sleep(100) // Wait for background thread
+
+        val storedToken = preferences.getValue(FCM_TOKEN) as? String
+        val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long
+
+        assertNull(storedToken)
+        assertNull(lastUpdated)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken stores token and timestamp in preferences`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
+
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
+        Thread.sleep(100) // Wait for background thread
+
+        val storedToken = preferences.getValue(FCM_TOKEN) as? String
+        val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long
+
+        assertEquals("test-fcm-token", storedToken)
+        assertNotNull(lastUpdated)
+        assertTrue(lastUpdated > 0)
 
         sut.close()
     }

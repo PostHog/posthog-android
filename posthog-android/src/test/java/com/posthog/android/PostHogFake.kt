@@ -3,6 +3,7 @@ package com.posthog.android
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.PostHogPushTokenCallback
 import java.util.Date
 import java.util.UUID
 
@@ -87,6 +88,14 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
+    }
+
+    override fun registerPushToken(
+        token: String,
+        firebaseAppId: String,
+        callback: PostHogPushTokenCallback?,
+    ) {
+        callback?.invoke(true)
     }
 
     override fun setGroupPropertiesForFlags(
