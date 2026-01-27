@@ -2806,6 +2806,32 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `registerPushToken clears preferences on API error`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(400)
+                        .setBody("Bad Request"),
+            )
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
+
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
+        Thread.sleep(100) // Wait for background thread
+
+        val storedToken = preferences.getValue(FCM_TOKEN) as? String
+        val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long
+
+        assertNull(storedToken)
+        assertNull(lastUpdated)
+
+        sut.close()
+    }
+
+    @Test
     fun `registerPushToken stores token and timestamp in preferences`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
         val http =
