@@ -2629,7 +2629,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         var callbackResult: Boolean? = null
-        sut.registerPushToken("test-fcm-token") { success ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
             callbackResult = success
         }
 
@@ -2649,6 +2649,7 @@ internal class PostHogTest {
         assertTrue(requestBody.contains("\"distinct_id\""))
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
         assertTrue(requestBody.contains("\"platform\":\"android\""))
+        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-app-id\""))
 
         sut.close()
     }
@@ -2662,7 +2663,7 @@ internal class PostHogTest {
         sut.close()
 
         var callbackResult: Boolean? = null
-        sut.registerPushToken("test-fcm-token") { success ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
             callbackResult = success
         }
 
@@ -2678,7 +2679,25 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         var callbackResult: Boolean? = null
-        sut.registerPushToken("") { success ->
+        sut.registerPushToken("", "test-firebase-app-id") { success ->
+            callbackResult = success
+        }
+
+        assertEquals(false, callbackResult)
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken calls callback with false for blank firebaseAppId`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        var callbackResult: Boolean? = null
+        sut.registerPushToken("test-fcm-token", "") { success ->
             callbackResult = success
         }
 
@@ -2705,7 +2724,7 @@ internal class PostHogTest {
 
         // First registration
         var callbackResult1: Boolean? = null
-        sut.registerPushToken("test-fcm-token") { success ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
             callbackResult1 = success
         }
         Thread.sleep(100) // Wait for background thread
@@ -2714,7 +2733,7 @@ internal class PostHogTest {
 
         // Second registration with same token immediately - should skip API call
         var callbackResult2: Boolean? = null
-        sut.registerPushToken("test-fcm-token") { success ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
             callbackResult2 = success
         }
         Thread.sleep(100) // Wait for background thread
@@ -2742,7 +2761,7 @@ internal class PostHogTest {
 
         // First registration
         var callbackResult1: Boolean? = null
-        sut.registerPushToken("test-fcm-token-1") { success ->
+        sut.registerPushToken("test-fcm-token-1", "test-firebase-app-id") { success ->
             callbackResult1 = success
         }
         Thread.sleep(100) // Wait for background thread
@@ -2751,7 +2770,7 @@ internal class PostHogTest {
 
         // Second registration with different token - should register again
         var callbackResult2: Boolean? = null
-        sut.registerPushToken("test-fcm-token-2") { success ->
+        sut.registerPushToken("test-fcm-token-2", "test-firebase-app-id") { success ->
             callbackResult2 = success
         }
         Thread.sleep(100) // Wait for background thread
@@ -2775,7 +2794,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         var callbackResult: Boolean? = null
-        sut.registerPushToken("test-fcm-token") { success ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
             callbackResult = success
         }
 
@@ -2801,7 +2820,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
 
-        sut.registerPushToken("test-fcm-token")
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
         Thread.sleep(100) // Wait for background thread
 
         val storedToken = preferences.getValue(FCM_TOKEN) as? String

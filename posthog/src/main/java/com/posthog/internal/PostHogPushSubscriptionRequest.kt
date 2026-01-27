@@ -11,4 +11,5 @@ public data class PostHogPushSubscriptionRequest(
     val distinct_id: String,
     val token: String,
     val platform: String,
+    val firebase_app_id: String,
 )
