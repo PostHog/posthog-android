@@ -63,6 +63,8 @@ public class PostHogApi(
                 config.serializer.serialize(batch, it.bufferedWriter())
             }
 
+        logRequestHeaders(request)
+
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -84,6 +86,8 @@ public class PostHogApi(
             makeRequest(url) {
                 config.serializer.serialize(events, it.bufferedWriter())
             }
+
+        logRequestHeaders(request)
 
         client.newCall(request).execute().use {
             val response = logResponse(it)
@@ -141,6 +145,8 @@ public class PostHogApi(
                 config.serializer.serialize(flagsRequest, it.bufferedWriter())
             }
 
+        logRequestHeaders(request)
+
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
@@ -176,6 +182,8 @@ public class PostHogApi(
                 .header("Content-Type", APP_JSON_UTF_8)
                 .get()
                 .build()
+
+        logRequestHeaders(request)
 
         client.newCall(request).execute().use {
             val response = logResponse(it)
@@ -222,6 +230,8 @@ public class PostHogApi(
         }
 
         val request = requestBuilder.get().build()
+
+        logRequestHeaders(request)
 
         client.newCall(request).execute().use {
             val response = logResponse(it)
@@ -285,6 +295,18 @@ public class PostHogApi(
                 config.serializer.serializeObject(body)?.let {
                     config.logger.log("Request $url}: $it")
                 }
+            } catch (e: Throwable) {
+                // ignore
+            }
+        }
+    }
+
+    private fun logRequestHeaders(request: Request) {
+        if (config.debug) {
+            try {
+                val headers = request.headers
+                val headerStrings = headers.names().map { name -> "$name: ${headers[name]}" }
+                config.logger.log("Request headers for ${request.url}: ${headerStrings.joinToString(", ")}")
             } catch (e: Throwable) {
                 // ignore
             }
