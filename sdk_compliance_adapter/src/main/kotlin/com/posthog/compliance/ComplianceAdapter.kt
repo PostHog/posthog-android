@@ -1,6 +1,5 @@
 package com.posthog.compliance
 
-import com.posthog.BuildConfig
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
 import com.posthog.internal.GzipRequestInterceptor
@@ -209,7 +208,7 @@ fun main() {
                 call.respond(
                     HealthResponse(
                         sdk_name = "posthog-android",
-                        sdk_version = BuildConfig.VERSION_NAME,
+                        sdk_version = PostHogConfig(apiKey = "").sdkVersion,
                         adapter_version = "1.0.0",
                     ),
                 )
@@ -255,15 +254,16 @@ fun main() {
                             flushAt = req.flush_at ?: 1,
                             flushIntervalSeconds = flushIntervalSeconds,
                             debug = true,
-                            httpClient = httpClient,
                             preloadFeatureFlags = false,
                         )
+
+                    config.httpClient = httpClient
 
                     // Set storage prefix for file-backed queue
                     config.storagePrefix = "/tmp/posthog-queue"
 
                     // Set minimal context to provide $lib and $lib_version
-                    config.context = TestPostHogContext("posthog-android", BuildConfig.VERSION_NAME)
+                    config.context = TestPostHogContext("posthog-android", config.sdkVersion)
 
                     // Add beforeSend hook to track captured events
                     config.addBeforeSend { event ->
