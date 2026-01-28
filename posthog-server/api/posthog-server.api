@@ -98,14 +98,15 @@ public class com/posthog/server/PostHogConfig {
 	public static final field DEFAULT_POLL_INTERVAL_SECONDS I
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;I)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public static final fun builder (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
+	public final fun getEvaluationContexts ()Ljava/util/List;
 	public final fun getFeatureFlagCacheMaxAgeMs ()I
 	public final fun getFeatureFlagCacheSize ()I
 	public final fun getFeatureFlagCalledCacheSize ()I
@@ -125,6 +126,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
+	public final fun setEvaluationContexts (Ljava/util/List;)V
 	public final fun setFeatureFlagCacheMaxAgeMs (I)V
 	public final fun setFeatureFlagCacheSize (I)V
 	public final fun setFeatureFlagCalledCacheSize (I)V
@@ -147,6 +149,7 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun build ()Lcom/posthog/server/PostHogConfig;
 	public final fun debug (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun encryption (Lcom/posthog/PostHogEncryption;)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun evaluationContexts (Ljava/util/List;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCacheMaxAgeMs (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCalledCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;

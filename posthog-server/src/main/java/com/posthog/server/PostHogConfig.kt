@@ -126,6 +126,13 @@ public open class PostHogConfig constructor(
      * Defaults to 30 seconds
      */
     public var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS,
+    /**
+     * Evaluation contexts for feature flags
+     * List of contexts (e.g., "web", "mobile", "checkout") used to filter
+     * feature flag evaluations on the server side.
+     * Defaults to null
+     */
+    public var evaluationContexts: List<String>? = null,
 ) {
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
@@ -189,6 +196,9 @@ public open class PostHogConfig constructor(
         coreConfig.userAgent = "posthog-java/${BuildConfig.VERSION_NAME}"
         coreConfig.context = PostHogServerContext(coreConfig)
 
+        // Propagate evaluationContexts if set
+        coreConfig.evaluationContexts = evaluationContexts
+
         return coreConfig
     }
 
@@ -234,6 +244,7 @@ public open class PostHogConfig constructor(
         private var localEvaluation: Boolean? = null
         private var personalApiKey: String? = null
         private var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS
+        private var evaluationContexts: List<String>? = null
 
         public fun host(host: String): Builder = apply { this.host = host }
 
@@ -279,6 +290,8 @@ public open class PostHogConfig constructor(
 
         public fun pollIntervalSeconds(pollIntervalSeconds: Int): Builder = apply { this.pollIntervalSeconds = pollIntervalSeconds }
 
+        public fun evaluationContexts(evaluationContexts: List<String>?): Builder = apply { this.evaluationContexts = evaluationContexts }
+
         public fun build(): PostHogConfig =
             PostHogConfig(
                 apiKey = apiKey,
@@ -300,6 +313,7 @@ public open class PostHogConfig constructor(
                 localEvaluation = localEvaluation ?: false,
                 personalApiKey = personalApiKey,
                 pollIntervalSeconds = pollIntervalSeconds,
+                evaluationContexts = evaluationContexts,
             )
     }
 }
