@@ -1,5 +1,6 @@
 package com.posthog.compliance
 
+import com.posthog.BuildConfig
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
 import com.posthog.internal.GzipRequestInterceptor
@@ -204,7 +205,7 @@ fun main() {
                 call.respond(
                     HealthResponse(
                         sdk_name = "posthog-android",
-                        sdk_version = "3.0.0", // TODO: Get from BuildConfig
+                        sdk_version = BuildConfig.VERSION_NAME,
                         adapter_version = "1.0.0"
                     )
                 )
@@ -256,7 +257,7 @@ fun main() {
                     config.storagePrefix = "/tmp/posthog-queue"
 
                     // Set minimal context to provide $lib and $lib_version
-                    config.context = TestPostHogContext("posthog-android", "3.28.0")
+                    config.context = TestPostHogContext("posthog-android", BuildConfig.VERSION_NAME)
 
                     // Add beforeSend hook to track captured events
                     config.addBeforeSend { event ->

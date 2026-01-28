@@ -25,7 +25,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("com.posthog.compliance.AdapterKt")
+    mainClass.set("com.posthog.compliance.ComplianceAdapterKt")
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
