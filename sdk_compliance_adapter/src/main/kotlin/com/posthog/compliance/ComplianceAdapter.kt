@@ -250,7 +250,7 @@ fun main() {
                         flushIntervalSeconds = flushIntervalSeconds,
                         debug = true,
                         httpClient = httpClient,
-                        preloadFeatureFlags = false // Disable to avoid 404 on /flags/
+                        preloadFeatureFlags = false
                     )
 
                     // Set storage prefix for file-backed queue
