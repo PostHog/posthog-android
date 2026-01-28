@@ -28,7 +28,6 @@ import kotlin.concurrent.withLock
  * HTTP wrapper around the PostHog Android SDK for compliance testing.
  */
 
-// State tracking
 data class RequestRecord(
     val timestamp_ms: Long,
     val status_code: Int,
