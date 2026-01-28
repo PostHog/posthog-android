@@ -260,6 +260,21 @@ public open class PostHogConfig(
      */
     public var releaseIdentifier: String? = null,
 ) {
+    /**
+     * Optional custom OkHttpClient for HTTP requests.
+     *
+     * When set, the SDK will use this client instead of creating its own.
+     * The provided client should be configured with any necessary interceptors,
+     * timeouts, and other settings required for your use case.
+     *
+     * Note: If both `proxy` and `httpClient` are set, the `httpClient` takes precedence
+     * and the `proxy` setting will be ignored.
+     *
+     * Default: `null` (SDK creates its own client).
+     */
+    @PostHogInternal
+    public var httpClient: okhttp3.OkHttpClient? = null
+
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
 
