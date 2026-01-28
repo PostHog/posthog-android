@@ -37,6 +37,30 @@ internal class FeatureFlagResultTest {
         assertEquals("[\"item1\",\"item2\",\"item3\"]", result.serializedPayload())
     }
 
+    @Test
+    fun `serializedPayload returns integer as string`() {
+        val result = FeatureFlagResult("test-flag", true, null, 42)
+        assertEquals("42", result.serializedPayload())
+    }
+
+    @Test
+    fun `serializedPayload returns boolean as string`() {
+        val result = FeatureFlagResult("test-flag", true, null, true)
+        assertEquals("true", result.serializedPayload())
+    }
+
+    @Test
+    fun `serializedPayload returns double as string`() {
+        val result = FeatureFlagResult("test-flag", true, null, 3.14)
+        assertEquals("3.14", result.serializedPayload())
+    }
+
+    @Test
+    fun `serializedPayload returns long as string`() {
+        val result = FeatureFlagResult("test-flag", true, null, 9999999999L)
+        assertEquals("9999999999", result.serializedPayload())
+    }
+
     // getPayloadAs<T>() tests
 
     @Test

@@ -32,14 +32,20 @@ public class FeatureFlagResult(
      * Returns the payload serialized as a JSON string.
      *
      * If the payload is already a string, returns it as-is.
+     * If the payload is a primitive (Number, Boolean), returns its string representation.
      * If the payload is an object (Map, List, etc.), serializes it to JSON.
      * Returns null if the payload is null.
      */
     public fun serializedPayload(): String? {
         if (payload == null) return null
-        return when (payload) {
-            is String -> payload
-            else -> gson.toJson(payload)
+        return try {
+            when (payload) {
+                is String -> payload
+                is Number, is Boolean -> payload.toString()
+                else -> gson.toJson(payload)
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
