@@ -298,7 +298,7 @@ internal class PostHogFeatureFlagsV1Test {
     }
 
     @Test
-    fun `clear flags when quota limited`() {
+    fun `retain flags when quota limited`() {
         val http =
             mockHttp(
                 response =
@@ -337,9 +337,9 @@ internal class PostHogFeatureFlagsV1Test {
         sut.loadFeatureFlags("test_id", null, null)
         executor.awaitExecution()
 
-        // Verify flags are cleared
-        assertNull(sut.getFeatureFlags())
-        assertNull(preferences.getValue(FEATURE_FLAGS))
+        // Verify flags are retained
+        assertNotNull(sut.getFeatureFlags())
+        assertNotNull(preferences.getValue(FEATURE_FLAGS))
     }
 
     @Test

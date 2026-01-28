@@ -1,5 +1,39 @@
 ## Next
 
+## 3.29.1 - 2026-01-21
+
+### Changed
+
+- fix: handle corrupted Intent bundles with duplicate keys in referrer info ([#377](https://github.com/PostHog/posthog-android/pull/377))
+- chore: do not capture $set events if user props have not changed ([#375](https://github.com/PostHog/posthog-android/pull/375))
+- Renamed `evaluationEnvironments` to `evaluationContexts` for clearer semantics ([#368](https://github.com/PostHog/posthog-android/pull/368)). The term "contexts" better reflects that this feature is for specifying evaluation contexts (e.g., "web", "mobile", "checkout") rather than deployment environments (e.g., "staging", "production").
+- The API now sends `evaluation_contexts` instead of `evaluation_environments` to the server.
+
+### Deprecated
+- `PostHogConfig.evaluationEnvironments` is now deprecated in favor of `PostHogConfig.evaluationContexts`. The old property will continue to work and will log a deprecation warning. It will be removed in a future major version.
+
+### Migration Guide
+```kotlin
+// Before
+val config = PostHogAndroidConfig(apiKey).apply {
+    evaluationEnvironments = listOf("production", "web", "checkout")
+}
+
+// After
+val config = PostHogAndroidConfig(apiKey).apply {
+    evaluationContexts = listOf("production", "web", "checkout")
+}
+```
+
+No immediate action required - existing code using `evaluationEnvironments` will continue to work with a deprecation warning.
+
+- feat: implement setPersonProps method ([#369](https://github.com/PostHog/posthog-android/pull/369))
+- fix: Retain cached flags when quota limited ([#372](https://github.com/PostHog/posthog-android/pull/372))
+
+## 3.28.1 - 2026-01-09
+
+- fix: Allow flag property overrides via `setPersonPropertiesForFlags`, `setGroupPropertiesForFlags` without person processing ([#365](https://github.com/PostHog/posthog-android/issues/365))
+
 ## 3.28.0 - 2025-12-19
 
 - feat: add `sendFeatureFlagEvent` properties in function getFeatureFlag() and isFeatureEnabled() for override config's

@@ -67,13 +67,13 @@ public open class PostHogConfig(
      */
     public var preloadFeatureFlags: Boolean = true,
     /**
-     * Optional list of evaluation environment tags for feature flag evaluation
+     * Optional list of evaluation context tags for feature flag evaluation
      * When specified, only feature flags that have at least one matching evaluation tag will be evaluated
      * Feature flags with no evaluation tags will always be evaluated for backward compatibility
      * Example: listOf("production", "web", "checkout")
      * Defaults to null (evaluate all flags)
      */
-    public var evaluationEnvironments: List<String>? = null,
+    public var evaluationContexts: List<String>? = null,
     /**
      * Automatically set common device and app properties as person properties for feature flag evaluation.
      *
@@ -389,6 +389,20 @@ public open class PostHogConfig(
             integrationsList.remove(integration)
         }
     }
+
+    /**
+     * Optional list of evaluation environment tags for feature flag evaluation
+     * @deprecated Use evaluationContexts instead. This property will be removed in a future version.
+     */
+    @Deprecated(
+        message = "Use evaluationContexts instead. This property will be removed in a future version.",
+        replaceWith = ReplaceWith("evaluationContexts"),
+    )
+    public var evaluationEnvironments: List<String>?
+        get() = evaluationContexts
+        set(value) {
+            evaluationContexts = value
+        }
 
     public companion object {
         public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"

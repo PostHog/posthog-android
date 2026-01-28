@@ -22,6 +22,7 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
+import com.posthog.internal.sortMapRecursively
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
@@ -54,10 +55,14 @@ public class PostHog private constructor(
     private val personProcessingLock: Any = Any()
 
     private val featureFlagsCalledLock = Any()
+    private val cachedPersonPropertiesLock = Any()
 
     private var remoteConfig: PostHogRemoteConfig? = null
     private var replayQueue: PostHogQueueInterface? = null
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
+
+    // Used to deduplicate setPersonProperties calls
+    private var cachedPersonPropertiesHash: String? = null
 
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
     private var surveysHandler: PostHogSurveysHandler? = null
@@ -618,7 +623,6 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>? = null,
     ) {
-        if (!hasPersonProcessing()) return
         if (userProperties.isNullOrEmpty() && userPropertiesSetOnce.isNullOrEmpty()) return
 
         val allProperties = mutableMapOf<String, Any>()
@@ -637,7 +641,6 @@ public class PostHog private constructor(
         type: String,
         groupProperties: Map<String, Any>?,
     ) {
-        if (!hasPersonProcessing()) return
         if (groupProperties.isNullOrEmpty()) return
 
         remoteConfig?.setGroupPropertiesForFlags(type, groupProperties)
@@ -710,16 +713,116 @@ public class PostHog private constructor(
             // we need to make sure the user props update is for the same user
             // otherwise they have to reset and identify again
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
-            capture(
-                "\$set",
-                distinctId = distinctId,
-                userProperties = userProperties,
-                userPropertiesSetOnce = userPropertiesSetOnce,
-            )
+            if (shouldCapturePersonPropertiesEvent(
+                    distinctId,
+                    userProperties,
+                    userPropertiesSetOnce,
+                    "A duplicate identify call was made with the same properties. The \$set event has been ignored.",
+                )
+            ) {
+                capture(
+                    PostHogEventName.SET.event,
+                    distinctId = distinctId,
+                    userProperties = userProperties,
+                    userPropertiesSetOnce = userPropertiesSetOnce,
+                )
+            }
             // Note we don't reload flags on property changes as these get processed async
         } else {
             config?.logger?.log("already identified with id: $distinctId.")
         }
+    }
+
+    public override fun setPersonProperties(
+        userPropertiesToSet: Map<String, Any>?,
+        userPropertiesToSetOnce: Map<String, Any>?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+
+        if (userPropertiesToSet.isNullOrEmpty() && userPropertiesToSetOnce.isNullOrEmpty()) {
+            return
+        }
+
+        if (!requirePersonProcessing("setPersonProperties")) {
+            return
+        }
+
+        val currentDistinctId = this.distinctId
+
+        if (!shouldCapturePersonPropertiesEvent(
+                currentDistinctId,
+                userPropertiesToSet,
+                userPropertiesToSetOnce,
+                "A duplicate setPersonProperties call was made with the same properties. It has been ignored.",
+            )
+        ) {
+            return
+        }
+
+        // Update person properties for flags (setOnce properties are applied first, then set properties override)
+        val allProperties = mutableMapOf<String, Any>()
+        userPropertiesToSetOnce?.let { allProperties.putAll(it) }
+        userPropertiesToSet?.let { allProperties.putAll(it) }
+        if (allProperties.isNotEmpty()) {
+            setPersonPropertiesForFlags(allProperties, reloadFeatureFlags = false)
+        }
+
+        // Send the $set event
+        capture(
+            PostHogEventName.SET.event,
+            distinctId = currentDistinctId,
+            userProperties = userPropertiesToSet,
+            userPropertiesSetOnce = userPropertiesToSetOnce,
+        )
+    }
+
+    /**
+     * Computes a hash for deduplicating setPersonProperties calls.
+     * Similar to the JS SDK, this creates a JSON string representation of the properties.
+     * Keys are sorted recursively to ensure deterministic hashing regardless of map insertion order.
+     */
+    private fun getPersonPropertiesHash(
+        distinctId: String,
+        userPropertiesToSet: Map<String, Any>?,
+        userPropertiesToSetOnce: Map<String, Any>?,
+    ): String {
+        // Sort keys recursively to ensure deterministic hashing regardless of map insertion order
+        val sortedSet = userPropertiesToSet?.let { sortMapRecursively(it) }
+        val sortedSetOnce = userPropertiesToSetOnce?.let { sortMapRecursively(it) }
+
+        // Create a consistent JSON-like string representation similar to JS SDK's jsonStringify
+        val hashData =
+            sortedMapOf(
+                "distinct_id" to distinctId,
+                "userPropertiesToSet" to sortedSet,
+                "userPropertiesToSetOnce" to sortedSetOnce,
+            )
+        return config?.serializer?.serializeObject(hashData) ?: hashData.toString()
+    }
+
+    /**
+     * Checks if person properties have changed by comparing hash values.
+     * Updates the cached hash if different and returns true if the event should be captured.
+     * Returns false if the hash matches (duplicate call), logging the provided message.
+     */
+    private fun shouldCapturePersonPropertiesEvent(
+        distinctId: String,
+        userPropertiesToSet: Map<String, Any>?,
+        userPropertiesToSetOnce: Map<String, Any>?,
+        duplicateLogMessage: String,
+    ): Boolean {
+        val hash = getPersonPropertiesHash(distinctId, userPropertiesToSet, userPropertiesToSetOnce)
+
+        synchronized(cachedPersonPropertiesLock) {
+            if (cachedPersonPropertiesHash == hash) {
+                config?.logger?.log(duplicateLogMessage)
+                return false
+            }
+            cachedPersonPropertiesHash = hash
+        }
+        return true
     }
 
     private fun hasPersonProcessing(): Boolean {
@@ -983,7 +1086,6 @@ public class PostHog private constructor(
         reloadFeatureFlags: Boolean,
     ) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
         if (userProperties.isEmpty()) return
 
         remoteConfig?.setPersonPropertiesForFlags(userProperties)
@@ -995,7 +1097,6 @@ public class PostHog private constructor(
 
     public override fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
 
         remoteConfig?.resetPersonPropertiesForFlags()
 
@@ -1010,7 +1111,6 @@ public class PostHog private constructor(
         reloadFeatureFlags: Boolean,
     ) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
 
         if (groupProperties.isEmpty()) return
 
@@ -1026,7 +1126,6 @@ public class PostHog private constructor(
         reloadFeatureFlags: Boolean,
     ) {
         if (!isEnabled()) return
-        if (!hasPersonProcessing()) return
 
         remoteConfig?.resetGroupPropertiesForFlags(type)
 
@@ -1051,6 +1150,9 @@ public class PostHog private constructor(
         getPreferences().clear(except = except.toList())
         remoteConfig?.clear()
         featureFlagsCalled.clear()
+        synchronized(cachedPersonPropertiesLock) {
+            cachedPersonPropertiesHash = null
+        }
         synchronized(identifiedLock) {
             isIdentifiedLoaded = false
         }
@@ -1321,6 +1423,13 @@ public class PostHog private constructor(
 
         public override fun flush() {
             shared.flush()
+        }
+
+        public override fun setPersonProperties(
+            userPropertiesToSet: Map<String, Any>?,
+            userPropertiesToSetOnce: Map<String, Any>?,
+        ) {
+            shared.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
         }
 
         public override fun setPersonPropertiesForFlags(

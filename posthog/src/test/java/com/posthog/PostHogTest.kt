@@ -4,6 +4,8 @@ import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
@@ -55,8 +57,9 @@ internal class PostHogTest {
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
-        evaluationEnvironments: List<String>? = null,
+        evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
+        personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -73,13 +76,14 @@ internal class PostHogTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
-                this.evaluationEnvironments = evaluationEnvironments
+                this.evaluationContexts = evaluationContexts
                 this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
                 this.errorTrackingConfig.inAppIncludes.add("com.posthog")
                 this.context = context
+                this.personProfiles = personProfiles
             }
         return PostHog.withInternal(
             config,
@@ -529,7 +533,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `includes evaluation_environments in feature flag request when configured`() {
+    fun `includes evaluation_contexts in feature flag request when configured`() {
         val http =
             mockHttp(
                 response =
@@ -542,7 +546,7 @@ internal class PostHogTest {
             getSut(
                 url.toString(),
                 preloadFeatureFlags = false,
-                evaluationEnvironments = listOf("production", "web", "checkout"),
+                evaluationContexts = listOf("production", "web", "checkout"),
             )
 
         sut.reloadFeatureFlags()
@@ -554,8 +558,8 @@ internal class PostHogTest {
         val flagsRequest = serializer.deserialize<Map<String, Any>>(body.reader())
 
         @Suppress("UNCHECKED_CAST")
-        val evaluationEnvironments = flagsRequest["evaluation_environments"] as? List<String>
-        assertEquals(listOf("production", "web", "checkout"), evaluationEnvironments)
+        val evaluationContexts = flagsRequest["evaluation_contexts"] as? List<String>
+        assertEquals(listOf("production", "web", "checkout"), evaluationContexts)
 
         sut.close()
     }
@@ -837,6 +841,91 @@ internal class PostHogTest {
         assertEquals("\$set", theEvent.event)
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture duplicate set event if identify called with same properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        // First identify - captures $identify event
+        sut.identify(
+            DISTINCT_ID,
+        )
+
+        // Second identify with same distinctId - captures $set event (first time with these props)
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        // Third identify with same distinctId and same properties - should NOT capture another $set event
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        // Should only have 2 events: $identify and $set (the duplicate $set should be ignored)
+        assertEquals(2, batch.batch.size)
+        assertEquals("\$identify", batch.batch[0].event)
+        assertEquals("\$set", batch.batch[1].event)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captures set event after properties change in identify`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 3)
+
+        // First identify
+        sut.identify(
+            DISTINCT_ID,
+        )
+
+        // Second identify with same distinctId - captures $set event
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = userProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        // Third identify with same distinctId but DIFFERENT properties - should capture another $set event
+        val newUserProps = mapOf("different" to "value")
+        sut.identify(
+            DISTINCT_ID,
+            userProperties = newUserProps,
+            userPropertiesSetOnce = userPropsOnce,
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        // Should have 3 events: $identify, $set, $set (different props)
+        assertEquals(3, batch.batch.size)
+        assertEquals("\$identify", batch.batch[0].event)
+        assertEquals("\$set", batch.batch[1].event)
+        assertEquals("\$set", batch.batch[2].event)
+        assertEquals(newUserProps, batch.batch[2].properties!!["\$set"])
 
         sut.close()
     }
@@ -2118,5 +2207,405 @@ internal class PostHogTest {
 
         sut.close()
         http.shutdown()
+    }
+
+    @Test
+    fun `setPersonPropertiesForFlags works without person processing`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut =
+            getSut(
+                url.toString(),
+                cachePreferences = cachePreferences,
+                personProfiles = PersonProfiles.NEVER,
+                preloadFeatureFlags = false,
+            )
+
+        sut.setPersonPropertiesForFlags(mapOf("email" to "test@example.com", "plan" to "pro"))
+
+        val cachedProps = cachePreferences.getValue(PERSON_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertEquals("test@example.com", cachedProps?.get("email"))
+        assertEquals("pro", cachedProps?.get("plan"))
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `setGroupPropertiesForFlags works without person processing`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut =
+            getSut(
+                url.toString(),
+                cachePreferences = cachePreferences,
+                personProfiles = PersonProfiles.NEVER,
+                preloadFeatureFlags = false,
+            )
+
+        sut.setGroupPropertiesForFlags("company", mapOf("name" to "Acme", "plan" to "enterprise"))
+
+        val cachedProps = cachePreferences.getValue(GROUP_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        val companyProps = cachedProps?.get("company") as? Map<*, *>
+        assertEquals("Acme", companyProps?.get("name"))
+        assertEquals("enterprise", companyProps?.get("plan"))
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `setPersonProperties captures set event`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com", "plan" to "premium")
+        val userPropertiesToSetOnce = mapOf("initial_url" to "/blog")
+
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$set", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertEquals(userPropertiesToSet, theEvent.properties!!["\$set"])
+        assertEquals(userPropertiesToSetOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties with only userPropertiesToSet`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com")
+
+        sut.setPersonProperties(userPropertiesToSet)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$set", theEvent.event)
+        assertEquals(userPropertiesToSet, theEvent.properties!!["\$set"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties with only userPropertiesToSetOnce`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val userPropertiesToSetOnce = mapOf("initial_url" to "/signup")
+
+        sut.setPersonProperties(userPropertiesToSetOnce = userPropertiesToSetOnce)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$set", theEvent.event)
+        assertEquals(userPropertiesToSetOnce, theEvent.properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties ignores call with empty properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.setPersonProperties(emptyMap(), emptyMap())
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties ignores call with null properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.setPersonProperties(null, null)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties deduplicates identical calls`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com")
+
+        // First call should succeed
+        sut.setPersonProperties(userPropertiesToSet)
+
+        // Second identical call should be ignored
+        sut.setPersonProperties(userPropertiesToSet)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Only one event should be sent
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties allows different properties after reset`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com")
+
+        // First call
+        sut.setPersonProperties(userPropertiesToSet)
+
+        queueExecutor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+
+        // Reset clears the cache
+        sut.reset()
+
+        // Same properties should now be allowed again
+        sut.setPersonProperties(userPropertiesToSet)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Should have 2 events now
+        assertEquals(2, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties allows different properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, flushAt = 2)
+
+        val userPropertiesToSet1 = mapOf("email" to "user@example.com")
+        val userPropertiesToSet2 = mapOf("email" to "other@example.com")
+
+        sut.setPersonProperties(userPropertiesToSet1)
+        sut.setPersonProperties(userPropertiesToSet2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Both events should be sent
+        assertEquals(1, http.requestCount)
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertEquals(2, batch.batch.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties is blocked when personProfiles is NEVER`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, personProfiles = PersonProfiles.NEVER)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com")
+
+        sut.setPersonProperties(userPropertiesToSet)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties updates person properties for flags`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com", "plan" to "premium")
+        val userPropertiesToSetOnce = mapOf("initial_url" to "/blog")
+
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Verify person properties for flags were updated
+        val cachedProps = cachePreferences.getValue(PERSON_PROPERTIES_FOR_FLAGS) as? Map<*, *>
+        assertNotNull(cachedProps)
+        assertEquals("user@example.com", cachedProps["email"])
+        assertEquals("premium", cachedProps["plan"])
+        // setOnce properties should be included too
+        assertEquals("/blog", cachedProps["initial_url"])
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `setPersonProperties deduplicates calls with same properties in different order`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Create two maps with the same data but potentially different insertion order
+        val userPropertiesToSet1 = linkedMapOf("email" to "user@example.com", "plan" to "premium", "name" to "John")
+        val userPropertiesToSet2 = linkedMapOf("plan" to "premium", "name" to "John", "email" to "user@example.com")
+
+        // First call
+        sut.setPersonProperties(userPropertiesToSet1)
+
+        // Second call with same data but different key order - should be deduplicated
+        sut.setPersonProperties(userPropertiesToSet2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Only one event should be sent since the content is the same
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties deduplicates calls with same setOnce properties in different order`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Create two maps with the same data but potentially different insertion order
+        val userPropertiesToSetOnce1 = linkedMapOf("initial_url" to "/blog", "referrer" to "google", "campaign" to "summer")
+        val userPropertiesToSetOnce2 = linkedMapOf("campaign" to "summer", "initial_url" to "/blog", "referrer" to "google")
+
+        // First call
+        sut.setPersonProperties(userPropertiesToSetOnce = userPropertiesToSetOnce1)
+
+        // Second call with same data but different key order - should be deduplicated
+        sut.setPersonProperties(userPropertiesToSetOnce = userPropertiesToSetOnce2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Only one event should be sent since the content is the same
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties deduplicates calls with nested maps in different order`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Create two maps with nested maps in different key order
+        val nested1 = linkedMapOf("city" to "London", "country" to "UK", "zip" to "12345")
+        val nested2 = linkedMapOf("zip" to "12345", "city" to "London", "country" to "UK")
+
+        val userPropertiesToSet1 = linkedMapOf("name" to "John", "address" to nested1)
+        val userPropertiesToSet2 = linkedMapOf("address" to nested2, "name" to "John")
+
+        // First call
+        sut.setPersonProperties(userPropertiesToSet1)
+
+        // Second call with same data but different key order at both levels - should be deduplicated
+        sut.setPersonProperties(userPropertiesToSet2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Only one event should be sent since the content is the same
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture duplicate set event if setPersonProperties called with same properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 1)
+
+        val userPropertiesToSet = mapOf("email" to "user@example.com", "plan" to "premium")
+        val userPropertiesToSetOnce = mapOf("initial_url" to "/blog")
+
+        // First call - should capture $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        // Second call with same properties - should NOT capture another $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        // Third call with same properties - should NOT capture another $set event
+        sut.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        // Should only have 1 event - the duplicate $set events should be ignored
+        assertEquals(1, batch.batch.size)
+        assertEquals("\$set", batch.batch[0].event)
+        assertEquals(userPropertiesToSet, batch.batch[0].properties!!["\$set"])
+        assertEquals(userPropertiesToSetOnce, batch.batch[0].properties!!["\$set_once"])
+
+        sut.close()
     }
 }

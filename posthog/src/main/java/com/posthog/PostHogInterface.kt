@@ -188,6 +188,25 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun getSessionId(): UUID?
 
     /**
+     * Sets properties on the person profile associated with the current distinct_id.
+     * Learn more about [identifying users](https://posthog.com/docs/product-analytics/identify)
+     *
+     * Updates user properties that are stored with the person profile in PostHog.
+     * If `personProfiles` is set to `IDENTIFIED_ONLY` and no profile exists, this will create one.
+     *
+     * This method sends a `$set` event to PostHog.
+     *
+     * @param userPropertiesToSet Optional: Properties to store about the user. These will overwrite existing values.
+     * @param userPropertiesToSetOnce Optional: Properties to store about the user only if not previously set.
+     *   Note: For feature flag evaluations, if the same key is present in both parameters,
+     *   the value from userPropertiesToSet will take precedence.
+     */
+    public fun setPersonProperties(
+        userPropertiesToSet: Map<String, Any>? = null,
+        userPropertiesToSetOnce: Map<String, Any>? = null,
+    )
+
+    /**
      * Sets person properties that will be included in feature flag evaluation requests.
      *
      * @param properties Dictionary of person properties to include in flag evaluation

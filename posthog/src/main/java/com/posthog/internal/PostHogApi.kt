@@ -130,7 +130,7 @@ public class PostHogApi(
                 groups,
                 personProperties,
                 groupProperties,
-                config.evaluationEnvironments,
+                config.evaluationContexts,
             )
 
         val url = "$theHost/flags/?v=2&config=true"

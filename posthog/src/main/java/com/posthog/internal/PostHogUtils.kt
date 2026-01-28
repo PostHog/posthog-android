@@ -7,6 +7,7 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.SortedMap
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 
@@ -71,5 +72,33 @@ public fun Thread.interruptSafely() {
         interrupt()
     } catch (e: Throwable) {
         // ignore
+    }
+}
+
+/**
+ * Recursively sorts a map by keys at all levels.
+ * This is useful for creating deterministic string representations of maps.
+ */
+internal fun sortMapRecursively(map: Map<String, Any?>): SortedMap<String, Any?> {
+    val sortedMap = sortedMapOf<String, Any?>()
+    for ((key, value) in map) {
+        sortedMap[key] = sortValueRecursively(value)
+    }
+    return sortedMap
+}
+
+/**
+ * Recursively sorts values that are maps, lists, or arrays containing maps.
+ */
+private fun sortValueRecursively(value: Any?): Any? {
+    return when (value) {
+        is Map<*, *> -> {
+            @Suppress("UNCHECKED_CAST")
+            val stringKeyMap = value.filterKeys { it is String } as Map<String, Any?>
+            sortMapRecursively(stringKeyMap)
+        }
+        is List<*> -> value.map { item -> sortValueRecursively(item) }
+        is Array<*> -> value.map { item -> sortValueRecursively(item) }
+        else -> value
     }
 }

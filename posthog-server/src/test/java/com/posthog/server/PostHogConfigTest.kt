@@ -510,4 +510,54 @@ internal class PostHogConfigTest {
         assertEquals("test-personal-api-key", config.personalApiKey)
         assertEquals(false, config.localEvaluation)
     }
+
+    // evaluationContexts tests
+
+    @Test
+    fun `constructor sets evaluationContexts to null by default`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        assertNull(config.evaluationContexts)
+    }
+
+    @Test
+    fun `constructor accepts evaluationContexts parameter`() {
+        val contexts = listOf("web", "mobile", "checkout")
+        val config = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
+        assertEquals(contexts, config.evaluationContexts)
+    }
+
+    @Test
+    fun `asCoreConfig propagates evaluationContexts to core config`() {
+        val contexts = listOf("web", "mobile")
+        val config = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
+        val coreConfig = config.asCoreConfig()
+        assertEquals(contexts, coreConfig.evaluationContexts)
+    }
+
+    @Test
+    fun `asCoreConfig propagates null evaluationContexts`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val coreConfig = config.asCoreConfig()
+        assertNull(coreConfig.evaluationContexts)
+    }
+
+    @Test
+    fun `builder evaluationContexts method sets value and returns builder`() {
+        val contexts = listOf("web", "mobile")
+        val builder = PostHogConfig.builder(TEST_API_KEY)
+        val result = builder.evaluationContexts(contexts)
+        assertEquals(builder, result)
+
+        val config = builder.build()
+        assertEquals(contexts, config.evaluationContexts)
+    }
+
+    @Test
+    fun `builder evaluationContexts method accepts null`() {
+        val config =
+            PostHogConfig.builder(TEST_API_KEY)
+                .evaluationContexts(null)
+                .build()
+        assertNull(config.evaluationContexts)
+    }
 }
