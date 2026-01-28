@@ -4,6 +4,7 @@ import com.posthog.BuildConfig
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
 import com.posthog.internal.GzipRequestInterceptor
+import com.posthog.internal.PostHogContext
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.gson.gson
 import io.ktor.server.application.call
@@ -18,7 +19,6 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import okhttp3.Interceptor
 import okhttp3.Response
-import com.posthog.internal.PostHogContext
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -34,7 +34,7 @@ data class RequestRecord(
     val status_code: Int,
     val retry_attempt: Int,
     val event_count: Int,
-    val uuid_list: List<String>
+    val uuid_list: List<String>,
 )
 
 data class AdapterState(
@@ -43,14 +43,14 @@ data class AdapterState(
     var totalEventsSent: Int = 0,
     var totalRetries: Int = 0,
     var lastError: String? = null,
-    val requestsMade: MutableList<RequestRecord> = mutableListOf()
+    val requestsMade: MutableList<RequestRecord> = mutableListOf(),
 )
 
 // Request/Response models
 data class HealthResponse(
     val sdk_name: String,
     val sdk_version: String,
-    val adapter_version: String
+    val adapter_version: String,
 )
 
 data class InitRequest(
@@ -59,24 +59,24 @@ data class InitRequest(
     val flush_at: Int? = null,
     val flush_interval_ms: Int? = null,
     val max_retries: Int? = null,
-    val enable_compression: Boolean? = null
+    val enable_compression: Boolean? = null,
 )
 
 data class CaptureRequest(
     val distinct_id: String,
     val event: String,
     val properties: Map<String, Any>? = null,
-    val timestamp: String? = null
+    val timestamp: String? = null,
 )
 
 data class CaptureResponse(
     val success: Boolean,
-    val uuid: String
+    val uuid: String,
 )
 
 data class FlushResponse(
     val success: Boolean,
-    val events_flushed: Int
+    val events_flushed: Int,
 )
 
 data class StateResponse(
@@ -85,21 +85,24 @@ data class StateResponse(
     val total_events_sent: Int,
     val total_retries: Int,
     val last_error: String?,
-    val requests_made: List<RequestRecord>
+    val requests_made: List<RequestRecord>,
 )
 
 data class SuccessResponse(
-    val success: Boolean
+    val success: Boolean,
 )
 
 // Minimal context for testing (provides $lib and $lib_version)
 class TestPostHogContext(private val sdkName: String, private val sdkVersion: String) : PostHogContext {
     override fun getStaticContext(): Map<String, Any> = emptyMap()
+
     override fun getDynamicContext(): Map<String, Any> = emptyMap()
-    override fun getSdkInfo(): Map<String, Any> = mapOf(
-        "\$lib" to sdkName,
-        "\$lib_version" to sdkVersion
-    )
+
+    override fun getSdkInfo(): Map<String, Any> =
+        mapOf(
+            "\$lib" to sdkName,
+            "\$lib_version" to sdkVersion,
+        )
 }
 
 // Global state
@@ -158,13 +161,14 @@ class TrackingInterceptor : Interceptor {
                 val retryCount = request.url.queryParameter("retry_count")?.toIntOrNull() ?: 0
 
                 AdapterContext.lock.withLock {
-                    val record = RequestRecord(
-                        timestamp_ms = System.currentTimeMillis(),
-                        status_code = response.code,
-                        retry_attempt = retryCount,
-                        event_count = eventCount,
-                        uuid_list = uuidList
-                    )
+                    val record =
+                        RequestRecord(
+                            timestamp_ms = System.currentTimeMillis(),
+                            status_code = response.code,
+                            retry_attempt = retryCount,
+                            event_count = eventCount,
+                            uuid_list = uuidList,
+                        )
 
                     AdapterContext.state.requestsMade.add(record)
 
@@ -206,8 +210,8 @@ fun main() {
                     HealthResponse(
                         sdk_name = "posthog-android",
                         sdk_version = BuildConfig.VERSION_NAME,
-                        adapter_version = "1.0.0"
-                    )
+                        adapter_version = "1.0.0",
+                    ),
                 )
             }
 
@@ -234,24 +238,26 @@ fun main() {
 
                     // Create OkHttpClient with tracking interceptor first, then gzip
                     // Order matters: TrackingInterceptor reads uncompressed body, GzipInterceptor compresses it
-                    val httpClient = okhttp3.OkHttpClient.Builder()
-                        .addInterceptor(TrackingInterceptor())
-                        .addInterceptor(GzipRequestInterceptor(tempConfig))
-                        .build()
+                    val httpClient =
+                        okhttp3.OkHttpClient.Builder()
+                            .addInterceptor(TrackingInterceptor())
+                            .addInterceptor(GzipRequestInterceptor(tempConfig))
+                            .build()
 
                     // Create new config
                     val flushIntervalMs = req.flush_interval_ms ?: 100
                     val flushIntervalSeconds = maxOf(1, flushIntervalMs / 1000) // Min 1 second
 
-                    val config = PostHogConfig(
-                        apiKey = req.api_key,
-                        host = req.host,
-                        flushAt = req.flush_at ?: 1,
-                        flushIntervalSeconds = flushIntervalSeconds,
-                        debug = true,
-                        httpClient = httpClient,
-                        preloadFeatureFlags = false
-                    )
+                    val config =
+                        PostHogConfig(
+                            apiKey = req.api_key,
+                            host = req.host,
+                            flushAt = req.flush_at ?: 1,
+                            flushIntervalSeconds = flushIntervalSeconds,
+                            debug = true,
+                            httpClient = httpClient,
+                            preloadFeatureFlags = false,
+                        )
 
                     // Set storage prefix for file-backed queue
                     config.storagePrefix = "/tmp/posthog-queue"
@@ -283,9 +289,10 @@ fun main() {
                 val req = call.receive<CaptureRequest>()
                 println("[ADAPTER] Capturing event: ${req.event} for user: ${req.distinct_id}")
 
-                val ph = AdapterContext.lock.withLock {
-                    AdapterContext.postHog
-                }
+                val ph =
+                    AdapterContext.lock.withLock {
+                        AdapterContext.postHog
+                    }
 
                 if (ph == null) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "SDK not initialized"))
@@ -300,22 +307,23 @@ fun main() {
                 ph.capture(
                     event = req.event,
                     distinctId = req.distinct_id,
-                    properties = properties
+                    properties = properties,
                 )
 
                 // Get the UUID that was just captured (via beforeSend hook)
-                val uuid = AdapterContext.lock.withLock {
-                    AdapterContext.state.totalEventsCaptured++
-                    AdapterContext.state.pendingEvents++
+                val uuid =
+                    AdapterContext.lock.withLock {
+                        AdapterContext.state.totalEventsCaptured++
+                        AdapterContext.state.pendingEvents++
 
-                    // The last UUID added is the one we just captured
-                    if (AdapterContext.capturedEvents.size > beforeCount) {
-                        AdapterContext.capturedEvents.last()
-                    } else {
-                        // Fallback if beforeSend didn't fire yet
-                        UUID.randomUUID().toString()
+                        // The last UUID added is the one we just captured
+                        if (AdapterContext.capturedEvents.size > beforeCount) {
+                            AdapterContext.capturedEvents.last()
+                        } else {
+                            // Fallback if beforeSend didn't fire yet
+                            UUID.randomUUID().toString()
+                        }
                     }
-                }
 
                 call.respond(CaptureResponse(success = true, uuid = uuid))
             }
@@ -328,11 +336,12 @@ fun main() {
                 // Wait for events to be sent (generous timeout for Docker network latency)
                 Thread.sleep(2000)
 
-                val eventsFlushed = AdapterContext.lock.withLock {
-                    val flushed = AdapterContext.state.totalEventsSent
-                    AdapterContext.state.pendingEvents = 0
-                    flushed
-                }
+                val eventsFlushed =
+                    AdapterContext.lock.withLock {
+                        val flushed = AdapterContext.state.totalEventsSent
+                        AdapterContext.state.pendingEvents = 0
+                        flushed
+                    }
 
                 println("[ADAPTER] Flush complete: $eventsFlushed events sent")
 
@@ -342,16 +351,17 @@ fun main() {
             get("/state") {
                 println("[ADAPTER] GET /state")
 
-                val stateSnapshot = AdapterContext.lock.withLock {
-                    StateResponse(
-                        pending_events = AdapterContext.state.pendingEvents,
-                        total_events_captured = AdapterContext.state.totalEventsCaptured,
-                        total_events_sent = AdapterContext.state.totalEventsSent,
-                        total_retries = AdapterContext.state.totalRetries,
-                        last_error = AdapterContext.state.lastError,
-                        requests_made = AdapterContext.state.requestsMade.toList()
-                    )
-                }
+                val stateSnapshot =
+                    AdapterContext.lock.withLock {
+                        StateResponse(
+                            pending_events = AdapterContext.state.pendingEvents,
+                            total_events_captured = AdapterContext.state.totalEventsCaptured,
+                            total_events_sent = AdapterContext.state.totalEventsSent,
+                            total_retries = AdapterContext.state.totalRetries,
+                            last_error = AdapterContext.state.lastError,
+                            requests_made = AdapterContext.state.requestsMade.toList(),
+                        )
+                    }
 
                 println("[ADAPTER] State: $stateSnapshot")
 
