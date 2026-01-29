@@ -570,6 +570,41 @@ public class PostHogReplayIntegration(
         }
     }
 
+    /**
+     * Returns the global visible rect of just the text content area within a TextView.
+     * For EditText, Button, and CompoundButton subclasses (CheckBox, RadioButton, Switch),
+     * this excludes the padding and compound drawables, masking only the text area.
+     * For regular TextView, this falls back to the full view rect.
+     */
+    private fun TextView.getTextAreaGlobalVisibleRect(): Rect? {
+        // Only adjust bounds for views that typically have significant padding or compound drawables
+        // EditText: has border/underline padding
+        // Button: has background padding
+        // CompoundButton (CheckBox, RadioButton, Switch): has checkbox/radio/switch drawable
+        val shouldAdjustBounds = this is EditText || this is Button
+
+        if (!shouldAdjustBounds) {
+            return globalVisibleRect()
+        }
+
+        return globalVisibleRect()?.let { fullRect ->
+            // Calculate the text area bounds by accounting for compound padding
+            // Compound padding includes both regular padding and drawable padding
+            val textAreaLeft = fullRect.left + compoundPaddingLeft
+            val textAreaTop = fullRect.top + compoundPaddingTop
+            val textAreaRight = fullRect.right - compoundPaddingRight
+            val textAreaBottom = fullRect.bottom - compoundPaddingBottom
+
+            // Ensure we have valid bounds
+            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
+                Rect(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
+            } else {
+                // Fall back to full rect if text area is too small
+                fullRect
+            }
+        }
+    }
+
     private fun View.isViewStateStableForMatrixOperations(): Boolean {
         return try {
             isAttachedToWindow &&
@@ -654,7 +689,9 @@ public class PostHogReplayIntegration(
                 }
 
                 if (maskIt) {
-                    view.globalVisibleRect()?.let {
+                    // For EditText, mask only the text area (excluding padding and compound drawables)
+                    // For regular TextView, mask the full view
+                    view.getTextAreaGlobalVisibleRect()?.let {
                         maskableWidgets.add(it)
                     }
                 }
