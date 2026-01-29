@@ -7,59 +7,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class FeatureFlagResultTest {
-    // serializedPayload tests
-
-    @Test
-    fun `serializedPayload returns null when payload is null`() {
-        val result = FeatureFlagResult("test-flag", true, null, null)
-        assertNull(result.serializedPayload())
-    }
-
-    @Test
-    fun `serializedPayload returns string as-is when payload is string`() {
-        val result = FeatureFlagResult("test-flag", true, null, "string payload")
-        assertEquals("string payload", result.serializedPayload())
-    }
-
-    @Test
-    fun `serializedPayload serializes map to JSON`() {
-        val payload = mapOf("key" to "value", "number" to 42)
-        val result = FeatureFlagResult("test-flag", true, null, payload)
-        val serialized = result.serializedPayload()
-        assertTrue(serialized?.contains("\"key\":\"value\"") == true)
-        assertTrue(serialized?.contains("\"number\":42") == true)
-    }
-
-    @Test
-    fun `serializedPayload serializes list to JSON`() {
-        val payload = listOf("item1", "item2", "item3")
-        val result = FeatureFlagResult("test-flag", true, null, payload)
-        assertEquals("[\"item1\",\"item2\",\"item3\"]", result.serializedPayload())
-    }
-
-    @Test
-    fun `serializedPayload returns integer as string`() {
-        val result = FeatureFlagResult("test-flag", true, null, 42)
-        assertEquals("42", result.serializedPayload())
-    }
-
-    @Test
-    fun `serializedPayload returns boolean as string`() {
-        val result = FeatureFlagResult("test-flag", true, null, true)
-        assertEquals("true", result.serializedPayload())
-    }
-
-    @Test
-    fun `serializedPayload returns double as string`() {
-        val result = FeatureFlagResult("test-flag", true, null, 3.14)
-        assertEquals("3.14", result.serializedPayload())
-    }
-
-    @Test
-    fun `serializedPayload returns long as string`() {
-        val result = FeatureFlagResult("test-flag", true, null, 9999999999L)
-        assertEquals("9999999999", result.serializedPayload())
-    }
+    // Test helper class for getPayloadAs tests
+    data class CustomPayload(val name: String = "", val count: Int = 0)
 
     // getPayloadAs<T>() tests
 
@@ -84,17 +33,34 @@ internal class FeatureFlagResultTest {
     }
 
     @Test
-    fun `getPayloadAs deserializes JSON string to requested type`() {
-        // When payload is a JSON string, it should be deserialized
-        val result = FeatureFlagResult("test-flag", true, null, """{"key":"value"}""")
+    fun `getPayloadAs converts map payload to requested type`() {
+        val payload = mapOf("key" to "value")
+        val result = FeatureFlagResult("test-flag", true, null, payload)
         val map = result.getPayloadAs<Map<String, String>>()
         assertEquals("value", map?.get("key"))
     }
 
     @Test
-    fun `getPayloadAs returns null when deserialization fails`() {
-        val result = FeatureFlagResult("test-flag", true, null, "not valid json for map")
+    fun `getPayloadAs returns null when conversion fails`() {
+        val result = FeatureFlagResult("test-flag", true, null, "plain string")
         assertNull(result.getPayloadAs<Map<String, Any>>())
+    }
+
+    @Test
+    fun `getPayloadAs converts map to custom class`() {
+        val payload = mapOf("name" to "test", "count" to 42)
+        val result = FeatureFlagResult("test-flag", true, null, payload)
+        val custom = result.getPayloadAs<CustomPayload>()
+        assertEquals("test", custom?.name)
+        assertEquals(42, custom?.count)
+    }
+
+    @Test
+    fun `getPayloadAs converts list payload`() {
+        val payload = listOf("a", "b", "c")
+        val result = FeatureFlagResult("test-flag", true, null, payload)
+        val list = result.getPayloadAs<List<String>>()
+        assertEquals(listOf("a", "b", "c"), list)
     }
 
     // getPayloadAs(Class<T>) tests
@@ -113,15 +79,16 @@ internal class FeatureFlagResultTest {
     }
 
     @Test
-    fun `getPayloadAs with class deserializes to requested type`() {
-        val result = FeatureFlagResult("test-flag", true, null, """{"key":"value"}""")
+    fun `getPayloadAs with class converts map to requested type`() {
+        val payload = mapOf("key" to "value")
+        val result = FeatureFlagResult("test-flag", true, null, payload)
         val map = result.getPayloadAs(Map::class.java)
         assertEquals("value", map?.get("key"))
     }
 
     @Test
-    fun `getPayloadAs with class returns null when deserialization fails`() {
-        val result = FeatureFlagResult("test-flag", true, null, "not valid for Integer")
+    fun `getPayloadAs with class returns null when conversion fails`() {
+        val result = FeatureFlagResult("test-flag", true, null, "plain string")
         assertNull(result.getPayloadAs(Int::class.java))
     }
 

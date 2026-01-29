@@ -5,10 +5,9 @@ public final class com/posthog/FeatureFlagResult {
 	public final fun getKey ()Ljava/lang/String;
 	public final fun getPayload ()Ljava/lang/Object;
 	public final fun getPayloadAs (Ljava/lang/Class;)Ljava/lang/Object;
-	public final fun getValue ()Ljava/lang/Object;
+	public final synthetic fun getValue ()Ljava/lang/Object;
 	public final fun getVariant ()Ljava/lang/String;
 	public fun hashCode ()I
-	public final fun serializedPayload ()Ljava/lang/String;
 	public fun toString ()Ljava/lang/String;
 }
 

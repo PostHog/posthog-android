@@ -1,6 +1,6 @@
 package com.posthog
 
-import com.google.gson.Gson
+import com.posthog.internal.PostHogGson
 
 /**
  * The result of evaluating a feature flag.
@@ -20,34 +20,13 @@ public class FeatureFlagResult(
      * Returns the effective value of the feature flag.
      * For multivariate flags, returns the variant string.
      * For boolean flags, returns the enabled boolean.
+     *
+     * Not available via Java callers due to poor ergonomics,
+     * use `enabled` and `variant` properties directly.
      */
+    @get:JvmSynthetic
     public val value: Any
         get() = variant ?: enabled
-
-    internal companion object {
-        internal val gson: Gson by lazy { Gson() }
-    }
-
-    /**
-     * Returns the payload serialized as a JSON string.
-     *
-     * If the payload is already a string, returns it as-is.
-     * If the payload is a primitive (Number, Boolean), returns its string representation.
-     * If the payload is an object (Map, List, etc.), serializes it to JSON.
-     * Returns null if the payload is null.
-     */
-    public fun serializedPayload(): String? {
-        if (payload == null) return null
-        return try {
-            when (payload) {
-                is String -> payload
-                is Number, is Boolean -> payload.toString()
-                else -> gson.toJson(payload)
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
 
     /**
      * Returns the payload deserialized as the specified type.
@@ -73,7 +52,8 @@ public class FeatureFlagResult(
         if (payload == null) return null
         if (clazz.isInstance(payload)) return payload as T
         return try {
-            gson.fromJson(serializedPayload(), clazz)
+            val jsonElement = PostHogGson.gson.toJsonTree(payload)
+            PostHogGson.gson.fromJson(jsonElement, clazz)
         } catch (e: Exception) {
             null
         }
