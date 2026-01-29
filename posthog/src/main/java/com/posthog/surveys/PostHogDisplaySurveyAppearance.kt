@@ -9,14 +9,18 @@ package com.posthog.surveys
  * @property submitButtonColor Optional background color for the submit button as web color
  * @property submitButtonText Optional custom text for the submit button
  * @property submitButtonTextColor Optional text color for the submit button as web color
+ * @property textColor Optional primary text color as web color
  * @property descriptionTextColor Optional color for description text as web color
  * @property ratingButtonColor Optional color for rating buttons as web color
  * @property ratingButtonActiveColor Optional color for active/selected rating buttons as web color
+ * @property inputBackground Optional background color for input fields as web color
+ * @property inputTextColor Optional text color for input fields as web color
  * @property placeholder Optional placeholder text for input fields
  * @property displayThankYouMessage Whether to show a thank you message after survey completion
  * @property thankYouMessageHeader Optional header text for the thank you message
  * @property thankYouMessageDescription Optional description text for the thank you message
  * @property thankYouMessageDescriptionContentType Optional content type for the thank you message description
+ * @property thankYouMessageCloseButtonText Optional custom text for the thank you message close button
  */
 public data class PostHogDisplaySurveyAppearance(
     val fontFamily: String? = null,
@@ -25,14 +29,18 @@ public data class PostHogDisplaySurveyAppearance(
     val submitButtonColor: String? = null,
     val submitButtonText: String? = null,
     val submitButtonTextColor: String? = null,
+    val textColor: String? = null,
     val descriptionTextColor: String? = null,
     val ratingButtonColor: String? = null,
     val ratingButtonActiveColor: String? = null,
+    val inputBackground: String? = null,
+    val inputTextColor: String? = null,
     val placeholder: String? = null,
     val displayThankYouMessage: Boolean = false,
     val thankYouMessageHeader: String? = null,
     val thankYouMessageDescription: String? = null,
     val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType? = null,
+    val thankYouMessageCloseButtonText: String? = null,
 ) {
     internal companion object {
         /**
@@ -56,14 +64,18 @@ public data class PostHogDisplaySurveyAppearance(
                 submitButtonColor = appearance.submitButtonColor,
                 submitButtonText = appearance.submitButtonText,
                 submitButtonTextColor = appearance.submitButtonTextColor,
+                textColor = appearance.textColor,
                 descriptionTextColor = appearance.descriptionTextColor,
                 ratingButtonColor = appearance.ratingButtonColor,
                 ratingButtonActiveColor = appearance.ratingButtonActiveColor,
+                inputBackground = appearance.inputBackground,
+                inputTextColor = appearance.inputTextColor,
                 placeholder = appearance.placeholder,
                 displayThankYouMessage = appearance.displayThankYouMessage ?: false,
                 thankYouMessageHeader = appearance.thankYouMessageHeader,
                 thankYouMessageDescription = appearance.thankYouMessageDescription,
                 thankYouMessageDescriptionContentType = thankYouContentType,
+                thankYouMessageCloseButtonText = appearance.thankYouMessageCloseButtonText,
             )
         }
     }
