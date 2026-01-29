@@ -1,6 +1,6 @@
 ## Next
 
-- Session Replay: mask only the text area for EditText, Button, and CompoundButton (CheckBox, RadioButton, Switch) instead of the entire component bounds ([#XXX](https://github.com/PostHog/posthog-android/pull/XXX))
+- Session Replay: mask only the text area for EditText, Button, and CompoundButton (CheckBox, RadioButton, Switch) instead of the entire component bounds ([#400](https://github.com/PostHog/posthog-android/pull/400))
 
 ## 3.29.1 - 2026-01-21
 
