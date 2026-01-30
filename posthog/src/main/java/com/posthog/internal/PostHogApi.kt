@@ -277,7 +277,6 @@ public class PostHogApi(
                 config.serializer.serialize(pushSubscriptionRequest, it.bufferedWriter())
             }
 
-        tagThreadForStrictMode()
         client.newCall(request).execute().use { response ->
             val loggedResponse = logResponse(response)
             if (!loggedResponse.isSuccessful) {
@@ -321,20 +320,6 @@ public class PostHogApi(
             } catch (e: Throwable) {
                 // ignore
             }
-        }
-    }
-
-    // TODOdin: Can we safely remove this?
-    private fun tagThreadForStrictMode() {
-        try {
-            // Use reflection to set traffic stats tag if available (Android only)
-            val trafficStatsClass = Class.forName("android.net.TrafficStats")
-            val setThreadStatsTagMethod = trafficStatsClass.getMethod("setThreadStatsTag", Int::class.javaPrimitiveType)
-            setThreadStatsTagMethod.invoke(null, 0xFFFF) // Use a non-zero tag
-        } catch (e: ClassNotFoundException) {
-            // TrafficStats not available (not Android) - this is expected on non-Android platforms
-        } catch (e: Exception) {
-            // Other exceptions (NoSuchMethodException, etc.) - ignore silently
         }
     }
 }
