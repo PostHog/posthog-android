@@ -448,6 +448,73 @@ if (payload instanceof Map) {
 }
 ```
 
+### Get All Feature Flag Information
+
+Get the flag value and payload atomically in a single result object.
+
+#### Kotlin
+
+```kotlin
+val result = postHog.getFeatureFlagResult("user123", "my-feature")
+if (result != null) {
+    if (result.enabled) {
+        println("Flag is enabled")
+    }
+
+    // Presence of a variant also indicates it's enabled
+    result.variant?.let { variant ->
+        println("Variant: $variant")
+    }
+
+    // Or use `value` which returns the variant or boolean
+    when (result.value) {
+        true -> println("Boolean flag is enabled")
+        "control" -> println("In control group")
+        "test" -> println("In test group")
+    }
+
+    // Access payload directly
+    (result.payload as? Map<String, Any>)?.let { config ->
+        println("Config: $config")
+    }
+
+    // Or decode payload to a specific type
+    result.getPayloadAs<FeatureSettings>()?.let { settings ->
+        println("Settings: $settings")
+    }
+}
+```
+
+#### Java
+
+```java
+FeatureFlagResult result = postHog.getFeatureFlagResult("user123", "my-feature");
+if (result != null) {
+    if (result.getEnabled()) {
+        System.out.println("Flag is enabled");
+    }
+
+    // Presence of a variant also indicates it's enabled
+    String variant = result.getVariant();
+    if (variant != null) {
+        System.out.println("Variant: " + variant);
+    }
+
+    // Access payload directly
+    Object payload = result.getPayload();
+    if (payload instanceof Map) {
+        Map<String, Object> config = (Map<String, Object>) payload;
+        System.out.println("Config: " + config);
+    }
+
+    // Or decode payload to a specific type
+    FeatureSettings settings = result.getPayloadAs(FeatureSettings.class);
+    if (settings != null) {
+        System.out.println("Settings: " + settings);
+    }
+}
+```
+
 ## Groups
 
 ### Create a Group
