@@ -38,5 +38,8 @@ public enum class PostHogPushTokenError {
  * @param throwable When [error] is one of [PostHogPushTokenError.NETWORK_ERROR], [PostHogPushTokenError.INVALID_INPUT], [PostHogPushTokenError.UNAUTHORIZED], [PostHogPushTokenError.SERVER_ERROR], or [PostHogPushTokenError.OTHER], the exception that caused the failure; otherwise `null`.
  */
 public fun interface PostHogPushTokenCallback {
-    public fun onComplete(error: PostHogPushTokenError?, throwable: Throwable?)
+    public fun onComplete(
+        error: PostHogPushTokenError?,
+        throwable: Throwable?,
+    )
 }

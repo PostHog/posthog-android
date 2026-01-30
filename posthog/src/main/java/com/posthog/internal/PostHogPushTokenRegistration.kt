@@ -19,6 +19,7 @@ public class PostHogPushTokenRegistration(
     private val pushTokenExecutor: ExecutorService,
 ) {
     private val pushTokenLock = Any()
+
     public fun register(
         token: String,
         firebaseProjectId: String,
@@ -125,6 +126,9 @@ public class PostHogPushTokenRegistration(
         }
 
     private fun pushTokenErrorFromThrowable(e: Throwable): PostHogPushTokenError =
-        if (e is IOException) PostHogPushTokenError.NETWORK_ERROR
-        else PostHogPushTokenError.OTHER
+        if (e is IOException) {
+            PostHogPushTokenError.NETWORK_ERROR
+        } else {
+            PostHogPushTokenError.OTHER
+        }
 }

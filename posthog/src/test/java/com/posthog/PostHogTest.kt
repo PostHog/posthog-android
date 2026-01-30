@@ -15,7 +15,6 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
-import com.posthog.awaitExecution
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
