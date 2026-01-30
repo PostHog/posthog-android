@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.FeatureFlagResult
 import java.util.Date
 
 public sealed interface PostHogInterface {
@@ -371,6 +372,67 @@ public sealed interface PostHogInterface {
             groups = null,
             personProperties = null,
             groupProperties = null,
+        )
+    }
+
+    /**
+     * Returns the feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+    ): FeatureFlagResult?
+
+    /**
+     * Returns the feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+    ): FeatureFlagResult? {
+        return getFeatureFlagResult(
+            distinctId,
+            key,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+        )
+    }
+
+    /**
+     * Returns the feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param options the feature flag options containing groups, personProperties, and groupProperties.
+     *        Note: [PostHogFeatureFlagOptions.defaultValue] is ignored; this method returns null if the flag doesn't exist.
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+    ): FeatureFlagResult? {
+        return getFeatureFlagResult(
+            distinctId,
+            key,
+            groups = options.groups,
+            personProperties = options.personProperties,
+            groupProperties = options.groupProperties,
         )
     }
 
