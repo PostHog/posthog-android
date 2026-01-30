@@ -765,7 +765,7 @@ public final class com/posthog/internal/PostHogPushSubscriptionRequest {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getApi_key ()Ljava/lang/String;
 	public final fun getDistinct_id ()Ljava/lang/String;
-	public final fun getFirebase_app_id ()Ljava/lang/String;
+	public final fun getFirebaseProjectId ()Ljava/lang/String;
 	public final fun getPlatform ()Ljava/lang/String;
 	public final fun getToken ()Ljava/lang/String;
 	public fun hashCode ()I

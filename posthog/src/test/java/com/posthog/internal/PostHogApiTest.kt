@@ -326,7 +326,7 @@ internal class PostHogApiTest {
 
         val sut = getSut(host = url.toString())
 
-        sut.registerPushSubscription("test-distinct-id", "test-fcm-token", "test-firebase-app-id")
+        sut.registerPushSubscription("test-distinct-id", "test-fcm-token", "test-firebase-project-id")
 
         val request = http.takeRequest()
 
@@ -343,7 +343,7 @@ internal class PostHogApiTest {
         assertTrue(requestBody.contains("\"distinct_id\":\"test-distinct-id\""))
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
         assertTrue(requestBody.contains("\"platform\":\"android\""))
-        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-app-id\""))
+        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-project-id\""))
         assertTrue(requestBody.contains("\"provider\":\"fcm\""))
     }
 
@@ -356,7 +356,7 @@ internal class PostHogApiTest {
 
         val exc =
             assertThrows(PostHogApiError::class.java) {
-                sut.registerPushSubscription("test-distinct-id", "test-fcm-token", "test-firebase-app-id")
+                sut.registerPushSubscription("test-distinct-id", "test-fcm-token", "test-firebase-project-id")
             }
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)
@@ -372,7 +372,7 @@ internal class PostHogApiTest {
 
         val exc =
             assertThrows(PostHogApiError::class.java) {
-                sut.registerPushSubscription("test-distinct-id", "test-fcm-token", "test-firebase-app-id")
+                sut.registerPushSubscription("test-distinct-id", "test-fcm-token", "test-firebase-project-id")
             }
         assertEquals(401, exc.statusCode)
         assertEquals("Client Error", exc.message)

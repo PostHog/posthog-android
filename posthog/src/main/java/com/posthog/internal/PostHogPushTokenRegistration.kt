@@ -23,23 +23,18 @@ public class PostHogPushTokenRegistration(
     private val pushTokenLock = Any()
     public fun register(
         token: String,
-        firebaseAppId: String,
+        firebaseProjectId: String,
         distinctId: String,
         preferences: PostHogPreferences,
         callback: PostHogPushTokenCallback?,
     ) {
-        // TODOdin: Clean up logging
-        config.logger.log("FCM: registerPushToken called with token length=${token.length}, firebaseAppId=$firebaseAppId")
-
         if (token.isBlank()) {
-            config.logger.log("FCM: registerPushToken called with blank token")
-            callback?.onComplete(PostHogPushTokenError.BLANK_TOKEN, null)
+            pushTokenExecutor.executeSafely { callback?.onComplete(PostHogPushTokenError.BLANK_TOKEN, null) }
             return
         }
 
-        if (firebaseAppId.isBlank()) {
-            config.logger.log("FCM: registerPushToken called with blank firebaseAppId")
-            callback?.onComplete(PostHogPushTokenError.BLANK_FIREBASE_APP_ID, null)
+        if (firebaseProjectId.isBlank()) {
+            pushTokenExecutor.executeSafely { callback?.onComplete(PostHogPushTokenError.BLANK_FIREBASE_PROJECT_ID, null) }
             return
         }
 
@@ -48,40 +43,32 @@ public class PostHogPushTokenRegistration(
             val lastUpdated = preferences.getValue(PostHogPreferences.FCM_TOKEN_LAST_UPDATED) as? Long ?: 0L
             val currentTime = config.dateProvider.currentDate().time
 
-            config.logger.log("FCM: Checking stored token - storedToken=${storedToken?.take(20)}..., lastUpdated=$lastUpdated, currentTime=$currentTime")
-
             val tokenChanged = storedToken != token
             val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= ONE_HOUR_IN_MILLIS)
 
-            config.logger.log("FCM: Token check - tokenChanged=$tokenChanged, shouldUpdate=$shouldUpdate, timeSinceLastUpdate=${currentTime - lastUpdated}ms")
-
             if (!shouldUpdate) {
-                config.logger.log("FCM: token registration skipped: token unchanged and less than hour since last update")
-                callback?.onComplete(null, null)
+                pushTokenExecutor.executeSafely { callback?.onComplete(null, null) }
                 return
             }
-
-            config.logger.log("FCM: Storing new token and firebaseAppId in preferences")
-            preferences.setValue(PostHogPreferences.FCM_TOKEN, token)
-            preferences.setValue(PostHogPreferences.FCM_TOKEN_LAST_UPDATED, currentTime)
-            preferences.setValue(PostHogPreferences.FCM_FIREBASE_APP_ID, firebaseAppId)
+            // Do not persist here; persist only after successful API response to avoid race
+            // where registerStoredTokenIfExists could send a token that never registered.
         }
 
-        config.logger.log("FCM: Preparing to register push subscription - distinctId=$distinctId, token length=${token.length}, firebaseAppId=$firebaseAppId")
-
         pushTokenExecutor.executeSafely {
-            config.logger.log("FCM: Executing push token registration on background thread")
             try {
-                config.logger.log("FCM: Calling API to register push subscription")
-                api.registerPushSubscription(distinctId, token, firebaseAppId)
-                config.logger.log("FCM: token registered successfully")
+                api.registerPushSubscription(distinctId, token, firebaseProjectId)
+                synchronized(pushTokenLock) {
+                    preferences.setValue(PostHogPreferences.FCM_TOKEN, token)
+                    preferences.setValue(PostHogPreferences.FCM_TOKEN_LAST_UPDATED, config.dateProvider.currentDate().time)
+                    preferences.setValue(PostHogPreferences.FCM_FIREBASE_PROJECT_ID, firebaseProjectId)
+                }
                 callback?.onComplete(null, null)
             } catch (e: PostHogApiError) {
-                config.logger.log("FCM: Failed to register token: ${e.message} (code: ${e.statusCode})")
+                config.logger.log("Push token registration failed: ${e.message} (code: ${e.statusCode})")
                 clearStoredPushToken(preferences)
                 callback?.onComplete(pushTokenErrorFromApiError(e), e)
             } catch (e: Throwable) {
-                config.logger.log("FCM: Failed to register token: ${e.message ?: "Unknown error"} (${e.javaClass.simpleName})")
+                config.logger.log("Push token registration failed: ${e.message ?: e.javaClass.simpleName}")
                 clearStoredPushToken(preferences)
                 callback?.onComplete(pushTokenErrorFromThrowable(e), e)
             }
@@ -90,10 +77,9 @@ public class PostHogPushTokenRegistration(
 
     private fun clearStoredPushToken(preferences: PostHogPreferences) {
         synchronized(pushTokenLock) {
-            config.logger.log("FCM: Clearing stored token, timestamp, and firebaseAppId due to error")
             preferences.remove(PostHogPreferences.FCM_TOKEN)
             preferences.remove(PostHogPreferences.FCM_TOKEN_LAST_UPDATED)
-            preferences.remove(PostHogPreferences.FCM_FIREBASE_APP_ID)
+            preferences.remove(PostHogPreferences.FCM_FIREBASE_PROJECT_ID)
         }
     }
 
@@ -107,34 +93,28 @@ public class PostHogPushTokenRegistration(
         distinctId: String,
     ) {
         val storedToken: String?
-        val storedFirebaseAppId: String?
+        val storedFirebaseProjectId: String?
 
         synchronized(pushTokenLock) {
             storedToken = preferences.getValue(PostHogPreferences.FCM_TOKEN) as? String
-            storedFirebaseAppId = preferences.getValue(PostHogPreferences.FCM_FIREBASE_APP_ID) as? String
+            storedFirebaseProjectId = preferences.getValue(PostHogPreferences.FCM_FIREBASE_PROJECT_ID) as? String
         }
 
-        if (storedToken.isNullOrBlank() || storedFirebaseAppId.isNullOrBlank()) {
-            config.logger.log("FCM: maybeRegisterStoredPushToken skipped - no stored token or firebaseAppId")
+        if (storedToken.isNullOrBlank() || storedFirebaseProjectId.isNullOrBlank()) {
             return
         }
 
         if (distinctId.isBlank()) {
-            config.logger.log("FCM: maybeRegisterStoredPushToken skipped - distinctId is blank")
             return
         }
 
-        config.logger.log("FCM: Auto-registering stored push token after distinctId change - distinctId=$distinctId, token length=${storedToken.length}, firebaseAppId=$storedFirebaseAppId")
-
         pushTokenExecutor.executeSafely {
             try {
-                config.logger.log("FCM: Calling API to auto-register push subscription")
-                api.registerPushSubscription(distinctId, storedToken, storedFirebaseAppId)
-                config.logger.log("FCM: Auto-registration successful")
+                api.registerPushSubscription(distinctId, storedToken, storedFirebaseProjectId)
             } catch (e: PostHogApiError) {
-                config.logger.log("FCM: Auto-registration failed: ${e.message} (code: ${e.statusCode})")
+                config.logger.log("Push token re-registration failed: ${e.message} (code: ${e.statusCode})")
             } catch (e: Throwable) {
-                config.logger.log("FCM: Auto-registration failed: ${e.message ?: "Unknown error"} (${e.javaClass.simpleName})")
+                config.logger.log("Push token re-registration failed: ${e.message ?: e.javaClass.simpleName}")
             }
         }
     }

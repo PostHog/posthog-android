@@ -10,8 +10,8 @@ public enum class PostHogPushTokenError {
     /** Token string was blank. */
     BLANK_TOKEN,
 
-    /** Firebase app ID was blank. */
-    BLANK_FIREBASE_APP_ID,
+    /** Firebase project ID was blank. */
+    BLANK_FIREBASE_PROJECT_ID,
 
     /** Internal config was null. */
     CONFIG_NULL,

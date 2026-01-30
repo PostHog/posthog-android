@@ -2630,7 +2630,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         var callbackResult: PostHogPushTokenError? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
 
@@ -2650,7 +2650,7 @@ internal class PostHogTest {
         assertTrue(requestBody.contains("\"distinct_id\""))
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
         assertTrue(requestBody.contains("\"platform\":\"android\""))
-        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-app-id\""))
+        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-project-id\""))
 
         sut.close()
     }
@@ -2664,7 +2664,7 @@ internal class PostHogTest {
         sut.close()
 
         var callbackResult: PostHogPushTokenError? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
 
@@ -2680,7 +2680,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         var callbackResult: PostHogPushTokenError? = null
-        sut.registerPushToken("", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
 
@@ -2691,7 +2691,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `registerPushToken calls callback with false for blank firebaseAppId`() {
+    fun `registerPushToken calls callback with false for blank firebaseProjectId`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -2702,7 +2702,7 @@ internal class PostHogTest {
             callbackResult = error
         }
 
-        assertEquals(PostHogPushTokenError.BLANK_FIREBASE_APP_ID, callbackResult)
+        assertEquals(PostHogPushTokenError.BLANK_FIREBASE_PROJECT_ID, callbackResult)
         assertEquals(0, http.requestCount)
 
         sut.close()
@@ -2725,7 +2725,7 @@ internal class PostHogTest {
 
         // First registration
         var callbackResult1: PostHogPushTokenError? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult1 = error
         }
         pushTokenExecutor.awaitExecution() // Wait for background thread
@@ -2734,7 +2734,7 @@ internal class PostHogTest {
 
         // Second registration with same token immediately - should skip API call
         var callbackResult2: PostHogPushTokenError? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult2 = error
         }
         pushTokenExecutor.awaitExecution() // Wait for background thread
@@ -2762,7 +2762,7 @@ internal class PostHogTest {
 
         // First registration
         var callbackResult1: PostHogPushTokenError? = null
-        sut.registerPushToken("test-fcm-token-1", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("test-fcm-token-1", "test-firebase-project-id") { error, _ ->
             callbackResult1 = error
         }
         pushTokenExecutor.awaitExecution() // Wait for background thread
@@ -2771,7 +2771,7 @@ internal class PostHogTest {
 
         // Second registration with different token - should register again
         var callbackResult2: PostHogPushTokenError? = null
-        sut.registerPushToken("test-fcm-token-2", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("test-fcm-token-2", "test-firebase-project-id") { error, _ ->
             callbackResult2 = error
         }
         pushTokenExecutor.awaitExecution() // Wait for background thread
@@ -2795,7 +2795,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         var callbackResult: PostHogPushTokenError? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
 
@@ -2820,7 +2820,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
 
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
         pushTokenExecutor.awaitExecution() // Wait for background thread
 
         val storedToken = preferences.getValue(FCM_TOKEN) as? String
@@ -2847,7 +2847,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
 
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
         pushTokenExecutor.awaitExecution() // Wait for background thread
 
         val storedToken = preferences.getValue(FCM_TOKEN) as? String
@@ -2856,6 +2856,75 @@ internal class PostHogTest {
         assertEquals("test-fcm-token", storedToken)
         assertNotNull(lastUpdated)
         assertTrue(lastUpdated > 0)
+
+        sut.close()
+    }
+
+    @Test
+    fun `identify re-registers stored push token with new distinctId`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Register push token (anonymous distinctId)
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
+        pushTokenExecutor.awaitExecution()
+        assertEquals(1, http.requestCount)
+        http.takeRequest() // consume first request
+
+        // Identify with new distinctId - should trigger re-registration with new distinctId
+        sut.identify("identified-user-123")
+        pushTokenExecutor.awaitExecution()
+        assertEquals(2, http.requestCount)
+
+        val secondRequest = http.takeRequest()
+        val secondBody = secondRequest.body.unGzip()
+        assertTrue(secondBody.contains("\"distinct_id\":\"identified-user-123\""))
+        assertTrue(secondBody.contains("\"token\":\"test-fcm-token\""))
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset re-registers stored push token with new anonymous distinctId`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        // Register push token
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
+        pushTokenExecutor.awaitExecution()
+        assertEquals(1, http.requestCount)
+        http.takeRequest() // consume first request
+
+        // Reset - should trigger re-registration with new anonymous distinctId
+        sut.reset()
+        pushTokenExecutor.awaitExecution()
+        assertEquals(2, http.requestCount)
+
+        val secondRequest = http.takeRequest()
+        val secondBody = secondRequest.body.unGzip()
+        assertTrue(secondBody.contains("\"token\":\"test-fcm-token\""))
+        // Second request must have a distinct_id (new anonymous id after reset)
+        assertTrue(secondBody.contains("\"distinct_id\":"))
 
         sut.close()
     }

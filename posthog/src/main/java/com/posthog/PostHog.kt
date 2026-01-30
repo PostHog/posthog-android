@@ -10,7 +10,7 @@ import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
-import com.posthog.internal.PostHogPreferences.Companion.FCM_FIREBASE_APP_ID
+import com.posthog.internal.PostHogPreferences.Companion.FCM_FIREBASE_PROJECT_ID
 import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
 import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN_LAST_UPDATED
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
@@ -1173,7 +1173,7 @@ public class PostHog private constructor(
         // TODOdin: Do we want this?
         except.add(FCM_TOKEN)
         except.add(FCM_TOKEN_LAST_UPDATED)
-        except.add(FCM_FIREBASE_APP_ID)
+        except.add(FCM_FIREBASE_PROJECT_ID)
         getPreferences().clear(except = except.toList())
         remoteConfig?.clear()
         featureFlagsCalled.clear()
@@ -1254,23 +1254,23 @@ public class PostHog private constructor(
 
     override fun registerPushToken(
         token: String,
-        firebaseAppId: String,
+        firebaseProjectId: String,
         callback: PostHogPushTokenCallback?,
     ) {
         if (!isEnabled()) {
-            callback?.onComplete(PostHogPushTokenError.SDK_DISABLED, null)
+            pushTokenExecutor.executeSafely { callback?.onComplete(PostHogPushTokenError.SDK_DISABLED, null) }
             return
         }
 
         val registration = pushTokenRegistration
         if (registration == null) {
             config?.logger?.log("FCM: registerPushToken failed - config is null")
-            callback?.onComplete(PostHogPushTokenError.CONFIG_NULL, null)
+            pushTokenExecutor.executeSafely { callback?.onComplete(PostHogPushTokenError.CONFIG_NULL, null) }
             return
         }
         val currentDistinctId = distinctId()
         val preferences = getPreferences()
-        registration.register(token, firebaseAppId, currentDistinctId, preferences, callback)
+        registration.register(token, firebaseProjectId, currentDistinctId, preferences, callback)
     }
 
     /**
@@ -1615,10 +1615,10 @@ public class PostHog private constructor(
 
         override fun registerPushToken(
             token: String,
-            firebaseAppId: String,
+            firebaseProjectId: String,
             callback: PostHogPushTokenCallback?,
         ) {
-            shared.registerPushToken(token, firebaseAppId, callback)
+            shared.registerPushToken(token, firebaseProjectId, callback)
         }
     }
 }

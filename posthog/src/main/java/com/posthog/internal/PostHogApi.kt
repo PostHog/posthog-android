@@ -257,46 +257,32 @@ public class PostHogApi(
     public fun registerPushSubscription(
         distinctId: String,
         token: String,
-        firebaseAppId: String,
+        firebaseProjectId: String,
     ) {
-        config.logger.log("FCM: registerPushSubscription called - distinctId=$distinctId, token length=${token.length}, firebaseAppId=$firebaseAppId")
-        
         val pushSubscriptionRequest =
             PostHogPushSubscriptionRequest(
                 apiKey = config.apiKey,
                 distinctId = distinctId,
                 token = token,
                 platform = "android",
-                firebaseAppId = firebaseAppId,
+                firebaseProjectId = firebaseProjectId,
                 provider = "fcm",
             )
 
         val url = "$theHost/api/sdk/push_subscriptions/register"
-        config.logger.log("FCM: Building push subscription request - url=$url")
-
         logRequest(pushSubscriptionRequest, url)
-
-        // Serialize the request body for logging
-        val requestBodyJson = config.serializer.serializeObject(pushSubscriptionRequest) ?: "{}"
-        config.logger.log("POST $url, body: $requestBodyJson")
 
         val request =
             makeRequest(url) {
-                config.logger.log("FCM: Serializing push subscription request")
                 config.serializer.serialize(pushSubscriptionRequest, it.bufferedWriter())
             }
 
-        config.logger.log("FCM: Executing HTTP request to register push subscription")
         tagThreadForStrictMode()
         client.newCall(request).execute().use { response ->
-            config.logger.log("FCM: Received HTTP response - code=${response.code}, message=${response.message}")
-            
-            if (!response.isSuccessful) {
-                config.logger.log("FCM: HTTP request failed with code ${response.code}")
-                throw PostHogApiError(response.code, response.message, response.body)
+            val loggedResponse = logResponse(response)
+            if (!loggedResponse.isSuccessful) {
+                throw PostHogApiError(loggedResponse.code, loggedResponse.message, loggedResponse.body)
             }
-            
-            config.logger.log("FCM: Push subscription registration successful")
         }
     }
 
