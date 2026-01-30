@@ -211,7 +211,7 @@ internal class PostHogTest {
         postHog.setup(config)
 
         val options =
-            PostHogFeatureFlagOptions.builder()
+            PostHogFeatureFlagResultOptions.builder()
                 .group("organization", "org_123")
                 .personProperty("plan", "premium")
                 .groupProperty("org_123", "size", "large")

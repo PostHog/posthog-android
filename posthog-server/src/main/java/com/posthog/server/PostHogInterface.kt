@@ -383,6 +383,7 @@ public sealed interface PostHogInterface {
      * @param groups groups for group-based flags
      * @param personProperties person properties for flag evaluation
      * @param groupProperties group properties for flag evaluation
+     * @param sendFeatureFlagEvent whether to send the $feature_flag_called event, or null to use config default
      * @return FeatureFlagResult if the flag exists, null otherwise
      */
     public fun getFeatureFlagResult(
@@ -391,6 +392,7 @@ public sealed interface PostHogInterface {
         groups: Map<String, String>? = null,
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
+        sendFeatureFlagEvent: Boolean? = null,
     ): FeatureFlagResult?
 
     /**
@@ -410,6 +412,7 @@ public sealed interface PostHogInterface {
             groups = null,
             personProperties = null,
             groupProperties = null,
+            sendFeatureFlagEvent = null,
         )
     }
 
@@ -418,14 +421,13 @@ public sealed interface PostHogInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
-     * @param options the feature flag options containing groups, personProperties, and groupProperties.
-     *        Note: [PostHogFeatureFlagOptions.defaultValue] is ignored; this method returns null if the flag doesn't exist.
+     * @param options the feature flag result options containing groups, personProperties, groupProperties, and sendFeatureFlagEvent
      * @return FeatureFlagResult if the flag exists, null otherwise
      */
     public fun getFeatureFlagResult(
         distinctId: String,
         key: String,
-        options: PostHogFeatureFlagOptions,
+        options: PostHogFeatureFlagResultOptions,
     ): FeatureFlagResult? {
         return getFeatureFlagResult(
             distinctId,
@@ -433,6 +435,7 @@ public sealed interface PostHogInterface {
             groups = options.groups,
             personProperties = options.personProperties,
             groupProperties = options.groupProperties,
+            sendFeatureFlagEvent = options.sendFeatureFlagEvent,
         )
     }
 

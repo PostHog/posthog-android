@@ -128,6 +128,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+        sendFeatureFlagEvent: Boolean?,
     ): FeatureFlagResult? {
         return super.getFeatureFlagResultStateless(
             distinctId,
@@ -135,6 +136,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             groups,
             personProperties,
             groupProperties,
+            sendFeatureFlagEvent,
         )
     }
 

@@ -485,6 +485,18 @@ if (result != null) {
 }
 ```
 
+With additional options:
+
+```kotlin
+val result = postHog.getFeatureFlagResult(
+    distinctId = "user123",
+    key = "my-feature",
+    groups = mapOf("company" to "acme_corp"),
+    personProperties = mapOf("plan" to "premium"),
+    sendFeatureFlagEvent = false  // Don't send $feature_flag_called event
+)
+```
+
 #### Java
 
 ```java
@@ -513,6 +525,18 @@ if (result != null) {
         System.out.println("Settings: " + settings);
     }
 }
+```
+
+#### Builder Pattern (Java)
+
+```java
+PostHogFeatureFlagResultOptions options = PostHogFeatureFlagResultOptions.builder()
+    .group("company", "acme_corp")
+    .personProperty("plan", "premium")
+    .sendFeatureFlagEvent(false)  // Don't send $feature_flag_called event
+    .build();
+
+FeatureFlagResult result = postHog.getFeatureFlagResult("user123", "my-feature", options);
 ```
 
 ## Groups
