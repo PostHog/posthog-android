@@ -7,9 +7,7 @@ import com.posthog.PostHogPushTokenError
 import java.io.IOException
 import java.util.concurrent.ExecutorService
 
-// TODOdin: official recommendation is to update token once per month
-// unless it changed
-private const val ONE_HOUR_IN_MILLIS = 60 * 60 * 1000L
+private const val ONE_DAY_IN_MILLIS = 24 * 60 * 60 * 1000L
 
 /**
  * Handles FCM push token registration: validation, storage, and API calls.
@@ -44,7 +42,7 @@ public class PostHogPushTokenRegistration(
             val currentTime = config.dateProvider.currentDate().time
 
             val tokenChanged = storedToken != token
-            val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= ONE_HOUR_IN_MILLIS)
+            val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= ONE_DAY_IN_MILLIS)
 
             if (!shouldUpdate) {
                 pushTokenExecutor.executeSafely { callback?.onComplete(null, null) }

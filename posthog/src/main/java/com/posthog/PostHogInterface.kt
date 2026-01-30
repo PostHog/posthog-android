@@ -225,7 +225,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Registers a push notification token (FCM token) with PostHog.
-     * The SDK will automatically rate-limit registrations to once per hour unless the token has changed.
+     * The SDK will automatically rate-limit registrations to once every 24 hours unless the token has changed.
      *
      * Registration is performed asynchronously. Use the optional callback to be notified of success or failure.
      *

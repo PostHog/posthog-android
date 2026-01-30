@@ -1170,7 +1170,6 @@ public class PostHog private constructor(
             except.add(ANONYMOUS_ID)
         }
         // preserve FCM token data so we can re-register it with the new anonymous distinctId
-        // TODOdin: Do we want this?
         except.add(FCM_TOKEN)
         except.add(FCM_TOKEN_LAST_UPDATED)
         except.add(FCM_FIREBASE_PROJECT_ID)

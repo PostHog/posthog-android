@@ -46,8 +46,7 @@ public interface PostHogPreferences {
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
         internal const val FCM_TOKEN = "fcmToken"
         internal const val FCM_TOKEN_LAST_UPDATED = "fcmTokenLastUpdated"
-        // Key kept as "fcmFirebaseAppId" for backward compatibility with existing stored preferences
-        internal const val FCM_FIREBASE_PROJECT_ID = "fcmFirebaseAppId"
+        internal const val FCM_FIREBASE_PROJECT_ID = "fcmFirebaseProjectId"
 
         public val ALL_INTERNAL_KEYS: Set<String> =
             setOf(

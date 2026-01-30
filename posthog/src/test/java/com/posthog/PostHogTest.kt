@@ -2667,6 +2667,7 @@ internal class PostHogTest {
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
+        pushTokenExecutor.awaitExecution()
 
         assertEquals(PostHogPushTokenError.SDK_DISABLED, callbackResult)
         assertEquals(0, http.requestCount)
@@ -2683,6 +2684,7 @@ internal class PostHogTest {
         sut.registerPushToken("", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
+        pushTokenExecutor.awaitExecution()
 
         assertEquals(PostHogPushTokenError.BLANK_TOKEN, callbackResult)
         assertEquals(0, http.requestCount)
@@ -2701,6 +2703,7 @@ internal class PostHogTest {
         sut.registerPushToken("test-fcm-token", "") { error, _ ->
             callbackResult = error
         }
+        pushTokenExecutor.awaitExecution()
 
         assertEquals(PostHogPushTokenError.BLANK_FIREBASE_PROJECT_ID, callbackResult)
         assertEquals(0, http.requestCount)
@@ -2709,7 +2712,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `registerPushToken skips registration when token unchanged and less than 1 hour`() {
+    fun `registerPushToken skips registration when token unchanged and less than 24 hours`() {
         val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
         val http =
             mockHttp(
@@ -2739,7 +2742,7 @@ internal class PostHogTest {
         }
         pushTokenExecutor.awaitExecution() // Wait for background thread
         assertNull(callbackResult2) // null = skipped (no error)
-        // Should not make a second request when token is unchanged and less than 1 hour
+        // Should not make a second request when token is unchanged and less than 24 hours
         assertEquals(1, http.requestCount)
 
         sut.close()
