@@ -1,5 +1,7 @@
 ## Next
 
+## 6.4.0 - 2026-01-30
+
 - feat: Add `getFeatureFlagResult` to `PostHogFeatureFlagsInterface`, drop `getFeatureFlag`, `getFeatureFlagPayload`. ([#398](https://github.com/PostHog/posthog-android/pull/398))
 
 ## 6.3.1 - 2026-01-29
