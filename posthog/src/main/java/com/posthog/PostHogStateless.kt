@@ -486,7 +486,14 @@ public open class PostHogStateless protected constructor(
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
         if (!isEnabled()) return defaultValue
-        return getFeatureFlagResultStateless(distinctId, key, groups, personProperties, groupProperties, sendFeatureFlagEvent = false)?.payload ?: defaultValue
+        return getFeatureFlagResultStateless(
+            distinctId,
+            key,
+            groups,
+            personProperties,
+            groupProperties,
+            sendFeatureFlagEvent = false,
+        )?.payload ?: defaultValue
     }
 
     public override fun getFeatureFlagResultStateless(
