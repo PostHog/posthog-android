@@ -335,7 +335,6 @@ fun main() {
             }
 
             post("/reset") {
-
                 AdapterContext.lock.withLock {
                     AdapterContext.postHog?.reset()
 
