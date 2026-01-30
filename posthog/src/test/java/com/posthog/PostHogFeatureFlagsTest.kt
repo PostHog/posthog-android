@@ -329,4 +329,49 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(1, batch.batch.size)
         sut.close()
     }
+
+    @Test
+    fun `getFeatureFlag with non-existent flag sends defaultValue in event`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        val defaultValue = "my-default"
+        val result = sut.getFeatureFlag("nonExistentFlag", defaultValue)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // Function should return the defaultValue
+        assertEquals(defaultValue, result)
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.firstOrNull()
+        assertEquals("\$feature_flag_called", theEvent?.event)
+        // The event's $feature_flag_response should be the defaultValue, not null
+        assertEquals(defaultValue, theEvent?.properties!!["\$feature_flag_response"])
+        assertEquals("nonExistentFlag", theEvent.properties!!["\$feature_flag"])
+        sut.close()
+    }
 }

@@ -1,5 +1,6 @@
 package com.posthog.server.internal
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.FeatureFlag
@@ -80,16 +81,15 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    override fun getFeatureFlag(
+    override fun getFeatureFlagResult(
         key: String,
-        defaultValue: Any?,
         distinctId: String?,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-    ): Any? {
+    ): FeatureFlagResult? {
         if (distinctId == null) {
-            return defaultValue
+            return null
         }
         val flag =
             resolveFeatureFlag(
@@ -98,29 +98,49 @@ internal class PostHogFeatureFlags(
                 groups,
                 personProperties,
                 groupProperties,
-            )
-        return flag?.variant ?: flag?.enabled ?: defaultValue
+            ) ?: return null
+
+        return FeatureFlagResult(key, flag.enabled, flag.variant, flag.metadata.payload)
     }
 
-    override fun getFeatureFlagPayload(
+    internal fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
-        distinctId: String?,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any? {
-        if (distinctId == null) {
-            return defaultValue
+        val result =
+            getFeatureFlagResult(
+                key,
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+        return when {
+            result == null -> defaultValue
+            result.variant != null -> result.variant
+            else -> result.enabled
         }
-        return resolveFeatureFlag(
+    }
+
+    internal fun getFeatureFlagPayload(
+        key: String,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+    ): Any? {
+        return getFeatureFlagResult(
             key,
             distinctId,
             groups,
             personProperties,
             groupProperties,
-        )?.metadata?.payload
-            ?: defaultValue
+        )?.payload ?: defaultValue
     }
 
     private fun resolveFeatureFlag(
