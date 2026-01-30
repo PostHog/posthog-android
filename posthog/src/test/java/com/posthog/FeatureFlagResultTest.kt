@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 internal class FeatureFlagResultTest {
     // Test helper class for getPayloadAs tests
-    data class CustomPayload(val name: String = "", val count: Int = 0)
+    class CustomPayload(val name: String = "", val count: Int = 0)
 
     // getPayloadAs<T>() tests
 
