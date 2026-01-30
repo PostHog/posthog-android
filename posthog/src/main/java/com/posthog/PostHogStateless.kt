@@ -432,8 +432,6 @@ public open class PostHogStateless protected constructor(
         distinctId: String,
         key: String,
         value: Any?,
-        requestId: String? = null,
-        evaluatedAt: Long? = null,
         groups: Map<String, String>? = null,
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
@@ -443,6 +441,9 @@ public open class PostHogStateless protected constructor(
         if (effectiveSendFeatureFlagEvent) {
             val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
             if (isNewlySeen) {
+                val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
+                val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
+
                 val props = mutableMapOf<String, Any>()
                 props["\$feature_flag"] = key
                 props["\$feature_flag_response"] = value ?: ""
@@ -471,10 +472,8 @@ public open class PostHogStateless protected constructor(
     ): Any? {
         if (!isEnabled()) return defaultValue
         val result = featureFlags?.getFeatureFlagResult(key, distinctId, groups, personProperties, groupProperties)
-        val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
-        val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
         val flagValue = result?.value ?: defaultValue
-        sendFeatureFlagCalled(distinctId, key, flagValue, requestId, evaluatedAt, groups, personProperties, groupProperties)
+        sendFeatureFlagCalled(distinctId, key, flagValue, groups, personProperties, groupProperties)
         return flagValue
     }
 
@@ -510,10 +509,7 @@ public open class PostHogStateless protected constructor(
                 groupProperties,
             )
 
-        val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
-        val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
-
-        sendFeatureFlagCalled(distinctId, key, result?.value, requestId, evaluatedAt, groups, personProperties, groupProperties, sendFeatureFlagEvent)
+        sendFeatureFlagCalled(distinctId, key, result?.value, groups, personProperties, groupProperties, sendFeatureFlagEvent)
 
         return result
     }
