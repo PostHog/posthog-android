@@ -2,7 +2,6 @@ package com.posthog.compliance
 
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
-import com.posthog.internal.GzipRequestInterceptor
 import com.posthog.internal.PostHogContext
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.gson.gson
@@ -118,8 +117,6 @@ class TrackingInterceptor : Interceptor {
         val request = chain.request()
         val url = request.url.toString()
 
-        println("[ADAPTER] Intercepting request to: $url")
-
         // Copy the request body so we can read it
         val requestBody = request.body
         var eventCount = 0
@@ -132,8 +129,6 @@ class TrackingInterceptor : Interceptor {
                 requestBody.writeTo(buffer)
                 val bodyString = buffer.readUtf8()
 
-                println("[ADAPTER] Request body: ${bodyString.take(200)}...")
-
                 // Parse JSON to extract UUIDs
                 // The body format is: {"api_key": "...", "batch": [{event}, {event}], "sent_at": "..."}
                 val uuidRegex = """"uuid"\s*:\s*"([^"]+)"""".toRegex()
@@ -141,11 +136,8 @@ class TrackingInterceptor : Interceptor {
                     uuidList.add(match.groupValues[1])
                 }
                 eventCount = uuidList.size
-
-                println("[ADAPTER] Extracted $eventCount events with UUIDs: ${uuidList.joinToString()}")
-            } catch (e: Exception) {
-                println("[ADAPTER] Error parsing request body: ${e.message}")
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Ignore parsing errors
             }
         }
 
@@ -153,8 +145,6 @@ class TrackingInterceptor : Interceptor {
 
         // Track the response
         if (url.contains("/batch") && !url.contains("/flags")) {
-            println("[ADAPTER] Tracking batch request: status=${response.code}")
-
             try {
                 // Extract retry count from URL if present
                 val retryCount = request.url.queryParameter("retry_count")?.toIntOrNull() ?: 0
@@ -180,11 +170,8 @@ class TrackingInterceptor : Interceptor {
                         AdapterContext.state.totalRetries++
                     }
                 }
-
-                println("[ADAPTER] Recorded request: status=${response.code}, retry=$retryCount, events=$eventCount")
-            } catch (e: Exception) {
-                println("[ADAPTER] Error tracking request: ${e.message}")
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Ignore tracking errors
             }
         }
 
@@ -193,8 +180,6 @@ class TrackingInterceptor : Interceptor {
 }
 
 fun main() {
-    println("[ADAPTER] Starting PostHog Android SDK Compliance Adapter")
-
     embeddedServer(Netty, port = 8080) {
         install(ContentNegotiation) {
             gson {
@@ -204,7 +189,6 @@ fun main() {
 
         routing {
             get("/health") {
-                println("[ADAPTER] GET /health")
                 call.respond(
                     HealthResponse(
                         sdk_name = "posthog-android",
@@ -215,9 +199,7 @@ fun main() {
             }
 
             post("/init") {
-                println("[ADAPTER] POST /init")
                 val req = call.receive<InitRequest>()
-                println("[ADAPTER] Initializing with api_key=${req.api_key}, host=${req.host}")
 
                 AdapterContext.lock.withLock {
                     // Reset state
@@ -232,15 +214,11 @@ fun main() {
                     // Close existing instance if any
                     AdapterContext.postHog?.close()
 
-                    // Create config first (needed for GzipRequestInterceptor)
-                    val tempConfig = PostHogConfig(apiKey = req.api_key, host = req.host)
-
-                    // Create OkHttpClient with tracking interceptor first, then gzip
-                    // Order matters: TrackingInterceptor reads uncompressed body, GzipInterceptor compresses it
+                    // Create OkHttpClient with tracking interceptor
+                    // The SDK will add its own gzip interceptor after this
                     val httpClient =
                         okhttp3.OkHttpClient.Builder()
                             .addInterceptor(TrackingInterceptor())
-                            .addInterceptor(GzipRequestInterceptor(tempConfig))
                             .build()
 
                     // Create new config
@@ -277,17 +255,13 @@ fun main() {
 
                     // Create PostHog instance
                     AdapterContext.postHog = PostHog.with(config)
-
-                    println("[ADAPTER] PostHog initialized with tracking interceptor")
                 }
 
                 call.respond(SuccessResponse(success = true))
             }
 
             post("/capture") {
-                println("[ADAPTER] POST /capture")
                 val req = call.receive<CaptureRequest>()
-                println("[ADAPTER] Capturing event: ${req.event} for user: ${req.distinct_id}")
 
                 val ph =
                     AdapterContext.lock.withLock {
@@ -329,8 +303,6 @@ fun main() {
             }
 
             post("/flush") {
-                println("[ADAPTER] POST /flush")
-
                 AdapterContext.postHog?.flush()
 
                 // Wait for events to be sent (generous timeout for Docker network latency)
@@ -343,14 +315,10 @@ fun main() {
                         flushed
                     }
 
-                println("[ADAPTER] Flush complete: $eventsFlushed events sent")
-
                 call.respond(FlushResponse(success = true, events_flushed = eventsFlushed))
             }
 
             get("/state") {
-                println("[ADAPTER] GET /state")
-
                 val stateSnapshot =
                     AdapterContext.lock.withLock {
                         StateResponse(
@@ -363,13 +331,10 @@ fun main() {
                         )
                     }
 
-                println("[ADAPTER] State: $stateSnapshot")
-
                 call.respond(stateSnapshot)
             }
 
             post("/reset") {
-                println("[ADAPTER] POST /reset")
 
                 AdapterContext.lock.withLock {
                     AdapterContext.postHog?.reset()

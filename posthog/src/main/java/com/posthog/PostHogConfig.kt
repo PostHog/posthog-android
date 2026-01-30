@@ -16,6 +16,7 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSerializer
 import com.posthog.surveys.PostHogSurveysConfig
+import okhttp3.OkHttpClient
 import java.net.Proxy
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -273,7 +274,7 @@ public open class PostHogConfig(
      * Default: `null` (SDK creates its own client).
      */
     @PostHogInternal
-    public var httpClient: okhttp3.OkHttpClient? = null
+    public var httpClient: OkHttpClient? = null
 
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

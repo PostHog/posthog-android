@@ -65,6 +65,8 @@ private val client: OkHttpClient =
         .build()
 ```
 
+Note: When providing a custom httpClient, the SDK uses it as-is without adding the gzip interceptor. The custom client is responsible for its own configuration.
+
 **These changes are backward compatible** - existing code works unchanged.
 
 ## Building
@@ -129,30 +131,6 @@ The adapter tests the **core PostHog SDK** (`:posthog` module) which contains:
 The `:posthog-android` module is a thin wrapper that adds Android-specific features (lifecycle tracking, etc.) but doesn't change the core compliance behavior.
 
 ## Known Limitations
-
-### Java 8 on ARM64
-
-Java 8 is not available for ARM64 (Apple Silicon). The project requires Java 8 for the core module. Solutions:
-
-1. **Docker** (recommended) - Uses Gradle toolchain auto-download
-2. **CI/CD** - GitHub Actions provides Java 8 for Linux x64
-3. **Modify core** - Upgrade to Java 11 (not recommended - breaks compatibility)
-
-### Flush Timing
-
-The `/flush` endpoint includes a 2-second wait to account for:
-- SDK's internal flush timer
-- Network latency in Docker environment
-- Mock server processing time
-
-This may need adjustment based on test results.
-
-## Future Improvements
-
-1. **Reduce flush wait time** - Profile actual flush timing and optimize
-2. **Add compression support** - Currently the adapter doesn't test gzip compression
-3. **More detailed error tracking** - Capture and report SDK errors in state
-4. **Performance metrics** - Track request timing, payload sizes
 
 ## References
 

@@ -36,7 +36,7 @@ import java.io.IOException
  * This interceptor compresses the HTTP request body. Many webservers can't handle this!
  * @property config The Config
  */
-public class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
+internal class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()

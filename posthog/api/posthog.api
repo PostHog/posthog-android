@@ -534,11 +534,6 @@ public final class com/posthog/internal/FlagProperty {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class com/posthog/internal/GzipRequestInterceptor : okhttp3/Interceptor {
-	public fun <init> (Lcom/posthog/PostHogConfig;)V
-	public fun intercept (Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;
-}
-
 public final class com/posthog/internal/LocalEvaluationApiResponse {
 	public static final field Companion Lcom/posthog/internal/LocalEvaluationApiResponse$Companion;
 	public synthetic fun <init> (Lcom/posthog/internal/LocalEvaluationResponse;Ljava/lang/String;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V

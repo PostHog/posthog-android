@@ -2,13 +2,13 @@ name: SDK Compliance Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
     paths:
       - 'posthog/**'
       - 'sdk_compliance_adapter/**'
       - '.github/workflows/sdk-compliance-tests.yml'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
     paths:
       - 'posthog/**'
       - 'sdk_compliance_adapter/**'
