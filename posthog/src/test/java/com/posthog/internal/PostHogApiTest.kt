@@ -344,6 +344,7 @@ internal class PostHogApiTest {
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
         assertTrue(requestBody.contains("\"platform\":\"android\""))
         assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-app-id\""))
+        assertTrue(requestBody.contains("\"provider\":\"fcm\""))
     }
 
     @Test

@@ -15,6 +15,7 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
+import com.posthog.awaitExecution
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
@@ -2628,15 +2629,15 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        var callbackResult: Boolean? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
-            callbackResult = success
+        var callbackResult: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+            callbackResult = error
         }
 
         // Wait for background thread to complete
-        Thread.sleep(100)
+        pushTokenExecutor.awaitExecution()
 
-        assertEquals(true, callbackResult)
+        assertNull(callbackResult) // null = success
         assertEquals(1, http.requestCount)
 
         val request = http.takeRequest()
@@ -2662,12 +2663,12 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
         sut.close()
 
-        var callbackResult: Boolean? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
-            callbackResult = success
+        var callbackResult: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+            callbackResult = error
         }
 
-        assertEquals(false, callbackResult)
+        assertEquals(PostHogPushTokenError.SDK_DISABLED, callbackResult)
         assertEquals(0, http.requestCount)
     }
 
@@ -2678,12 +2679,12 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        var callbackResult: Boolean? = null
-        sut.registerPushToken("", "test-firebase-app-id") { success ->
-            callbackResult = success
+        var callbackResult: PostHogPushTokenError? = null
+        sut.registerPushToken("", "test-firebase-app-id") { error, _ ->
+            callbackResult = error
         }
 
-        assertEquals(false, callbackResult)
+        assertEquals(PostHogPushTokenError.BLANK_TOKEN, callbackResult)
         assertEquals(0, http.requestCount)
 
         sut.close()
@@ -2696,12 +2697,12 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        var callbackResult: Boolean? = null
-        sut.registerPushToken("test-fcm-token", "") { success ->
-            callbackResult = success
+        var callbackResult: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token", "") { error, _ ->
+            callbackResult = error
         }
 
-        assertEquals(false, callbackResult)
+        assertEquals(PostHogPushTokenError.BLANK_FIREBASE_APP_ID, callbackResult)
         assertEquals(0, http.requestCount)
 
         sut.close()
@@ -2723,21 +2724,21 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         // First registration
-        var callbackResult1: Boolean? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
-            callbackResult1 = success
+        var callbackResult1: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+            callbackResult1 = error
         }
-        Thread.sleep(100) // Wait for background thread
-        assertEquals(true, callbackResult1)
+        pushTokenExecutor.awaitExecution() // Wait for background thread
+        assertNull(callbackResult1) // null = success
         assertEquals(1, http.requestCount)
 
         // Second registration with same token immediately - should skip API call
-        var callbackResult2: Boolean? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
-            callbackResult2 = success
+        var callbackResult2: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+            callbackResult2 = error
         }
-        Thread.sleep(100) // Wait for background thread
-        assertEquals(null, callbackResult2) // null means skipped
+        pushTokenExecutor.awaitExecution() // Wait for background thread
+        assertNull(callbackResult2) // null = skipped (no error)
         // Should not make a second request when token is unchanged and less than 1 hour
         assertEquals(1, http.requestCount)
 
@@ -2760,21 +2761,21 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         // First registration
-        var callbackResult1: Boolean? = null
-        sut.registerPushToken("test-fcm-token-1", "test-firebase-app-id") { success ->
-            callbackResult1 = success
+        var callbackResult1: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token-1", "test-firebase-app-id") { error, _ ->
+            callbackResult1 = error
         }
-        Thread.sleep(100) // Wait for background thread
-        assertEquals(true, callbackResult1)
+        pushTokenExecutor.awaitExecution() // Wait for background thread
+        assertNull(callbackResult1) // null = success
         assertEquals(1, http.requestCount)
 
         // Second registration with different token - should register again
-        var callbackResult2: Boolean? = null
-        sut.registerPushToken("test-fcm-token-2", "test-firebase-app-id") { success ->
-            callbackResult2 = success
+        var callbackResult2: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token-2", "test-firebase-app-id") { error, _ ->
+            callbackResult2 = error
         }
-        Thread.sleep(100) // Wait for background thread
-        assertEquals(true, callbackResult2)
+        pushTokenExecutor.awaitExecution() // Wait for background thread
+        assertNull(callbackResult2) // null = success
         assertEquals(2, http.requestCount)
 
         sut.close()
@@ -2793,13 +2794,13 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        var callbackResult: Boolean? = null
-        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { success ->
-            callbackResult = success
+        var callbackResult: PostHogPushTokenError? = null
+        sut.registerPushToken("test-fcm-token", "test-firebase-app-id") { error, _ ->
+            callbackResult = error
         }
 
-        Thread.sleep(100) // Wait for background thread
-        assertEquals(false, callbackResult)
+        pushTokenExecutor.awaitExecution() // Wait for background thread
+        assertEquals(PostHogPushTokenError.INVALID_INPUT, callbackResult)
         assertEquals(1, http.requestCount)
 
         sut.close()
@@ -2820,7 +2821,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
 
         sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
-        Thread.sleep(100) // Wait for background thread
+        pushTokenExecutor.awaitExecution() // Wait for background thread
 
         val storedToken = preferences.getValue(FCM_TOKEN) as? String
         val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long
@@ -2847,7 +2848,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
 
         sut.registerPushToken("test-fcm-token", "test-firebase-app-id")
-        Thread.sleep(100) // Wait for background thread
+        pushTokenExecutor.awaitExecution() // Wait for background thread
 
         val storedToken = preferences.getValue(FCM_TOKEN) as? String
         val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long

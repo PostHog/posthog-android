@@ -259,6 +259,8 @@ public class PostHogApi(
         token: String,
         firebaseAppId: String,
     ) {
+        config.logger.log("FCM: registerPushSubscription called - distinctId=$distinctId, token length=${token.length}, firebaseAppId=$firebaseAppId")
+        
         val pushSubscriptionRequest =
             PostHogPushSubscriptionRequest(
                 apiKey = config.apiKey,
@@ -266,21 +268,35 @@ public class PostHogApi(
                 token = token,
                 platform = "android",
                 firebaseAppId = firebaseAppId,
+                provider = "fcm",
             )
 
         val url = "$theHost/api/sdk/push_subscriptions/register"
+        config.logger.log("FCM: Building push subscription request - url=$url")
 
         logRequest(pushSubscriptionRequest, url)
 
+        // Serialize the request body for logging
+        val requestBodyJson = config.serializer.serializeObject(pushSubscriptionRequest) ?: "{}"
+        config.logger.log("POST $url, body: $requestBodyJson")
+
         val request =
             makeRequest(url) {
+                config.logger.log("FCM: Serializing push subscription request")
                 config.serializer.serialize(pushSubscriptionRequest, it.bufferedWriter())
             }
 
+        config.logger.log("FCM: Executing HTTP request to register push subscription")
+        tagThreadForStrictMode()
         client.newCall(request).execute().use { response ->
+            config.logger.log("FCM: Received HTTP response - code=${response.code}, message=${response.message}")
+            
             if (!response.isSuccessful) {
+                config.logger.log("FCM: HTTP request failed with code ${response.code}")
                 throw PostHogApiError(response.code, response.message, response.body)
             }
+            
+            config.logger.log("FCM: Push subscription registration successful")
         }
     }
 
@@ -319,6 +335,20 @@ public class PostHogApi(
             } catch (e: Throwable) {
                 // ignore
             }
+        }
+    }
+
+    // TODOdin: Can we safely remove this?
+    private fun tagThreadForStrictMode() {
+        try {
+            // Use reflection to set traffic stats tag if available (Android only)
+            val trafficStatsClass = Class.forName("android.net.TrafficStats")
+            val setThreadStatsTagMethod = trafficStatsClass.getMethod("setThreadStatsTag", Int::class.javaPrimitiveType)
+            setThreadStatsTagMethod.invoke(null, 0xFFFF) // Use a non-zero tag
+        } catch (e: ClassNotFoundException) {
+            // TrafficStats not available (not Android) - this is expected on non-Android platforms
+        } catch (e: Exception) {
+            // Other exceptions (NoSuchMethodException, etc.) - ignore silently
         }
     }
 }

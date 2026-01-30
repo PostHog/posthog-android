@@ -4,11 +4,13 @@ import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogApiError
+import com.posthog.internal.PostHogPushTokenRegistration
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.FCM_FIREBASE_APP_ID
 import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
 import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN_LAST_UPDATED
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
@@ -64,7 +66,7 @@ public class PostHog private constructor(
 
     private val featureFlagsCalledLock = Any()
     private val cachedPersonPropertiesLock = Any()
-    private val pushTokenLock = Any()
+    private var pushTokenRegistration: PostHogPushTokenRegistration? = null
 
     private var remoteConfig: PostHogRemoteConfig? = null
     private var replayQueue: PostHogQueueInterface? = null
@@ -151,6 +153,12 @@ public class PostHog private constructor(
                 this.config = config
                 this.queue = queue
                 this.replayQueue = replayQueue
+                this.pushTokenRegistration =
+                    PostHogPushTokenRegistration(
+                        config = config,
+                        api = this.api,
+                        pushTokenExecutor = pushTokenExecutor,
+                    )
 
                 if (featureFlags is PostHogRemoteConfig) {
                     this.remoteConfig = featureFlags
@@ -713,6 +721,9 @@ public class PostHog private constructor(
             }
             this.distinctId = distinctId
 
+            // Automatically register stored push token with new distinctId
+            registerStoredTokenIfExists()
+
             // Automatically set person properties for feature flags during identify() call
             setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
 
@@ -1158,6 +1169,11 @@ public class PostHog private constructor(
         if (config?.reuseAnonymousId == true) {
             except.add(ANONYMOUS_ID)
         }
+        // preserve FCM token data so we can re-register it with the new anonymous distinctId
+        // TODOdin: Do we want this?
+        except.add(FCM_TOKEN)
+        except.add(FCM_TOKEN_LAST_UPDATED)
+        except.add(FCM_FIREBASE_APP_ID)
         getPreferences().clear(except = except.toList())
         remoteConfig?.clear()
         featureFlagsCalled.clear()
@@ -1179,6 +1195,9 @@ public class PostHog private constructor(
         if (reloadFeatureFlags) {
             reloadFeatureFlags(config?.onFeatureFlags)
         }
+
+        // Automatically register stored push token with new anonymous distinctId after reset
+        registerStoredTokenIfExists()
     }
 
     public override fun register(
@@ -1239,74 +1258,34 @@ public class PostHog private constructor(
         callback: PostHogPushTokenCallback?,
     ) {
         if (!isEnabled()) {
-            callback?.invoke(false)
+            callback?.onComplete(PostHogPushTokenError.SDK_DISABLED, null)
             return
         }
 
-        if (token.isBlank()) {
-            config?.logger?.log("registerPushToken called with blank token")
-            callback?.invoke(false)
+        val registration = pushTokenRegistration
+        if (registration == null) {
+            config?.logger?.log("FCM: registerPushToken failed - config is null")
+            callback?.onComplete(PostHogPushTokenError.CONFIG_NULL, null)
             return
         }
-
-        if (firebaseAppId.isBlank()) {
-            config?.logger?.log("registerPushToken called with blank firebaseAppId")
-            callback?.invoke(false)
-            return
-        }
-
-        val config =
-            this.config ?: run {
-                callback?.invoke(false)
-                return
-            }
+        val currentDistinctId = distinctId()
         val preferences = getPreferences()
+        registration.register(token, firebaseAppId, currentDistinctId, preferences, callback)
+    }
 
-        synchronized(pushTokenLock) {
-            val storedToken = preferences.getValue(FCM_TOKEN) as? String
-            val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long ?: 0L
-            val currentTime = config.dateProvider.currentDate().time
-
-            val tokenChanged = storedToken != token
-            val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= ONE_HOUR_IN_MILLIS)
-
-            if (!shouldUpdate) {
-                config.logger.log("FCM token registration skipped: token unchanged and less than hour since last update")
-                callback?.invoke(null)
-                return
-            }
-
-            preferences.setValue(FCM_TOKEN, token)
-            preferences.setValue(FCM_TOKEN_LAST_UPDATED, currentTime)
+    /**
+     * Automatically registers stored push token when distinctId changes.
+     * This is called internally after identify() and reset() to ensure
+     * the push token is associated with the current distinctId.
+     */
+    private fun registerStoredTokenIfExists() {
+        if (!isEnabled()) {
+            return
         }
-
-        val distinctId = distinctId()
-        pushTokenExecutor.executeSafely {
-            if (!isEnabled()) {
-                config.logger.log("FCM token registration skipped: SDK is disabled")
-                callback?.invoke(false)
-                return@executeSafely
-            }
-            try {
-                this.api.registerPushSubscription(distinctId, token, firebaseAppId)
-                config.logger.log("FCM token registered successfully")
-                callback?.invoke(true)
-            } catch (e: PostHogApiError) {
-                config.logger.log("Failed to register FCM token: ${e.message} (code: ${e.statusCode})")
-                synchronized(pushTokenLock) {
-                    preferences.remove(FCM_TOKEN)
-                    preferences.remove(FCM_TOKEN_LAST_UPDATED)
-                }
-                callback?.invoke(false)
-            } catch (e: Throwable) {
-                config.logger.log("Failed to register FCM token: ${e.message ?: "Unknown error"}")
-                synchronized(pushTokenLock) {
-                    preferences.remove(FCM_TOKEN)
-                    preferences.remove(FCM_TOKEN_LAST_UPDATED)
-                }
-                callback?.invoke(false)
-            }
-        }
+        pushTokenRegistration?.registerStoredTokenIfExists(
+            preferences = getPreferences(),
+            distinctId = distinctId(),
+        )
     }
 
     override fun <T : PostHogConfig> getConfig(): T? {

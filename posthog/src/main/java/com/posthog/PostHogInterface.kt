@@ -4,12 +4,6 @@ import java.util.Date
 import java.util.UUID
 
 /**
- * Callback for push token registration results.
- * @param success `true` if registration succeeded, `false` if it failed, or `null` if registration was skipped (e.g., token unchanged).
- */
-public typealias PostHogPushTokenCallback = (success: Boolean?) -> Unit
-
-/**
  * The PostHog SDK entry point
  */
 public interface PostHogInterface : PostHogCoreInterface {
@@ -245,7 +239,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      *
      * @param token The FCM registration token
      * @param firebaseAppId Firebase app ID (project ID) to associate with the token
-     * @param callback Optional callback to be notified when registration completes. Called with `true` on success, `false` on failure, or `null` if registration was skipped (e.g., token unchanged).
+     * @param callback Optional callback to be notified when registration completes. [PostHogPushTokenCallback.onComplete] is called with `(error, throwable)`: `error` is `null` on success or when skipped (e.g. token unchanged), or a [PostHogPushTokenError] on failure; `throwable` is non-null when the failure was caused by an exception (e.g. API/network errors).
      */
     public fun registerPushToken(
         token: String,

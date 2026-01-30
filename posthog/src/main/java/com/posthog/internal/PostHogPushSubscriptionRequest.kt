@@ -16,4 +16,5 @@ public data class PostHogPushSubscriptionRequest(
     val platform: String,
     @SerializedName("firebase_app_id")
     val firebaseAppId: String,
+    val provider: String,
 )
