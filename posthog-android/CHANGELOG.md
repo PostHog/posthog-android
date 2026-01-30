@@ -1,6 +1,6 @@
 ## Next
 
-# 3.30.0 - 2026-01-29
+# 3.30.0 - 2026-01-30
 
 - update android types for new survey customization options ([#399](https://github.com/PostHog/posthog-android/pull/399))
 
