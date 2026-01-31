@@ -1,5 +1,6 @@
 package com.posthog.android
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
@@ -68,6 +69,13 @@ public class PostHogFake : PostHogInterface {
         key: String,
         defaultValue: Any?,
     ): Any? {
+        return null
+    }
+
+    override fun getFeatureFlagResult(
+        key: String,
+        sendFeatureFlagEvent: Boolean?,
+    ): FeatureFlagResult? {
         return null
     }
 

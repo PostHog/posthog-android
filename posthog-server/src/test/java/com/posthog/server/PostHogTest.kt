@@ -192,6 +192,41 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `getFeatureFlagResult works correctly`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val postHog = PostHog()
+        postHog.setup(config)
+
+        // With no remote config, should return null
+        val result = postHog.getFeatureFlagResult("user123", "test_flag")
+        assertNull(result)
+
+        postHog.close()
+    }
+
+    @Test
+    fun `getFeatureFlagResult with PostHogFeatureFlagOptions works correctly`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val postHog = PostHog()
+        postHog.setup(config)
+
+        val options =
+            PostHogFeatureFlagResultOptions.builder()
+                .group("organization", "org_123")
+                .personProperty("plan", "premium")
+                .groupProperty("org_123", "size", "large")
+                .build()
+
+        // Should not throw
+        val result = postHog.getFeatureFlagResult("user123", "feature_key", options)
+
+        // With no remote config, should return null
+        assertNull(result)
+
+        postHog.close()
+    }
+
+    @Test
     fun `PostHog implements PostHogInterface correctly`() {
         val config = PostHogConfig(apiKey = TEST_API_KEY)
         val postHogInterface: PostHogInterface = PostHog.with(config)

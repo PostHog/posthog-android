@@ -519,6 +519,137 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `getFeatureFlagResult returns the result after reloaded`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val result = sut.getFeatureFlagResult("4535-funnel-bar-viz")
+        assertNotNull(result)
+        assertEquals("4535-funnel-bar-viz", result.key)
+        assertTrue(result.enabled)
+        assertNull(result.variant)
+        assertTrue(result.payload as Boolean)
+        assertTrue(result.value as Boolean)
+
+        sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlagResult returns null when flag does not exist`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val result = sut.getFeatureFlagResult("non-existent-flag")
+        assertNull(result)
+
+        sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlagResult returns null when SDK not enabled`() {
+        val sut = PostHog.with(PostHogConfig(API_KEY))
+        sut.close()
+
+        val result = sut.getFeatureFlagResult("4535-funnel-bar-viz")
+        assertNull(result)
+    }
+
+    @Test
+    fun `getFeatureFlagResult captures feature flag event when enabled`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        val result = sut.getFeatureFlagResult("4535-funnel-bar-viz")
+        assertNotNull(result)
+        assertTrue(result.value as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first { it.event == "\$feature_flag_called" }
+
+        assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
+        assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlagResult does not capture event when sendFeatureFlagEvent is false`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove the flags request from the http queue
+        http.takeRequest()
+
+        val result = sut.getFeatureFlagResult("4535-funnel-bar-viz", sendFeatureFlagEvent = false)
+        assertNotNull(result)
+        assertTrue(result.value as Boolean)
+
+        sut.flush()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batchRequest = http.takeRequest(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertNull(batchRequest, "No events should be captured when sendFeatureFlagEvent is false")
+
+        sut.close()
+    }
+
+    @Test
     fun `do not preload feature flags if disabled`() {
         val http = mockHttp()
         val url = http.url("/")

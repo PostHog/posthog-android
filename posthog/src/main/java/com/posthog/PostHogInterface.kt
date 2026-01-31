@@ -80,6 +80,21 @@ public interface PostHogInterface : PostHogCoreInterface {
     ): Any?
 
     /**
+     * Returns the feature flag result containing both value and payload.
+     * This is the recommended way to access feature flags when you need both
+     * the flag value and its payload atomically.
+     *
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param key The feature flag key
+     * @param sendFeatureFlagEvent If false, won't send $feature_flag_called event to PostHog
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResult(
+        key: String,
+        sendFeatureFlagEvent: Boolean? = null,
+    ): FeatureFlagResult?
+
+    /**
      * Resets all the cached properties including the [distinctId]
      * The SDK will behave as its been setup for the first time
      */
