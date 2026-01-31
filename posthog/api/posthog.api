@@ -128,6 +128,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getGetAnonymousId ()Lkotlin/jvm/functions/Function1;
 	public final fun getHost ()Ljava/lang/String;
+	public final fun getHttpClient ()Lokhttp3/OkHttpClient;
 	public final fun getIntegrations ()Ljava/util/List;
 	public final fun getLegacyStoragePrefix ()Ljava/lang/String;
 	public final fun getLogger ()Lcom/posthog/internal/PostHogLogger;
@@ -169,6 +170,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setGetAnonymousId (Lkotlin/jvm/functions/Function1;)V
+	public final fun setHttpClient (Lokhttp3/OkHttpClient;)V
 	public final fun setLegacyStoragePrefix (Ljava/lang/String;)V
 	public final fun setLogger (Lcom/posthog/internal/PostHogLogger;)V
 	public final fun setMaxBatchSize (I)V
