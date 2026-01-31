@@ -190,6 +190,7 @@ internal class SurveyFeatureFlagConditionsTest {
             currentIterationStartDate = null,
             startDate = null,
             endDate = null,
+            schedule = null,
         )
     }
 
@@ -210,6 +211,7 @@ internal class SurveyFeatureFlagConditionsTest {
             currentIterationStartDate = null,
             startDate = null,
             endDate = null,
+            schedule = null,
         )
     }
 
@@ -230,6 +232,7 @@ internal class SurveyFeatureFlagConditionsTest {
             currentIterationStartDate = null,
             startDate = null,
             endDate = null,
+            schedule = null,
         )
     }
 
@@ -250,6 +253,7 @@ internal class SurveyFeatureFlagConditionsTest {
             currentIterationStartDate = null,
             startDate = null,
             endDate = null,
+            schedule = null,
         )
     }
 
