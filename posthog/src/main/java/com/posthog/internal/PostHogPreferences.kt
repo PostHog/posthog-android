@@ -46,7 +46,7 @@ public interface PostHogPreferences {
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
         internal const val FCM_TOKEN = "fcmToken"
         internal const val FCM_TOKEN_LAST_UPDATED = "fcmTokenLastUpdated"
-        internal const val FCM_FIREBASE_PROJECT_ID = "fcmFirebaseProjectId"
+        internal const val FCM_PROJECT_ID = "fcmProjectId"
 
         public val ALL_INTERNAL_KEYS: Set<String> =
             setOf(
@@ -71,7 +71,7 @@ public interface PostHogPreferences {
                 GROUP_PROPERTIES_FOR_FLAGS,
                 FCM_TOKEN,
                 FCM_TOKEN_LAST_UPDATED,
-                FCM_FIREBASE_PROJECT_ID,
+                FCM_PROJECT_ID,
             )
     }
 }

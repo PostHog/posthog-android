@@ -238,12 +238,12 @@ public interface PostHogInterface : PostHogCoreInterface {
      * - Kotlin: `Firebase.app.options.projectId`
      *
      * @param token The FCM registration token
-     * @param firebaseProjectId Firebase project ID to associate with the token
+     * @param fcmProjectId Firebase project ID to associate with the token
      * @param callback Optional callback to be notified when registration completes. [PostHogPushTokenCallback.onComplete] is called with `(error, throwable)`: `error` is `null` on success or when skipped (e.g. token unchanged), or a [PostHogPushTokenError] on failure; `throwable` is non-null when the failure was caused by an exception (e.g. API/network errors).
      */
     public fun registerPushToken(
         token: String,
-        firebaseProjectId: String,
+        fcmProjectId: String,
         callback: PostHogPushTokenCallback? = null,
     )
 

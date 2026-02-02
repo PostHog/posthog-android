@@ -257,7 +257,7 @@ public class PostHogApi(
     public fun registerPushSubscription(
         distinctId: String,
         token: String,
-        firebaseProjectId: String,
+        fcmProjectId: String,
     ) {
         val pushSubscriptionRequest =
             PostHogPushSubscriptionRequest(
@@ -265,7 +265,7 @@ public class PostHogApi(
                 distinctId = distinctId,
                 token = token,
                 platform = "android",
-                firebaseProjectId = firebaseProjectId,
+                fcmProjectId = fcmProjectId,
                 provider = "fcm",
             )
 
@@ -315,7 +315,7 @@ public class PostHogApi(
         if (config.debug) {
             try {
                 config.serializer.serializeObject(body)?.let {
-                    config.logger.log("Request $url}: $it")
+                    config.logger.log("Request $url: $it")
                 }
             } catch (e: Throwable) {
                 // ignore

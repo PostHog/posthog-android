@@ -8,7 +8,7 @@ import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
-import com.posthog.internal.PostHogPreferences.Companion.FCM_FIREBASE_PROJECT_ID
+import com.posthog.internal.PostHogPreferences.Companion.FCM_PROJECT_ID
 import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN
 import com.posthog.internal.PostHogPreferences.Companion.FCM_TOKEN_LAST_UPDATED
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
@@ -1171,7 +1171,7 @@ public class PostHog private constructor(
         // preserve FCM token data so we can re-register it with the new anonymous distinctId
         except.add(FCM_TOKEN)
         except.add(FCM_TOKEN_LAST_UPDATED)
-        except.add(FCM_FIREBASE_PROJECT_ID)
+        except.add(FCM_PROJECT_ID)
         getPreferences().clear(except = except.toList())
         remoteConfig?.clear()
         featureFlagsCalled.clear()
@@ -1252,7 +1252,7 @@ public class PostHog private constructor(
 
     override fun registerPushToken(
         token: String,
-        firebaseProjectId: String,
+        fcmProjectId: String,
         callback: PostHogPushTokenCallback?,
     ) {
         if (!isEnabled()) {
@@ -1268,7 +1268,7 @@ public class PostHog private constructor(
         }
         val currentDistinctId = distinctId()
         val preferences = getPreferences()
-        registration.register(token, firebaseProjectId, currentDistinctId, preferences, callback)
+        registration.register(token, fcmProjectId, currentDistinctId, preferences, callback)
     }
 
     /**
@@ -1613,10 +1613,10 @@ public class PostHog private constructor(
 
         override fun registerPushToken(
             token: String,
-            firebaseProjectId: String,
+            fcmProjectId: String,
             callback: PostHogPushTokenCallback?,
         ) {
-            shared.registerPushToken(token, firebaseProjectId, callback)
+            shared.registerPushToken(token, fcmProjectId, callback)
         }
     }
 }

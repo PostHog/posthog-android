@@ -22,7 +22,7 @@ public class PostHogPushTokenRegistration(
 
     public fun register(
         token: String,
-        firebaseProjectId: String,
+        fcmProjectId: String,
         distinctId: String,
         preferences: PostHogPreferences,
         callback: PostHogPushTokenCallback?,
@@ -32,7 +32,7 @@ public class PostHogPushTokenRegistration(
             return
         }
 
-        if (firebaseProjectId.isBlank()) {
+        if (fcmProjectId.isBlank()) {
             pushTokenExecutor.executeSafely { callback?.onComplete(PostHogPushTokenError.BLANK_FIREBASE_PROJECT_ID, null) }
             return
         }
@@ -43,7 +43,8 @@ public class PostHogPushTokenRegistration(
             val currentTime = config.dateProvider.currentDate().time
 
             val tokenChanged = storedToken != token
-            val shouldUpdate = tokenChanged || (currentTime - lastUpdated >= ONE_DAY_IN_MILLIS)
+            val shouldUpdate =
+                tokenChanged || (currentTime - lastUpdated >= ONE_DAY_IN_MILLIS)
 
             if (!shouldUpdate) {
                 pushTokenExecutor.executeSafely { callback?.onComplete(null, null) }
@@ -55,11 +56,11 @@ public class PostHogPushTokenRegistration(
 
         pushTokenExecutor.executeSafely {
             try {
-                api.registerPushSubscription(distinctId, token, firebaseProjectId)
+                api.registerPushSubscription(distinctId, token, fcmProjectId)
                 synchronized(pushTokenLock) {
                     preferences.setValue(PostHogPreferences.FCM_TOKEN, token)
                     preferences.setValue(PostHogPreferences.FCM_TOKEN_LAST_UPDATED, config.dateProvider.currentDate().time)
-                    preferences.setValue(PostHogPreferences.FCM_FIREBASE_PROJECT_ID, firebaseProjectId)
+                    preferences.setValue(PostHogPreferences.FCM_PROJECT_ID, fcmProjectId)
                 }
                 callback?.onComplete(null, null)
             } catch (e: PostHogApiError) {
@@ -78,7 +79,7 @@ public class PostHogPushTokenRegistration(
         synchronized(pushTokenLock) {
             preferences.remove(PostHogPreferences.FCM_TOKEN)
             preferences.remove(PostHogPreferences.FCM_TOKEN_LAST_UPDATED)
-            preferences.remove(PostHogPreferences.FCM_FIREBASE_PROJECT_ID)
+            preferences.remove(PostHogPreferences.FCM_PROJECT_ID)
         }
     }
 
@@ -92,14 +93,18 @@ public class PostHogPushTokenRegistration(
         distinctId: String,
     ) {
         val storedToken: String?
-        val storedFirebaseProjectId: String?
+        val storedFcmProjectId: String?
 
         synchronized(pushTokenLock) {
             storedToken = preferences.getValue(PostHogPreferences.FCM_TOKEN) as? String
-            storedFirebaseProjectId = preferences.getValue(PostHogPreferences.FCM_FIREBASE_PROJECT_ID) as? String
+            storedFcmProjectId = preferences.getValue(PostHogPreferences.FCM_PROJECT_ID) as? String
         }
 
-        if (storedToken.isNullOrBlank() || storedFirebaseProjectId.isNullOrBlank()) {
+        if (storedToken.isNullOrBlank() || storedFcmProjectId.isNullOrBlank()) {
+            // Clear inconsistent state
+            if (!storedToken.isNullOrBlank() && storedFcmProjectId.isNullOrBlank()) {
+                clearStoredPushToken(preferences)
+            }
             return
         }
 
@@ -109,7 +114,7 @@ public class PostHogPushTokenRegistration(
 
         pushTokenExecutor.executeSafely {
             try {
-                api.registerPushSubscription(distinctId, storedToken, storedFirebaseProjectId)
+                api.registerPushSubscription(distinctId, storedToken, storedFcmProjectId)
             } catch (e: PostHogApiError) {
                 config.logger.log("Push token re-registration failed: ${e.message} (code: ${e.statusCode})")
             } catch (e: Throwable) {

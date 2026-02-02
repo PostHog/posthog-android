@@ -2626,30 +2626,26 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         var callbackResult: PostHogPushTokenError? = null
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
-
-        // Wait for background thread to complete
         pushTokenExecutor.awaitExecution()
 
-        assertNull(callbackResult) // null = success
+        assertNull(callbackResult)
         assertEquals(1, http.requestCount)
 
         val request = http.takeRequest()
         assertEquals("/api/sdk/push_subscriptions/register", request.path)
         assertEquals("POST", request.method)
-
-        // Verify request body contains expected fields
         val requestBody = request.body.unGzip()
         assertTrue(requestBody.contains("\"api_key\""))
         assertTrue(requestBody.contains("\"distinct_id\""))
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
         assertTrue(requestBody.contains("\"platform\":\"android\""))
-        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-project-id\""))
+        assertTrue(requestBody.contains("\"fcm_project_id\":\"test-firebase-project-id\""))
 
         sut.close()
     }
@@ -2659,7 +2655,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
         sut.close()
 
         var callbackResult: PostHogPushTokenError? = null
@@ -2677,7 +2673,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         var callbackResult: PostHogPushTokenError? = null
         sut.registerPushToken("", "test-firebase-project-id") { error, _ ->
@@ -2692,11 +2688,11 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `registerPushToken calls callback with false for blank firebaseProjectId`() {
+    fun `registerPushToken calls callback with false for blank fcmProjectId`() {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         var callbackResult: PostHogPushTokenError? = null
         sut.registerPushToken("test-fcm-token", "") { error, _ ->
@@ -2723,25 +2719,22 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        // First registration
         var callbackResult1: PostHogPushTokenError? = null
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult1 = error
         }
-        pushTokenExecutor.awaitExecution() // Wait for background thread
-        assertNull(callbackResult1) // null = success
+        pushTokenExecutor.awaitExecution()
+        assertNull(callbackResult1)
         assertEquals(1, http.requestCount)
 
-        // Second registration with same token immediately - should skip API call
         var callbackResult2: PostHogPushTokenError? = null
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult2 = error
         }
-        pushTokenExecutor.awaitExecution() // Wait for background thread
-        assertNull(callbackResult2) // null = skipped (no error)
-        // Should not make a second request when token is unchanged and less than 24 hours
+        pushTokenExecutor.awaitExecution()
+        assertNull(callbackResult2)
         assertEquals(1, http.requestCount)
 
         sut.close()
@@ -2760,24 +2753,22 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        // First registration
         var callbackResult1: PostHogPushTokenError? = null
         sut.registerPushToken("test-fcm-token-1", "test-firebase-project-id") { error, _ ->
             callbackResult1 = error
         }
-        pushTokenExecutor.awaitExecution() // Wait for background thread
-        assertNull(callbackResult1) // null = success
+        pushTokenExecutor.awaitExecution()
+        assertNull(callbackResult1)
         assertEquals(1, http.requestCount)
 
-        // Second registration with different token - should register again
         var callbackResult2: PostHogPushTokenError? = null
         sut.registerPushToken("test-fcm-token-2", "test-firebase-project-id") { error, _ ->
             callbackResult2 = error
         }
-        pushTokenExecutor.awaitExecution() // Wait for background thread
-        assertNull(callbackResult2) // null = success
+        pushTokenExecutor.awaitExecution()
+        assertNull(callbackResult2)
         assertEquals(2, http.requestCount)
 
         sut.close()
@@ -2794,14 +2785,14 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         var callbackResult: PostHogPushTokenError? = null
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id") { error, _ ->
             callbackResult = error
         }
 
-        pushTokenExecutor.awaitExecution() // Wait for background thread
+        pushTokenExecutor.awaitExecution()
         assertEquals(PostHogPushTokenError.INVALID_INPUT, callbackResult)
         assertEquals(1, http.requestCount)
 
@@ -2820,14 +2811,13 @@ internal class PostHogTest {
         val url = http.url("/")
         val preferences = PostHogMemoryPreferences()
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
 
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
-        pushTokenExecutor.awaitExecution() // Wait for background thread
+        pushTokenExecutor.awaitExecution()
 
         val storedToken = preferences.getValue(FCM_TOKEN) as? String
         val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long
-
         assertNull(storedToken)
         assertNull(lastUpdated)
 
@@ -2847,14 +2837,13 @@ internal class PostHogTest {
         val url = http.url("/")
         val preferences = PostHogMemoryPreferences()
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = preferences)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
 
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
-        pushTokenExecutor.awaitExecution() // Wait for background thread
+        pushTokenExecutor.awaitExecution()
 
         val storedToken = preferences.getValue(FCM_TOKEN) as? String
         val lastUpdated = preferences.getValue(FCM_TOKEN_LAST_UPDATED) as? Long
-
         assertEquals("test-fcm-token", storedToken)
         assertNotNull(lastUpdated)
         assertTrue(lastUpdated > 0)
@@ -2875,23 +2864,21 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        // Register push token (anonymous distinctId)
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
         pushTokenExecutor.awaitExecution()
         assertEquals(1, http.requestCount)
-        http.takeRequest() // consume first request
+        http.takeRequest()
 
-        // Identify with new distinctId - should trigger re-registration with new distinctId
         sut.identify("identified-user-123")
         pushTokenExecutor.awaitExecution()
         assertEquals(2, http.requestCount)
 
         val secondRequest = http.takeRequest()
-        val secondBody = secondRequest.body.unGzip()
-        assertTrue(secondBody.contains("\"distinct_id\":\"identified-user-123\""))
-        assertTrue(secondBody.contains("\"token\":\"test-fcm-token\""))
+        val bodyToCheck = secondRequest.body.unGzip()
+        assertTrue(bodyToCheck.contains("\"distinct_id\":\"identified-user-123\""))
+        assertTrue(bodyToCheck.contains("\"token\":\"test-fcm-token\""))
 
         sut.close()
     }
@@ -2909,24 +2896,64 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        // reloadFeatureFlags = false to avoid executor interaction that can hang the test
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        // Register push token
         sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
         pushTokenExecutor.awaitExecution()
         assertEquals(1, http.requestCount)
-        http.takeRequest() // consume first request
+        http.takeRequest()
 
-        // Reset - should trigger re-registration with new anonymous distinctId
         sut.reset()
         pushTokenExecutor.awaitExecution()
         assertEquals(2, http.requestCount)
 
         val secondRequest = http.takeRequest()
-        val secondBody = secondRequest.body.unGzip()
-        assertTrue(secondBody.contains("\"token\":\"test-fcm-token\""))
-        // Second request must have a distinct_id (new anonymous id after reset)
-        assertTrue(secondBody.contains("\"distinct_id\":"))
+        val bodyToCheck = secondRequest.body.unGzip()
+        assertTrue(bodyToCheck.contains("\"token\":\"test-fcm-token\""))
+        assertTrue(bodyToCheck.contains("\"distinct_id\":"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushToken with same token after identify does not make another API call`() {
+        val responseBody = """{"status": "ok", "subscription_id": "test-subscription-id"}"""
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseBody),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
+        pushTokenExecutor.awaitExecution()
+
+        sut.identify("identified-user-123")
+        pushTokenExecutor.awaitExecution()
+
+        sut.registerPushToken("test-fcm-token", "test-firebase-project-id")
+        pushTokenExecutor.awaitExecution()
+
+        // Count only push_subscription requests; other endpoints may be hit
+        val totalRequests = http.requestCount
+        var pushSubscriptionCount = 0
+        repeat(totalRequests) {
+            val request = http.takeRequest()
+            if (request.path?.contains("push_subscription") == true) {
+                pushSubscriptionCount++
+            }
+        }
+        assertEquals(
+            2,
+            pushSubscriptionCount,
+            "expected exactly 2 push subscription requests (initial + identify), got $pushSubscriptionCount",
+        )
 
         sut.close()
     }

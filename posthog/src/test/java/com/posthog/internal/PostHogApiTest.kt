@@ -343,7 +343,7 @@ internal class PostHogApiTest {
         assertTrue(requestBody.contains("\"distinct_id\":\"test-distinct-id\""))
         assertTrue(requestBody.contains("\"token\":\"test-fcm-token\""))
         assertTrue(requestBody.contains("\"platform\":\"android\""))
-        assertTrue(requestBody.contains("\"firebase_app_id\":\"test-firebase-project-id\""))
+        assertTrue(requestBody.contains("\"fcm_project_id\":\"test-firebase-project-id\""))
         assertTrue(requestBody.contains("\"provider\":\"fcm\""))
     }
 

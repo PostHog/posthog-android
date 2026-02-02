@@ -42,7 +42,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun optIn ()V
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
-	public fun registerPushToken (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun registerPushToken (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenCallback;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -81,7 +81,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun optOut ()V
 	public final fun overrideSharedInstance (Lcom/posthog/PostHogInterface;)V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
-	public fun registerPushToken (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun registerPushToken (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenCallback;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -299,7 +299,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun isSessionActive ()Z
 	public abstract fun isSessionReplayActive ()Z
 	public abstract fun register (Ljava/lang/String;Ljava/lang/Object;)V
-	public abstract fun registerPushToken (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun registerPushToken (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenCallback;)V
 	public abstract fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public abstract fun reset ()V
 	public abstract fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -321,7 +321,7 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun group$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZLjava/lang/Boolean;ILjava/lang/Object;)Z
-	public static synthetic fun registerPushToken$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun registerPushToken$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenCallback;ILjava/lang/Object;)V
 	public static synthetic fun reloadFeatureFlags$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZILjava/lang/Object;)V
 	public static synthetic fun resetPersonPropertiesForFlags$default (Lcom/posthog/PostHogInterface;ZILjava/lang/Object;)V
@@ -350,6 +350,24 @@ public abstract interface class com/posthog/PostHogOnFeatureFlags {
 
 public abstract interface class com/posthog/PostHogPropertiesSanitizer {
 	public abstract fun sanitize (Ljava/util/Map;)Ljava/util/Map;
+}
+
+public abstract interface class com/posthog/PostHogPushTokenCallback {
+	public abstract fun onComplete (Lcom/posthog/PostHogPushTokenError;Ljava/lang/Throwable;)V
+}
+
+public final class com/posthog/PostHogPushTokenError : java/lang/Enum {
+	public static final field BLANK_FIREBASE_PROJECT_ID Lcom/posthog/PostHogPushTokenError;
+	public static final field BLANK_TOKEN Lcom/posthog/PostHogPushTokenError;
+	public static final field CONFIG_NULL Lcom/posthog/PostHogPushTokenError;
+	public static final field INVALID_INPUT Lcom/posthog/PostHogPushTokenError;
+	public static final field NETWORK_ERROR Lcom/posthog/PostHogPushTokenError;
+	public static final field OTHER Lcom/posthog/PostHogPushTokenError;
+	public static final field SDK_DISABLED Lcom/posthog/PostHogPushTokenError;
+	public static final field SERVER_ERROR Lcom/posthog/PostHogPushTokenError;
+	public static final field UNAUTHORIZED Lcom/posthog/PostHogPushTokenError;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PostHogPushTokenError;
+	public static fun values ()[Lcom/posthog/PostHogPushTokenError;
 }
 
 public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterface {
@@ -754,22 +772,30 @@ public final class com/posthog/internal/PostHogPrintLogger : com/posthog/interna
 }
 
 public final class com/posthog/internal/PostHogPushSubscriptionRequest {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/PostHogPushSubscriptionRequest;
-	public static synthetic fun copy$default (Lcom/posthog/internal/PostHogPushSubscriptionRequest;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/PostHogPushSubscriptionRequest;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/PostHogPushSubscriptionRequest;
+	public static synthetic fun copy$default (Lcom/posthog/internal/PostHogPushSubscriptionRequest;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/PostHogPushSubscriptionRequest;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getApi_key ()Ljava/lang/String;
-	public final fun getDistinct_id ()Ljava/lang/String;
-	public final fun getFirebaseProjectId ()Ljava/lang/String;
+	public final fun getApiKey ()Ljava/lang/String;
+	public final fun getDistinctId ()Ljava/lang/String;
+	public final fun getFcmProjectId ()Ljava/lang/String;
 	public final fun getPlatform ()Ljava/lang/String;
+	public final fun getProvider ()Ljava/lang/String;
 	public final fun getToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/posthog/internal/PostHogPushTokenRegistration {
+	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;)V
+	public final fun register (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/internal/PostHogPreferences;Lcom/posthog/PostHogPushTokenCallback;)V
+	public final fun registerStoredTokenIfExists (Lcom/posthog/internal/PostHogPreferences;Ljava/lang/String;)V
 }
 
 public abstract interface class com/posthog/internal/PostHogQueueInterface {

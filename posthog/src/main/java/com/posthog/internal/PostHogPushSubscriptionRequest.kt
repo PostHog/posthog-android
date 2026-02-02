@@ -14,7 +14,7 @@ public data class PostHogPushSubscriptionRequest(
     val distinctId: String,
     val token: String,
     val platform: String,
-    @SerializedName("firebase_app_id")
-    val firebaseProjectId: String,
+    @SerializedName("fcm_project_id")
+    val fcmProjectId: String,
     val provider: String,
 )

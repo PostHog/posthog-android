@@ -92,7 +92,7 @@ public class PostHogFake : PostHogInterface {
 
     override fun registerPushToken(
         token: String,
-        firebaseProjectId: String,
+        fcmProjectId: String,
         callback: PostHogPushTokenCallback?,
     ) {
         callback?.onComplete(null, null)
