@@ -1054,12 +1054,8 @@ public class PostHog private constructor(
         defaultValue: Any?,
         sendFeatureFlagEvent: Boolean?,
     ): Any? {
-        if (!isEnabled()) {
-            return defaultValue
-        }
-        val result = remoteConfig?.getFeatureFlagResult(key)
-        val flagValue = result?.value ?: defaultValue
-
+        if (!isEnabled()) return defaultValue
+        val flagValue = remoteConfig?.getFeatureFlagResult(key)?.value ?: defaultValue
         sendFeatureFlagCalled(key, flagValue, sendFeatureFlagEvent)
         return flagValue
     }
@@ -1068,10 +1064,22 @@ public class PostHog private constructor(
         key: String,
         defaultValue: Any?,
     ): Any? {
+        if (!isEnabled()) return defaultValue
+        return getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload ?: defaultValue
+    }
+
+    public override fun getFeatureFlagResult(
+        key: String,
+        sendFeatureFlagEvent: Boolean?,
+    ): FeatureFlagResult? {
         if (!isEnabled()) {
-            return defaultValue
+            return null
         }
-        return remoteConfig?.getFeatureFlagResult(key)?.payload ?: defaultValue
+        val result = remoteConfig?.getFeatureFlagResult(key)
+
+        sendFeatureFlagCalled(key, result?.value, sendFeatureFlagEvent)
+
+        return result
     }
 
     public override fun flush() {
@@ -1421,6 +1429,11 @@ public class PostHog private constructor(
             key: String,
             defaultValue: Any?,
         ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
+
+        public override fun getFeatureFlagResult(
+            key: String,
+            sendFeatureFlagEvent: Boolean?,
+        ): FeatureFlagResult? = shared.getFeatureFlagResult(key, sendFeatureFlagEvent)
 
         public override fun flush() {
             shared.flush()
