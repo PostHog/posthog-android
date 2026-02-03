@@ -86,14 +86,20 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `user agent is returned correctly if changed`() {
-        config.sdkName = "posthog-android"
-        assertEquals("posthog-android/${BuildConfig.VERSION_NAME}", config.userAgent)
+    fun `user agent is returned correctly if overridden`() {
+        config.userAgent = "posthog-android/1.0.0"
+        assertEquals("posthog-android/1.0.0", config.getUserAgent())
     }
 
     @Test
-    fun `user agent is set the java sdk by default`() {
-        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", config.userAgent)
+    fun `user agent falls back to sdkName and sdkVersion by default`() {
+        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", config.getUserAgent())
+    }
+
+    @Test
+    fun `user agent falls back to sdkName when userAgent is null`() {
+        config.sdkName = "posthog-android"
+        assertEquals("posthog-android/${BuildConfig.VERSION_NAME}", config.getUserAgent())
     }
 
     @Test
