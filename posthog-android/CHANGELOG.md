@@ -1,5 +1,6 @@
 ## Next
 
+- feat: Expose `getFeatureFlagResult` to public API ([#405](https://github.com/PostHog/posthog-android/pull/405))
 - fix: Session Replay masks only the text area for EditText, Button, and CompoundButton (CheckBox, RadioButton, Switch) instead of the entire component bounds ([#400](https://github.com/PostHog/posthog-android/pull/400))
 
 ## 3.29.1 - 2026-01-21
