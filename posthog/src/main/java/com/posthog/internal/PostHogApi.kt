@@ -253,6 +253,38 @@ public class PostHogApi(
         }
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun registerPushSubscription(
+        distinctId: String,
+        token: String,
+        fcmProjectId: String,
+    ) {
+        val pushSubscriptionRequest =
+            PostHogPushSubscriptionRequest(
+                apiKey = config.apiKey,
+                distinctId = distinctId,
+                token = token,
+                platform = "android",
+                fcmProjectId = fcmProjectId,
+                provider = "fcm",
+            )
+
+        val url = "$theHost/api/sdk/push_subscriptions/register"
+        logRequest(pushSubscriptionRequest, url)
+
+        val request =
+            makeRequest(url) {
+                config.serializer.serialize(pushSubscriptionRequest, it.bufferedWriter())
+            }
+
+        client.newCall(request).execute().use { response ->
+            val loggedResponse = logResponse(response)
+            if (!loggedResponse.isSuccessful) {
+                throw PostHogApiError(loggedResponse.code, loggedResponse.message, loggedResponse.body)
+            }
+        }
+    }
+
     private fun logResponse(response: Response): Response {
         if (config.debug) {
             try {
@@ -283,7 +315,7 @@ public class PostHogApi(
         if (config.debug) {
             try {
                 config.serializer.serializeObject(body)?.let {
-                    config.logger.log("Request $url}: $it")
+                    config.logger.log("Request $url: $it")
                 }
             } catch (e: Throwable) {
                 // ignore
