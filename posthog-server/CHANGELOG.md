@@ -1,5 +1,7 @@
 ## Next
 
+- feat: Expose `getFeatureFlagResult` to public API ([#405](https://github.com/PostHog/posthog-android/pull/405))
+
 ## 2.2.0 - 2026-01-23
 
 - feat: Add ETag support for local evaluation polling to reduce bandwidth when flags haven't changed ([#350](https://github.com/PostHog/posthog-android/pull/350))
