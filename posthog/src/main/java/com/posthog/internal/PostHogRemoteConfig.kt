@@ -361,13 +361,14 @@ public class PostHogRemoteConfig(
             // This ensures that requests with $anon_distinct_id (from identify()) are not lost
             synchronized(pendingFeatureFlagsLock) {
                 pendingFeatureFlagsReload.set(true)
-                pendingFeatureFlagsRequest = PendingFeatureFlagsRequest(
-                    distinctId = distinctId,
-                    anonymousId = anonymousId,
-                    groups = groups,
-                    internalOnFeatureFlags = internalOnFeatureFlags,
-                    onFeatureFlags = onFeatureFlags,
-                )
+                pendingFeatureFlagsRequest =
+                    PendingFeatureFlagsRequest(
+                        distinctId = distinctId,
+                        anonymousId = anonymousId,
+                        groups = groups,
+                        internalOnFeatureFlags = internalOnFeatureFlags,
+                        onFeatureFlags = onFeatureFlags,
+                    )
             }
             return
         }

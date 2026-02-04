@@ -392,22 +392,23 @@ internal class PostHogRemoteConfigTest {
         // Use a multi-threaded executor to allow concurrent execution
         val multiThreadExecutor = Executors.newFixedThreadPool(2, PostHogThreadFactory("Test"))
 
+        // Add delay to simulate network latency
         val http =
             mockHttp(
                 total = 2,
                 response =
                     MockResponse()
                         .setBody(responseFlagsApi)
-                        .setBodyDelay(100, TimeUnit.MILLISECONDS), // Add delay to simulate network latency
+                        .setBodyDelay(100, TimeUnit.MILLISECONDS),
             )
         val url = http.url("/")
 
-        config =
+        val localConfig =
             PostHogConfig(API_KEY, url.toString()).apply {
                 cachePreferences = preferences
             }
-        val api = PostHogApi(config!!)
-        val sut = PostHogRemoteConfig(config!!, api, executor = multiThreadExecutor) { emptyMap() }
+        val api = PostHogApi(localConfig)
+        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor) { emptyMap() }
 
         val firstCallbackLatch = CountDownLatch(1)
         val secondCallbackLatch = CountDownLatch(1)
@@ -475,12 +476,12 @@ internal class PostHogRemoteConfigTest {
             )
         val url = http.url("/")
 
-        config =
+        val localConfig =
             PostHogConfig(API_KEY, url.toString()).apply {
                 cachePreferences = preferences
             }
-        val api = PostHogApi(config!!)
-        val sut = PostHogRemoteConfig(config!!, api, executor = multiThreadExecutor) { emptyMap() }
+        val api = PostHogApi(localConfig)
+        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor) { emptyMap() }
 
         val secondCallbackLatch = CountDownLatch(1)
 
