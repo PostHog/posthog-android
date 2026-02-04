@@ -437,7 +437,6 @@ public class PostHogRemoteConfig(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
             )
-            isLoadingFeatureFlags.set(false)
 
             // Check if there's a pending reload request and execute it
             val pendingRequest: PendingFeatureFlagsRequest?
@@ -449,6 +448,7 @@ public class PostHogRemoteConfig(
                     pendingRequest = null
                 }
             }
+            isLoadingFeatureFlags.set(false)
 
             pendingRequest?.let { request ->
                 config.logger.log("Executing pending feature flags reload.")
