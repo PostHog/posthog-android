@@ -32,6 +32,22 @@ public class PostHogRemoteConfig(
     private var isLoadingFeatureFlags = AtomicBoolean(false)
     private var isLoadingRemoteConfig = AtomicBoolean(false)
 
+    // Track if an additional reload was requested while a request was in flight
+    // This prevents dropping reload requests (e.g., from identify()) when preload is in progress
+    private var pendingFeatureFlagsReload = AtomicBoolean(false)
+    private val pendingFeatureFlagsLock = Any()
+
+    // Stores the parameters for the pending feature flags reload
+    private data class PendingFeatureFlagsRequest(
+        val distinctId: String,
+        val anonymousId: String?,
+        val groups: Map<String, String>?,
+        val internalOnFeatureFlags: PostHogOnFeatureFlags?,
+        val onFeatureFlags: PostHogOnFeatureFlags?,
+    )
+
+    private var pendingFeatureFlagsRequest: PendingFeatureFlagsRequest? = null
+
     private val featureFlagsLock = Any()
     private val remoteConfigLock = Any()
 
@@ -340,7 +356,19 @@ public class PostHogRemoteConfig(
         }
 
         if (isLoadingFeatureFlags.getAndSet(true)) {
-            config.logger.log("Feature flags are being loaded already.")
+            config.logger.log("Feature flags are being loaded already, queuing reload.")
+            // Queue the reload request instead of dropping it
+            // This ensures that requests with $anon_distinct_id (from identify()) are not lost
+            synchronized(pendingFeatureFlagsLock) {
+                pendingFeatureFlagsReload.set(true)
+                pendingFeatureFlagsRequest = PendingFeatureFlagsRequest(
+                    distinctId = distinctId,
+                    anonymousId = anonymousId,
+                    groups = groups,
+                    internalOnFeatureFlags = internalOnFeatureFlags,
+                    onFeatureFlags = onFeatureFlags,
+                )
+            }
             return
         }
 
@@ -409,6 +437,28 @@ public class PostHogRemoteConfig(
                 onFeatureFlags = onFeatureFlags,
             )
             isLoadingFeatureFlags.set(false)
+
+            // Check if there's a pending reload request and execute it
+            val pendingRequest: PendingFeatureFlagsRequest?
+            synchronized(pendingFeatureFlagsLock) {
+                if (pendingFeatureFlagsReload.getAndSet(false)) {
+                    pendingRequest = pendingFeatureFlagsRequest
+                    pendingFeatureFlagsRequest = null
+                } else {
+                    pendingRequest = null
+                }
+            }
+
+            pendingRequest?.let { request ->
+                config.logger.log("Executing pending feature flags reload.")
+                executeFeatureFlags(
+                    distinctId = request.distinctId,
+                    anonymousId = request.anonymousId,
+                    groups = request.groups,
+                    internalOnFeatureFlags = request.internalOnFeatureFlags,
+                    onFeatureFlags = request.onFeatureFlags,
+                )
+            }
         }
     }
 
