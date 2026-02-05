@@ -367,15 +367,21 @@ public class PostHogRemoteConfig(
 
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // if not all flags were computed, we upsert flags instead of replacing them
-                        this.flags = (this.flags ?: mapOf()) + (normalizedResponse.flags ?: mapOf())
+                        // but filter out flags that failed evaluation to avoid overwriting cached values
+                        val successfulFlags = normalizedResponse.flags?.filterValues { flag ->
+                            flag.failed != true
+                        } ?: mapOf()
+                        val successfulKeys = successfulFlags.keys
+
+                        this.flags = (this.flags ?: mapOf()) + successfulFlags
 
                         this.featureFlags =
-                            (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
+                            (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf())
 
                         val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
 
                         this.featureFlagPayloads =
-                            (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+                            (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads.filterKeys { it in successfulKeys }
                     } else {
                         this.flags = normalizedResponse.flags
                         this.featureFlags = normalizedResponse.featureFlags
