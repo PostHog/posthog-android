@@ -398,22 +398,29 @@ public class PostHogRemoteConfig(
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // if not all flags were computed, we upsert flags instead of replacing them
                         // but filter out flags that failed evaluation to avoid overwriting cached values
-                        val successfulFlags =
-                            normalizedResponse.flags?.filterValues { flag ->
-                                flag.failed != true
-                            } ?: mapOf()
-                        val successfulKeys = successfulFlags.keys
+                        val responseFlags = normalizedResponse.flags
+                        if (responseFlags != null) {
+                            // V4 response: filter out failed flags using the 'failed' field
+                            val successfulFlags = responseFlags.filterValues { flag -> flag.failed != true }
+                            val successfulKeys = successfulFlags.keys
 
-                        this.flags = (this.flags ?: mapOf()) + successfulFlags
+                            this.flags = (this.flags ?: mapOf()) + successfulFlags
 
-                        val newFeatureFlags =
-                            normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf()
-                        this.featureFlags = (this.featureFlags ?: mapOf()) + newFeatureFlags
+                            val newFeatureFlags =
+                                normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf()
+                            this.featureFlags = (this.featureFlags ?: mapOf()) + newFeatureFlags
 
-                        val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            this.featureFlagPayloads =
+                                (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads.filterKeys { it in successfulKeys }
+                        } else {
+                            // V1 response: no 'flags' property, merge all featureFlags (legacy behavior)
+                            this.featureFlags =
+                                (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
 
-                        this.featureFlagPayloads =
-                            (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads.filterKeys { it in successfulKeys }
+                            val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+                        }
                     } else {
                         this.flags = normalizedResponse.flags
                         this.featureFlags = normalizedResponse.featureFlags

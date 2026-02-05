@@ -214,9 +214,8 @@ internal class PostHogFeatureFlagsTest {
         // Verify initial payload exists
         assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         // Verify initial flag details show enabled=true
-        val initialDetails = sut.getFlagDetails("4535-funnel-bar-viz")
-        assertNotNull(initialDetails)
-        assertTrue(initialDetails!!.enabled)
+        val initialDetails = requireNotNull(sut.getFlagDetails("4535-funnel-bar-viz"))
+        assertTrue(initialDetails.enabled)
 
         // Second load: server returns errorsWhileComputingFlags=true,
         // 4535-funnel-bar-viz has failed=true and enabled=false (with null payload),
@@ -237,16 +236,14 @@ internal class PostHogFeatureFlagsTest {
         // The cached payload should also be preserved
         assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz", defaultValue = false) as Boolean)
         // The flag details should show the cached enabled=true, not the failed enabled=false
-        val cachedDetails = sut.getFlagDetails("4535-funnel-bar-viz")
-        assertNotNull(cachedDetails)
-        assertTrue(cachedDetails!!.enabled)
+        val cachedDetails = requireNotNull(sut.getFlagDetails("4535-funnel-bar-viz"))
+        assertTrue(cachedDetails.enabled)
 
         // The non-failed new flag should be merged in normally
         assertTrue(sut.getFeatureFlag("new-flag", defaultValue = false) as Boolean)
         // The new flag's details should be available
-        val newFlagDetails = sut.getFlagDetails("new-flag")
-        assertNotNull(newFlagDetails)
-        assertTrue(newFlagDetails!!.enabled)
+        val newFlagDetails = requireNotNull(sut.getFlagDetails("new-flag"))
+        assertTrue(newFlagDetails.enabled)
         assertFalse(newFlagDetails.failed ?: true)
     }
 
