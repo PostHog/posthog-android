@@ -1,5 +1,6 @@
 ## Next
 
+- fix: Filter out failed flags to prevent cached values from being overwritten during transient errors ([#408](https://github.com/PostHog/posthog-android/pull/408))
 - fix: Queue pending feature flags reload instead of dropping requests when a reload is already in flight ([#407](https://github.com/PostHog/posthog-android/pull/407))
 - feat: Expose `getFeatureFlagResult` to public API ([#405](https://github.com/PostHog/posthog-android/pull/405))
 - feat: Add `getFeatureFlagResult` to `PostHogFeatureFlagsInterface`, drop `getFeatureFlag`, `getFeatureFlagPayload`. ([#398](https://github.com/PostHog/posthog-android/pull/398))
