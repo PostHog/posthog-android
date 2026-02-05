@@ -38,7 +38,7 @@ class MyApp : Application() {
                     }
                 }
                 sessionReplayConfig.maskAllTextInputs = true
-                sessionReplayConfig.maskAllImages = false
+                sessionReplayConfig.maskAllImages = true
                 sessionReplayConfig.captureLogcat = false
                 sessionReplayConfig.screenshot = true
                 surveys = false
