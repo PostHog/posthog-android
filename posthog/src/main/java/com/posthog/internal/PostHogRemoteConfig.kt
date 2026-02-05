@@ -405,8 +405,9 @@ public class PostHogRemoteConfig(
 
                         this.flags = (this.flags ?: mapOf()) + successfulFlags
 
-                        this.featureFlags =
-                            (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf())
+                        val newFeatureFlags =
+                            normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf()
+                        this.featureFlags = (this.featureFlags ?: mapOf()) + newFeatureFlags
 
                         val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
 
