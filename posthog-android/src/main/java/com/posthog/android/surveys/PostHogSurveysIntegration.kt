@@ -128,7 +128,8 @@ public class PostHogSurveysIntegration(
     }
 
     private fun canActivateRepeatedly(survey: Survey): Boolean {
-        return survey.conditions?.events?.repeatedActivation == true && hasEvents(survey)
+        return (survey.conditions?.events?.repeatedActivation == true && hasEvents(survey)) ||
+            survey.schedule == "always"
     }
 
     /**
