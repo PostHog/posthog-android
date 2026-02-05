@@ -1,5 +1,7 @@
 ## Next
 
+## 2.3.0 - 2026-02-05
+
 - feat: Expose `getFeatureFlagResult` to public API ([#405](https://github.com/PostHog/posthog-android/pull/405))
 
 ## 2.2.0 - 2026-01-23
