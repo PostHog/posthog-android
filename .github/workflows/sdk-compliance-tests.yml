@@ -1,0 +1,30 @@
+name: SDK Compliance Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'posthog/**'
+      - 'sdk_compliance_adapter/**'
+      - '.github/workflows/sdk-compliance-tests.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'posthog/**'
+      - 'sdk_compliance_adapter/**'
+      - '.github/workflows/sdk-compliance-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: write
+
+jobs:
+  test-android-sdk:
+    uses: PostHog/posthog-sdk-test-harness/.github/workflows/test-sdk-action.yml@main
+    with:
+      adapter-dockerfile: sdk_compliance_adapter/Dockerfile
+      adapter-context: .
+      test-harness-version: latest
+      report-name: android-sdk-compliance-report

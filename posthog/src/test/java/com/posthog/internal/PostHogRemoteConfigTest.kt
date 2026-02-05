@@ -8,7 +8,9 @@ import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -381,6 +383,142 @@ internal class PostHogRemoteConfigTest {
         val teamProps = cachedProps?.get("team") as? Map<*, *>
         assertEquals("Engineering", teamProps?.get("name"))
 
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `pending reload is executed when loadFeatureFlags is called during in-flight request`() {
+        // Use a multi-threaded executor to allow concurrent execution
+        val multiThreadExecutor = Executors.newFixedThreadPool(2, PostHogThreadFactory("Test"))
+
+        // Add delay to simulate network latency
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi)
+                        .setBodyDelay(100, TimeUnit.MILLISECONDS),
+            )
+        val url = http.url("/")
+
+        val localConfig =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                cachePreferences = preferences
+            }
+        val api = PostHogApi(localConfig)
+        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor) { emptyMap() }
+
+        val firstCallbackLatch = CountDownLatch(1)
+        val secondCallbackLatch = CountDownLatch(1)
+
+        val firstCallback =
+            PostHogOnFeatureFlags {
+                firstCallbackLatch.countDown()
+            }
+
+        val secondCallback =
+            PostHogOnFeatureFlags {
+                secondCallbackLatch.countDown()
+            }
+
+        // Start the first request
+        sut.loadFeatureFlags(
+            distinctId = "user1",
+            anonymousId = null,
+            groups = emptyMap(),
+            onFeatureFlags = firstCallback,
+        )
+
+        // Give it a moment to start processing
+        Thread.sleep(20)
+
+        // Call loadFeatureFlags again while the first is in flight
+        // This should queue a pending reload instead of being dropped
+        sut.loadFeatureFlags(
+            distinctId = "user2",
+            anonymousId = "anonId123",
+            groups = emptyMap(),
+            onFeatureFlags = secondCallback,
+        )
+
+        // Wait for both callbacks to be called
+        assertTrue(
+            firstCallbackLatch.await(5, TimeUnit.SECONDS),
+            "First callback should be called",
+        )
+        assertTrue(
+            secondCallbackLatch.await(5, TimeUnit.SECONDS),
+            "Second callback should be called (pending reload)",
+        )
+
+        // Both requests should have been made
+        assertEquals(2, http.requestCount, "Both requests should have been made (original + pending)")
+
+        multiThreadExecutor.shutdownAndAwaitTermination()
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `pending reload contains correct parameters including anonymousId`() {
+        // Use a multi-threaded executor to allow concurrent execution
+        val multiThreadExecutor = Executors.newFixedThreadPool(2, PostHogThreadFactory("Test"))
+
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi)
+                        .setBodyDelay(100, TimeUnit.MILLISECONDS),
+            )
+        val url = http.url("/")
+
+        val localConfig =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                cachePreferences = preferences
+            }
+        val api = PostHogApi(localConfig)
+        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor) { emptyMap() }
+
+        val secondCallbackLatch = CountDownLatch(1)
+
+        // Start the first request (simulating preload)
+        sut.loadFeatureFlags(
+            distinctId = "preload_user",
+            anonymousId = null,
+            groups = emptyMap(),
+        )
+
+        Thread.sleep(20)
+
+        // Call loadFeatureFlags with anonymousId (simulating identify() call)
+        // This is the critical case - the anonymousId should NOT be dropped
+        sut.loadFeatureFlags(
+            distinctId = "identified_user",
+            anonymousId = "anon_id_for_hash_key",
+            groups = mapOf("company" to "posthog"),
+            onFeatureFlags =
+                PostHogOnFeatureFlags {
+                    secondCallbackLatch.countDown()
+                },
+        )
+
+        // Wait for the pending reload to complete
+        assertTrue(
+            secondCallbackLatch.await(5, TimeUnit.SECONDS),
+            "Pending reload callback should be called",
+        )
+
+        assertEquals(2, http.requestCount, "Both requests should be made")
+
+        // Take both requests (we just verify the count above)
+        http.takeRequest()
+        http.takeRequest()
+
+        multiThreadExecutor.shutdownAndAwaitTermination()
         sut.clear()
         http.shutdown()
     }
