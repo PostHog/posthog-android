@@ -1,5 +1,7 @@
 ## Next
 
+- fix: Filter out failed flags to prevent cached values from being overwritten during transient errors
+
 ## 6.3.0 - 2025-01-21
 
 - chore: do not capture $set events if user props have not changed ([#375](https://github.com/PostHog/posthog-android/pull/375))
