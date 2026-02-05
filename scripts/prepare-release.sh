@@ -14,18 +14,18 @@ NEW_VERSION="$2"
 BRANCH_NAME="release/${MODULE}-v${NEW_VERSION}"
 
 # ensure we're on main and up to date
-# git checkout main
-# git pull
+git checkout main
+git pull
 
 # create release branch
-# git checkout -b "$BRANCH_NAME"
+git checkout -b "$BRANCH_NAME"
 
 # bump version
 ./scripts/bump-version.sh $MODULE $NEW_VERSION
 
 # commit and push release branch
 git commit -am "chore(release): bump ${MODULE} to ${NEW_VERSION}"
-# git push -u origin "$BRANCH_NAME"
+git push -u origin "$BRANCH_NAME"
 
 PR_URL="https://github.com/PostHog/posthog-android/compare/main...release%2F${MODULE}-v${NEW_VERSION}?expand=1"
 
