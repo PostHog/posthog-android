@@ -11,12 +11,20 @@ import java.util.UUID
 public object PostHogSessionManager {
     private val sessionLock = Any()
 
-    // do not move to companion object, otherwise sessionId will be null
+    // do not move to companion object, otherwise sessionId clearwill be null
     private val sessionIdNone = UUID(0, 0)
 
     private var sessionId = sessionIdNone
 
+    @Volatile
+    internal var isReactNative: Boolean = false
+
     public fun startSession() {
+        if (isReactNative) {
+            // RN manages its own session
+            return
+        }
+
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
                 sessionId = TimeBasedEpochGenerator.generate()
@@ -25,6 +33,11 @@ public object PostHogSessionManager {
     }
 
     public fun endSession() {
+        if (isReactNative) {
+            // RN manages its own session
+            return
+        }
+
         synchronized(sessionLock) {
             sessionId = sessionIdNone
         }
@@ -39,6 +52,7 @@ public object PostHogSessionManager {
     }
 
     public fun setSessionId(sessionId: UUID) {
+        // RN can only set its own session id directly
         synchronized(sessionLock) {
             this.sessionId = sessionId
         }

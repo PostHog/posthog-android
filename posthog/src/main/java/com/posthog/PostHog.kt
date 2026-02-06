@@ -165,6 +165,8 @@ public class PostHog private constructor(
 
                 queue.start()
 
+                PostHogSessionManager.isReactNative = config.sdkName == "posthog-react-native"
+
                 startSession()
 
                 config.integrations.forEach {
