@@ -1,0 +1,48 @@
+{
+  "autocaptureExceptions": false,
+  "toolbarParams": {},
+  "errorsWhileComputingFlags": true,
+  "capturePerformance": true,
+  "autocapture_opt_out": false,
+  "isAuthenticated": false,
+  "supportedCompression": [
+    "gzip",
+    "gzip-js"
+  ],
+  "config": {
+    "enable_collect_everything": true
+  },
+  "flags": {
+    "4535-funnel-bar-viz": {
+      "key": "4535-funnel-bar-viz",
+      "enabled": false,
+      "variant": null,
+      "reason": null,
+      "metadata": {
+        "id": 4535,
+        "version": 2,
+        "payload": null
+      },
+      "failed": true
+    },
+    "new-flag": {
+      "key": "new-flag",
+      "enabled": true,
+      "variant": null,
+      "reason": {
+        "code": "condition_match",
+        "description": "Matched condition set 1",
+        "condition_index": 0
+      },
+      "metadata": {
+        "id": 999,
+        "version": 1,
+        "payload": null
+      },
+      "failed": false
+    }
+  },
+  "sessionRecording": false,
+  "siteApps": [],
+  "editorParams": {}
+}

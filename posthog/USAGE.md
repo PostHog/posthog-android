@@ -79,6 +79,41 @@ Close the SDK
 postHog.close()
 ```
 
+## Feature Flags
+
+Get all feature flag information at once
+
+```kotlin
+val result = postHog.getFeatureFlagResult("my-feature")
+if (result != null) {
+    if (result.enabled) {
+        println("Flag is enabled")
+    }
+
+    // Presence of a variant also indicates it's enabled
+    result.variant?.let { variant ->
+        println("Variant: $variant")
+    }
+
+    // Or use `value` which returns the variant or boolean
+    when (result.value) {
+        true -> println("Boolean flag is enabled")
+        "control" -> println("In control group")
+        "test" -> println("In test group")
+    }
+
+    // Access payload directly
+    (result.payload as? Map<String, Any>)?.let { config ->
+        println("Config: $config")
+    }
+
+    // Or decode payload to a specific type
+    result.getPayloadAs<FeatureSettings>()?.let { settings ->
+        println("Settings: $settings")
+    }
+}
+```
+
 ## Differences from posthog-android
 
 The core package (`com.posthog:posthog`) is a pure JVM library that:

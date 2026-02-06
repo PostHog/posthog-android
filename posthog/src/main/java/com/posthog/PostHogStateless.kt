@@ -432,15 +432,18 @@ public open class PostHogStateless protected constructor(
         distinctId: String,
         key: String,
         value: Any?,
-        requestId: String? = null,
-        evaluatedAt: Long? = null,
         groups: Map<String, String>? = null,
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
+        sendFeatureFlagEvent: Boolean? = null,
     ) {
-        if (config?.sendFeatureFlagEvent == true) {
+        val effectiveSendFeatureFlagEvent = sendFeatureFlagEvent ?: config?.sendFeatureFlagEvent ?: true
+        if (effectiveSendFeatureFlagEvent) {
             val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
             if (isNewlySeen) {
+                val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
+                val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
+
                 val props = mutableMapOf<String, Any>()
                 props["\$feature_flag"] = key
                 props["\$feature_flag_response"] = value ?: ""
@@ -467,26 +470,11 @@ public open class PostHogStateless protected constructor(
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
-        if (!isEnabled()) {
-            return defaultValue
-        }
-        val value =
-            featureFlags?.getFeatureFlag(
-                key,
-                defaultValue,
-                distinctId,
-                groups,
-                personProperties,
-                groupProperties,
-            ) ?: defaultValue
-
-        // Get requestId and evaluatedAt from feature flags
-        val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
-        val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
-
-        sendFeatureFlagCalled(distinctId, key, value, requestId, evaluatedAt, groups, personProperties, groupProperties)
-
-        return value
+        if (!isEnabled()) return defaultValue
+        val result = featureFlags?.getFeatureFlagResult(key, distinctId, groups, personProperties, groupProperties)
+        val flagValue = result?.value ?: defaultValue
+        sendFeatureFlagCalled(distinctId, key, flagValue, groups, personProperties, groupProperties)
+        return flagValue
     }
 
     public override fun getFeatureFlagPayloadStateless(
@@ -497,17 +485,40 @@ public open class PostHogStateless protected constructor(
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
-        if (!isEnabled()) {
-            return defaultValue
-        }
-        return featureFlags?.getFeatureFlagPayload(
-            key,
-            defaultValue,
+        if (!isEnabled()) return defaultValue
+        return getFeatureFlagResultStateless(
             distinctId,
+            key,
             groups,
             personProperties,
             groupProperties,
-        ) ?: defaultValue
+            sendFeatureFlagEvent = false,
+        )?.payload ?: defaultValue
+    }
+
+    public override fun getFeatureFlagResultStateless(
+        distinctId: String,
+        key: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        sendFeatureFlagEvent: Boolean?,
+    ): FeatureFlagResult? {
+        if (!isEnabled()) {
+            return null
+        }
+        val result =
+            featureFlags?.getFeatureFlagResult(
+                key,
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+
+        sendFeatureFlagCalled(distinctId, key, result?.value, groups, personProperties, groupProperties, sendFeatureFlagEvent)
+
+        return result
     }
 
     public override fun flush() {
@@ -688,6 +699,23 @@ public open class PostHogStateless protected constructor(
                 groups,
                 personProperties,
                 groupProperties,
+            )
+
+        public override fun getFeatureFlagResultStateless(
+            distinctId: String,
+            key: String,
+            groups: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
+            sendFeatureFlagEvent: Boolean?,
+        ): FeatureFlagResult? =
+            shared.getFeatureFlagResultStateless(
+                distinctId,
+                key,
+                groups,
+                personProperties,
+                groupProperties,
+                sendFeatureFlagEvent,
             )
 
         public override fun flush() {

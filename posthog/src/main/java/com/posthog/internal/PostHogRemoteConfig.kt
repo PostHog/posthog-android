@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
@@ -30,6 +31,22 @@ public class PostHogRemoteConfig(
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
     private var isLoadingRemoteConfig = AtomicBoolean(false)
+
+    // Track if an additional reload was requested while a request was in flight
+    // This prevents dropping reload requests (e.g., from identify()) when preload is in progress
+    private var pendingFeatureFlagsReload = AtomicBoolean(false)
+    private val pendingFeatureFlagsLock = Any()
+
+    // Stores the parameters for the pending feature flags reload
+    private data class PendingFeatureFlagsRequest(
+        val distinctId: String,
+        val anonymousId: String?,
+        val groups: Map<String, String>?,
+        val internalOnFeatureFlags: PostHogOnFeatureFlags?,
+        val onFeatureFlags: PostHogOnFeatureFlags?,
+    )
+
+    private var pendingFeatureFlagsRequest: PendingFeatureFlagsRequest? = null
 
     private val featureFlagsLock = Any()
     private val remoteConfigLock = Any()
@@ -339,7 +356,20 @@ public class PostHogRemoteConfig(
         }
 
         if (isLoadingFeatureFlags.getAndSet(true)) {
-            config.logger.log("Feature flags are being loaded already.")
+            config.logger.log("Feature flags are being loaded already, queuing reload.")
+            // Queue the reload request instead of dropping it
+            // This ensures that requests with $anon_distinct_id (from identify()) are not lost
+            synchronized(pendingFeatureFlagsLock) {
+                pendingFeatureFlagsReload.set(true)
+                pendingFeatureFlagsRequest =
+                    PendingFeatureFlagsRequest(
+                        distinctId = distinctId,
+                        anonymousId = anonymousId,
+                        groups = groups,
+                        internalOnFeatureFlags = internalOnFeatureFlags,
+                        onFeatureFlags = onFeatureFlags,
+                    )
+            }
             return
         }
 
@@ -367,15 +397,30 @@ public class PostHogRemoteConfig(
 
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // if not all flags were computed, we upsert flags instead of replacing them
-                        this.flags = (this.flags ?: mapOf()) + (normalizedResponse.flags ?: mapOf())
+                        // but filter out flags that failed evaluation to avoid overwriting cached values
+                        val responseFlags = normalizedResponse.flags
+                        if (responseFlags != null) {
+                            // V4 response: filter out failed flags using the 'failed' field
+                            val successfulFlags = responseFlags.filterValues { flag -> flag.failed != true }
+                            val successfulKeys = successfulFlags.keys
 
-                        this.featureFlags =
-                            (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
+                            this.flags = (this.flags ?: mapOf()) + successfulFlags
 
-                        val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            val newFeatureFlags =
+                                normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf()
+                            this.featureFlags = (this.featureFlags ?: mapOf()) + newFeatureFlags
 
-                        this.featureFlagPayloads =
-                            (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+                            val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            this.featureFlagPayloads =
+                                (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads.filterKeys { it in successfulKeys }
+                        } else {
+                            // V1 response: no 'flags' property, merge all featureFlags (legacy behavior)
+                            this.featureFlags =
+                                (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
+
+                            val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+                        }
                     } else {
                         this.flags = normalizedResponse.flags
                         this.featureFlags = normalizedResponse.featureFlags
@@ -407,7 +452,29 @@ public class PostHogRemoteConfig(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
             )
+
+            // Check if there's a pending reload request and execute it
+            val pendingRequest: PendingFeatureFlagsRequest?
+            synchronized(pendingFeatureFlagsLock) {
+                if (pendingFeatureFlagsReload.getAndSet(false)) {
+                    pendingRequest = pendingFeatureFlagsRequest
+                    pendingFeatureFlagsRequest = null
+                } else {
+                    pendingRequest = null
+                }
+            }
             isLoadingFeatureFlags.set(false)
+
+            pendingRequest?.let { request ->
+                config.logger.log("Executing pending feature flags reload.")
+                executeFeatureFlags(
+                    distinctId = request.distinctId,
+                    anonymousId = request.anonymousId,
+                    groups = request.groups,
+                    internalOnFeatureFlags = request.internalOnFeatureFlags,
+                    onFeatureFlags = request.onFeatureFlags,
+                )
+            }
         }
     }
 
@@ -569,46 +636,64 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun readFeatureFlag(
+    override fun getFeatureFlagResult(
         key: String,
-        defaultValue: Any?,
-        flags: Map<String, Any?>?,
-    ): Any? {
-        val value: Any?
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): FeatureFlagResult? {
+        loadFeatureFlagsFromCacheIfNeeded()
 
         synchronized(featureFlagsLock) {
-            value = flags?.get(key)
+            val value = featureFlags?.get(key) ?: return null
+            val payload = featureFlagPayloads?.get(key)
+
+            val (enabled, variant) =
+                when (value) {
+                    is Boolean -> value to null
+                    is String -> true to value
+                    else -> return null
+                }
+
+            return FeatureFlagResult(key, enabled, variant, payload)
         }
-
-        return value ?: defaultValue
     }
 
-    override fun getFeatureFlag(
+    public fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
-        distinctId: String?,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any? {
-        // since we pass featureFlags as a value, we need to load it from cache if needed
-        loadFeatureFlagsFromCacheIfNeeded()
-
-        return readFeatureFlag(key, defaultValue, featureFlags)
+        val result =
+            getFeatureFlagResult(
+                key,
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+        return result?.value ?: defaultValue
     }
 
-    override fun getFeatureFlagPayload(
+    public fun getFeatureFlagPayload(
         key: String,
-        defaultValue: Any?,
-        distinctId: String?,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any? {
-        // since we pass featureFlags as a value, we need to load it from cache if needed
-        loadFeatureFlagsFromCacheIfNeeded()
-
-        return readFeatureFlag(key, defaultValue, featureFlagPayloads)
+        return getFeatureFlagResult(
+            key,
+            distinctId,
+            groups,
+            personProperties,
+            groupProperties,
+        )?.payload ?: defaultValue
     }
 
     override fun getFeatureFlags(
