@@ -11,7 +11,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogSessionManagerTest {
-
     @Test
     internal fun `when React Native, startSession does not create new session`() {
         PostHogSessionManager.isReactNative = true
