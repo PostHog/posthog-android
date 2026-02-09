@@ -33,6 +33,13 @@
     <!--                />-->
     <!--            &lt;!&ndash;        android:tag="ph-no-capture"&ndash;&gt;-->
 
+    <ImageView
+        android:id="@+id/imvAndroid"
+        android:layout_width="150dp"
+        android:layout_height="150dp"
+        android:src="@drawable/android_logo"
+        />
+
     <Button
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

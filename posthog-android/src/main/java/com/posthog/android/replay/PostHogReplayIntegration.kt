@@ -114,10 +114,64 @@ public class PostHogReplayIntegration(
         context.displayMetrics()
     }
 
-    private val paint =
-        Paint().apply {
-            color = Color.BLACK
+    // Single pixel bitmap for efficient dominant color extraction
+    private val singlePixelBitmap: Bitmap by lazy {
+        Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    }
+    private val singlePixelCanvas: Canvas by lazy { Canvas(singlePixelBitmap) }
+    private val singlePixelRect = Rect(0, 0, 1, 1)
+
+    /**
+     * Draws a masked rectangle with the dominant color from the region.
+     */
+    private fun drawMaskedRect(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        rect: Rect,
+        paint: Paint,
+    ) {
+        val rectF = RectF(rect)
+        paint.color = getDominantColor(bitmap, rect)
+        canvas.drawRoundRect(rectF, 10f, 10f, paint)
+    }
+
+    /**
+     * Extracts the dominant/average color from a region of the bitmap.
+     * Uses Canvas scaling to efficiently average all pixels in the region
+     * by drawing it to a 1x1 bitmap.
+     */
+    @SuppressLint("UseKtx")
+    private fun getDominantColor(
+        bitmap: Bitmap,
+        rect: Rect,
+    ): Int {
+        try {
+            if (bitmap.isRecycled || singlePixelBitmap.isRecycled) {
+                return Color.BLACK
+            }
+
+            // Clamp the rect to bitmap bounds
+            val clampedRect = Rect(
+                rect.left.coerceIn(0, bitmap.width - 1),
+                rect.top.coerceIn(0, bitmap.height - 1),
+                rect.right.coerceIn(1, bitmap.width),
+                rect.bottom.coerceIn(1, bitmap.height),
+            )
+
+            if (clampedRect.width() <= 0 || clampedRect.height() <= 0) {
+                return Color.BLACK
+            }
+
+            // Draw the region scaled down to a single pixel - Canvas averages the colors
+            singlePixelCanvas.drawBitmap(bitmap, clampedRect, singlePixelRect, null)
+
+            // The single pixel now contains the average color of the region
+            return singlePixelBitmap.getPixel(0, 0)
+        } catch (_: Throwable) {
+            // Bitmap may have been recycled
+            return Color.BLACK
         }
+    }
 
     @Volatile
     private var isSessionReplayActive: Boolean = false
@@ -650,6 +704,7 @@ public class PostHogReplayIntegration(
         return this.isTextInputSensitive() || passwordInputTypes.contains(inputType - 1)
     }
 
+    @SuppressLint("UseKtx")
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
@@ -831,7 +886,7 @@ public class PostHogReplayIntegration(
     }
 
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
-    @SuppressLint("NewApi")
+    @SuppressLint("NewApi", "UseKtx")
     private fun View.toScreenshotWireframe(window: Window): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
@@ -892,13 +947,25 @@ public class PostHogReplayIntegration(
                                         return@request
                                     }
 
+                                val paint = Paint()
+                                // Offset to convert screen coordinates to bitmap coordinates
+                                val offsetX = coordinates[0]
+                                val offsetY = coordinates[1]
                                 maskableWidgets.forEach {
                                     if (isOnDrawnCalled) {
                                         recycleAndLogBitmapDiscarded(bitmap)
                                         success = false
                                         return@forEach
                                     }
-                                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                                    // Convert from screen coordinates to bitmap coordinates
+                                    val bitmapRect = Rect(
+                                        it.left - offsetX,
+                                        it.top - offsetY,
+                                        it.right - offsetX,
+                                        it.bottom - offsetY,
+                                    )
+                                    // Draw masked rect with dominant color
+                                    drawMaskedRect(canvas, bitmap, bitmapRect, paint)
                                 }
                             } else {
                                 recycleAndLogBitmapDiscarded(bitmap)
@@ -962,6 +1029,7 @@ public class PostHogReplayIntegration(
         return this.isTextInputSensitive()
     }
 
+    @SuppressLint("UseKtx")
     private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
@@ -1261,6 +1329,7 @@ public class PostHogReplayIntegration(
         return config.sessionReplayConfig.drawableConverter?.convert(drawable)
     }
 
+    @SuppressLint("NewApi")
     private fun Drawable.toRGBColor(): String? {
         when (this) {
             is ColorDrawable -> {
@@ -1435,7 +1504,7 @@ public class PostHogReplayIntegration(
     }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {
-        return if (index < 0 || index >= pointerCount) {
+        return if (index !in 0 until pointerCount) {
             rawX // Fallback to single-touch `rawX` to prevent crashes
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -1447,7 +1516,7 @@ public class PostHogReplayIntegration(
     }
 
     private fun MotionEvent.getRawYCompat(index: Int): Float {
-        return if (index < 0 || index >= pointerCount) {
+        return if (index !in 0 until pointerCount) {
             rawY // Fallback to single-touch `rawY` to prevent crashes
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
