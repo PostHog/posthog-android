@@ -11,7 +11,6 @@ import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_AT
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
-import com.posthog.internal.PostHogPreferences.Companion.LOGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
@@ -87,7 +86,7 @@ public class PostHogRemoteConfig(
     private var remoteAutocaptureExceptions = false
 
     @Volatile
-    private var remoteCaptureConsoleLogs = false
+    private var remoteConsoleLogRecordingEnabled = false
 
     @Volatile
     private var remoteCaptureNetworkTiming = false
@@ -103,7 +102,6 @@ public class PostHogRemoteConfig(
         preloadSessionReplayFlag()
         preloadSurveys()
         preloadErrorTrackingConfig()
-        preloadLogsConfig()
         preloadCapturePerformanceConfig()
         loadCachedPropertiesForFlags()
     }
@@ -199,7 +197,6 @@ public class PostHogRemoteConfig(
                         processSessionRecordingConfig(it.sessionRecording)
                         processSurveys(it.surveys)
                         processErrorTrackingConfig(it.errorTracking)
-                        processLogsConfig(it.logs)
                         processCapturePerformanceConfig(it.capturePerformance)
 
                         val hasFlags = it.hasFeatureFlags ?: false
@@ -328,6 +325,7 @@ public class PostHogRemoteConfig(
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
                 sessionReplayFlagActive = sessionRecording
+                remoteConsoleLogRecordingEnabled = false
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -346,10 +344,12 @@ public class PostHogRemoteConfig(
                         ?: config.snapshotEndpoint
 
                     sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+
+                    remoteConsoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
+
                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
                     // TODO:
-                    // consoleLogRecordingEnabled -> Boolean or null
                     // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
                     // sampleRate, etc
                 }
@@ -369,7 +369,6 @@ public class PostHogRemoteConfig(
         when (errorTracking) {
             is Boolean -> {
                 // if errorTracking is a Boolean, it's always false (disabled)
-                remoteAutocaptureExceptions = false
                 clearErrorTracking()
             }
             is Map<*, *> -> {
@@ -394,45 +393,6 @@ public class PostHogRemoteConfig(
                 if (errorTracking != null) {
                     val autocaptureExceptions = errorTracking["autocaptureExceptions"]
                     remoteAutocaptureExceptions = autocaptureExceptions as? Boolean ?: false
-                }
-            }
-        }
-    }
-
-    private fun clearLogs() {
-        remoteCaptureConsoleLogs = false
-        config.cachePreferences?.remove(LOGS)
-    }
-
-    private fun processLogsConfig(logs: Any?) {
-        when (logs) {
-            is Boolean -> {
-                // if logs is a Boolean, it's always false (disabled)
-                remoteCaptureConsoleLogs = false
-                clearLogs()
-            }
-            is Map<*, *> -> {
-                @Suppress("UNCHECKED_CAST")
-                (logs as? Map<String, Any>)?.let {
-                    val captureConsoleLogs = it["captureConsoleLogs"]
-                    remoteCaptureConsoleLogs = captureConsoleLogs as? Boolean ?: false
-                    config.cachePreferences?.setValue(LOGS, it)
-                }
-            }
-            else -> {
-                // do nothing
-            }
-        }
-    }
-
-    private fun preloadLogsConfig() {
-        synchronized(remoteConfigLock) {
-            config.cachePreferences?.let { preferences ->
-                @Suppress("UNCHECKED_CAST")
-                val logs = preferences.getValue(LOGS) as? Map<String, Any>
-                if (logs != null) {
-                    val captureConsoleLogs = logs["captureConsoleLogs"]
-                    remoteCaptureConsoleLogs = captureConsoleLogs as? Boolean ?: false
                 }
             }
         }
@@ -486,12 +446,12 @@ public class PostHogRemoteConfig(
         remoteAutocaptureExceptions && config.errorTrackingConfig.autoCapture
 
     /**
-     * Returns whether console log capture is enabled.
-     * Both remote config (logs.captureConsoleLogs) AND local config must be enabled.
+     * Returns whether console log recording is enabled remotely.
+     * Both remote config (sessionRecording.consoleLogRecordingEnabled) AND local config must be enabled.
      * The local config is platform-specific (e.g., PostHogAndroidConfig.sessionReplayConfig.captureLogcat).
      * This method only checks the remote side; callers should AND with their local config.
      */
-    public fun isRemoteCaptureConsoleLogsEnabled(): Boolean = remoteCaptureConsoleLogs
+    public fun isRemoteConsoleLogRecordingEnabled(): Boolean = remoteConsoleLogRecordingEnabled
 
     /**
      * Returns whether network timing capture is enabled.
@@ -702,6 +662,8 @@ public class PostHogRemoteConfig(
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
+
+                    remoteConsoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
                 }
             }
         }
@@ -1028,6 +990,7 @@ public class PostHogRemoteConfig(
     override fun clear() {
         synchronized(featureFlagsLock) {
             sessionReplayFlagActive = false
+            remoteConsoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
 
             clearFlags()
@@ -1036,7 +999,6 @@ public class PostHogRemoteConfig(
         synchronized(remoteConfigLock) {
             clearSurveys()
             clearErrorTracking()
-            clearLogs()
             clearCapturePerformance()
         }
 

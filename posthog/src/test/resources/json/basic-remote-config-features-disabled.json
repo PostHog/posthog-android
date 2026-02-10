@@ -10,7 +10,6 @@
   "autocapture_opt_out": true,
   "autocaptureExceptions": false,
   "errorTracking": false,
-  "logs": false,
   "analytics": {
     "endpoint": "/i/v0/e/"
   },

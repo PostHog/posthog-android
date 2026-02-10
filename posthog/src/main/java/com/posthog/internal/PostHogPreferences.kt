@@ -39,7 +39,6 @@ public interface PostHogPreferences {
         internal const val SESSION_REPLAY = "sessionReplay"
         internal const val SURVEYS = "surveys"
         internal const val ERROR_TRACKING = "errorTracking"
-        internal const val LOGS = "logs"
         internal const val CAPTURE_PERFORMANCE = "capturePerformance"
         internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
         internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
@@ -70,7 +69,6 @@ public interface PostHogPreferences {
                 PERSON_PROPERTIES_FOR_FLAGS,
                 GROUP_PROPERTIES_FOR_FLAGS,
                 ERROR_TRACKING,
-                LOGS,
                 CAPTURE_PERFORMANCE,
             )
     }

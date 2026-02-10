@@ -5,7 +5,6 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
-import com.posthog.internal.PostHogPreferences.Companion.LOGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
@@ -630,11 +629,11 @@ internal class PostHogRemoteConfigTest {
         http.shutdown()
     }
 
-    // --- Logs remote config tests ---
+    // --- Console Log Recording remote config tests (from sessionRecording) ---
 
     @Test
-    fun `remote config enables captureConsoleLogs when remote is enabled`() {
-        val file = File("src/test/resources/json/basic-remote-config-features-enabled.json")
+    fun `remote config enables consoleLogRecordingEnabled from sessionRecording`() {
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
 
         val http =
             mockHttp(
@@ -650,14 +649,14 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.isRemoteCaptureConsoleLogsEnabled())
+        assertTrue(sut.isRemoteConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
     }
 
     @Test
-    fun `remote config disables captureConsoleLogs when remote is disabled (boolean false)`() {
+    fun `remote config disables consoleLogRecordingEnabled when sessionRecording is boolean false`() {
         val file = File("src/test/resources/json/basic-remote-config-features-disabled.json")
 
         val http =
@@ -674,7 +673,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertFalse(sut.isRemoteCaptureConsoleLogsEnabled())
+        assertFalse(sut.isRemoteConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -760,9 +759,9 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `preloads logs config from cache on start`() {
-        val cachedConfig = mapOf("captureConsoleLogs" to true)
-        preferences.setValue(LOGS, cachedConfig)
+    fun `preloads consoleLogRecordingEnabled from session replay cache on start`() {
+        val cachedConfig = mapOf("consoleLogRecordingEnabled" to true)
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
 
         val http =
             mockHttp(
@@ -774,7 +773,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isRemoteCaptureConsoleLogsEnabled())
+        assertTrue(sut.isRemoteConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -833,9 +832,9 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `clear removes cached logs config`() {
-        val cachedConfig = mapOf("captureConsoleLogs" to true)
-        preferences.setValue(LOGS, cachedConfig)
+    fun `clear resets consoleLogRecordingEnabled`() {
+        val cachedConfig = mapOf("consoleLogRecordingEnabled" to true)
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
 
         val http =
             mockHttp(
@@ -847,12 +846,11 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isRemoteCaptureConsoleLogsEnabled())
+        assertTrue(sut.isRemoteConsoleLogRecordingEnabled())
 
         sut.clear()
 
-        assertFalse(sut.isRemoteCaptureConsoleLogsEnabled())
-        assertEquals(null, preferences.getValue(LOGS))
+        assertFalse(sut.isRemoteConsoleLogRecordingEnabled())
 
         http.shutdown()
     }
@@ -910,8 +908,8 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `remote config caches logs config to disk`() {
-        val file = File("src/test/resources/json/basic-remote-config-features-enabled.json")
+    fun `remote config caches consoleLogRecordingEnabled via sessionRecording to disk`() {
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
 
         val http =
             mockHttp(
@@ -928,8 +926,8 @@ internal class PostHogRemoteConfigTest {
         executor.shutdownAndAwaitTermination()
 
         @Suppress("UNCHECKED_CAST")
-        val cached = preferences.getValue(LOGS) as? Map<String, Any>
-        assertEquals(true, cached?.get("captureConsoleLogs"))
+        val cached = preferences.getValue(SESSION_REPLAY) as? Map<String, Any>
+        assertEquals(true, cached?.get("consoleLogRecordingEnabled"))
 
         sut.clear()
         http.shutdown()

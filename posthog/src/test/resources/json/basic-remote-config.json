@@ -16,9 +16,6 @@
   "errorTracking": {
     "autocaptureExceptions": true
   },
-  "logs": {
-    "captureConsoleLogs": true
-  },
   "analytics": {
     "endpoint": "/i/v0/e/"
   },
