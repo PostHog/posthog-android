@@ -20,6 +20,13 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     private val isSessionReplayActive: Boolean
         get() = postHog?.isSessionReplayActive() ?: false
 
+    private val isRemoteConsoleLogRecordingEnabled: Boolean
+        get() {
+            val remoteConfig = config.remoteConfigHolder
+            // if remote config hasn't loaded yet, default to true (don't block locally enabled capture)
+            return remoteConfig?.isRemoteConsoleLogRecordingEnabled() ?: true
+        }
+
     private var postHog: PostHogInterface? = null
 
     private companion object {
@@ -53,7 +60,8 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                                 line = it.readLine()
 
                                 // do not capture console logs if session replay is disabled
-                                if (!isSessionReplayActive) {
+                                // or if remote config has disabled console log recording
+                                if (!isSessionReplayActive || !isRemoteConsoleLogRecordingEnabled) {
                                     continue
                                 }
 

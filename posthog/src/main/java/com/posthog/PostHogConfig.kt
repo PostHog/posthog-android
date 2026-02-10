@@ -316,6 +316,13 @@ public open class PostHogConfig(
     @PostHogInternal
     public var snapshotEndpoint: String = "/s/"
 
+    /**
+     * Reference to the PostHogRemoteConfig instance, set during setup.
+     * Used by integrations to check remote config values.
+     */
+    @PostHogInternal
+    public var remoteConfigHolder: PostHogRemoteConfig? = null
+
     @PostHogInternal
     public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
 
