@@ -13,6 +13,12 @@
   },
   "autocapture_opt_out": true,
   "autocaptureExceptions": false,
+  "errorTracking": {
+    "autocaptureExceptions": true
+  },
+  "logs": {
+    "captureConsoleLogs": true
+  },
   "analytics": {
     "endpoint": "/i/v0/e/"
   },

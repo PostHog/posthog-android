@@ -4,11 +4,14 @@ import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
+import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_AT
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.LOGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
@@ -77,6 +80,18 @@ public class PostHogRemoteConfig(
     @Volatile
     private var hasSurveys = false
 
+    // Remote config values for error tracking, logs, and capture performance.
+    // These represent the remote-enabled state (true = remote says enabled).
+    // The effective state is: remoteEnabled AND localEnabled.
+    @Volatile
+    private var remoteAutocaptureExceptions = false
+
+    @Volatile
+    private var remoteCaptureConsoleLogs = false
+
+    @Volatile
+    private var remoteCaptureNetworkTiming = false
+
     /**
      * Optional callback invoked after remote config finishes loading and surveys have been processed.
      * Use this to notify listeners that cached surveys may have changed.
@@ -87,6 +102,9 @@ public class PostHogRemoteConfig(
     init {
         preloadSessionReplayFlag()
         preloadSurveys()
+        preloadErrorTrackingConfig()
+        preloadLogsConfig()
+        preloadCapturePerformanceConfig()
         loadCachedPropertiesForFlags()
     }
 
@@ -180,6 +198,9 @@ public class PostHogRemoteConfig(
                     synchronized(remoteConfigLock) {
                         processSessionRecordingConfig(it.sessionRecording)
                         processSurveys(it.surveys)
+                        processErrorTrackingConfig(it.errorTracking)
+                        processLogsConfig(it.logs)
+                        processCapturePerformanceConfig(it.capturePerformance)
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
@@ -338,6 +359,147 @@ public class PostHogRemoteConfig(
             }
         }
     }
+
+    private fun clearErrorTracking() {
+        remoteAutocaptureExceptions = false
+        config.cachePreferences?.remove(ERROR_TRACKING)
+    }
+
+    private fun processErrorTrackingConfig(errorTracking: Any?) {
+        when (errorTracking) {
+            is Boolean -> {
+                // if errorTracking is a Boolean, it's always false (disabled)
+                remoteAutocaptureExceptions = false
+                clearErrorTracking()
+            }
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                (errorTracking as? Map<String, Any>)?.let {
+                    val autocaptureExceptions = it["autocaptureExceptions"]
+                    remoteAutocaptureExceptions = autocaptureExceptions as? Boolean ?: false
+                    config.cachePreferences?.setValue(ERROR_TRACKING, it)
+                }
+            }
+            else -> {
+                // do nothing
+            }
+        }
+    }
+
+    private fun preloadErrorTrackingConfig() {
+        synchronized(remoteConfigLock) {
+            config.cachePreferences?.let { preferences ->
+                @Suppress("UNCHECKED_CAST")
+                val errorTracking = preferences.getValue(ERROR_TRACKING) as? Map<String, Any>
+                if (errorTracking != null) {
+                    val autocaptureExceptions = errorTracking["autocaptureExceptions"]
+                    remoteAutocaptureExceptions = autocaptureExceptions as? Boolean ?: false
+                }
+            }
+        }
+    }
+
+    private fun clearLogs() {
+        remoteCaptureConsoleLogs = false
+        config.cachePreferences?.remove(LOGS)
+    }
+
+    private fun processLogsConfig(logs: Any?) {
+        when (logs) {
+            is Boolean -> {
+                // if logs is a Boolean, it's always false (disabled)
+                remoteCaptureConsoleLogs = false
+                clearLogs()
+            }
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                (logs as? Map<String, Any>)?.let {
+                    val captureConsoleLogs = it["captureConsoleLogs"]
+                    remoteCaptureConsoleLogs = captureConsoleLogs as? Boolean ?: false
+                    config.cachePreferences?.setValue(LOGS, it)
+                }
+            }
+            else -> {
+                // do nothing
+            }
+        }
+    }
+
+    private fun preloadLogsConfig() {
+        synchronized(remoteConfigLock) {
+            config.cachePreferences?.let { preferences ->
+                @Suppress("UNCHECKED_CAST")
+                val logs = preferences.getValue(LOGS) as? Map<String, Any>
+                if (logs != null) {
+                    val captureConsoleLogs = logs["captureConsoleLogs"]
+                    remoteCaptureConsoleLogs = captureConsoleLogs as? Boolean ?: false
+                }
+            }
+        }
+    }
+
+    private fun clearCapturePerformance() {
+        remoteCaptureNetworkTiming = false
+        config.cachePreferences?.remove(CAPTURE_PERFORMANCE)
+    }
+
+    private fun processCapturePerformanceConfig(capturePerformance: Any?) {
+        when (capturePerformance) {
+            is Boolean -> {
+                // if capturePerformance is a Boolean, it's always false (disabled)
+                remoteCaptureNetworkTiming = false
+                clearCapturePerformance()
+            }
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                (capturePerformance as? Map<String, Any>)?.let {
+                    val networkTiming = it["network_timing"]
+                    remoteCaptureNetworkTiming = networkTiming as? Boolean ?: false
+                    config.cachePreferences?.setValue(CAPTURE_PERFORMANCE, it)
+                }
+            }
+            else -> {
+                // do nothing
+            }
+        }
+    }
+
+    private fun preloadCapturePerformanceConfig() {
+        synchronized(remoteConfigLock) {
+            config.cachePreferences?.let { preferences ->
+                @Suppress("UNCHECKED_CAST")
+                val capturePerformance = preferences.getValue(CAPTURE_PERFORMANCE) as? Map<String, Any>
+                if (capturePerformance != null) {
+                    val networkTiming = capturePerformance["network_timing"]
+                    remoteCaptureNetworkTiming = networkTiming as? Boolean ?: false
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns whether autocapture of exceptions is enabled.
+     * Both remote config (errorTracking.autocaptureExceptions) AND local config
+     * (PostHogConfig.errorTrackingConfig.autoCapture) must be enabled.
+     */
+    public fun isAutocaptureExceptionsEnabled(): Boolean =
+        remoteAutocaptureExceptions && config.errorTrackingConfig.autoCapture
+
+    /**
+     * Returns whether console log capture is enabled.
+     * Both remote config (logs.captureConsoleLogs) AND local config must be enabled.
+     * The local config is platform-specific (e.g., PostHogAndroidConfig.sessionReplayConfig.captureLogcat).
+     * This method only checks the remote side; callers should AND with their local config.
+     */
+    public fun isRemoteCaptureConsoleLogsEnabled(): Boolean = remoteCaptureConsoleLogs
+
+    /**
+     * Returns whether network timing capture is enabled.
+     * Both remote config (capturePerformance.network_timing) AND local config must be enabled.
+     * The local config is on PostHogOkHttpInterceptor.captureNetworkTelemetry.
+     * This method only checks the remote side; callers should AND with their local config.
+     */
+    public fun isRemoteCaptureNetworkTimingEnabled(): Boolean = remoteCaptureNetworkTiming
 
     private fun executeFeatureFlags(
         distinctId: String,
@@ -873,6 +1035,9 @@ public class PostHogRemoteConfig(
 
         synchronized(remoteConfigLock) {
             clearSurveys()
+            clearErrorTracking()
+            clearLogs()
+            clearCapturePerformance()
         }
 
         // Clear person and group properties for flags

@@ -12,4 +12,10 @@ public open class PostHogRemoteConfigResponse(
     public val surveys: Any? = false,
     // Indicates if the team has any flags enabled (if not we don't need to load them)
     public val hasFeatureFlags: Boolean? = false,
+    // its either a boolean (false = disabled) or a map with "autocaptureExceptions" key
+    public val errorTracking: Any? = false,
+    // its either a boolean (false = disabled) or a map with "captureConsoleLogs" key
+    public val logs: Any? = false,
+    // its either a boolean (false = disabled) or a map with "network_timing" key
+    public val capturePerformance: Any? = false,
 )

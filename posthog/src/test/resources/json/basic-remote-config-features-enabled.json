@@ -4,7 +4,7 @@
     "gzip",
     "gzip-js"
   ],
-  "hasFeatureFlags": true,
+  "hasFeatureFlags": false,
   "captureDeadClicks": false,
   "capturePerformance": {
     "network_timing": true,
@@ -23,26 +23,7 @@
     "endpoint": "/i/v0/e/"
   },
   "elementsChainAsString": true,
-  "sessionRecording": {
-    "endpoint": "/s/",
-    "consoleLogRecordingEnabled": true,
-    "recorderVersion": "v2",
-    "sampleRate": null,
-    "minimumDurationMilliseconds": 1000,
-    "linkedFlag": null,
-    "networkPayloadCapture": {
-      "recordBody": true,
-      "recordHeaders": true
-    },
-    "masking": null,
-    "urlTriggers": [],
-    "urlBlocklist": [],
-    "eventTriggers": [],
-    "scriptConfig": null,
-    "recordCanvas": true,
-    "canvasFps": 3,
-    "canvasQuality": "0.4"
-  },
+  "sessionRecording": false,
   "heatmaps": false,
   "surveys": false,
   "defaultIdentifiedOnly": true,
