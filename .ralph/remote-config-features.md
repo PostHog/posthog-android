@@ -9,17 +9,17 @@
 5. Apply on `onRemoteConfigLoaded`
 
 ## Checklist
-- [ ] Add `errorTracking`, `logs`, `capturePerformance` fields to `PostHogRemoteConfigResponse`
-- [ ] Add cache keys to `PostHogPreferences.Companion` (ERROR_TRACKING, LOGS, CAPTURE_PERFORMANCE)
-- [ ] Add `PostHogRemoteConfig`: `processErrorTrackingConfig()` method
-- [ ] Add `PostHogRemoteConfig`: `processLogsConfig()` method
-- [ ] Add `PostHogRemoteConfig`: `processCapturePerformanceConfig()` method
-- [ ] Add `PostHogRemoteConfig`: `preloadErrorTrackingConfig()` in init
-- [ ] Add `PostHogRemoteConfig`: `preloadLogsConfig()` in init
-- [ ] Add `PostHogRemoteConfig`: `preloadCapturePerformanceConfig()` in init
-- [ ] Call process methods in `loadRemoteConfig` (like processSessionRecordingConfig)
-- [ ] Clear cached values in `clear()`
-- [ ] Add public getter methods for resolved config values
-- [ ] Verify the AND logic: remote enabled AND local enabled = enabled
-- [ ] Update test JSON fixtures
-- [ ] Build and verify compilation
+- [x] Add `errorTracking`, `logs`, `capturePerformance` fields to `PostHogRemoteConfigResponse`
+- [x] Add cache keys to `PostHogPreferences.Companion` (ERROR_TRACKING, LOGS, CAPTURE_PERFORMANCE)
+- [x] Add `PostHogRemoteConfig`: `processErrorTrackingConfig()` method
+- [x] Add `PostHogRemoteConfig`: `processLogsConfig()` method
+- [x] Add `PostHogRemoteConfig`: `processCapturePerformanceConfig()` method
+- [x] Add `PostHogRemoteConfig`: `preloadErrorTrackingConfig()` in init
+- [x] Add `PostHogRemoteConfig`: `preloadLogsConfig()` in init
+- [x] Add `PostHogRemoteConfig`: `preloadCapturePerformanceConfig()` in init
+- [x] Call process methods in `loadRemoteConfig` (like processSessionRecordingConfig)
+- [x] Clear cached values in `clear()`
+- [x] Add public getter methods for resolved config values
+- [x] Verify the AND logic: remote enabled AND local enabled = enabled
+- [x] Update test JSON fixtures
+- [x] Build and verify compilation
