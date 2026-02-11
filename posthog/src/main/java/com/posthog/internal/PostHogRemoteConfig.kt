@@ -407,12 +407,11 @@ public class PostHogRemoteConfig(
         when (capturePerformance) {
             is Boolean -> {
                 // if capturePerformance is a Boolean, it's always false (disabled)
-                remoteCaptureNetworkTiming = false
                 clearCapturePerformance()
             }
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
-                (capturePerformance as? Map<String, Any>)?.let {
+                (capturePerformance as? Map<String, Any?>)?.let {
                     val networkTiming = it["network_timing"]
                     remoteCaptureNetworkTiming = networkTiming as? Boolean ?: false
                     config.cachePreferences?.setValue(CAPTURE_PERFORMANCE, it)
@@ -428,7 +427,7 @@ public class PostHogRemoteConfig(
         synchronized(remoteConfigLock) {
             config.cachePreferences?.let { preferences ->
                 @Suppress("UNCHECKED_CAST")
-                val capturePerformance = preferences.getValue(CAPTURE_PERFORMANCE) as? Map<String, Any>
+                val capturePerformance = preferences.getValue(CAPTURE_PERFORMANCE) as? Map<String, Any?>
                 if (capturePerformance != null) {
                     val networkTiming = capturePerformance["network_timing"]
                     remoteCaptureNetworkTiming = networkTiming as? Boolean ?: false
