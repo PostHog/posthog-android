@@ -551,6 +551,8 @@ public class PostHogRemoteConfig(
 
                     // since flags might have changed, we need to check if session recording is active again
                     processSessionRecordingConfig(it.sessionRecording)
+                    processErrorTrackingConfig(it.errorTracking)
+                    processCapturePerformanceConfig(it.capturePerformance)
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -563,6 +565,12 @@ public class PostHogRemoteConfig(
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
                 }
                 isFeatureFlagsLoaded = true
+
+                try {
+                    onRemoteConfigLoaded?.invoke()
+                } catch (e: Throwable) {
+                    config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
+                }
             } ?: run {
                 isFeatureFlagsLoaded = false
             }

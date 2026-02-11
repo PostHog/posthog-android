@@ -57,8 +57,11 @@ public class PostHog private constructor(
     private val featureFlagsCalledLock = Any()
     private val cachedPersonPropertiesLock = Any()
 
-    private var remoteConfig: PostHogRemoteConfig? = null
     private var replayQueue: PostHogQueueInterface? = null
+
+    private val remoteConfig: PostHogRemoteConfig?
+        get() = config?.remoteConfigHolder
+
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     // Used to deduplicate setPersonProperties calls
@@ -143,7 +146,6 @@ public class PostHog private constructor(
                 this.replayQueue = replayQueue
 
                 if (featureFlags is PostHogRemoteConfig) {
-                    this.remoteConfig = featureFlags
                     config.remoteConfigHolder = featureFlags
                 }
 
@@ -157,13 +159,7 @@ public class PostHog private constructor(
                     }
 
                     // Notify all integrations about remote config changes
-                    config.integrations.forEach { integration ->
-                        try {
-                            integration.onRemoteConfig()
-                        } catch (e: Throwable) {
-                            config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
-                        }
-                    }
+                    notifyIntegrationsRemoteConfig(config)
                 }
 
                 config.addIntegration(sendCachedEventsIntegration)
@@ -219,6 +215,16 @@ public class PostHog private constructor(
                 }
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
+            }
+        }
+    }
+
+    private fun notifyIntegrationsRemoteConfig(config: PostHogConfig) {
+        config.integrations.forEach { integration ->
+            try {
+                integration.onRemoteConfig()
+            } catch (e: Throwable) {
+                config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
             }
         }
     }
