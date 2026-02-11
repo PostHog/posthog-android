@@ -554,6 +554,7 @@ public class PostHogRemoteConfig(
                     // since flags might have changed, we need to check if session recording is active again
                     processSessionRecordingConfig(it.sessionRecording)
                     processErrorTrackingConfig(it.errorTracking)
+                    processSurveys(it.surveys)
                     processCapturePerformanceConfig(it.capturePerformance)
                 }
                 config.cachePreferences?.let { preferences ->
