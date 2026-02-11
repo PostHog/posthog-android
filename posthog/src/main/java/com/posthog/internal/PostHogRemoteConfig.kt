@@ -206,12 +206,14 @@ public class PostHogRemoteConfig(
                                 if (distinctId.isNotBlank()) {
                                     // do not process session replay from flags API
                                     // since its already cached via the remote config API
+                                    // do not notify onRemoteConfigLoaded since loadRemoteConfig does it
                                     executeFeatureFlags(
                                         distinctId,
                                         anonymousId,
                                         groups,
                                         internalOnFeatureFlags = internalOnFeatureFlags,
                                         onFeatureFlags = onFeatureFlags,
+                                        notifyRemoteConfigLoaded = false,
                                     )
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
@@ -465,6 +467,7 @@ public class PostHogRemoteConfig(
         groups: Map<String, String>?,
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
         onFeatureFlags: PostHogOnFeatureFlags?,
+        notifyRemoteConfigLoaded: Boolean = true,
     ) {
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Network isn't connected.")
@@ -565,10 +568,12 @@ public class PostHogRemoteConfig(
                 }
                 isFeatureFlagsLoaded = true
 
-                try {
-                    onRemoteConfigLoaded?.invoke()
-                } catch (e: Throwable) {
-                    config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
+                if (notifyRemoteConfigLoaded) {
+                    try {
+                        onRemoteConfigLoaded?.invoke()
+                    } catch (e: Throwable) {
+                        config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
+                    }
                 }
             } ?: run {
                 isFeatureFlagsLoaded = false
