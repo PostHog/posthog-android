@@ -442,8 +442,7 @@ public class PostHogRemoteConfig(
      * Both remote config (errorTracking.autocaptureExceptions) AND local config
      * (PostHogConfig.errorTrackingConfig.autoCapture) must be enabled.
      */
-    public fun isAutocaptureExceptionsEnabled(): Boolean =
-        remoteAutocaptureExceptions && config.errorTrackingConfig.autoCapture
+    public fun isAutocaptureExceptionsEnabled(): Boolean = remoteAutocaptureExceptions && config.errorTrackingConfig.autoCapture
 
     /**
      * Returns whether console log recording is enabled remotely.

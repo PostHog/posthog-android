@@ -156,20 +156,13 @@ public class PostHog private constructor(
                         config.logger.log("Failed to notify surveys loaded: $e.")
                     }
 
-                    // Dynamically enable/disable error tracking autocapture based on remote config
-                    try {
-                        val errorTrackingEnabled = remoteConfig?.isAutocaptureExceptionsEnabled() ?: false
-                        config.integrations.forEach { integration ->
-                            if (integration is PostHogErrorTrackingAutoCaptureIntegration) {
-                                if (errorTrackingEnabled) {
-                                    integration.install(this)
-                                } else {
-                                    integration.uninstall()
-                                }
-                            }
+                    // Notify all integrations about remote config changes
+                    config.integrations.forEach { integration ->
+                        try {
+                            integration.onRemoteConfig()
+                        } catch (e: Throwable) {
+                            config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
                         }
-                    } catch (e: Throwable) {
-                        config.logger.log("Failed to update error tracking autocapture: $e.")
                     }
                 }
 
