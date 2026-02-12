@@ -3,7 +3,9 @@ package com.posthog
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
 import com.posthog.internal.PostHogNoOpLogger
+import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
@@ -117,10 +119,27 @@ public class PostHog private constructor(
                         config.replayStoragePrefix,
                         replayExecutor,
                     )
-                val featureFlags =
-                    config.remoteConfigProvider(config, api, remoteConfigExecutor) {
-                        getDefaultPersonProperties()
+                val onRemoteConfigLoaded =
+                    PostHogOnRemoteConfigLoaded {
+                        try {
+                            val surveys = remoteConfig?.getSurveys() ?: emptyList()
+                            surveysHandler?.onSurveysLoaded(surveys)
+                        } catch (e: Throwable) {
+                            config.logger.log("Failed to notify surveys loaded: $e.")
+                        }
+
+                        // Notify all integrations about remote config changes
+                        notifyIntegrationsRemoteConfig(config)
                     }
+
+                val featureFlags =
+                    config.remoteConfigProvider(
+                        config,
+                        api,
+                        remoteConfigExecutor,
+                        PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
+                        onRemoteConfigLoaded,
+                    )
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -147,19 +166,6 @@ public class PostHog private constructor(
 
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
-                }
-
-                // Notify integrations whenever remote config finishes loading
-                remoteConfig?.onRemoteConfigLoaded = {
-                    try {
-                        val surveys = remoteConfig?.getSurveys() ?: emptyList()
-                        surveysHandler?.onSurveysLoaded(surveys)
-                    } catch (e: Throwable) {
-                        config.logger.log("Failed to notify surveys loaded: $e.")
-                    }
-
-                    // Notify all integrations about remote config changes
-                    notifyIntegrationsRemoteConfig(config)
                 }
 
                 config.addIntegration(sendCachedEventsIntegration)

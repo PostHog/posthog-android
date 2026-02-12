@@ -18,18 +18,37 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
+ * Callback invoked after remote config finishes loading.
+ * Use this to notify listeners that remote config values may have changed.
+ */
+@PostHogInternal
+public fun interface PostHogOnRemoteConfigLoaded {
+    public fun loaded()
+}
+
+/**
+ * Provider for default person properties used in feature flag evaluation.
+ */
+@PostHogInternal
+public fun interface PostHogDefaultPersonPropertiesProvider {
+    public fun getDefaultPersonProperties(): Map<String, Any>
+}
+
+/**
  * The class responsible for calling and caching the feature flags
  * @property config the Config
  * @property api the API
  * @property executor the Executor
- * @property getDefaultPersonProperties the lambda to get default person properties
+ * @property defaultPersonPropertiesProvider the provider for default person properties
+ * @property onRemoteConfigLoaded the remote config callback
  */
 @PostHogInternal
 public class PostHogRemoteConfig(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
-    private val getDefaultPersonProperties: () -> Map<String, Any> = { emptyMap() },
+    private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() },
+    private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
     private var isLoadingRemoteConfig = AtomicBoolean(false)
@@ -83,20 +102,13 @@ public class PostHogRemoteConfig(
     // These represent the remote-enabled state (true = remote says enabled).
     // The effective state is: remoteEnabled AND localEnabled.
     @Volatile
-    private var remoteAutocaptureExceptions = false
+    private var autoCaptureExceptions = false
 
     @Volatile
-    private var remoteConsoleLogRecordingEnabled = false
+    private var consoleLogRecordingEnabled = false
 
     @Volatile
-    private var remoteCaptureNetworkTiming = false
-
-    /**
-     * Optional callback invoked after remote config finishes loading and surveys have been processed.
-     * Use this to notify listeners that cached surveys may have changed.
-     */
-    @Volatile
-    public var onRemoteConfigLoaded: (() -> Unit)? = null
+    private var captureNetworkTiming = false
 
     init {
         preloadSessionReplayFlag()
@@ -250,7 +262,7 @@ public class PostHogRemoteConfig(
 
                 if (shouldNotifyRemoteConfigLoaded) {
                     try {
-                        onRemoteConfigLoaded?.invoke()
+                        onRemoteConfigLoaded?.loaded()
                     } catch (e: Throwable) {
                         config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
                     }
@@ -327,7 +339,7 @@ public class PostHogRemoteConfig(
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
                 sessionReplayFlagActive = sessionRecording
-                remoteConsoleLogRecordingEnabled = false
+                consoleLogRecordingEnabled = false
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -347,7 +359,7 @@ public class PostHogRemoteConfig(
 
                     sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
 
-                    remoteConsoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
+                    consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
@@ -363,7 +375,7 @@ public class PostHogRemoteConfig(
     }
 
     private fun clearErrorTracking() {
-        remoteAutocaptureExceptions = false
+        autoCaptureExceptions = false
         config.cachePreferences?.remove(ERROR_TRACKING)
     }
 
@@ -377,7 +389,7 @@ public class PostHogRemoteConfig(
                 @Suppress("UNCHECKED_CAST")
                 (errorTracking as? Map<String, Any>)?.let {
                     val autocaptureExceptions = it["autocaptureExceptions"]
-                    remoteAutocaptureExceptions = autocaptureExceptions as? Boolean ?: false
+                    autoCaptureExceptions = autocaptureExceptions as? Boolean ?: false
                     config.cachePreferences?.setValue(ERROR_TRACKING, it)
                 }
             }
@@ -394,14 +406,14 @@ public class PostHogRemoteConfig(
                 val errorTracking = preferences.getValue(ERROR_TRACKING) as? Map<String, Any>
                 if (errorTracking != null) {
                     val autocaptureExceptions = errorTracking["autocaptureExceptions"]
-                    remoteAutocaptureExceptions = autocaptureExceptions as? Boolean ?: false
+                    autoCaptureExceptions = autocaptureExceptions as? Boolean ?: false
                 }
             }
         }
     }
 
     private fun clearCapturePerformance() {
-        remoteCaptureNetworkTiming = false
+        captureNetworkTiming = false
         config.cachePreferences?.remove(CAPTURE_PERFORMANCE)
     }
 
@@ -415,7 +427,7 @@ public class PostHogRemoteConfig(
                 @Suppress("UNCHECKED_CAST")
                 (capturePerformance as? Map<String, Any?>)?.let {
                     val networkTiming = it["network_timing"]
-                    remoteCaptureNetworkTiming = networkTiming as? Boolean ?: false
+                    captureNetworkTiming = networkTiming as? Boolean ?: false
                     config.cachePreferences?.setValue(CAPTURE_PERFORMANCE, it)
                 }
             }
@@ -432,7 +444,7 @@ public class PostHogRemoteConfig(
                 val capturePerformance = preferences.getValue(CAPTURE_PERFORMANCE) as? Map<String, Any?>
                 if (capturePerformance != null) {
                     val networkTiming = capturePerformance["network_timing"]
-                    remoteCaptureNetworkTiming = networkTiming as? Boolean ?: false
+                    captureNetworkTiming = networkTiming as? Boolean ?: false
                 }
             }
         }
@@ -443,7 +455,7 @@ public class PostHogRemoteConfig(
      * Both remote config (errorTracking.autocaptureExceptions) AND local config
      * (PostHogConfig.errorTrackingConfig.autoCapture) must be enabled.
      */
-    public fun isAutocaptureExceptionsEnabled(): Boolean = remoteAutocaptureExceptions && config.errorTrackingConfig.autoCapture
+    public fun isAutocaptureExceptionsEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.autoCapture
 
     /**
      * Returns whether console log recording is enabled remotely.
@@ -451,7 +463,7 @@ public class PostHogRemoteConfig(
      * The local config is platform-specific (e.g., PostHogAndroidConfig.sessionReplayConfig.captureLogcat).
      * This method only checks the remote side; callers should AND with their local config.
      */
-    public fun isRemoteConsoleLogRecordingEnabled(): Boolean = remoteConsoleLogRecordingEnabled
+    public fun isRemoteConsoleLogRecordingEnabled(): Boolean = consoleLogRecordingEnabled
 
     /**
      * Returns whether network timing capture is enabled.
@@ -459,7 +471,7 @@ public class PostHogRemoteConfig(
      * The local config is on PostHogOkHttpInterceptor.captureNetworkTelemetry.
      * This method only checks the remote side; callers should AND with their local config.
      */
-    public fun isRemoteCaptureNetworkTimingEnabled(): Boolean = remoteCaptureNetworkTiming
+    public fun isRemoteCaptureNetworkTimingEnabled(): Boolean = captureNetworkTiming
 
     private fun executeFeatureFlags(
         distinctId: String,
@@ -571,7 +583,7 @@ public class PostHogRemoteConfig(
 
                 if (notifyRemoteConfigLoaded) {
                     try {
-                        onRemoteConfigLoaded?.invoke()
+                        onRemoteConfigLoaded?.loaded()
                     } catch (e: Throwable) {
                         config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
                     }
@@ -675,7 +687,7 @@ public class PostHogRemoteConfig(
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
 
-                    remoteConsoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
+                    consoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
                 }
             }
         }
@@ -954,7 +966,7 @@ public class PostHogRemoteConfig(
 
             // Always include fresh default properties if enabled
             if (config.setDefaultPersonProperties) {
-                val defaultProperties = getDefaultPersonProperties()
+                val defaultProperties = defaultPersonPropertiesProvider.getDefaultPersonProperties()
                 properties.putAll(defaultProperties)
             }
 
@@ -1002,7 +1014,7 @@ public class PostHogRemoteConfig(
     override fun clear() {
         synchronized(featureFlagsLock) {
             sessionReplayFlagActive = false
-            remoteConsoleLogRecordingEnabled = false
+            consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
 
             clearFlags()
