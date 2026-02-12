@@ -797,8 +797,8 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public final fun getSurveys ()Ljava/util/List;
 	public final fun isAutocaptureExceptionsEnabled ()Z
-	public final fun isRemoteCaptureNetworkTimingEnabled ()Z
-	public final fun isRemoteConsoleLogRecordingEnabled ()Z
+	public final fun isCaptureNetworkTimingEnabled ()Z
+	public final fun isConsoleLogRecordingEnabled ()Z
 	public final fun isSessionReplayFlagActive ()Z
 	public final fun loadFeatureFlags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadFeatureFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
