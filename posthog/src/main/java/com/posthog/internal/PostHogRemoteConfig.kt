@@ -104,7 +104,7 @@ public class PostHogRemoteConfig(
 
     private fun isRecordingActive(
         featureFlags: Map<String, Any>,
-        sessionRecording: Map<String, Any>,
+        sessionRecording: Map<String, Any?>,
     ): Boolean {
         var recordingActive = true
 
@@ -329,7 +329,7 @@ public class PostHogRemoteConfig(
 
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
-                (sessionRecording as? Map<String, Any>)?.let {
+                (sessionRecording as? Map<String, Any?>)?.let {
                     // keeps the value from config.sessionReplay since having sessionRecording
                     // means its enabled on the project settings, but its only enabled
                     // when local config.sessionReplay is also enabled
@@ -544,9 +544,16 @@ public class PostHogRemoteConfig(
 
                     // since flags might have changed, we need to check if session recording is active again
                     processSessionRecordingConfig(it.sessionRecording)
-                    processErrorTrackingConfig(it.errorTracking)
-                    processSurveys(it.surveys)
-                    processCapturePerformanceConfig(it.capturePerformance)
+
+                    // TODO: surveys depends on remoteConfig for now
+                    // otherwise surveysHandler?.onSurveysLoaded will be called multiple times
+                    // processSurveys(it.surveys)
+
+                    // only process values if not yet processed by remote config
+                    if (notifyRemoteConfigLoaded) {
+                        processCapturePerformanceConfig(it.capturePerformance)
+                        processErrorTrackingConfig(it.errorTracking)
+                    }
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -655,7 +662,7 @@ public class PostHogRemoteConfig(
         synchronized(featureFlagsLock) {
             config.cachePreferences?.let { preferences ->
                 @Suppress("UNCHECKED_CAST")
-                val sessionRecording = preferences.getValue(SESSION_REPLAY) as? Map<String, Any>
+                val sessionRecording = preferences.getValue(SESSION_REPLAY) as? Map<String, Any?>
 
                 @Suppress("UNCHECKED_CAST")
                 val flags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any>
@@ -829,7 +836,7 @@ public class PostHogRemoteConfig(
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Map<String, Any>? {
-        val flags: Map<String, Any>?
+        var flags: Map<String, Any>?
         synchronized(featureFlagsLock) {
             flags = featureFlags?.toMap()
         }
