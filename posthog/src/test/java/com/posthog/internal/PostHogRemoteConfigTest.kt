@@ -649,7 +649,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.isRemoteConsoleLogRecordingEnabled())
+        assertTrue(sut.isConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -673,7 +673,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertFalse(sut.isRemoteConsoleLogRecordingEnabled())
+        assertFalse(sut.isConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -699,7 +699,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.isRemoteCaptureNetworkTimingEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -723,7 +723,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertFalse(sut.isRemoteCaptureNetworkTimingEnabled())
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -773,7 +773,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isRemoteConsoleLogRecordingEnabled())
+        assertTrue(sut.isConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -794,7 +794,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isRemoteCaptureNetworkTimingEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
         http.shutdown()
@@ -846,11 +846,11 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isRemoteConsoleLogRecordingEnabled())
+        assertTrue(sut.isConsoleLogRecordingEnabled())
 
         sut.clear()
 
-        assertFalse(sut.isRemoteConsoleLogRecordingEnabled())
+        assertFalse(sut.isConsoleLogRecordingEnabled())
 
         http.shutdown()
     }
@@ -870,11 +870,11 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertTrue(sut.isRemoteCaptureNetworkTimingEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
 
-        assertFalse(sut.isRemoteCaptureNetworkTimingEnabled())
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
         assertEquals(null, preferences.getValue(CAPTURE_PERFORMANCE))
 
         http.shutdown()
@@ -954,6 +954,248 @@ internal class PostHogRemoteConfigTest {
         @Suppress("UNCHECKED_CAST")
         val cached = preferences.getValue(CAPTURE_PERFORMANCE) as? Map<String, Any>
         assertEquals(true, cached?.get("network_timing"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    // --- Default values tests ---
+
+    @Test
+    fun `isAutocaptureExceptionsEnabled is false by default`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertFalse(sut.isAutocaptureExceptionsEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `isConsoleLogRecordingEnabled is false by default`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertFalse(sut.isConsoleLogRecordingEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `isCaptureNetworkTimingEnabled is false by default`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    // --- Flags-only path tests (loadFeatureFlags -> executeFeatureFlags) ---
+
+    @Test
+    fun `loadFeatureFlags processes errorTracking and capturePerformance from flags API`() {
+        val file = File("src/test/resources/json/basic-flags-with-remote-config-features.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        config!!.errorTrackingConfig.autoCapture = true
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isAutocaptureExceptionsEnabled())
+        assertTrue(sut.isConsoleLogRecordingEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `onRemoteConfigLoaded fires via flags-only path`() {
+        val file = File("src/test/resources/json/basic-flags-with-remote-config-features.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        var callbackCount = 0
+
+        val localConfig =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                cachePreferences = preferences
+            }
+        val api = PostHogApi(localConfig)
+        val sut =
+            PostHogRemoteConfig(
+                localConfig,
+                api,
+                executor = executor,
+                defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() },
+                onRemoteConfigLoaded = PostHogOnRemoteConfigLoaded { callbackCount++ },
+            )
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, callbackCount)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `onRemoteConfigLoaded fires exactly once via loadRemoteConfig with flags`() {
+        // basic-remote-config.json has hasFeatureFlags=true, so loadRemoteConfig
+        // will also call executeFeatureFlags with notifyRemoteConfigLoaded=false
+        val remoteConfigFile = File("src/test/resources/json/basic-remote-config.json")
+        val flagsFile = File("src/test/resources/json/basic-flags-with-remote-config-features.json")
+
+        val http =
+            mockHttp(
+                total = 2,
+                response =
+                    MockResponse()
+                        .setBody(remoteConfigFile.readText()),
+            )
+        // Second response for the flags call
+        http.enqueue(
+            MockResponse()
+                .setBody(flagsFile.readText()),
+        )
+        val url = http.url("/")
+
+        var callbackCount = 0
+
+        val localConfig =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                cachePreferences = preferences
+                preloadFeatureFlags = true
+            }
+        val api = PostHogApi(localConfig)
+        val sut =
+            PostHogRemoteConfig(
+                localConfig,
+                api,
+                executor = executor,
+                defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() },
+                onRemoteConfigLoaded = PostHogOnRemoteConfigLoaded { callbackCount++ },
+            )
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        // Should fire exactly once — loadRemoteConfig fires it, executeFeatureFlags does not
+        assertEquals(1, callbackCount)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `loadRemoteConfig does not overwrite remote config values when executeFeatureFlags is called`() {
+        // Remote config API says errorTracking enabled, capturePerformance enabled
+        val remoteConfigFile = File("src/test/resources/json/basic-remote-config-features-enabled.json")
+        // but basic-remote-config-features-enabled.json has hasFeatureFlags=false,
+        // so executeFeatureFlags won't be called — this test just checks remote config path
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(remoteConfigFile.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        config!!.errorTrackingConfig.autoCapture = true
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isAutocaptureExceptionsEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
+        // sessionRecording is boolean false in features-enabled.json
+        assertFalse(sut.isConsoleLogRecordingEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `onRemoteConfigLoaded fires once via loadRemoteConfig without flags`() {
+        // basic-remote-config-no-flags.json has hasFeatureFlags=false
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        var callbackCount = 0
+
+        val localConfig =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                cachePreferences = preferences
+            }
+        val api = PostHogApi(localConfig)
+        val sut =
+            PostHogRemoteConfig(
+                localConfig,
+                api,
+                executor = executor,
+                defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() },
+                onRemoteConfigLoaded = PostHogOnRemoteConfigLoaded { callbackCount++ },
+            )
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, callbackCount)
 
         sut.clear()
         http.shutdown()
