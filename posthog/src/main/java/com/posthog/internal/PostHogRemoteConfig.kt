@@ -269,11 +269,6 @@ public class PostHogRemoteConfig(
         surveys = null
     }
 
-    private fun clearSessionRecording() {
-        sessionReplayFlagActive = false
-        config.cachePreferences?.remove(SESSION_REPLAY)
-    }
-
     private fun processSurveys(surveys: Any?) {
         if (!config.surveys) {
             // if surveys is disabled, we clear the surveys
@@ -322,7 +317,7 @@ public class PostHogRemoteConfig(
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
-                sessionReplayFlagActive = sessionRecording
+                sessionReplayFlagActive = false
                 consoleLogRecordingEnabled = false
 
                 if (!sessionRecording) {
