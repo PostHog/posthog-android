@@ -28,6 +28,8 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     override fun install(postHog: PostHogInterface) {
+        this.postHog = postHog
+
         if (integrationInstalled) {
             return
         }
@@ -35,8 +37,6 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         if (!config.errorTrackingConfig.autoCapture) {
             return
         }
-
-        this.postHog = postHog
 
         val currentExceptionHandler = adapterExceptionHandler.getDefaultUncaughtExceptionHandler()
 
@@ -64,7 +64,6 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         }
         adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
         integrationInstalled = false
-        postHog = null
         config.logger.log("Exception autocapture is disabled.")
     }
 

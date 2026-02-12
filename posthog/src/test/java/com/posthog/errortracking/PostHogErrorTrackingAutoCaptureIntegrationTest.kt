@@ -3,6 +3,7 @@ package com.posthog.errortracking
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
 import org.mockito.kotlin.any
@@ -21,6 +22,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     private val mockAdapter = mock<UncaughtExceptionHandlerAdapter>()
     private val mockLogger = mock<PostHogPrintLogger>()
     private val mockExceptionHandler = mock<Thread.UncaughtExceptionHandler>()
+    private val mockRemoteConfig = mock<PostHogRemoteConfig>()
 
     @BeforeTest
     fun setUp() {
@@ -151,6 +153,103 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.uncaughtException(thread, throwable)
 
         verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig does nothing when remoteConfigHolder is null`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(null)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        // Verify handler was installed
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.onRemoteConfig()
+
+        // Handler should not be changed — setDefaultUncaughtExceptionHandler called only once (during install)
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig uninstalls when autocapture exceptions is disabled`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+        whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        // install sets our handler
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.onRemoteConfig()
+
+        // uninstall restores the original handler
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig keeps handler when autocapture exceptions is enabled`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.onRemoteConfig()
+
+        // install is a no-op since already installed — still only called once
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig does not install when postHog is null`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+
+        // Don't call install(), so postHog stays null
+        val integration = getSut()
+
+        integration.onRemoteConfig()
+
+        verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+    }
+
+    @Test
+    fun `onRemoteConfig can re-install after being disabled`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        // install sets our handler
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        // Disable remotely
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+        integration.onRemoteConfig()
+
+        // uninstall restores original handler
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
+
+        // Re-enable remotely — postHog reference is preserved, so install succeeds
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        integration.onRemoteConfig()
+
+        // Handler set to our integration again (total 2 times)
+        verify(mockAdapter, times(2)).setDefaultUncaughtExceptionHandler(integration)
 
         integration.uninstall()
     }

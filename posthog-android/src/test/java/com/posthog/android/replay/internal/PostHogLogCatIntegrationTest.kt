@@ -1,16 +1,21 @@
 package com.posthog.android.replay.internal
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogInterface
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogRemoteConfig
+import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.robolectric.annotation.Config
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [26])
 internal class PostHogLogCatIntegrationTest {
     private val mockPostHog = mock<PostHogInterface>()
     private val mockRemoteConfig = mock<PostHogRemoteConfig>()
@@ -27,23 +32,59 @@ internal class PostHogLogCatIntegrationTest {
 
     @BeforeTest
     fun setUp() {
-        // Reset static state by creating and uninstalling a dummy integration
+        // Reset static integrationInstalled state
         val config = createConfig()
-        val integration = PostHogLogCatIntegration(config)
-        integration.uninstall()
+        val dummy = PostHogLogCatIntegration(config)
+        dummy.uninstall()
+    }
+
+    @Test
+    fun `install sets integrationInstalled to true`() {
+        val config = createConfig()
+        val sut = getSut(config)
+
+        assertFalse(sut.isInstalled())
+
+        sut.install(mockPostHog)
+
+        assertTrue(sut.isInstalled())
+        sut.uninstall()
+    }
+
+    @Test
+    fun `install does nothing when captureLogcat is disabled`() {
+        val config = createConfig(captureLogcat = false)
+        val sut = getSut(config)
+
+        sut.install(mockPostHog)
+
+        assertFalse(sut.isInstalled())
+    }
+
+    @Test
+    fun `uninstall resets integrationInstalled to false`() {
+        val config = createConfig()
+        val sut = getSut(config)
+        sut.install(mockPostHog)
+        assertTrue(sut.isInstalled())
+
+        sut.uninstall()
+
+        assertFalse(sut.isInstalled())
     }
 
     @Test
     fun `onRemoteConfig does nothing when remoteConfigHolder is null`() {
         val config = createConfig()
         val sut = getSut(config)
+        sut.install(mockPostHog)
+        assertTrue(sut.isInstalled())
 
         // remoteConfigHolder is null by default
-        sut.install(mockPostHog)
-
-        // should not throw or change state
         sut.onRemoteConfig()
 
+        // State unchanged — still installed
+        assertTrue(sut.isInstalled())
         sut.uninstall()
     }
 
@@ -55,39 +96,27 @@ internal class PostHogLogCatIntegrationTest {
 
         val sut = getSut(config)
         sut.install(mockPostHog)
+        assertTrue(sut.isInstalled())
 
         sut.onRemoteConfig()
 
-        // After onRemoteConfig with disabled, a new install should succeed
-        // (meaning uninstall was called and integrationInstalled was reset)
-        val sut2 = getSut(config)
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
-        sut2.install(mockPostHog)
-
-        // If integrationInstalled was properly reset, the second install should work
-        // We verify by calling uninstall (which only does work if installed)
-        sut2.uninstall()
+        assertFalse(sut.isInstalled())
     }
 
     @Test
-    fun `onRemoteConfig installs when remote console log recording is enabled and postHog is available`() {
+    fun `onRemoteConfig keeps integration installed when remote console log recording is enabled`() {
         val config = createConfig()
         config.remoteConfigHolder = mockRemoteConfig
+        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
 
         val sut = getSut(config)
-
-        // First install so postHog reference is set
         sut.install(mockPostHog)
-        // Uninstall to reset state
-        sut.uninstall()
+        assertTrue(sut.isInstalled())
 
-        // Now onRemoteConfig with enabled should re-install
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
         sut.onRemoteConfig()
 
-        // Verify it was installed by checking that a second install is a no-op
-        // (integrationInstalled is true, so install returns early)
-        // We can verify by uninstalling - only does real work if installed
+        // Still installed — install is a no-op because already installed
+        assertTrue(sut.isInstalled())
         sut.uninstall()
     }
 
@@ -97,28 +126,32 @@ internal class PostHogLogCatIntegrationTest {
         config.remoteConfigHolder = mockRemoteConfig
         whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
 
+        // Don't call install(), so postHog stays null
         val sut = getSut(config)
-        // Don't call install() so postHog stays null
 
         sut.onRemoteConfig()
 
-        // Should still be able to install fresh (meaning onRemoteConfig didn't install)
-        sut.install(mockPostHog)
-        sut.uninstall()
+        assertFalse(sut.isInstalled())
     }
 
     @Test
-    fun `onRemoteConfig does not install when captureLogcat is disabled locally`() {
-        val config = createConfig(captureLogcat = false)
+    fun `onRemoteConfig can re-install after being disabled`() {
+        val config = createConfig()
         config.remoteConfigHolder = mockRemoteConfig
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
 
         val sut = getSut(config)
-        // Install would be a no-op because captureLogcat is false,
-        // but we need postHog set for onRemoteConfig to try install
-        // Since install checks captureLogcat, even onRemoteConfig -> install won't succeed
-        sut.onRemoteConfig()
+        sut.install(mockPostHog)
+        assertTrue(sut.isInstalled())
 
+        // Disable remotely
+        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(false)
+        sut.onRemoteConfig()
+        assertFalse(sut.isInstalled())
+
+        // Re-enable remotely — postHog reference is preserved, so install succeeds
+        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
+        sut.onRemoteConfig()
+        assertTrue(sut.isInstalled())
         sut.uninstall()
     }
 }
