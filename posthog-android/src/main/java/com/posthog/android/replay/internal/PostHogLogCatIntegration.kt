@@ -98,7 +98,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
     override fun onRemoteConfig() {
         val remoteConfig = config.remoteConfigHolder ?: return
-        if (remoteConfig.isRemoteConsoleLogRecordingEnabled()) {
+        if (remoteConfig.isConsoleLogRecordingEnabled()) {
             postHog?.let { install(it) }
         } else {
             uninstall()

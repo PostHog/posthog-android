@@ -442,7 +442,7 @@ public class PostHogRemoteConfig(
      * The local config is platform-specific (e.g., PostHogAndroidConfig.sessionReplayConfig.captureLogcat).
      * This method only checks the remote side; callers should AND with their local config.
      */
-    public fun isRemoteConsoleLogRecordingEnabled(): Boolean = consoleLogRecordingEnabled
+    public fun isConsoleLogRecordingEnabled(): Boolean = consoleLogRecordingEnabled
 
     /**
      * Returns whether network timing capture is enabled.
@@ -450,7 +450,7 @@ public class PostHogRemoteConfig(
      * The local config is on PostHogOkHttpInterceptor.captureNetworkTelemetry.
      * This method only checks the remote side; callers should AND with their local config.
      */
-    public fun isRemoteCaptureNetworkTimingEnabled(): Boolean = captureNetworkTiming
+    public fun isCaptureNetworkTimingEnabled(): Boolean = captureNetworkTiming
 
     private fun executeFeatureFlags(
         distinctId: String,

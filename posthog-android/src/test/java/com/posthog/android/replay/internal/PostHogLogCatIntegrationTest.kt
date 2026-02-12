@@ -92,7 +92,7 @@ internal class PostHogLogCatIntegrationTest {
     fun `onRemoteConfig uninstalls when remote console log recording is disabled`() {
         val config = createConfig()
         config.remoteConfigHolder = mockRemoteConfig
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(false)
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(false)
 
         val sut = getSut(config)
         sut.install(mockPostHog)
@@ -107,7 +107,7 @@ internal class PostHogLogCatIntegrationTest {
     fun `onRemoteConfig keeps integration installed when remote console log recording is enabled`() {
         val config = createConfig()
         config.remoteConfigHolder = mockRemoteConfig
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(true)
 
         val sut = getSut(config)
         sut.install(mockPostHog)
@@ -124,7 +124,7 @@ internal class PostHogLogCatIntegrationTest {
     fun `onRemoteConfig does not install when postHog is null`() {
         val config = createConfig()
         config.remoteConfigHolder = mockRemoteConfig
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(true)
 
         // Don't call install(), so postHog stays null
         val sut = getSut(config)
@@ -144,12 +144,12 @@ internal class PostHogLogCatIntegrationTest {
         assertTrue(sut.isInstalled())
 
         // Disable remotely
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(false)
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(false)
         sut.onRemoteConfig()
         assertFalse(sut.isInstalled())
 
         // Re-enable remotely — postHog reference is preserved, so install succeeds
-        whenever(mockRemoteConfig.isRemoteConsoleLogRecordingEnabled()).thenReturn(true)
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(true)
         sut.onRemoteConfig()
         assertTrue(sut.isInstalled())
         sut.uninstall()
