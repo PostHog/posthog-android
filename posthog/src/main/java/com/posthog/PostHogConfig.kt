@@ -100,7 +100,6 @@ public open class PostHogConfig(
      * Preload PostHog remote config automatically
      * Defaults to true
      */
-    @PostHogExperimental
     public var remoteConfig: Boolean = true,
     /**
      * Number of minimum events before they are sent over the wire
