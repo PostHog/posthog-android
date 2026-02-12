@@ -18,23 +18,6 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Callback invoked after remote config finishes loading.
- * Use this to notify listeners that remote config values may have changed.
- */
-@PostHogInternal
-public fun interface PostHogOnRemoteConfigLoaded {
-    public fun loaded()
-}
-
-/**
- * Provider for default person properties used in feature flag evaluation.
- */
-@PostHogInternal
-public fun interface PostHogDefaultPersonPropertiesProvider {
-    public fun getDefaultPersonProperties(): Map<String, Any>
-}
-
-/**
  * The class responsible for calling and caching the feature flags
  * @property config the Config
  * @property api the API
@@ -47,7 +30,8 @@ public class PostHogRemoteConfig(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
-    private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() },
+    private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider =
+        PostHogDefaultPersonPropertiesProvider { emptyMap() },
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)

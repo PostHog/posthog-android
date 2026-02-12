@@ -111,8 +111,8 @@ public class com/posthog/PostHogConfig {
 	public static final field DEFAULT_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function5;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function5;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
@@ -147,7 +147,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getReleaseIdentifier ()Ljava/lang/String;
 	public final fun getRemoteConfig ()Z
 	public final fun getRemoteConfigHolder ()Lcom/posthog/internal/PostHogRemoteConfig;
-	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function4;
+	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function5;
 	public final fun getReplayStoragePrefix ()Ljava/lang/String;
 	public final fun getReuseAnonymousId ()Z
 	public final fun getSdkName ()Ljava/lang/String;
@@ -651,6 +651,10 @@ public abstract interface class com/posthog/internal/PostHogDateProvider {
 	public abstract fun nanoTime ()J
 }
 
+public abstract interface class com/posthog/internal/PostHogDefaultPersonPropertiesProvider {
+	public abstract fun getDefaultPersonProperties ()Ljava/util/Map;
+}
+
 public final class com/posthog/internal/PostHogDeviceDateProvider : com/posthog/internal/PostHogDateProvider {
 	public fun <init> ()V
 	public fun addSecondsToCurrentDate (I)Ljava/util/Date;
@@ -727,6 +731,10 @@ public final class com/posthog/internal/PostHogNoOpLogger : com/posthog/internal
 	public fun log (Ljava/lang/String;)V
 }
 
+public abstract interface class com/posthog/internal/PostHogOnRemoteConfigLoaded {
+	public abstract fun loaded ()V
+}
+
 public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field ANONYMOUS_ID Ljava/lang/String;
 	public static final field BUILD Ljava/lang/String;
@@ -774,8 +782,8 @@ public abstract interface class com/posthog/internal/PostHogQueueInterface {
 }
 
 public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/internal/PostHogFeatureFlagsInterface {
-	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lkotlin/jvm/functions/Function0;)V
-	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;)V
+	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun clear ()V
 	public fun getEvaluatedAt (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Long;
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
@@ -786,7 +794,6 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/FeatureFlagResult;
 	public fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public final fun getFlagDetails (Ljava/lang/String;)Lcom/posthog/internal/FeatureFlag;
-	public final fun getOnRemoteConfigLoaded ()Lkotlin/jvm/functions/Function0;
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public final fun getSurveys ()Ljava/util/List;
 	public final fun isAutocaptureExceptionsEnabled ()Z
@@ -801,7 +808,6 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun resetPersonPropertiesForFlags ()V
 	public final fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;)V
-	public final fun setOnRemoteConfigLoaded (Lkotlin/jvm/functions/Function0;)V
 	public final fun setPersonPropertiesForFlags (Ljava/util/Map;)V
 	public fun shutDown ()V
 }

@@ -5,16 +5,16 @@ import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogNoOpLogger
+import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
-import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
-import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSerializer
 import com.posthog.surveys.PostHogSurveysConfig
@@ -233,7 +233,15 @@ public open class PostHogConfig(
                 defaultPersonPropertiesProvider,
                 onRemoteConfigLoaded,
             ->
-            PostHogRemoteConfig(config, api, executor, defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider { emptyMap() }, onRemoteConfigLoaded)
+            PostHogRemoteConfig(
+                config,
+                api,
+                executor,
+                defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider {
+                    emptyMap()
+                },
+                onRemoteConfigLoaded,
+            )
         },
     /**
      * Factory to instantiate a custom queue implementation.

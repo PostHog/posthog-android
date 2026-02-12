@@ -38,7 +38,7 @@ internal class PostHogRemoteConfigTest {
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
-        return PostHogRemoteConfig(config!!, api, executor = executor, defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() })
+        return PostHogRemoteConfig(config!!, api, executor = executor, defaultPersonPropertiesProvider = { emptyMap() })
     }
 
     @BeforeTest
@@ -410,7 +410,7 @@ internal class PostHogRemoteConfigTest {
                 cachePreferences = preferences
             }
         val api = PostHogApi(localConfig)
-        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor, defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() })
+        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor, defaultPersonPropertiesProvider = { emptyMap() })
 
         val firstCallbackLatch = CountDownLatch(1)
         val secondCallbackLatch = CountDownLatch(1)
@@ -483,7 +483,7 @@ internal class PostHogRemoteConfigTest {
                 cachePreferences = preferences
             }
         val api = PostHogApi(localConfig)
-        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor, defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() })
+        val sut = PostHogRemoteConfig(localConfig, api, executor = multiThreadExecutor, defaultPersonPropertiesProvider = { emptyMap() })
 
         val secondCallbackLatch = CountDownLatch(1)
 
@@ -750,7 +750,7 @@ internal class PostHogRemoteConfigTest {
                 errorTrackingConfig.autoCapture = true
             }
         val api = PostHogApi(localConfig)
-        val sut = PostHogRemoteConfig(localConfig, api, executor = executor, defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() })
+        val sut = PostHogRemoteConfig(localConfig, api, executor = executor, defaultPersonPropertiesProvider = { emptyMap() })
 
         assertTrue(sut.isAutocaptureExceptionsEnabled())
 
@@ -819,7 +819,7 @@ internal class PostHogRemoteConfigTest {
                 errorTrackingConfig.autoCapture = true
             }
         val api = PostHogApi(localConfig)
-        val sut = PostHogRemoteConfig(localConfig, api, executor = executor, defaultPersonPropertiesProvider = PostHogDefaultPersonPropertiesProvider { emptyMap() })
+        val sut = PostHogRemoteConfig(localConfig, api, executor = executor, defaultPersonPropertiesProvider = { emptyMap() })
 
         assertTrue(sut.isAutocaptureExceptionsEnabled())
 
