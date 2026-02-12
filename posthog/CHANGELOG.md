@@ -1,6 +1,6 @@
 ## Next
 
-- feat: Support remote config for error tracking, console log recording, and network timing capture ([#415](https://github.com/PostHog/posthog-android/pull/415))
+- feat: Support remote config for error tracking ([#415](https://github.com/PostHog/posthog-android/pull/415))
 
 ## 6.4.0 - 2026-02-05
 
