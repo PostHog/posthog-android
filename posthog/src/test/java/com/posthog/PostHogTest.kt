@@ -828,6 +828,102 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `capture feature view`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val featureFlag = "new_feature"
+        val userPropertyKey = PostHogEventName.FEATURE_VIEW.event + "/" + featureFlag
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        queueExecutor.awaitExecution()
+
+        sut.captureFeatureView(flag = featureFlag)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        val properties = theEvent.properties as? Map<*, *>
+        val userProperties = properties?.get("\$set") as? Map<*, *>
+
+        assertEquals(PostHogEventName.FEATURE_VIEW.event, theEvent.event)
+        assertEquals(featureFlag, properties?.get("\$feature_flag"))
+        assertEquals(true, userProperties?.get(userPropertyKey))
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture feature view if opt out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val featureFlag = "new_feature"
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.optOut()
+        queueExecutor.awaitExecution()
+
+        sut.captureFeatureView(flag = featureFlag)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capture feature interaction`() {
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val url = http.url("/")
+        val featureFlag = "new_feature"
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        queueExecutor.awaitExecution()
+
+        sut.captureFeatureInteraction(flag = featureFlag)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+
+        assertEquals(PostHogEventName.FEATURE_INTERACTION.event, theEvent.event)
+        assertEquals(featureFlag, theEvent.properties?.get("\$feature_flag"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not capture feature interaction if opt out`() {
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val url = http.url("/")
+        val featureFlag = "new_feature"
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.optOut()
+        queueExecutor.awaitExecution()
+
+        sut.captureFeatureInteraction(flag = featureFlag)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `captures an event with a custom timestamp`() {
         val http = mockHttp()
         val url = http.url("/")

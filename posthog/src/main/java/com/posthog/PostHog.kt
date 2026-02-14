@@ -609,6 +609,62 @@ public class PostHog private constructor(
         capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
     }
 
+    public override fun captureFeatureView(
+        flag: String,
+        flagVariant: String?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+
+        if (config?.optOut == true) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        val props = mutableMapOf<String, Any>()
+        props["\$feature_flag"] = flag
+        flagVariant?.let {
+            props["\$feature_flag_variant"] = flagVariant
+        }
+
+        val userProperties = mapOf("\$feature_view/$flag" to true)
+
+        capture(
+            event = PostHogEventName.FEATURE_VIEW.event,
+            properties = props,
+            userProperties = userProperties
+        )
+    }
+
+    public override fun captureFeatureInteraction(
+        flag: String,
+        flagVariant: String?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+
+        if (config?.optOut == true) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        val props = mutableMapOf<String, Any>()
+        props["\$feature_flag"] = flag
+        flagVariant?.let {
+            props["\$feature_flag_variant"] = flagVariant
+        }
+
+        val userProperties = mapOf("\$feature_interaction/$flag" to true)
+
+        capture(
+            PostHogEventName.FEATURE_INTERACTION.event,
+            properties = props,
+            userProperties = userProperties,
+        )
+    }
+
     /**
      * Returns fresh default device and app properties for feature flag evaluation.
      */
@@ -1501,6 +1557,20 @@ public class PostHog private constructor(
 
         public override fun alias(alias: String) {
             shared.alias(alias)
+        }
+
+        public override fun captureFeatureView(
+            flag: String,
+            flagVariant: String?,
+        ) {
+            shared.captureFeatureView(flag, flagVariant)
+        }
+
+        public override fun captureFeatureInteraction(
+            flag: String,
+            flagVariant: String?,
+        ) {
+            shared.captureFeatureInteraction(flag, flagVariant)
         }
 
         public override fun isOptOut(): Boolean = shared.isOptOut()
