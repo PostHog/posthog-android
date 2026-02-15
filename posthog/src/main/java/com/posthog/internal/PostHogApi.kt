@@ -133,7 +133,7 @@ public class PostHogApi(
                 config.evaluationContexts,
             )
 
-        val url = "$theHost/flags/?v=2&config=true"
+        val url = "$theHost/flags/?v=2"
         logRequest(flagsRequest, url)
 
         val request =
