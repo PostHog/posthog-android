@@ -1,5 +1,7 @@
 ## Next
 
+- chore: Remove `config=true` from flags endpoint, add `timezone` to flags requests ([#421](https://github.com/PostHog/posthog-android/pull/421))
+
 ## 6.4.0 - 2026-02-05
 
 - fix: Filter out failed flags to prevent cached values from being overwritten during transient errors ([#408](https://github.com/PostHog/posthog-android/pull/408))
