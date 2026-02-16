@@ -1,4 +1,5 @@
 ## Next
+- feat: Add `captureFeatureView` and `captureFeatureInteraction` to `PostHogInterface`. ([#416](https://github.com/PostHog/posthog-android/pull/416))
 
 ## 6.4.0 - 2026-02-05
 
