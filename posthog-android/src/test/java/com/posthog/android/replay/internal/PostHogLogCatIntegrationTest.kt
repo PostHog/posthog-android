@@ -92,12 +92,13 @@ internal class PostHogLogCatIntegrationTest {
     fun `onRemoteConfig uninstalls when remote console log recording is disabled`() {
         val config = createConfig()
         config.remoteConfigHolder = mockRemoteConfig
-        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(false)
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(true)
 
         val sut = getSut(config)
         sut.install(mockPostHog)
         assertTrue(sut.isInstalled())
 
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(false)
         sut.onRemoteConfig()
 
         assertFalse(sut.isInstalled())
@@ -138,6 +139,7 @@ internal class PostHogLogCatIntegrationTest {
     fun `onRemoteConfig can re-install after being disabled`() {
         val config = createConfig()
         config.remoteConfigHolder = mockRemoteConfig
+        whenever(mockRemoteConfig.isConsoleLogRecordingEnabled()).thenReturn(true)
 
         val sut = getSut(config)
         sut.install(mockPostHog)

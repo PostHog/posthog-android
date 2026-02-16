@@ -980,7 +980,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `isConsoleLogRecordingEnabled is false by default`() {
+    fun `isConsoleLogRecordingEnabled is true by default`() {
         val http =
             mockHttp(
                 response =
@@ -991,14 +991,14 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertFalse(sut.isConsoleLogRecordingEnabled())
+        assertTrue(sut.isConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
     }
 
     @Test
-    fun `isCaptureNetworkTimingEnabled is false by default`() {
+    fun `isCaptureNetworkTimingEnabled is true by default`() {
         val http =
             mockHttp(
                 response =
@@ -1009,7 +1009,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertFalse(sut.isCaptureNetworkTimingEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
         http.shutdown()

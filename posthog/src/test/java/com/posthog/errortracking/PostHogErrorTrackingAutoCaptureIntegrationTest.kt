@@ -40,6 +40,9 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `install does nothing when already installed`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+
         val integration = getSut()
 
         // First install
@@ -66,6 +69,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `install sets up exception handler when current handler is null`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(null)
 
         val integration = getSut()
@@ -78,6 +83,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `install sets up exception handler when current handler is different`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
 
         val integration = getSut()
@@ -114,6 +121,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `uninstall restores original exception handler and resets state`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
 
         val integration = getSut()
@@ -142,6 +151,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `uncaughtException calls default handler after capturing exception`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
 
         val thread = Thread.currentThread()
@@ -159,7 +170,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `onRemoteConfig does nothing when remoteConfigHolder is null`() {
-        whenever(mockConfig.remoteConfigHolder).thenReturn(null)
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
 
         val integration = getSut()
         integration.install(mockPostHog)
@@ -167,10 +179,13 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         // Verify handler was installed
         verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
 
+        // Set remoteConfigHolder to null before onRemoteConfig
+        whenever(mockConfig.remoteConfigHolder).thenReturn(null)
         integration.onRemoteConfig()
 
-        // Handler should not be changed — setDefaultUncaughtExceptionHandler called only once (during install)
-        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(any())
+        // remoteConfigHolder is null → autocaptureExceptionsEnabled defaults to false → uninstall
+        // uninstall restores original handler (null) — total 2 calls (install + uninstall)
+        verify(mockAdapter, times(2)).setDefaultUncaughtExceptionHandler(anyOrNull())
 
         integration.uninstall()
     }
@@ -178,7 +193,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     @Test
     fun `onRemoteConfig uninstalls when autocapture exceptions is disabled`() {
         whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
-        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
 
         val integration = getSut()
@@ -187,6 +202,8 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         // install sets our handler
         verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
 
+        // Disable remotely
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
         integration.onRemoteConfig()
 
         // uninstall restores the original handler
@@ -229,6 +246,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     @Test
     fun `onRemoteConfig can re-install after being disabled`() {
         whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
 
         val integration = getSut()
