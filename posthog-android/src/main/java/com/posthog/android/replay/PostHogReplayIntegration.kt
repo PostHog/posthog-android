@@ -663,9 +663,13 @@ public class PostHogReplayIntegration(
         }
         visitedViews.add(viewId)
 
+        var walkChildren = false
+
         when {
             view.isComposeView() -> {
                 findMaskableComposeWidgets(view, maskableWidgets)
+                // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
+                walkChildren = true
             }
 
             view.isNoCapture() -> {
@@ -722,25 +726,30 @@ public class PostHogReplayIntegration(
             }
 
             view is ViewGroup && view.childCount > 0 -> {
-                for (i in 0 until view.childCount) {
-                    if (isOnDrawnCalled) {
-                        config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                        return false
-                    }
+                walkChildren = true
+            }
+        }
 
-                    val viewChild = view.getChildAt(i) ?: continue
+        if (walkChildren && view is ViewGroup && view.childCount > 0) {
+            for (i in 0 until view.childCount) {
+                if (isOnDrawnCalled) {
+                    config.logger.log("Session Replay screenshot discarded due to screen changes.")
+                    return false
+                }
 
-                    if (!viewChild.isVisible()) {
-                        continue
-                    }
+                val viewChild = view.getChildAt(i) ?: continue
 
-                    if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
-                        // do not continue if the screen has changed
-                        return false
-                    }
+                if (!viewChild.isVisible()) {
+                    continue
+                }
+
+                if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
+                    // do not continue if the screen has changed
+                    return false
                 }
             }
         }
+
         return true
     }
 
