@@ -19,6 +19,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.Executors
+import kotlin.collections.get
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -852,7 +853,8 @@ internal class PostHogTest {
         val userProperties = properties?.get("\$set") as? Map<*, *>
 
         assertEquals(PostHogEventName.FEATURE_VIEW.event, theEvent.event)
-        assertEquals(featureFlag, properties?.get("\$feature_flag"))
+        assertEquals(featureFlag, properties?.get("feature_flag"))
+        assertEquals(null, properties?.get("feature_flag_variant"))
         assertIs<Boolean>(userProperties?.get(userPropertyKey))
         assertEquals(true, userProperties?.get(userPropertyKey))
 
@@ -860,28 +862,37 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `does not capture feature view if opt out`() {
+    fun `capture feature view adds variant`() {
         val http = mockHttp()
         val url = http.url("/")
         val featureFlag = "new_feature"
+        val flagVariant = "variant1"
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        sut.optOut()
         queueExecutor.awaitExecution()
 
-        sut.captureFeatureView(flag = featureFlag)
+        sut.captureFeatureView(flag = featureFlag, flagVariant = flagVariant)
 
         queueExecutor.shutdownAndAwaitTermination()
 
-        assertEquals(0, http.requestCount)
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        val properties = theEvent.properties as? Map<*, *>
+
+        assertEquals(PostHogEventName.FEATURE_VIEW.event, theEvent.event)
+        assertIs<String>(properties?.get("feature_flag_variant"))
+        assertEquals(flagVariant, properties?.get("feature_flag_variant"))
 
         sut.close()
     }
 
     @Test
     fun `capture feature interaction`() {
-        val http = mockHttp(response = MockResponse().setBody(""))
+        val http = mockHttp()
         val url = http.url("/")
         val featureFlag = "new_feature"
 
@@ -898,29 +909,40 @@ internal class PostHogTest {
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         val theEvent = batch.batch.first()
+        val properties = theEvent.properties as? Map<*, *>
 
         assertEquals(PostHogEventName.FEATURE_INTERACTION.event, theEvent.event)
-        assertEquals(featureFlag, theEvent.properties?.get("\$feature_flag"))
+        assertEquals(featureFlag, properties?.get("feature_flag"))
+        assertEquals(null, properties?.get("feature_flag_variant"))
 
         sut.close()
     }
 
     @Test
-    fun `does not capture feature interaction if opt out`() {
-        val http = mockHttp(response = MockResponse().setBody(""))
+    fun `capture feature interaction adds variant`() {
+        val http = mockHttp()
         val url = http.url("/")
         val featureFlag = "new_feature"
+        val flagVariant = "variant1"
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        sut.optOut()
         queueExecutor.awaitExecution()
 
-        sut.captureFeatureInteraction(flag = featureFlag)
+        sut.captureFeatureInteraction(flag = featureFlag, flagVariant = flagVariant)
 
         queueExecutor.shutdownAndAwaitTermination()
 
-        assertEquals(0, http.requestCount)
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        val properties = theEvent.properties as? Map<*, *>
+
+        assertEquals(PostHogEventName.FEATURE_INTERACTION.event, theEvent.event)
+        assertIs<String>(properties?.get("feature_flag_variant"))
+        assertEquals(flagVariant, properties?.get("feature_flag_variant"))
 
         sut.close()
     }

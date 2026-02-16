@@ -613,15 +613,13 @@ public class PostHog private constructor(
         flag: String,
         flagVariant: String?,
     ) {
-        if (!isEnabled()) {
-            return
-        }
-
         val props = mutableMapOf<String, Any>()
-        props["\$feature_flag"] = flag
+        props["feature_flag"] = flag
 
         val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
-        props["\$feature_flag_variant"] = variant
+        if (variant is String) {
+            props["feature_flag_variant"] = variant
+        }
 
         val userProperties = mapOf("\$feature_view/$flag" to variant)
 
@@ -636,15 +634,13 @@ public class PostHog private constructor(
         flag: String,
         flagVariant: String?,
     ) {
-        if (!isEnabled()) {
-            return
-        }
-
         val props = mutableMapOf<String, Any>()
-        props["\$feature_flag"] = flag
+        props["feature_flag"] = flag
 
         val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
-        props["\$feature_flag_variant"] = variant
+        if (variant is String) {
+            props["feature_flag_variant"] = variant
+        }
 
         val userProperties = mapOf("\$feature_interaction/$flag" to variant)
 
