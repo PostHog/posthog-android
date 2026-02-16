@@ -23,6 +23,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -852,6 +853,7 @@ internal class PostHogTest {
 
         assertEquals(PostHogEventName.FEATURE_VIEW.event, theEvent.event)
         assertEquals(featureFlag, properties?.get("\$feature_flag"))
+        assertIs<Boolean>(userProperties?.get(userPropertyKey))
         assertEquals(true, userProperties?.get(userPropertyKey))
 
         sut.close()

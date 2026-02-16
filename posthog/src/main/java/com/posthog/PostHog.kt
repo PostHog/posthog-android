@@ -617,23 +617,18 @@ public class PostHog private constructor(
             return
         }
 
-        if (config?.optOut == true) {
-            config?.logger?.log("PostHog is in OptOut state.")
-            return
-        }
-
         val props = mutableMapOf<String, Any>()
         props["\$feature_flag"] = flag
-        flagVariant?.let {
-            props["\$feature_flag_variant"] = flagVariant
-        }
 
-        val userProperties = mapOf("\$feature_view/$flag" to true)
+        val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
+        props["\$feature_flag_variant"] = variant
+
+        val userProperties = mapOf("\$feature_view/$flag" to variant)
 
         capture(
             event = PostHogEventName.FEATURE_VIEW.event,
             properties = props,
-            userProperties = userProperties
+            userProperties = userProperties,
         )
     }
 
@@ -645,18 +640,13 @@ public class PostHog private constructor(
             return
         }
 
-        if (config?.optOut == true) {
-            config?.logger?.log("PostHog is in OptOut state.")
-            return
-        }
-
         val props = mutableMapOf<String, Any>()
         props["\$feature_flag"] = flag
-        flagVariant?.let {
-            props["\$feature_flag_variant"] = flagVariant
-        }
 
-        val userProperties = mapOf("\$feature_interaction/$flag" to true)
+        val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
+        props["\$feature_flag_variant"] = variant
+
+        val userProperties = mapOf("\$feature_interaction/$flag" to variant)
 
         capture(
             PostHogEventName.FEATURE_INTERACTION.event,
