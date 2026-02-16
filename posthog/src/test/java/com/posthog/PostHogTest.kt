@@ -24,7 +24,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -838,8 +837,6 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        queueExecutor.awaitExecution()
-
         sut.captureFeatureView(flag = featureFlag)
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -855,7 +852,6 @@ internal class PostHogTest {
         assertEquals(PostHogEventName.FEATURE_VIEW.event, theEvent.event)
         assertEquals(featureFlag, properties?.get("feature_flag"))
         assertEquals(null, properties?.get("feature_flag_variant"))
-        assertIs<Boolean>(userProperties?.get(userPropertyKey))
         assertEquals(true, userProperties?.get(userPropertyKey))
 
         sut.close()
@@ -870,8 +866,6 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        queueExecutor.awaitExecution()
-
         sut.captureFeatureView(flag = featureFlag, flagVariant = flagVariant)
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -884,8 +878,46 @@ internal class PostHogTest {
         val properties = theEvent.properties as? Map<*, *>
 
         assertEquals(PostHogEventName.FEATURE_VIEW.event, theEvent.event)
-        assertIs<String>(properties?.get("feature_flag_variant"))
         assertEquals(flagVariant, properties?.get("feature_flag_variant"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `capture feature view gets variant using getFeatureFlag`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+        val http =
+            mockHttp(
+                response = MockResponse().setBody(responseFlagsApi),
+            )
+        http.enqueue(MockResponse().setBody(""))
+        val url = http.url("/")
+        val featureFlag = "splashScreenName"
+        val expectedVariant = "SplashV2"
+        val userPropertyKey = PostHogEventName.FEATURE_VIEW.event + "/" + featureFlag
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        http.takeRequest()
+
+        sut.captureFeatureView(flag = featureFlag)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        val properties = theEvent.properties as? Map<*, *>
+        val userProperties = properties?.get("\$set") as? Map<*, *>
+
+        assertEquals(expectedVariant, properties?.get("feature_flag_variant"))
+        assertEquals(expectedVariant, userProperties?.get(userPropertyKey))
 
         sut.close()
     }
@@ -898,8 +930,6 @@ internal class PostHogTest {
         val userPropertyKey = PostHogEventName.FEATURE_INTERACTION.event + "/" + featureFlag
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
-
-        queueExecutor.awaitExecution()
 
         sut.captureFeatureInteraction(flag = featureFlag)
 
@@ -916,7 +946,6 @@ internal class PostHogTest {
         assertEquals(PostHogEventName.FEATURE_INTERACTION.event, theEvent.event)
         assertEquals(featureFlag, properties?.get("feature_flag"))
         assertEquals(null, properties?.get("feature_flag_variant"))
-        assertIs<Boolean>(userProperties?.get(userPropertyKey))
         assertEquals(true, userProperties?.get(userPropertyKey))
 
         sut.close()
@@ -931,8 +960,6 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
-        queueExecutor.awaitExecution()
-
         sut.captureFeatureInteraction(flag = featureFlag, flagVariant = flagVariant)
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -945,8 +972,46 @@ internal class PostHogTest {
         val properties = theEvent.properties as? Map<*, *>
 
         assertEquals(PostHogEventName.FEATURE_INTERACTION.event, theEvent.event)
-        assertIs<String>(properties?.get("feature_flag_variant"))
         assertEquals(flagVariant, properties?.get("feature_flag_variant"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `capture feature interaction gets variant using getFeatureFlag`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+        val http =
+            mockHttp(
+                response = MockResponse().setBody(responseFlagsApi),
+            )
+        http.enqueue(MockResponse().setBody(""))
+        val url = http.url("/")
+        val featureFlag = "splashScreenName"
+        val expectedVariant = "SplashV2"
+        val userPropertyKey = PostHogEventName.FEATURE_INTERACTION.event + "/" + featureFlag
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        http.takeRequest()
+
+        sut.captureFeatureInteraction(flag = featureFlag)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        val properties = theEvent.properties as? Map<*, *>
+        val userProperties = properties?.get("\$set") as? Map<*, *>
+
+        assertEquals(expectedVariant, properties?.get("feature_flag_variant"))
+        assertEquals(expectedVariant, userProperties?.get(userPropertyKey))
 
         sut.close()
     }
