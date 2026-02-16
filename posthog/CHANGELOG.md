@@ -1,5 +1,7 @@
 ## Next
 
+## 6.5.0 - 2026-02-16
+
 - feat: Support remote config for error tracking ([#415](https://github.com/PostHog/posthog-android/pull/415))
 
 ## 6.4.0 - 2026-02-05
