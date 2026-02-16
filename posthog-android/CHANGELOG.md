@@ -1,5 +1,7 @@
 ## Next
 
+# 3.31.1 - 2026-02-16
+
 - fix: walk view children for Compose views in session replay masking ([#417](https://github.com/PostHog/posthog-android/pull/417))
 
 # 3.31.0 - 2026-02-05
