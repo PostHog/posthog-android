@@ -89,10 +89,10 @@ public class PostHogRemoteConfig(
     private var autoCaptureExceptions = false
 
     @Volatile
-    private var consoleLogRecordingEnabled = false
+    private var consoleLogRecordingEnabled = true
 
     @Volatile
-    private var captureNetworkTiming = false
+    private var captureNetworkTiming = true
 
     init {
         preloadSessionReplayFlag()

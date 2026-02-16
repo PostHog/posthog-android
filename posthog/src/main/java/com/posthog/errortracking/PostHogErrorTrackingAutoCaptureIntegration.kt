@@ -34,7 +34,8 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             return
         }
 
-        if (!config.errorTrackingConfig.autoCapture) {
+        val autocaptureExceptionsEnabled = config.remoteConfigHolder?.isAutocaptureExceptionsEnabled() ?: false
+        if (!autocaptureExceptionsEnabled) {
             return
         }
 
@@ -68,8 +69,8 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     override fun onRemoteConfig() {
-        val remoteConfig = config.remoteConfigHolder ?: return
-        if (remoteConfig.isAutocaptureExceptionsEnabled()) {
+        val autocaptureExceptionsEnabled = config.remoteConfigHolder?.isAutocaptureExceptionsEnabled() ?: false
+        if (autocaptureExceptionsEnabled) {
             postHog?.let { install(it) }
         } else {
             uninstall()
