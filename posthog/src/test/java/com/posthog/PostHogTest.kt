@@ -895,6 +895,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
         val featureFlag = "new_feature"
+        val userPropertyKey = PostHogEventName.FEATURE_INTERACTION.event + "/" + featureFlag
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
@@ -910,10 +911,13 @@ internal class PostHogTest {
 
         val theEvent = batch.batch.first()
         val properties = theEvent.properties as? Map<*, *>
+        val userProperties = properties?.get("\$set") as? Map<*, *>
 
         assertEquals(PostHogEventName.FEATURE_INTERACTION.event, theEvent.event)
         assertEquals(featureFlag, properties?.get("feature_flag"))
         assertEquals(null, properties?.get("feature_flag_variant"))
+        assertIs<Boolean>(userProperties?.get(userPropertyKey))
+        assertEquals(true, userProperties?.get(userPropertyKey))
 
         sut.close()
     }
