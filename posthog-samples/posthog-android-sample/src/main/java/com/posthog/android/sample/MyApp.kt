@@ -37,12 +37,12 @@ class MyApp : Application() {
                         event
                     }
                 }
-                sessionReplayConfig.maskAllTextInputs = true
+                sessionReplayConfig.maskAllTextInputs = false
                 sessionReplayConfig.maskAllImages = false
-                sessionReplayConfig.captureLogcat = false
+                sessionReplayConfig.captureLogcat = true
                 sessionReplayConfig.screenshot = true
-                surveys = false
-                errorTrackingConfig.autoCapture = false
+                surveys = true
+                errorTrackingConfig.autoCapture = true
             }
         PostHogAndroid.setup(this, config)
     }

@@ -1,5 +1,7 @@
 ## Next
 
+- feat: Support remote config for error tracking, console log recording, and network timing capture ([#415](https://github.com/PostHog/posthog-android/pull/415))
+
 # 3.31.1 - 2026-02-16
 
 - fix: walk view children for Compose views in session replay masking ([#417](https://github.com/PostHog/posthog-android/pull/417))
