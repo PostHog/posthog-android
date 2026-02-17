@@ -231,6 +231,7 @@ public open class PostHogConfig constructor(
         private var debug: Boolean = false
         private var sendFeatureFlagEvent: Boolean = true
         private var preloadFeatureFlags: Boolean = true
+
         @Suppress("DEPRECATION")
         private var remoteConfig: Boolean = true
         private var flushAt: Int = DEFAULT_FLUSH_AT
