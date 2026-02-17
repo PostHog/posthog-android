@@ -613,6 +613,9 @@ public class PostHog private constructor(
         flag: String,
         flagVariant: String?,
     ) {
+        if (!isEnabled()) {
+            return
+        }
         val props = mutableMapOf<String, Any>()
         props["feature_flag"] = flag
 
@@ -634,6 +637,9 @@ public class PostHog private constructor(
         flag: String,
         flagVariant: String?,
     ) {
+        if (!isEnabled()) {
+            return
+        }
         val props = mutableMapOf<String, Any>()
         props["feature_flag"] = flag
 
