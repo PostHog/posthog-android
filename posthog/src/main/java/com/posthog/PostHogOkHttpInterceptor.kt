@@ -16,6 +16,14 @@ public class PostHogOkHttpInterceptor(
     private val isSessionReplayActive: Boolean
         get() = postHog?.isSessionReplayActive() ?: PostHog.isSessionReplayActive()
 
+    private val isNetworkCaptureEnabled: Boolean
+        get() {
+            val config = (postHog ?: PostHog).getConfig<PostHogConfig>() ?: return true
+            val remoteConfig = config.remoteConfigHolder
+            // if remote config hasn't loaded yet, default to true (don't block locally enabled capture)
+            return remoteConfig?.isCaptureNetworkTimingEnabled() ?: true
+        }
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
 
@@ -34,8 +42,8 @@ public class PostHogOkHttpInterceptor(
         request: Request,
         response: Response,
     ) {
-        // do not capture network logs if session replay is disabled
-        if (!captureNetworkTelemetry || !isSessionReplayActive) {
+        // do not capture network events if locally or remotely disabled, or if session replay is disabled
+        if (!captureNetworkTelemetry || !isNetworkCaptureEnabled || !isSessionReplayActive) {
             return
         }
         val url = request.url.toString()

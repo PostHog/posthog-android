@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.server.internal.FeatureFlagError
 import com.posthog.server.internal.PostHogFeatureFlags
 import okhttp3.mockwebserver.MockResponse
@@ -270,7 +271,7 @@ internal class PostHogTest {
         val postHog = spy(PostHog())
 
         // Set up a different implementation of the feature flags interface
-        val mockFeatureFlags = mock<com.posthog.internal.PostHogFeatureFlagsInterface>()
+        val mockFeatureFlags = mock<PostHogFeatureFlagsInterface>()
 
         // Use reflection to set the featureFlags field
         val featureFlagsField = postHog.javaClass.superclass.getDeclaredField("featureFlags")

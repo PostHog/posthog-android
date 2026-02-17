@@ -1,5 +1,13 @@
 ## Next
 
+# 3.32.0 - 2026-02-16
+
+- feat: Support remote config for error tracking, console log recording, and network timing capture ([#415](https://github.com/PostHog/posthog-android/pull/415))
+
+# 3.31.1 - 2026-02-16
+
+- fix: walk view children for Compose views in session replay masking ([#417](https://github.com/PostHog/posthog-android/pull/417))
+
 # 3.31.0 - 2026-02-05
 
 - fix: Queue pending feature flags reload instead of dropping requests when a reload is already in flight ([#407](https://github.com/PostHog/posthog-android/pull/407))
