@@ -77,6 +77,7 @@ internal class PostHogTest {
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
                 this.evaluationContexts = evaluationContexts
+                @Suppress("DEPRECATION")
                 this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)

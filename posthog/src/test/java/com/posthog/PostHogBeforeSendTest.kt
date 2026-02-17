@@ -62,6 +62,7 @@ internal class PostHogBeforeSendTest {
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
+                @Suppress("DEPRECATION")
                 this.remoteConfig = remoteConfig
                 listBeforeSend?.map {
                     addBeforeSend(it)
