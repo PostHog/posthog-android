@@ -5,11 +5,13 @@ import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogNoOpLogger
+import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
@@ -98,7 +100,6 @@ public open class PostHogConfig(
      * Preload PostHog remote config automatically
      * Defaults to true
      */
-    @PostHogExperimental
     public var remoteConfig: Boolean = true,
     /**
      * Number of minimum events before they are sent over the wire
@@ -221,15 +222,25 @@ public open class PostHogConfig(
         PostHogConfig,
         PostHogApi,
         ExecutorService,
-        (() -> Map<String, Any>)?,
+        PostHogDefaultPersonPropertiesProvider?,
+        PostHogOnRemoteConfigLoaded?,
     ) -> PostHogFeatureFlagsInterface =
         {
                 config,
                 api,
                 executor,
-                getDefaultPersonProperties,
+                defaultPersonPropertiesProvider,
+                onRemoteConfigLoaded,
             ->
-            PostHogRemoteConfig(config, api, executor, getDefaultPersonProperties ?: { emptyMap() })
+            PostHogRemoteConfig(
+                config,
+                api,
+                executor,
+                defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider {
+                    emptyMap()
+                },
+                onRemoteConfigLoaded,
+            )
         },
     /**
      * Factory to instantiate a custom queue implementation.
@@ -315,6 +326,14 @@ public open class PostHogConfig(
 
     @PostHogInternal
     public var snapshotEndpoint: String = "/s/"
+
+    /**
+     * Reference to the PostHogRemoteConfig instance, set during setup.
+     * Used by integrations to check remote config values.
+     */
+    @PostHogInternal
+    public var remoteConfigHolder: PostHogRemoteConfig? = null
+        internal set
 
     @PostHogInternal
     public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()

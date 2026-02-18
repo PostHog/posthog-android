@@ -67,6 +67,7 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun isActive ()Z
+	public fun onRemoteConfig ()V
 	public fun start (Z)V
 	public fun stop ()V
 	public fun uninstall ()V
@@ -118,6 +119,7 @@ public final class com/posthog/android/surveys/PostHogSurveysIntegration : com/p
 	public fun <init> (Landroid/content/Context;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun onEvent (Ljava/lang/String;)V
+	public fun onRemoteConfig ()V
 	public fun onSurveysLoaded (Ljava/util/List;)V
 	public fun uninstall ()V
 }

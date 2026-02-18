@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Build
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.interruptSafely
 import com.posthog.internal.replay.RRPluginEvent
@@ -28,11 +29,15 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled || !config.sessionReplayConfig.captureLogcat || !isSupported()) {
+        this.postHog = postHog
+        if (integrationInstalled || !isSupported()) {
+            return
+        }
+        val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
+        if (!config.sessionReplayConfig.captureLogcat || !captureLogcat) {
             return
         }
         integrationInstalled = true
-        this.postHog = postHog
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
         val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
         cmd.add("-T")
@@ -95,9 +100,20 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
     }
 
+    override fun onRemoteConfig() {
+        val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
+        if (captureLogcat) {
+            postHog?.let { install(it) }
+        } else {
+            uninstall()
+        }
+    }
+
+    @PostHogVisibleForTesting
+    internal fun isInstalled(): Boolean = integrationInstalled
+
     override fun uninstall() {
         integrationInstalled = false
-        this.postHog = null
         logcatInProgress = false
         logcatThread?.interruptSafely()
     }
