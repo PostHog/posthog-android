@@ -156,10 +156,11 @@ internal class PostHogRemoteConfigTest {
     @Test
     fun `returns isSessionReplayFlagActive true if multi variant linked flag is a match`() {
         // Pre-cache session recording config with linkedFlag variant
-        val sessionRecordingConfig = mapOf(
-            "endpoint" to "/b/",
-            "linkedFlag" to mapOf("flag" to "session-replay-flag", "variant" to "variant-1"),
-        )
+        val sessionRecordingConfig =
+            mapOf(
+                "endpoint" to "/b/",
+                "linkedFlag" to mapOf("flag" to "session-replay-flag", "variant" to "variant-1"),
+            )
         preferences.setValue(SESSION_REPLAY, sessionRecordingConfig)
 
         val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-match.json")
