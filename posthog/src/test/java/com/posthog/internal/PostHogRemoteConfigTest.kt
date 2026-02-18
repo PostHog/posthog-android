@@ -97,19 +97,25 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns isSessionReplayFlagActive true if bool linked flag is enabled`() {
-        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseText = file.readText()
 
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(file.readText()),
+                        .setBody(responseText),
             )
+        val file2 = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
+        http.enqueue(
+            MockResponse()
+                .setBody(file2.readText()),
+        )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
 
         executor.shutdownAndAwaitTermination()
 

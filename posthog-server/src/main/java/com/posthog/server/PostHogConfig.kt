@@ -48,10 +48,7 @@ public open class PostHogConfig constructor(
      * Preload PostHog remote config automatically
      * Defaults to true
      */
-    @Deprecated(
-        message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
-        level = DeprecationLevel.WARNING,
-    )
+    @Deprecated("Remote config is now always enabled. This option is a no-op and will be removed in a future version.")
     public var remoteConfig: Boolean = true,
     /**
      * Number of minimum events before they are sent over the wire
@@ -153,7 +150,6 @@ public open class PostHogConfig constructor(
         integrations.add(integration)
     }
 
-    @Suppress("DEPRECATION")
     @JvmSynthetic
     internal fun asCoreConfig(): com.posthog.PostHogConfig {
         val coreConfig =
@@ -163,7 +159,6 @@ public open class PostHogConfig constructor(
                 debug = debug,
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
                 preloadFeatureFlags = preloadFeatureFlags,
-                remoteConfig = remoteConfig,
                 flushAt = flushAt,
                 maxQueueSize = maxQueueSize,
                 maxBatchSize = maxBatchSize,
@@ -257,10 +252,7 @@ public open class PostHogConfig constructor(
 
         public fun preloadFeatureFlags(preloadFeatureFlags: Boolean): Builder = apply { this.preloadFeatureFlags = preloadFeatureFlags }
 
-        @Deprecated(
-            message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
-            level = DeprecationLevel.WARNING,
-        )
+        @Deprecated("Remote config is now always enabled. This option is a no-op and will be removed in a future version.")
         @Suppress("DEPRECATION")
         public fun remoteConfig(remoteConfig: Boolean): Builder = apply { this.remoteConfig = remoteConfig }
 
@@ -300,7 +292,6 @@ public open class PostHogConfig constructor(
 
         public fun evaluationContexts(evaluationContexts: List<String>?): Builder = apply { this.evaluationContexts = evaluationContexts }
 
-        @Suppress("DEPRECATION")
         public fun build(): PostHogConfig =
             PostHogConfig(
                 apiKey = apiKey,
@@ -308,7 +299,6 @@ public open class PostHogConfig constructor(
                 debug = debug,
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
                 preloadFeatureFlags = preloadFeatureFlags,
-                remoteConfig = remoteConfig,
                 flushAt = flushAt,
                 maxQueueSize = maxQueueSize,
                 maxBatchSize = maxBatchSize,

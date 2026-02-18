@@ -26,7 +26,7 @@
     "recorderVersion": "v2",
     "sampleRate": null,
     "minimumDurationMilliseconds": 1000,
-    "linkedFlag": null,
+    "linkedFlag": "session-replay-flag",
     "networkPayloadCapture": {
       "recordBody": true,
       "recordHeaders": true

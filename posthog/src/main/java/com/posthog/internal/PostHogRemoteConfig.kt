@@ -209,7 +209,6 @@ public class PostHogRemoteConfig(
                                         groups,
                                         internalOnFeatureFlags = internalOnFeatureFlags,
                                         onFeatureFlags = onFeatureFlags,
-                                        notifyRemoteConfigLoaded = false,
                                     )
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
@@ -458,7 +457,6 @@ public class PostHogRemoteConfig(
         groups: Map<String, String>?,
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
         onFeatureFlags: PostHogOnFeatureFlags?,
-        notifyRemoteConfigLoaded: Boolean = true,
     ) {
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Network isn't connected.")
@@ -541,19 +539,6 @@ public class PostHogRemoteConfig(
                         val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                         this.featureFlagPayloads = normalizedPayloads
                     }
-
-                    // since flags might have changed, we need to check if session recording is active again
-                    processSessionRecordingConfig(it.sessionRecording)
-
-                    // TODO: surveys depends on remoteConfig for now
-                    // otherwise surveysHandler?.onSurveysLoaded will be called multiple times
-                    // processSurveys(it.surveys)
-
-                    // only process values if not yet processed by remote config
-                    if (notifyRemoteConfigLoaded) {
-                        processCapturePerformanceConfig(it.capturePerformance)
-                        processErrorTrackingConfig(it.errorTracking)
-                    }
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -566,14 +551,6 @@ public class PostHogRemoteConfig(
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
                 }
                 isFeatureFlagsLoaded = true
-
-                if (notifyRemoteConfigLoaded) {
-                    try {
-                        onRemoteConfigLoaded?.loaded()
-                    } catch (e: Throwable) {
-                        config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
-                    }
-                }
             } ?: run {
                 isFeatureFlagsLoaded = false
             }

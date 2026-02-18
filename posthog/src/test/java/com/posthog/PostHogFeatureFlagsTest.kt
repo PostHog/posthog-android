@@ -41,7 +41,6 @@ internal class PostHogFeatureFlagsTest {
         sendFeatureFlagEvent: Boolean = true,
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
-        remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
@@ -64,8 +63,6 @@ internal class PostHogFeatureFlagsTest {
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
                 this.evaluationContexts = evaluationContexts
-                @Suppress("DEPRECATION")
-                this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
@@ -103,7 +100,7 @@ internal class PostHogFeatureFlagsTest {
                 .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -142,7 +139,7 @@ internal class PostHogFeatureFlagsTest {
                 .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
         remoteConfigExecutor.shutdownAndAwaitTermination()
@@ -185,6 +182,7 @@ internal class PostHogFeatureFlagsTest {
                 url.toString(),
                 preloadFeatureFlags = false,
                 sendFeatureFlagEvent = false,
+                reloadFeatureFlags = false,
             )
 
         sut.reloadFeatureFlags()
@@ -225,7 +223,7 @@ internal class PostHogFeatureFlagsTest {
                 .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -265,7 +263,7 @@ internal class PostHogFeatureFlagsTest {
                 .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -308,6 +306,7 @@ internal class PostHogFeatureFlagsTest {
                 url.toString(),
                 preloadFeatureFlags = false,
                 sendFeatureFlagEvent = true,
+                reloadFeatureFlags = false,
             )
 
         sut.reloadFeatureFlags()
@@ -347,7 +346,7 @@ internal class PostHogFeatureFlagsTest {
                 .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 

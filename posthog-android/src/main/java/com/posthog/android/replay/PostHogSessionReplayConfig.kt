@@ -37,7 +37,10 @@ public class PostHogSessionReplayConfig
          * Defaults to 1000ms = 1s
          * Ps: it was 500ms by default until version 3.8.2
          */
-        @Deprecated("Use throttleDelayMs instead")
+        @Deprecated(
+            message = "Do not use it",
+            replaceWith = ReplaceWith("throttleDelayMs"),
+        )
         public var debouncerDelayMs: Long = 1000,
         /**
          * Throttling delay used to reduce the number of snapshots captured and reduce performance impact

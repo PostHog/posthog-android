@@ -210,15 +210,10 @@ public class PostHog private constructor(
                 // only because of testing in isolation, this flag is always enabled
                 @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
-                    when {
-                        config.remoteConfig ->
-                            loadRemoteConfigRequest(
-                                internalOnFeatureFlagsLoaded,
-                                config.onFeatureFlags,
-                            )
-
-                        config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
-                    }
+                    loadRemoteConfigRequest(
+                        internalOnFeatureFlagsLoaded,
+                        config.onFeatureFlags,
+                    )
                 }
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
