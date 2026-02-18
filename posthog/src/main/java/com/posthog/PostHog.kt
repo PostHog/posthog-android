@@ -208,7 +208,6 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
-                @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
                     loadRemoteConfigRequest(
                         internalOnFeatureFlagsLoaded,
