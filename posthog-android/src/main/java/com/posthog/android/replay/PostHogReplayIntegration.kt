@@ -980,10 +980,6 @@ public class PostHogReplayIntegration(
 
     private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
         val view = this
-        
-        // Check view is still valid before any access to avoid native crashes
-        if (!view.isAliveAndAttachedToWindow()) return null
-        
         if (!view.isVisible()) {
             return null
         }
@@ -1247,17 +1243,8 @@ public class PostHogReplayIntegration(
 
         val children = mutableListOf<RRWireframe>()
         if (view is ViewGroup && view.childCount > 0) {
-            // Snapshot childCount to reduce race window
-            val childCount = view.childCount
-            for (i in 0 until childCount) {
-                // Check bounds again in case childCount changed
-                if (i >= view.childCount) break
-                
+            for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                
-                // Check child is still valid before traversing
-                if (!viewChild.isAliveAndAttachedToWindow()) continue
-                
                 viewChild.toWireframe(parentId = viewId)?.let {
                     children.add(it)
                 }
