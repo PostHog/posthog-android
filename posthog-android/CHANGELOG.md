@@ -1,5 +1,7 @@
 ## Next
 
+- fix: Add validity checks in Session Replay to prevent native crashes when views are destroyed during snapshot ([#423](https://github.com/PostHog/posthog-android/pull/423))
+
 # 3.31.1 - 2026-02-16
 
 - fix: walk view children for Compose views in session replay masking ([#417](https://github.com/PostHog/posthog-android/pull/417))
