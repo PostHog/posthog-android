@@ -24,4 +24,4 @@ public data class PostHogFlagsResponse(
     val quotaLimited: List<String>? = null,
     val requestId: String?,
     val evaluatedAt: Long?,
-) : PostHogRemoteConfigResponse()
+)
