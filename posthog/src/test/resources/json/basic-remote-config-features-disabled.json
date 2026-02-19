@@ -1,0 +1,22 @@
+{
+  "token": "phc_QFbR1y41s5sxnNTZoyKG2NJo2RlsCIWkUfdpawgb40D",
+  "supportedCompression": [
+    "gzip",
+    "gzip-js"
+  ],
+  "hasFeatureFlags": false,
+  "captureDeadClicks": false,
+  "capturePerformance": false,
+  "autocapture_opt_out": true,
+  "autocaptureExceptions": false,
+  "errorTracking": false,
+  "analytics": {
+    "endpoint": "/i/v0/e/"
+  },
+  "elementsChainAsString": true,
+  "sessionRecording": false,
+  "heatmaps": false,
+  "surveys": false,
+  "defaultIdentifiedOnly": true,
+  "siteApps": []
+}
