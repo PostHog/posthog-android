@@ -11,13 +11,13 @@ import java.util.UUID
 public object PostHogSessionManager {
     private val sessionLock = Any()
 
-    // do not move to companion object, otherwise sessionId clearwill be null
+    // do not move to companion object, otherwise sessionId will be null
     private val sessionIdNone = UUID(0, 0)
 
     private var sessionId = sessionIdNone
 
     @Volatile
-    internal var isReactNative: Boolean = false
+    public var isReactNative: Boolean = false
 
     public fun startSession() {
         if (isReactNative) {
