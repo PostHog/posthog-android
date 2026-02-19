@@ -110,6 +110,18 @@ public class PostHogFake : PostHogInterface {
     ) {
     }
 
+    override fun captureFeatureView(
+        flag: String,
+        flagVariant: String?,
+    ) {
+    }
+
+    override fun captureFeatureInteraction(
+        flag: String,
+        flagVariant: String?,
+    ) {
+    }
+
     override fun reset() {
     }
 
