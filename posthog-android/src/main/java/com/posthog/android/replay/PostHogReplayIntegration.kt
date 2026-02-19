@@ -403,6 +403,13 @@ public class PostHogReplayIntegration(
         val status = decorViews[view] ?: return
         val window = windowRef.get() ?: return
 
+        // Check view is still valid before any access to avoid native crashes
+        if (!view.isAliveAndAttachedToWindow()) return
+        if (view.width <= 0 || view.height <= 0) return
+
+        // Check window still has valid decor view
+        if (window.peekDecorView() == null) return
+
         val timestamp = config.dateProvider.currentTimeMillis()
 
         val wireframe =
