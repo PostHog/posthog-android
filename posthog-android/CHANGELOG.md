@@ -1,5 +1,9 @@
 ## Next
 
+# 3.32.1 - 2026-02-19
+  
+- no user facing changes
+
 # 3.32.0 - 2026-02-16
 
 - feat: Support remote config for error tracking, console log recording, and network timing capture ([#415](https://github.com/PostHog/posthog-android/pull/415))
