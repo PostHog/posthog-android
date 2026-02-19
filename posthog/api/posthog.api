@@ -844,7 +844,9 @@ public final class com/posthog/internal/PostHogSessionManager {
 	public static final field INSTANCE Lcom/posthog/internal/PostHogSessionManager;
 	public final fun endSession ()V
 	public final fun getActiveSessionId ()Ljava/util/UUID;
+	public final fun isReactNative ()Z
 	public final fun isSessionActive ()Z
+	public final fun setReactNative (Z)V
 	public final fun setSessionId (Ljava/util/UUID;)V
 	public final fun startSession ()V
 }

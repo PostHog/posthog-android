@@ -23,6 +23,7 @@ import com.posthog.android.replay.internal.PostHogLogCatIntegration
 import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
+import com.posthog.internal.PostHogSessionManager
 import java.io.File
 
 /**
@@ -106,12 +107,14 @@ public class PostHogAndroid private constructor() {
                 }
             }
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
-            // Flutter SDK sets the sdkName and sdkVersion, so this guard is not to allow
+            // Flutter and RN SDKs set the sdkName and sdkVersion, so this guard is not to allow
             // the values to be overwritten again
-            if (config.sdkName != "posthog-flutter") {
+            if (config.sdkName != "posthog-flutter" && config.sdkName != "posthog-react-native") {
                 config.sdkName = "posthog-android"
                 config.sdkVersion = BuildConfig.VERSION_NAME
             }
+
+            PostHogSessionManager.isReactNative = config.sdkName == "posthog-react-native"
 
             val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
             val metaPropertiesApplier = PostHogMetaPropertiesApplier()
