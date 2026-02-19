@@ -48,6 +48,7 @@ public open class PostHogConfig constructor(
      * Preload PostHog remote config automatically
      * Defaults to true
      */
+    @Deprecated("Remote config is now always enabled. This option is a no-op and will be removed in a future version.")
     public var remoteConfig: Boolean = true,
     /**
      * Number of minimum events before they are sent over the wire
@@ -158,7 +159,6 @@ public open class PostHogConfig constructor(
                 debug = debug,
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
                 preloadFeatureFlags = preloadFeatureFlags,
-                remoteConfig = remoteConfig,
                 flushAt = flushAt,
                 maxQueueSize = maxQueueSize,
                 maxBatchSize = maxBatchSize,
@@ -226,6 +226,8 @@ public open class PostHogConfig constructor(
         private var debug: Boolean = false
         private var sendFeatureFlagEvent: Boolean = true
         private var preloadFeatureFlags: Boolean = true
+
+        @Suppress("DEPRECATION")
         private var remoteConfig: Boolean = true
         private var flushAt: Int = DEFAULT_FLUSH_AT
         private var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE
@@ -250,6 +252,8 @@ public open class PostHogConfig constructor(
 
         public fun preloadFeatureFlags(preloadFeatureFlags: Boolean): Builder = apply { this.preloadFeatureFlags = preloadFeatureFlags }
 
+        @Deprecated("Remote config is now always enabled. This option is a no-op and will be removed in a future version.")
+        @Suppress("DEPRECATION")
         public fun remoteConfig(remoteConfig: Boolean): Builder = apply { this.remoteConfig = remoteConfig }
 
         public fun flushAt(flushAt: Int): Builder = apply { this.flushAt = flushAt }
@@ -295,7 +299,6 @@ public open class PostHogConfig constructor(
                 debug = debug,
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
                 preloadFeatureFlags = preloadFeatureFlags,
-                remoteConfig = remoteConfig,
                 flushAt = flushAt,
                 maxQueueSize = maxQueueSize,
                 maxBatchSize = maxBatchSize,

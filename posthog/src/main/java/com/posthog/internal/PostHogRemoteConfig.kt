@@ -200,24 +200,27 @@ public class PostHogRemoteConfig(
                         if (hasFlags) {
                             if (config.preloadFeatureFlags) {
                                 if (distinctId.isNotBlank()) {
-                                    // do not process session replay from flags API
-                                    // since its already cached via the remote config API
-                                    // do not notify onRemoteConfigLoaded since loadRemoteConfig does it
+                                    // onRemoteConfigLoaded will be fired by executeFeatureFlags
+                                    // after feature flags are processed
                                     executeFeatureFlags(
                                         distinctId,
                                         anonymousId,
                                         groups,
                                         internalOnFeatureFlags = internalOnFeatureFlags,
                                         onFeatureFlags = onFeatureFlags,
-                                        notifyRemoteConfigLoaded = false,
+                                        notifyRemoteConfigLoaded = true,
                                     )
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+                                    shouldNotifyRemoteConfigLoaded = true
                                     runOnFeatureFlagsCallbacks(
                                         internalOnFeatureFlags = internalOnFeatureFlags,
                                         onFeatureFlags = onFeatureFlags,
                                     )
                                 }
+                            } else {
+                                // preloadFeatureFlags is disabled, notify here
+                                shouldNotifyRemoteConfigLoaded = true
                             }
                         } else {
                             // clear cache since there are no active flags on the server side
@@ -228,14 +231,13 @@ public class PostHogRemoteConfig(
                                 clearFlags()
                             }
 
+                            shouldNotifyRemoteConfigLoaded = true
+
                             runOnFeatureFlagsCallbacks(
                                 internalOnFeatureFlags = internalOnFeatureFlags,
                                 onFeatureFlags = onFeatureFlags,
                             )
                         }
-
-                        // mark to notify outside the lock
-                        shouldNotifyRemoteConfigLoaded = true
                     }
                 } ?: run {
                     runOnFeatureFlagsCallbacks(
@@ -452,13 +454,23 @@ public class PostHogRemoteConfig(
      */
     public fun isCaptureNetworkTimingEnabled(): Boolean = captureNetworkTiming
 
+    private fun reEvaluateSessionRecordingFromCache() {
+        config.cachePreferences?.let { preferences ->
+            @Suppress("UNCHECKED_CAST")
+            val sessionRecording = preferences.getValue(SESSION_REPLAY) as? Map<String, Any?>
+            if (sessionRecording != null) {
+                processSessionRecordingConfig(sessionRecording)
+            }
+        }
+    }
+
     private fun executeFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
         onFeatureFlags: PostHogOnFeatureFlags?,
-        notifyRemoteConfigLoaded: Boolean = true,
+        notifyRemoteConfigLoaded: Boolean = false,
     ) {
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Network isn't connected.")
@@ -541,19 +553,6 @@ public class PostHogRemoteConfig(
                         val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                         this.featureFlagPayloads = normalizedPayloads
                     }
-
-                    // since flags might have changed, we need to check if session recording is active again
-                    processSessionRecordingConfig(it.sessionRecording)
-
-                    // TODO: surveys depends on remoteConfig for now
-                    // otherwise surveysHandler?.onSurveysLoaded will be called multiple times
-                    // processSurveys(it.surveys)
-
-                    // only process values if not yet processed by remote config
-                    if (notifyRemoteConfigLoaded) {
-                        processCapturePerformanceConfig(it.capturePerformance)
-                        processErrorTrackingConfig(it.errorTracking)
-                    }
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -566,6 +565,11 @@ public class PostHogRemoteConfig(
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
                 }
                 isFeatureFlagsLoaded = true
+
+                // Re-evaluate session recording config now that feature flags are loaded.
+                // Linked flags can only be resolved after feature flags are available.
+                // Uses the cached session recording config (set by remote config or a previous session).
+                reEvaluateSessionRecordingFromCache()
 
                 if (notifyRemoteConfigLoaded) {
                     try {

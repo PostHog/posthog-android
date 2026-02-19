@@ -54,7 +54,6 @@ internal class PostHogTest {
         sendFeatureFlagEvent: Boolean = true,
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
-        remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
@@ -78,7 +77,6 @@ internal class PostHogTest {
                 this.cachePreferences = cachePreferences
                 this.propertiesSanitizer = propertiesSanitizer
                 this.evaluationContexts = evaluationContexts
-                this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
@@ -179,16 +177,29 @@ internal class PostHogTest {
 
     @Test
     fun `preload feature flags if enabled`() {
-        val http = mockHttp()
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseText = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseText),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(responseFlagsApi),
+        )
         val url = http.url("/")
 
         val sut = getSut(url.toString())
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
+        http.takeRequest()
         val request = http.takeRequest()
-        assertEquals(1, http.requestCount)
-        assertEquals("/flags/?v=2&config=true", request.path)
+        assertEquals(2, http.requestCount)
+        assertEquals("/flags/?v=2", request.path)
 
         sut.close()
     }
@@ -218,7 +229,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), remoteConfig = true, preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
@@ -246,7 +257,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), remoteConfig = true)
+        val sut = getSut(url.toString())
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
@@ -256,7 +267,7 @@ internal class PostHogTest {
         assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
 
         val flagsApiRequest = http.takeRequest()
-        assertEquals("/flags/?v=2&config=true", flagsApiRequest.path)
+        assertEquals("/flags/?v=2", flagsApiRequest.path)
 
         sut.close()
     }
@@ -278,7 +289,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), remoteConfig = true)
+        val sut = getSut(url.toString())
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
@@ -300,7 +311,7 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -321,7 +332,7 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -349,7 +360,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -411,7 +422,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -463,7 +474,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -508,7 +519,7 @@ internal class PostHogTest {
             )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -528,7 +539,7 @@ internal class PostHogTest {
                         .setBody(responseFlagsApi),
             )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
         remoteConfigExecutor.shutdownAndAwaitTermination()
@@ -588,7 +599,7 @@ internal class PostHogTest {
                 .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
         remoteConfigExecutor.shutdownAndAwaitTermination()
@@ -629,7 +640,7 @@ internal class PostHogTest {
                 .setBody(""),
         )
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
         remoteConfigExecutor.shutdownAndAwaitTermination()
@@ -655,7 +666,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
@@ -679,6 +690,7 @@ internal class PostHogTest {
                 url.toString(),
                 preloadFeatureFlags = false,
                 evaluationContexts = listOf("production", "web", "checkout"),
+                reloadFeatureFlags = false,
             )
 
         sut.reloadFeatureFlags()
@@ -726,7 +738,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.optOut()
 
@@ -764,7 +776,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.capture(
             EVENT,
@@ -804,7 +816,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.capture(
             EVENT,
@@ -1021,7 +1033,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         val customTimestamp = date // Use the predefined test date from Utils.kt
 
@@ -1378,7 +1390,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.alias(
             "theAlias",
@@ -1404,7 +1416,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.group("theType", "theKey", groupProps)
 
@@ -1462,7 +1474,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.register("newRegister", true)
 
@@ -1494,7 +1506,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.register("version", "123")
 
@@ -1526,7 +1538,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.register("newRegister", true)
 
@@ -1560,7 +1572,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.capture(
             EVENT,
@@ -1625,7 +1637,7 @@ internal class PostHogTest {
 
         val myPrefs = PostHogMemoryPreferences()
         myPrefs.setValue(API_KEY, """{"anonymousId":"anonId","distinctId":"disId"}""")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = myPrefs)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = myPrefs, reloadFeatureFlags = false)
 
         sut.capture(
             EVENT,
@@ -1736,7 +1748,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.reloadFeatureFlags()
 
@@ -1826,7 +1838,7 @@ internal class PostHogTest {
                 }
             }
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, propertiesSanitizer = propertiesSanitizer)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, propertiesSanitizer = propertiesSanitizer, reloadFeatureFlags = false)
 
         sut.capture(
             EVENT,
@@ -1947,7 +1959,19 @@ internal class PostHogTest {
 
     @Test
     fun `reset reloads flags as anon user`() {
-        val http = mockHttp()
+        val file = File("src/test/resources/json/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
@@ -1956,9 +1980,10 @@ internal class PostHogTest {
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
+        http.takeRequest()
         val request = http.takeRequest()
-        assertEquals(1, http.requestCount)
-        assertEquals("/flags/?v=2&config=true", request.path)
+        assertEquals(2, http.requestCount)
+        assertEquals("/flags/?v=2", request.path)
 
         sut.close()
     }
@@ -2129,7 +2154,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         val causeException = Exception("I am the cause")
         val exception = RuntimeException("Test exception message", causeException)
@@ -2231,7 +2256,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         val causeException = RuntimeException("Test exception message")
         val thread = Thread()
@@ -2297,12 +2322,19 @@ internal class PostHogTest {
 
     @Test
     fun `sets default person properties on SDK setup when enabled`() {
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseText = file.readText()
+
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi),
+                        .setBody(responseText),
             )
+        http.enqueue(
+            MockResponse()
+                .setBody(responseFlagsApi),
+        )
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = true, context = TestPostHogContext())
@@ -2483,7 +2515,7 @@ internal class PostHogTest {
         val url = http.url("/")
 
         val sut =
-            getSut(url.toString(), preloadFeatureFlags = false, context = TestPostHogContext())
+            getSut(url.toString(), preloadFeatureFlags = false, context = TestPostHogContext(), reloadFeatureFlags = false)
 
         // Set a property that conflicts with a default property
         val userProps =
@@ -2583,7 +2615,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         val userPropertiesToSet = mapOf("email" to "user@example.com", "plan" to "premium")
         val userPropertiesToSetOnce = mapOf("initial_url" to "/blog")
@@ -2612,7 +2644,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         val userPropertiesToSet = mapOf("email" to "user@example.com")
 
@@ -2638,7 +2670,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         val userPropertiesToSetOnce = mapOf("initial_url" to "/signup")
 
@@ -2696,7 +2728,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         val userPropertiesToSet = mapOf("email" to "user@example.com")
 
@@ -2749,7 +2781,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, flushAt = 2)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, flushAt = 2, reloadFeatureFlags = false)
 
         val userPropertiesToSet1 = mapOf("email" to "user@example.com")
         val userPropertiesToSet2 = mapOf("email" to "other@example.com")
@@ -2821,7 +2853,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         // Create two maps with the same data but potentially different insertion order
         val userPropertiesToSet1 = linkedMapOf("email" to "user@example.com", "plan" to "premium", "name" to "John")
@@ -2846,7 +2878,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         // Create two maps with the same data but potentially different insertion order
         val userPropertiesToSetOnce1 = linkedMapOf("initial_url" to "/blog", "referrer" to "google", "campaign" to "summer")
@@ -2871,7 +2903,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         // Create two maps with nested maps in different key order
         val nested1 = linkedMapOf("city" to "London", "country" to "UK", "zip" to "12345")

@@ -48,6 +48,10 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns session replay enabled after flags API call`() {
+        // Pre-cache session recording config (simulating a previous remote config load)
+        val sessionRecordingConfig = mapOf("endpoint" to "/b/")
+        preferences.setValue(SESSION_REPLAY, sessionRecordingConfig)
+
         val file = File("src/test/resources/json/basic-flags-recording.json")
 
         val http =
@@ -97,19 +101,25 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns isSessionReplayFlagActive true if bool linked flag is enabled`() {
-        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseText = file.readText()
 
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(file.readText()),
+                        .setBody(responseText),
             )
+        val file2 = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
+        http.enqueue(
+            MockResponse()
+                .setBody(file2.readText()),
+        )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
 
         executor.shutdownAndAwaitTermination()
 
@@ -145,6 +155,14 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `returns isSessionReplayFlagActive true if multi variant linked flag is a match`() {
+        // Pre-cache session recording config with linkedFlag variant
+        val sessionRecordingConfig =
+            mapOf(
+                "endpoint" to "/b/",
+                "linkedFlag" to mapOf("flag" to "session-replay-flag", "variant" to "variant-1"),
+            )
+        preferences.setValue(SESSION_REPLAY, sessionRecordingConfig)
+
         val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-match.json")
 
         val http =
@@ -1018,7 +1036,15 @@ internal class PostHogRemoteConfigTest {
     // --- Flags-only path tests (loadFeatureFlags -> executeFeatureFlags) ---
 
     @Test
-    fun `loadFeatureFlags processes errorTracking and capturePerformance from flags API`() {
+    fun `loadFeatureFlags processes errorTracking and capturePerformance from cache`() {
+        // Pre-cache remote config values (simulating a previous remote config load)
+        val errorTrackingConfig = mapOf("autocaptureExceptions" to true)
+        val capturePerformanceConfig = mapOf("network_timing" to true)
+        val sessionRecordingConfig = mapOf("endpoint" to "/s/", "consoleLogRecordingEnabled" to true)
+        preferences.setValue(ERROR_TRACKING, errorTrackingConfig)
+        preferences.setValue(CAPTURE_PERFORMANCE, capturePerformanceConfig)
+        preferences.setValue(SESSION_REPLAY, sessionRecordingConfig)
+
         val file = File("src/test/resources/json/basic-flags-with-remote-config-features.json")
 
         val http =
@@ -1045,7 +1071,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `onRemoteConfigLoaded fires via flags-only path`() {
+    fun `onRemoteConfigLoaded does not fire via flags-only path`() {
         val file = File("src/test/resources/json/basic-flags-with-remote-config-features.json")
 
         val http =
@@ -1076,7 +1102,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(1, callbackCount)
+        assertEquals(0, callbackCount)
 
         sut.clear()
         http.shutdown()

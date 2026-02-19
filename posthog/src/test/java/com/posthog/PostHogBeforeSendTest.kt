@@ -45,7 +45,6 @@ internal class PostHogBeforeSendTest {
         sendFeatureFlagEvent: Boolean = true,
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
-        remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         listBeforeSend: List<PostHogBeforeSend>? = null,
     ): PostHogInterface {
@@ -62,7 +61,6 @@ internal class PostHogBeforeSendTest {
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
-                this.remoteConfig = remoteConfig
                 listBeforeSend?.map {
                     addBeforeSend(it)
                 }
@@ -166,6 +164,7 @@ internal class PostHogBeforeSendTest {
                             event.copy(event = PostHogEventName.SCREEN.event)
                         },
                     ),
+                reloadFeatureFlags = false,
             )
         postHogInterface.getFeatureFlag("key")
 
@@ -190,6 +189,7 @@ internal class PostHogBeforeSendTest {
                             event
                         },
                     ),
+                reloadFeatureFlags = false,
             )
         postHogInterface.getFeatureFlag("key")
 

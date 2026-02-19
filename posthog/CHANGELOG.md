@@ -1,6 +1,8 @@
 ## Next
 - feat: Add `captureFeatureView` and `captureFeatureInteraction` to `PostHogInterface`. ([#416](https://github.com/PostHog/posthog-android/pull/416))
 
+- chore: Remove `config=true` from flags endpoint, add `timezone` to flags requests, deprecate `remoteConfig` option ([#421](https://github.com/PostHog/posthog-android/pull/421))
+
 ## 6.5.0 - 2026-02-16
 
 - feat: Support remote config for error tracking ([#415](https://github.com/PostHog/posthog-android/pull/415))

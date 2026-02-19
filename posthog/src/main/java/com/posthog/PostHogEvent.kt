@@ -28,10 +28,16 @@ public data class PostHogEvent(
     val uuid: UUID? = TimeBasedEpochGenerator.generate(),
     @Deprecated("Do not use")
     val type: String? = null,
-    @Deprecated("Do not use it, prefer [uuid]")
+    @Deprecated(
+        message = "Do not use it",
+        replaceWith = ReplaceWith("uuid"),
+    )
     @SerializedName("message_id")
     val messageId: UUID? = null,
-    @Deprecated("Do not use it, prefer [properties]")
+    @Deprecated(
+        message = "Do not use it",
+        replaceWith = ReplaceWith("properties"),
+    )
     @SerializedName("\$set")
     val set: Map<String, Any>? = null,
     // Only used for Replay

@@ -99,7 +99,10 @@ public open class PostHogConfig(
     /**
      * Preload PostHog remote config automatically
      * Defaults to true
+     *
+     * Remote config is now always enabled. This option is a no-op and will be removed in a future version.
      */
+    @Deprecated("Remote config is now always enabled. This option is a no-op and will be removed in a future version.")
     public var remoteConfig: Boolean = true,
     /**
      * Number of minimum events before they are sent over the wire
@@ -146,7 +149,10 @@ public open class PostHogConfig(
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire
      */
-    @Deprecated("Use beforeSendList instead")
+    @Deprecated(
+        message = "Use beforeSendList instead",
+        replaceWith = ReplaceWith("beforeSendList"),
+    )
     public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     /**
      * Hook that allows for modification of the default mechanism for
@@ -414,7 +420,8 @@ public open class PostHogConfig(
 
     /**
      * Optional list of evaluation environment tags for feature flag evaluation
-     * @deprecated Use evaluationContexts instead. This property will be removed in a future version.
+     *
+     * Use evaluationContexts instead. This property will be removed in a future version.
      */
     @Deprecated(
         message = "Use evaluationContexts instead. This property will be removed in a future version.",

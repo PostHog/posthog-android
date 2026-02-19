@@ -17,7 +17,6 @@ internal class PostHogConfigTest {
         assertEquals(false, config.debug)
         assertEquals(true, config.sendFeatureFlagEvent)
         assertEquals(true, config.preloadFeatureFlags)
-        assertEquals(true, config.remoteConfig)
         assertEquals(PostHogConfig.DEFAULT_FLUSH_AT, config.flushAt)
         assertEquals(PostHogConfig.DEFAULT_MAX_QUEUE_SIZE, config.maxQueueSize)
         assertEquals(PostHogConfig.DEFAULT_MAX_BATCH_SIZE, config.maxBatchSize)
@@ -42,7 +41,6 @@ internal class PostHogConfigTest {
                 debug = true,
                 sendFeatureFlagEvent = false,
                 preloadFeatureFlags = false,
-                remoteConfig = false,
                 flushAt = 10,
                 maxQueueSize = 500,
                 maxBatchSize = 25,
@@ -59,7 +57,6 @@ internal class PostHogConfigTest {
         assertEquals(true, config.debug)
         assertEquals(false, config.sendFeatureFlagEvent)
         assertEquals(false, config.preloadFeatureFlags)
-        assertEquals(false, config.remoteConfig)
         assertEquals(10, config.flushAt)
         assertEquals(500, config.maxQueueSize)
         assertEquals(25, config.maxBatchSize)
@@ -122,7 +119,6 @@ internal class PostHogConfigTest {
                 debug = true,
                 sendFeatureFlagEvent = false,
                 preloadFeatureFlags = false,
-                remoteConfig = false,
                 flushAt = 15,
                 maxQueueSize = 750,
                 maxBatchSize = 30,
@@ -140,7 +136,6 @@ internal class PostHogConfigTest {
         assertEquals(true, coreConfig.debug)
         assertEquals(false, coreConfig.sendFeatureFlagEvent)
         assertEquals(false, coreConfig.preloadFeatureFlags)
-        assertEquals(false, coreConfig.remoteConfig)
         assertEquals(15, coreConfig.flushAt)
         assertEquals(750, coreConfig.maxQueueSize)
         assertEquals(30, coreConfig.maxBatchSize)
@@ -212,7 +207,6 @@ internal class PostHogConfigTest {
         assertEquals(false, config.debug)
         assertEquals(true, config.sendFeatureFlagEvent)
         assertEquals(true, config.preloadFeatureFlags)
-        assertEquals(true, config.remoteConfig)
         assertEquals(PostHogConfig.DEFAULT_FLUSH_AT, config.flushAt)
         assertEquals(PostHogConfig.DEFAULT_MAX_QUEUE_SIZE, config.maxQueueSize)
         assertEquals(PostHogConfig.DEFAULT_MAX_BATCH_SIZE, config.maxBatchSize)
@@ -260,16 +254,6 @@ internal class PostHogConfigTest {
 
         val config = builder.build()
         assertEquals(false, config.preloadFeatureFlags)
-    }
-
-    @Test
-    fun `builder remoteConfig method sets value and returns builder`() {
-        val builder = PostHogConfig.builder(TEST_API_KEY)
-        val result = builder.remoteConfig(false)
-        assertEquals(builder, result)
-
-        val config = builder.build()
-        assertEquals(false, config.remoteConfig)
     }
 
     @Test
@@ -374,7 +358,6 @@ internal class PostHogConfigTest {
         assertEquals(true, config.debug)
         assertEquals(false, config.sendFeatureFlagEvent)
         assertEquals(false, config.preloadFeatureFlags)
-        assertEquals(false, config.remoteConfig)
         assertEquals(15, config.flushAt)
         assertEquals(750, config.maxQueueSize)
         assertEquals(30, config.maxBatchSize)
@@ -409,7 +392,6 @@ internal class PostHogConfigTest {
         config.debug = true
         config.sendFeatureFlagEvent = false
         config.preloadFeatureFlags = false
-        config.remoteConfig = false
         config.flushAt = 100
         config.maxQueueSize = 2000
         config.maxBatchSize = 75
@@ -420,7 +402,6 @@ internal class PostHogConfigTest {
         assertEquals(true, config.debug)
         assertEquals(false, config.sendFeatureFlagEvent)
         assertEquals(false, config.preloadFeatureFlags)
-        assertEquals(false, config.remoteConfig)
         assertEquals(100, config.flushAt)
         assertEquals(2000, config.maxQueueSize)
         assertEquals(75, config.maxBatchSize)
