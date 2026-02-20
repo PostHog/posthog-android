@@ -13,4 +13,10 @@
 - [ ] I added tests to verify the changes.
 - [ ] I updated the docs if needed.
 - [ ] No breaking change or entry added to the changelog.
-- [ ] If there are related changes in the [core](https://github.com/PostHog/posthog-android/tree/main/posthog) package, I've already released them, or I'll release them before this one.
+
+### If releasing new changes
+
+- [ ] Ran `pnpm changeset` to generate a changeset file
+- [ ] Added the "release" label to the PR to indicate we're publishing new versions for the affected packages
+
+<!-- For more details check RELEASING.md -->
