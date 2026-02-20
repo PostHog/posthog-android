@@ -1200,4 +1200,102 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
         http.shutdown()
     }
+
+    @Test
+    fun `getCaptureEventInfo returns pair when bool linked flag is enabled`() {
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        val info = sut.getCaptureEventInfo()
+
+        assertEquals("session-replay-flag", info?.first)
+        assertEquals(true, info?.second)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `getCaptureEventInfo returns null when bool linked flag is disabled`() {
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-disabled.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(null, sut.getCaptureEventInfo())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `getCaptureEventInfo returns pair when variant linked flag matches`() {
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-match.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        val info = sut.getCaptureEventInfo()
+
+        assertEquals("session-replay-flag", info?.first)
+        assertEquals("variant-1", info?.second)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `getCaptureEventInfo returns null when variant linked flag does not match`() {
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-not-match.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(null, sut.getCaptureEventInfo())
+
+        sut.clear()
+        http.shutdown()
+    }
 }

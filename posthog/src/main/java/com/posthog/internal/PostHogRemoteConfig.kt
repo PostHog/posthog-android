@@ -80,6 +80,9 @@ public class PostHogRemoteConfig(
     private var sessionReplayFlagActive = false
 
     @Volatile
+    private var captureEventInfo: Pair<String, Any?>? = null
+
+    @Volatile
     private var hasSurveys = false
 
     // Remote config values for error tracking, logs, and capture performance.
@@ -107,11 +110,15 @@ public class PostHogRemoteConfig(
         sessionRecording: Map<String, Any?>,
     ): Boolean {
         var recordingActive = true
+        var flagKey: String? = null
+        var flagValue: Any? = null
 
         // Check for boolean flags
         val linkedFlag = sessionRecording["linkedFlag"]
         if (linkedFlag is String) {
             val value = featureFlags[linkedFlag]
+            flagKey = linkedFlag
+            flagValue = value
             recordingActive =
                 when (value) {
                     is Boolean -> {
@@ -133,6 +140,8 @@ public class PostHogRemoteConfig(
             if (flag != null && variant != null) {
                 val value = featureFlags[flag] as? String
                 recordingActive = value == variant
+                flagKey = flag
+                flagValue = value
             } else {
                 // disable recording if the flag does not exist/quota limited
                 recordingActive = false
@@ -143,6 +152,10 @@ public class PostHogRemoteConfig(
         //    featureFlags[linkedFlag] != nil
         // is also a valid check but since we cannot check the value of the flag,
         // we consider session replay is active
+
+        if (flagKey != null && flagValue != null && recordingActive) {
+            captureEventInfo = flagKey to flagValue
+        }
 
         return recordingActive
     }
@@ -845,6 +858,8 @@ public class PostHogRemoteConfig(
 
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
+    internal fun getCaptureEventInfo(): Pair<String, Any?>? = captureEventInfo
+
     override fun getRequestId(
         distinctId: String?,
         groups: Map<String, String>?,
@@ -1002,7 +1017,7 @@ public class PostHogRemoteConfig(
             sessionReplayFlagActive = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
-
+            captureEventInfo = null
             clearFlags()
         }
 

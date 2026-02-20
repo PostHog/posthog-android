@@ -1336,6 +1336,15 @@ public class PostHog private constructor(
             return
         }
 
+        remoteConfig?.getCaptureEventInfo()?.let { (key, value) ->
+            // send feature_flag_called event when a flag is linked to session replay
+            sendFeatureFlagCalled(
+                key = key,
+                value = value,
+                sendFeatureFlagEvent = true,
+            )
+        }
+
         sessionReplayHandler?.let {
             // already active
             if (it.isActive()) {
