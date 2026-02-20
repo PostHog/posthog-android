@@ -75,10 +75,3 @@ Use this template when creating PRs:
 - [ ] Ran `pnpm changeset` to generate a changeset file
 - [ ] Added the "release" label to the PR to indicate we're publishing new versions for the affected packages
 ```
-
-## Key patterns
-
-- **Remote config**: `PostHogRemoteConfig` fetches and caches server-side config (session recording, feature flags, error tracking, etc.) via `PostHogPreferences`. Config maps are cached as-is under preference keys (e.g. `SESSION_REPLAY`), and individual fields are read from the map.
-- **Session replay**: Gated by both local config (`PostHogConfig.sessionReplay`) and remote config (`isSessionReplayFlagActive`). Sampling decisions are made before starting the recorder.
-- **Feature flags**: Loaded via remote config or flags API. Cached to preferences. Support v1 (featureFlags map) and v4 (flags with metadata).
-- **Integrations**: Implement `PostHogIntegration` interface, registered via `PostHogConfig.addIntegration()`. Session replay handler implements `PostHogSessionReplayHandler`.
