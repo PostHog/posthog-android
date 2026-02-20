@@ -1,5 +1,11 @@
 ## Next
 
+## 1.0.3
+
+### Patch Changes
+
+- 57efb8a: test new release process
+
 ## 1.0.2 - 2025-12-03
 
 - revert: plugin marker group id ([#339](https://github.com/PostHog/posthog-android/pull/339)).
