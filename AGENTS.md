@@ -51,6 +51,16 @@ Always use Makefile targets when possible:
 
 ## PR process
 
+Before opening a PR, create a changeset entry for the affected packages:
+
+```bash
+pnpm changeset
+```
+
+This will prompt for the affected packages, semver bump type, and a summary of changes. Commit the generated `.changeset/*.md` file with the PR.
+
+When the PR is merged with a `release` label, changesets will automatically bump versions, publish packages, and create GitHub releases.
+
 Use this template when creating PRs:
 
 ```
