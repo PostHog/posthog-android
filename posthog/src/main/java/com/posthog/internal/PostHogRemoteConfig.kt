@@ -16,6 +16,7 @@ import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 
 /**
  * The class responsible for calling and caching the feature flags
@@ -94,8 +95,15 @@ public class PostHogRemoteConfig(
     @Volatile
     private var captureNetworkTiming = true
 
+    /**
+     * The sample rate for session recording, a value between 0 and 1.
+     * null means no sampling (record everything).
+     */
+    @Volatile
+    private var sessionRecordingSampleRate: Double? = null
+
     init {
-        preloadSessionReplayFlag()
+        preloadSessionRecordingConfig()
         preloadSurveys()
         preloadErrorTrackingConfig()
         preloadCapturePerformanceConfig()
@@ -340,11 +348,19 @@ public class PostHogRemoteConfig(
 
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
+                    // sampleRate comes from the API as a string decimal between "0" and "1"
+                    val rawSampleRate = it["sampleRate"]
+                    sessionRecordingSampleRate = when (rawSampleRate) {
+                        is String -> rawSampleRate.toDoubleOrNull()
+                        is Number -> rawSampleRate.toDouble()
+                        else -> null
+                    }
+
                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
                     // TODO:
-                    // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
-                    // sampleRate, etc
+                    // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true},
+                    // masking -> array of key/value eg blockSelector: img, maskAllInputs: true, maskTextSelector: *
                 }
             }
             else -> {
@@ -658,7 +674,7 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun preloadSessionReplayFlag() {
+    private fun preloadSessionRecordingConfig() {
         synchronized(featureFlagsLock) {
             config.cachePreferences?.let { preferences ->
                 @Suppress("UNCHECKED_CAST")
@@ -674,6 +690,13 @@ public class PostHogRemoteConfig(
                         ?: config.snapshotEndpoint
 
                     consoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
+
+                    val rawSampleRate = sessionRecording["sampleRate"]
+                    sessionRecordingSampleRate = when (rawSampleRate) {
+                        is String -> rawSampleRate.toDoubleOrNull()
+                        is Number -> rawSampleRate.toDouble()
+                        else -> null
+                    }
                 }
             }
         }
@@ -844,6 +867,60 @@ public class PostHogRemoteConfig(
     }
 
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
+
+    /**
+     * Makes a sampling decision for session recording based on the sample rate
+     * from remote config and the given session ID.
+     *
+     * If there is no sample rate configured (null), recording is always allowed.
+     * The decision is deterministic based on the session ID hash, matching
+     * the JS SDK's sampleOnProperty logic.
+     *
+     * @param sessionId the current session ID
+     * @return true if this session should be recorded, false otherwise
+     */
+    public fun makeSamplingDecision(sessionId: String): Boolean {
+        val sampleRate = sessionRecordingSampleRate ?: return true
+
+        val shouldSample = sampleOnProperty(sessionId, sampleRate)
+
+        if (!shouldSample) {
+            config.logger.log(
+                "Sample rate ($sampleRate) has determined that this sessionId ($sessionId) will not be sent to the server.",
+            )
+        }
+
+        return shouldSample
+    }
+
+    /**
+     * Returns the current session recording sample rate, or null if not set.
+     */
+    public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
+
+    internal companion object {
+        /**
+         * Simple hash function matching the JS SDK's simpleHash.
+         * Produces a deterministic positive integer from a string.
+         */
+        internal fun simpleHash(str: String): Int {
+            var hash = 0
+            for (char in str) {
+                hash = (hash shl 5) - hash + char.code // (hash * 31) + char code
+                hash = hash or 0 // keep as 32-bit integer
+            }
+            return abs(hash)
+        }
+
+        /**
+         * Determines whether to sample based on a property string and a percentage (0..1).
+         * Matches the JS SDK's sampleOnProperty logic.
+         */
+        internal fun sampleOnProperty(prop: String, percent: Double): Boolean {
+            val clampedPercent = (percent * 100).coerceIn(0.0, 100.0)
+            return simpleHash(prop) % 100 < clampedPercent
+        }
+    }
 
     override fun getRequestId(
         distinctId: String?,

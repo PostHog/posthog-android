@@ -1336,6 +1336,15 @@ public class PostHog private constructor(
             return
         }
 
+        // Check sampling decision before starting the recorder
+        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
+        if (sessionId != null) {
+            val shouldRecord = remoteConfig?.makeSamplingDecision(sessionId) ?: true
+            if (!shouldRecord) {
+                return
+            }
+        }
+
         sessionReplayHandler?.let {
             // already active
             if (it.isActive()) {
