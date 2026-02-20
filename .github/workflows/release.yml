@@ -104,6 +104,19 @@ jobs:
             - name: Update versions and changelogs
               run: pnpm changeset version
 
+            - name: Sync versions to gradle.properties
+              run: |
+                  # Sync package.json versions back to gradle.properties
+                  CORE_VERSION=$(node -p "require('./posthog/package.json').version")
+                  ANDROID_VERSION=$(node -p "require('./posthog-android/package.json').version")
+                  SERVER_VERSION=$(node -p "require('./posthog-server/package.json').version")
+                  PLUGIN_VERSION=$(node -p "require('./posthog-android-gradle-plugin/package.json').version")
+
+                  sed -i "s/^coreVersion=.*/coreVersion=$CORE_VERSION/" gradle.properties
+                  sed -i "s/^androidVersion=.*/androidVersion=$ANDROID_VERSION/" gradle.properties
+                  sed -i "s/^serverVersion=.*/serverVersion=$SERVER_VERSION/" gradle.properties
+                  sed -i "s/^androidPluginVersion=.*/androidPluginVersion=$PLUGIN_VERSION/" posthog-android-gradle-plugin/gradle.properties
+
             - name: Commit version bump
               id: commit-version-bump
               run: |

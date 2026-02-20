@@ -12,6 +12,14 @@ importers:
         specifier: ^2.29.4
         version: 2.29.8
 
+  posthog: {}
+
+  posthog-android: {}
+
+  posthog-android-gradle-plugin: {}
+
+  posthog-server: {}
+
 packages:
 
   '@babel/runtime@7.28.6':
