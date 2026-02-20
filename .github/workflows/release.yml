@@ -29,7 +29,7 @@ jobs:
             has-changesets: ${{ steps.check.outputs.has-changesets }}
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
               with:
                   ref: main
                   fetch-depth: 0
@@ -87,7 +87,7 @@ jobs:
                   private-key: ${{ secrets.GH_APP_POSTHOG_ANDROID_RELEASER_PRIVATE_KEY }}
 
             - name: Checkout repository
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
               with:
                   ref: main
                   fetch-depth: 0
@@ -215,7 +215,7 @@ jobs:
 
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
               with:
                   ref: main
                   fetch-depth: 0
@@ -304,7 +304,7 @@ jobs:
 
             - name: Send failure event to PostHog
               if: ${{ failure() }}
-              uses: PostHog/posthog-github-action@v0.1
+              uses: PostHog/posthog-github-action@v1
               with:
                   posthog-token: '${{ secrets.POSTHOG_PROJECT_API_KEY }}'
                   event: 'posthog-android-github-release-workflow-failure'
@@ -335,7 +335,7 @@ jobs:
         if: always() && needs.publish.result == 'success' && needs.notify-approval-needed.outputs.slack_ts != ''
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Notify Slack - Released
               continue-on-error: true
