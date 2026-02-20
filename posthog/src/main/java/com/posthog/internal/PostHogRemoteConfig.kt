@@ -320,6 +320,17 @@ public class PostHogRemoteConfig(
         }
     }
 
+    /**
+     * Parses a sample rate value which may come as a String decimal (from the API)
+     * or as a Number (from cache). Returns null if the value is absent or unparseable.
+     */
+    private fun parseSampleRate(raw: Any?): Double? =
+        when (raw) {
+            is String -> raw.toDoubleOrNull()
+            is Number -> raw.toDouble()
+            else -> null
+        }
+
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
             is Boolean -> {
@@ -348,13 +359,7 @@ public class PostHogRemoteConfig(
 
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
-                    // sampleRate comes from the API as a string decimal between "0" and "1"
-                    val rawSampleRate = it["sampleRate"]
-                    sessionRecordingSampleRate = when (rawSampleRate) {
-                        is String -> rawSampleRate.toDoubleOrNull()
-                        is Number -> rawSampleRate.toDouble()
-                        else -> null
-                    }
+                    sessionRecordingSampleRate = parseSampleRate(it["sampleRate"])
 
                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
@@ -691,12 +696,7 @@ public class PostHogRemoteConfig(
 
                     consoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
 
-                    val rawSampleRate = sessionRecording["sampleRate"]
-                    sessionRecordingSampleRate = when (rawSampleRate) {
-                        is String -> rawSampleRate.toDoubleOrNull()
-                        is Number -> rawSampleRate.toDouble()
-                        else -> null
-                    }
+                    sessionRecordingSampleRate = parseSampleRate(sessionRecording["sampleRate"])
                 }
             }
         }
