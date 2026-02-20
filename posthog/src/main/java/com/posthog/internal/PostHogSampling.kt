@@ -3,13 +3,9 @@ package com.posthog.internal
 import kotlin.math.abs
 
 /**
- * Sampling utilities matching the JS SDK's sampling logic.
- * See https://github.com/PostHog/posthog-js/blob/main/packages/browser/src/extensions/sampling.ts
- */
-
-/**
  * Simple hash function matching the JS SDK's simpleHash.
  * Produces a deterministic positive integer from a string.
+ * See https://github.com/PostHog/posthog-js/blob/main/packages/browser/src/extensions/sampling.ts
  */
 internal fun simpleHash(str: String): Int {
     var hash = 0
