@@ -1,11 +1,5 @@
 ## Next
 
-## 6.6.1
-
-### Patch Changes
-
-- af9de9a: test new release process
-
 ## 6.6.0 - 2026-02-19
 
 - feat: Add `captureFeatureView` and `captureFeatureInteraction` to `PostHogInterface`. ([#416](https://github.com/PostHog/posthog-android/pull/416))

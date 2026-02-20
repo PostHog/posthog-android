@@ -239,8 +239,8 @@ jobs:
             - name: Detect version change for ${{ matrix.package.name }}
               id: detect-version
               run: |
-                  # Get the current version from gradle properties
-                  CURRENT_VERSION=$(grep "^VERSION_NAME=" ${{ matrix.package.name }}/gradle.properties 2>/dev/null | cut -d'=' -f2 || echo "")
+                  # Get the current version from the package's package.json (source of truth for changesets)
+                  CURRENT_VERSION=$(node -p "require('./${{ matrix.package.name }}/package.json').version")
                   if [ -z "$CURRENT_VERSION" ]; then
                     echo "Could not determine current version for ${{ matrix.package.name }}"
                     echo "has-new-version=false" >> "$GITHUB_OUTPUT"
