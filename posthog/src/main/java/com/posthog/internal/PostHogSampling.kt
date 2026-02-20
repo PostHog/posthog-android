@@ -20,7 +20,10 @@ internal fun simpleHash(str: String): Int {
  * Determines whether to sample based on a property string and a percentage (0..1).
  * Matches the JS SDK's sampleOnProperty logic.
  */
-internal fun sampleOnProperty(prop: String, percent: Double): Boolean {
+internal fun sampleOnProperty(
+    prop: String,
+    percent: Double,
+): Boolean {
     val clampedPercent = (percent * 100).coerceIn(0.0, 100.0)
     return simpleHash(prop) % 100 < clampedPercent
 }

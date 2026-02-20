@@ -897,7 +897,6 @@ public class PostHogRemoteConfig(
      */
     public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
 
-
     override fun getRequestId(
         distinctId: String?,
         groups: Map<String, String>?,
