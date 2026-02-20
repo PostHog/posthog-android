@@ -1167,33 +1167,33 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `simpleHash produces consistent positive values`() {
-        val hash1 = PostHogRemoteConfig.simpleHash("test-session-id")
-        val hash2 = PostHogRemoteConfig.simpleHash("test-session-id")
+        val hash1 = simpleHash("test-session-id")
+        val hash2 = simpleHash("test-session-id")
         assertEquals(hash1, hash2)
         assertTrue(hash1 >= 0)
     }
 
     @Test
     fun `simpleHash produces different values for different inputs`() {
-        val hash1 = PostHogRemoteConfig.simpleHash("session-1")
-        val hash2 = PostHogRemoteConfig.simpleHash("session-2")
+        val hash1 = simpleHash("session-1")
+        val hash2 = simpleHash("session-2")
         assertTrue(hash1 != hash2)
     }
 
     @Test
     fun `sampleOnProperty returns true when rate is 1`() {
-        assertTrue(PostHogRemoteConfig.sampleOnProperty("any-session-id", 1.0))
+        assertTrue(sampleOnProperty("any-session-id", 1.0))
     }
 
     @Test
     fun `sampleOnProperty returns false when rate is 0`() {
-        assertFalse(PostHogRemoteConfig.sampleOnProperty("any-session-id", 0.0))
+        assertFalse(sampleOnProperty("any-session-id", 0.0))
     }
 
     @Test
     fun `sampleOnProperty is deterministic for same session id and rate`() {
-        val result1 = PostHogRemoteConfig.sampleOnProperty("my-session", 0.5)
-        val result2 = PostHogRemoteConfig.sampleOnProperty("my-session", 0.5)
+        val result1 = sampleOnProperty("my-session", 0.5)
+        val result2 = sampleOnProperty("my-session", 0.5)
         assertEquals(result1, result2)
     }
 

@@ -16,7 +16,6 @@ import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.abs
 
 /**
  * The class responsible for calling and caching the feature flags
@@ -898,29 +897,6 @@ public class PostHogRemoteConfig(
      */
     public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
 
-    internal companion object {
-        /**
-         * Simple hash function matching the JS SDK's simpleHash.
-         * Produces a deterministic positive integer from a string.
-         */
-        internal fun simpleHash(str: String): Int {
-            var hash = 0
-            for (char in str) {
-                hash = (hash shl 5) - hash + char.code // (hash * 31) + char code
-                hash = hash or 0 // keep as 32-bit integer
-            }
-            return abs(hash)
-        }
-
-        /**
-         * Determines whether to sample based on a property string and a percentage (0..1).
-         * Matches the JS SDK's sampleOnProperty logic.
-         */
-        internal fun sampleOnProperty(prop: String, percent: Double): Boolean {
-            val clampedPercent = (percent * 100).coerceIn(0.0, 100.0)
-            return simpleHash(prop) % 100 < clampedPercent
-        }
-    }
 
     override fun getRequestId(
         distinctId: String?,

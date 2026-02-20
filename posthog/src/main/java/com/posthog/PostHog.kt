@@ -1336,15 +1336,6 @@ public class PostHog private constructor(
             return
         }
 
-        // Check sampling decision before starting the recorder
-        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
-        if (sessionId != null) {
-            val shouldRecord = remoteConfig?.makeSamplingDecision(sessionId) ?: true
-            if (!shouldRecord) {
-                return
-            }
-        }
-
         sessionReplayHandler?.let {
             // already active
             if (it.isActive()) {
@@ -1352,10 +1343,21 @@ public class PostHog private constructor(
             }
 
             if (resumeCurrent) {
+                // resuming an existing session, sampling was already decided
                 it.start(true)
             } else {
                 endSession()
                 startSession()
+
+                // new session, make a fresh sampling decision
+                val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
+                if (sessionId != null) {
+                    val shouldRecord = remoteConfig?.makeSamplingDecision(sessionId) ?: true
+                    if (!shouldRecord) {
+                        return
+                    }
+                }
+
                 it.start(false)
             }
         } ?: run {
