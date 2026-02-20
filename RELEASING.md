@@ -1,118 +1,68 @@
 # Releasing
 
-Since `main` is protected, releases are done via pull requests.
+Releases are managed with [changesets](https://github.com/changesets/changesets).
 
-### Core module (posthog):
+## Creating a changeset
 
-1. Update `posthog/CHANGELOG.md` with the version and date
-2. Run: `./scripts/prepare-release.sh core 3.23.0`
-   - This creates a release branch, bumps version, commits, and pushes
-3. Create a PR from the release branch to `main`
-4. Get approval and merge the PR
-5. After merge, create and push the tag from `main`:
-   ```bash
-   git checkout main && git pull
-   git tag -a core-v3.23.0 -m "core 3.23.0"
-   git push --tags
-   ```
-6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
-7. Choose the tag you just created (e.g. `core-v3.23.0`) and use it as the release name
-8. Write a description of the release
-9. Publish the release
-10. A GitHub action triggers `make releaseCore` automatically
-11. Done
+Before submitting a PR, create a changeset by running:
 
-### Android module (posthog-android):
+```bash
+pnpm changeset
+```
 
-1. Update `posthog-android/CHANGELOG.md` with the version and date
-2. Run: `./scripts/prepare-release.sh android 3.23.0`
-   - This creates a release branch, bumps version, commits, and pushes
-3. Create a PR from the release branch to `main`
-4. Get approval and merge the PR
-5. After merge, create and push the tag from `main`:
-   ```bash
-   git checkout main && git pull
-   git tag -a android-v3.23.0 -m "android 3.23.0"
-   git push --tags
-   ```
-6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
-7. Choose the tag you just created (e.g. `android-v3.23.0`) and use it as the release name
-8. Write a description of the release
-9. Publish the release
-10. A GitHub action triggers `make releaseAndroid` automatically
-11. Done
+The CLI will prompt you to select the affected package(s) and the type of version bump (patch, minor, major).
+A changeset file will be generated in the `.changeset/` directory — commit it with your PR.
 
-### Server module (posthog-server):
+## Release process
 
-1. Update `posthog-server/CHANGELOG.md` with the version and date
-2. Run: `./scripts/prepare-release.sh server 1.0.1`
-   - This creates a release branch, bumps version, commits, and pushes
-3. Create a PR from the release branch to `main`
-4. Get approval and merge the PR
-5. After merge, create and push the tag from `main`:
-   ```bash
-   git checkout main && git pull
-   git tag -a server-v1.0.1 -m "server 1.0.1"
-   git push --tags
-   ```
-6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
-7. Choose the tag you just created (e.g. `server-v1.0.1`) and use it as the release name
-8. Write a description of the release
-9. Publish the release
-10. A GitHub action triggers `make releaseServer` automatically
-11. Done
+Add a `release` label to your PR. When the PR is merged to `main`, the release workflow will automatically:
 
-### Android plugin module (posthog-android-gradle-plugin):
+1. Bump versions based on changesets
+2. Update changelogs in each package subfolder (e.g. `posthog/CHANGELOG.md`, `posthog-android/CHANGELOG.md`)
+3. Commit version updates directly to `main`
+4. Publish packages to Maven Central
+5. Create Git tags and GitHub releases
 
-1. Update `posthog-android-gradle-plugin/CHANGELOG.md` with the version and date
-2. Run: `./scripts/prepare-release.sh androidPlugin 1.0.1`
-   - This creates a release branch, bumps version, commits, and pushes
-3. Create a PR from the release branch to `main`
-4. Get approval and merge the PR
-5. After merge, create and push the tag from `main`:
-   ```bash
-   git checkout main && git pull
-   git tag -a androidPlugin-v1.0.1 -m "androidPlugin 1.0.1"
-   git push --tags
-   ```
-6. Go to [GH Releases](https://github.com/PostHog/posthog-android/releases) and draft a new release
-7. Choose the tag you just created (e.g. `androidPlugin-v1.0.1`) and use it as the release name
-8. Write a description of the release
-9. Publish the release
-10. A GitHub action triggers `make releaseAndroidPlugin` automatically
-11. Done
+All of this happens automatically when the PR is merged — no manual tagging or release creation needed!
 
-## Tag Naming Convention
+## Dependency order
 
-- `core-v3.23.0` → releases only posthog core module
-- `android-v3.23.0` → releases only posthog-android module
-- `server-v1.0.1` → releases only posthog-server module
-- `androidPlugin-v1.0.1` → releases only posthog-android-gradle-plugin module
+Packages are released sequentially in the following order to respect transitive dependencies:
 
-Preview releases follow the pattern `core-v3.0.0-alpha.1`, `android-v3.0.0-beta.1`, `server-v1.0.0-alpha.1`, `androidPlugin-v1.0.0-alpha.1`, etc.
+1. **posthog** (core) — must be released first
+2. **posthog-android** — depends on posthog core
+3. **posthog-server** — depends on posthog core
+4. **posthog-android-gradle-plugin**
 
-# Rotating Sonatype User Token
+If `posthog-android` or `posthog-server` have pending changes, ensure `posthog` (core) is released first (or has no pending changes). The release workflow handles this by running packages sequentially with `max-parallel: 1`.
+
+## Tag naming convention
+
+Tags are created automatically by the release workflow:
+
+- `core-v3.23.0` → posthog core module
+- `android-v3.23.0` → posthog-android module
+- `server-v1.0.1` → posthog-server module
+- `androidPlugin-v1.0.1` → posthog-android-gradle-plugin module
+
+## Rotating Sonatype User Token
 
 The release workflow uses a Sonatype user token for authentication when publishing to Maven Central.
 
-
 1. **Generate a new user token**:
-   - Go to [Mavel Central Repository](https://central.sonatype.com/usertoken)
+   - Go to [Maven Central Repository](https://central.sonatype.com/usertoken)
    - Log in with PostHog credentials
    - Generate a new user token
    - Copy the username and password values
 
 2. **Update GitHub org secrets**:
    - Request temporary access if needed
-   - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) - target the desired repository only
+   - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) — target the desired repository only
    - Update `SONATYPE_USERNAME` and `SONATYPE_PASSWORD` from previous step
 
-4. **Revoke the old token (previous owner)**:
-   - Go to [Mavel Central Repository](https://central.sonatype.com/usertoken)
+3. **Revoke the old token (previous owner)**:
+   - Go to [Maven Central Repository](https://central.sonatype.com/usertoken)
    - Revoke any previous tokens used
-
-
-The user token is used in [release.yml](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/.github/workflows/release.yml#L25-L26) as environment variables for Maven Central authentication:
 
 ```yaml
 env:
@@ -120,14 +70,14 @@ env:
    SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
 ```
 
-These environment variables are then read and used in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/buildSrc/src/main/java/PostHogPublishConfig.kt#L128-L129):
+These environment variables are used in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/main/buildSrc/src/main/java/PostHogPublishConfig.kt):
 
 ```kotlin
 val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
 val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
 ```
 
-# Rotating GPG
+## Rotating GPG
 
 The release workflow uses a GPG key to sign artifacts when publishing to Maven Central.
 
@@ -139,17 +89,17 @@ The release workflow uses a GPG key to sign artifacts when publishing to Maven C
    - Default key type: RSA and RSA
    - Length: 4096
    - Remove expiration
-   - After creation, save the revocation certificate (check gpg output with the $ID.rev file path) in your password manager
+   - After creation, save the revocation certificate in your password manager
    - Upload the key to a [public server](https://central.sonatype.org/publish/requirements/gpg/#distributing-your-public-key)
    - `gpg --keyserver keys.openpgp.org --send-keys $ID`
-   - Visit [URL](visit url: https://keyserver.ubuntu.com/pks/lookup?search=$email&op=index) and confirm email (change $email to your email)
-   - Export the private key (ASCII armored) - `gpg --export-secret-keys --armor $ID` (Including the 'BEGIN PGP PRIVATE KEY BLOCK' and 'END PGP PRIVATE KEY BLOCK' lines)
-  
+   - Visit the keyserver URL and confirm email
+   - Export the private key (ASCII armored) — `gpg --export-secret-keys --armor $ID`
+
 2. **Update GitHub org secrets**:
    - Request temporary access if needed
-   - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) - target the desired repository only
+   - Go to [Org Settings > Secrets and variables > Actions](https://github.com/organizations/PostHog/settings/secrets/actions) — target the desired repository only
    - Update `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` from previous step
-  
+
 3. **Revoke the old GPG key (previous owner)**:
    - Go to [GPG Keychain](https://gpgtools.org/)
    - Revoke the GPG key
@@ -161,7 +111,7 @@ env:
    GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 ```
 
-These environment variables are then read and used in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/743a341365f5d9c1cf254a7b01882b59c3089e30/buildSrc/src/main/java/PostHogPublishConfig.kt#L115-L116):
+These environment variables are used in [PostHogPublishConfig.kt](https://github.com/PostHog/posthog-android/blob/main/buildSrc/src/main/java/PostHogPublishConfig.kt):
 
 ```kotlin
 val privateKey = System.getenv("GPG_PRIVATE_KEY")

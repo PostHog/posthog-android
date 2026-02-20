@@ -1,0 +1,11 @@
+{
+    "name": "posthog-android",
+    "private": true,
+    "packageManager": "pnpm@10.29.3",
+    "scripts": {
+        "changeset": "changeset"
+    },
+    "devDependencies": {
+        "@changesets/cli": "^2.29.4"
+    }
+}

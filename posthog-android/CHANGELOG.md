@@ -1,23 +1,23 @@
 ## Next
 
-# 3.32.1 - 2026-02-19
+## 3.32.1 - 2026-02-19
   
 - no user facing changes
 
-# 3.32.0 - 2026-02-16
+## 3.32.0 - 2026-02-16
 
 - feat: Support remote config for error tracking, console log recording, and network timing capture ([#415](https://github.com/PostHog/posthog-android/pull/415))
 
-# 3.31.1 - 2026-02-16
+## 3.31.1 - 2026-02-16
 
 - fix: walk view children for Compose views in session replay masking ([#417](https://github.com/PostHog/posthog-android/pull/417))
 
-# 3.31.0 - 2026-02-05
+## 3.31.0 - 2026-02-05
 
 - fix: Queue pending feature flags reload instead of dropping requests when a reload is already in flight ([#407](https://github.com/PostHog/posthog-android/pull/407))
 - feat: Expose `getFeatureFlagResult` to public API ([#405](https://github.com/PostHog/posthog-android/pull/405))
 
-# 3.30.0 - 2026-01-30
+## 3.30.0 - 2026-01-30
 
 - update android types for new survey customization options ([#399](https://github.com/PostHog/posthog-android/pull/399))
 - fix: Session Replay masks only the text area for EditText, Button, and CompoundButton (CheckBox, RadioButton, Switch) instead of the entire component bounds ([#400](https://github.com/PostHog/posthog-android/pull/400))
