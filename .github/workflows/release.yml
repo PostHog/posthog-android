@@ -63,7 +63,7 @@ jobs:
         needs: [check-changesets, notify-approval-needed]
         runs-on: ubuntu-latest
         if: always() && needs.check-changesets.outputs.has-changesets == 'true'
-        environment: 'Maven Central Release'
+        environment: 'Release'
         permissions:
             contents: write
         outputs:
@@ -266,8 +266,16 @@ jobs:
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  # Read the latest changelog entry (from first ## header to the next)
-                  LAST_CHANGELOG_ENTRY=$(awk -v defText="see CHANGELOG.md" '/^## /{if (flag) exit; flag=1} flag && /^##$/{exit} flag; END{if (!flag) print defText}' ${{ matrix.package.changelog }})
+                  # Read the latest changelog entry, skipping "## Next" and the version header line
+                  # e.g. given: ## Next\n\n# 3.32.1 - 2026-02-19\n\n- no user facing changes\n\n## 3.31.0 ...
+                  # it extracts: - no user facing changes
+                  LAST_CHANGELOG_ENTRY=$(awk -v defText="see CHANGELOG.md" '
+                    /^## Next/ { next }
+                    /^#+ [0-9]/ { if (found_version) exit; found_version=1; next }
+                    found_version && /^## / { exit }
+                    found_version { print }
+                    END { if (!found_version) print defText }
+                  ' ${{ matrix.package.changelog }} | sed '/[^[:space:]]/,$!d' | tac | sed '/[^[:space:]]/,$!d' | tac)
                   gh api \
                     --method POST \
                     -H "Accept: application/vnd.github+json" \
