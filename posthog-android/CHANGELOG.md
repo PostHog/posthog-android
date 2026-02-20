@@ -1,7 +1,13 @@
 ## Next
 
+## 3.32.2
+
+### Patch Changes
+
+- 1e73791: test new release process
+
 ## 3.32.1 - 2026-02-19
-  
+
 - no user facing changes
 
 ## 3.32.0 - 2026-02-16
@@ -32,9 +38,11 @@
 - The API now sends `evaluation_contexts` instead of `evaluation_environments` to the server.
 
 ### Deprecated
+
 - `PostHogConfig.evaluationEnvironments` is now deprecated in favor of `PostHogConfig.evaluationContexts`. The old property will continue to work and will log a deprecation warning. It will be removed in a future major version.
 
 ### Migration Guide
+
 ```kotlin
 // Before
 val config = PostHogAndroidConfig(apiKey).apply {

@@ -1,5 +1,11 @@
 ## Next
 
+## 6.6.2
+
+### Patch Changes
+
+- 1e73791: test new release process
+
 ## 6.6.1
 
 ### Patch Changes
