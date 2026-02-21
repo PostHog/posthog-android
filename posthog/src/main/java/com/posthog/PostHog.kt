@@ -181,7 +181,7 @@ public class PostHog private constructor(
 
                 startSession()
 
-                if(!config.optOut) {
+                if (!config.optOut) {
                     // should not install integrations if in opt-out state
                     installIntegrations(config.integrations)
                 }
@@ -307,7 +307,7 @@ public class PostHog private constructor(
     }
 
     private fun uninstallIntegrations(integrations: List<PostHogIntegration>) {
-       integrations.forEach {
+        integrations.forEach {
             try {
                 it.uninstall()
                 installedIntegrations.remove(it)
