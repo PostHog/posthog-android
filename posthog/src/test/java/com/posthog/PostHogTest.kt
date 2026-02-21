@@ -152,6 +152,24 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `do not install integrations on setup as state is opt-out then opt-in and install`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, optOut = true)
+
+        assertFalse(integration.installed)
+
+        sut.optIn()
+
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
     fun `uninstall integrations`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -161,6 +179,20 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), integration = integration)
 
         sut.close()
+
+        assertFalse(integration.installed)
+    }
+
+    @Test
+    fun `uninstall integrations on opt-out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        sut.optOut()
 
         assertFalse(integration.installed)
     }
