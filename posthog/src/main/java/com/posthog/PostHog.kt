@@ -86,6 +86,8 @@ public class PostHog private constructor(
             }
         }
 
+    private val installedIntegrations = mutableListOf<PostHogIntegration>()
+
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
             try {
@@ -203,9 +205,16 @@ public class PostHog private constructor(
     }
 
     private fun installIntegrations(integrations: List<PostHogIntegration>) {
+        if (!installedIntegrations.isEmpty()) {
+            config?.logger?.log("Integrations already installed. Call uninstallIntegrations() first")
+            return
+        }
+
+        val installed = mutableListOf<PostHogIntegration>()
         integrations.forEach {
             try {
                 it.install(this)
+                installed.add(it)
 
                 if (it is PostHogSessionReplayHandler) {
                     sessionReplayHandler = it
@@ -230,6 +239,8 @@ public class PostHog private constructor(
                 config?.logger?.log("Integration ${it.javaClass.name} failed to install: $e.")
             }
         }
+
+        installedIntegrations.addAll(installed)
     }
 
     private fun notifyIntegrationsRemoteConfig(config: PostHogConfig) {
@@ -299,6 +310,7 @@ public class PostHog private constructor(
        integrations.forEach {
             try {
                 it.uninstall()
+                installedIntegrations.remove(it)
 
                 if (it is PostHogSessionReplayHandler) {
                     sessionReplayHandler = null
