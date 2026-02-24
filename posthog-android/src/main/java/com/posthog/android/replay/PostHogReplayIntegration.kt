@@ -647,13 +647,13 @@ public class PostHogReplayIntegration(
 
     private fun View.isAnyInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
         if (ancestorUnmasked || isUnmasked()) return false
-        return this.isTextInputSensitive() || config.sessionReplayConfig.maskAllImages
+        return this.isTextInputSensitive(ancestorUnmasked) || config.sessionReplayConfig.maskAllImages
     }
 
     private fun TextView.shouldMaskTextView(ancestorUnmasked: Boolean = false): Boolean {
         if (ancestorUnmasked || isUnmasked()) return false
         // inputType is 0-based
-        return this.isTextInputSensitive() || passwordInputTypes.contains(inputType - 1)
+        return this.isTextInputSensitive(ancestorUnmasked) || passwordInputTypes.contains(inputType - 1)
     }
 
     private fun findMaskableWidgets(
@@ -1005,7 +1005,7 @@ public class PostHogReplayIntegration(
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
         if (ancestorUnmasked || isUnmasked()) return false
-        return this.isTextInputSensitive()
+        return this.isTextInputSensitive(ancestorUnmasked)
     }
 
     private fun View.toWireframe(parentId: Int? = null, ancestorUnmasked: Boolean = false): RRWireframe? {
