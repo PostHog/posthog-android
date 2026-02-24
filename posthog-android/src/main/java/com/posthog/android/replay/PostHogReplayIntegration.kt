@@ -647,7 +647,7 @@ public class PostHogReplayIntegration(
 
     private fun View.isAnyInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
         if (ancestorUnmasked || isUnmasked()) return false
-        return this.isTextInputSensitive(ancestorUnmasked) || config.sessionReplayConfig.maskAllImages
+        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs) || config.sessionReplayConfig.maskAllImages
     }
 
     private fun TextView.shouldMaskTextView(ancestorUnmasked: Boolean = false): Boolean {
