@@ -139,6 +139,9 @@ public class PostHog private constructor(
                         remoteConfigExecutor,
                         PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
                         onRemoteConfigLoaded,
+                        PostHogCaptureFeatureFlagCalledProvider { (key, value) ->
+                            sendFeatureFlagCalled(key, value, sendFeatureFlagEvent = true)
+                        }
                     )
 
                 // no need to lock optOut here since the setup is locked already
@@ -1079,6 +1082,9 @@ public class PostHog private constructor(
         value: Any?,
         sendFeatureFlagEvent: Boolean?,
     ) {
+        if (remoteConfig == null) {
+            return
+        }
         val effectiveSendFeatureFlagEvent =
             sendFeatureFlagEvent
                 ?: config?.sendFeatureFlagEvent
@@ -1334,15 +1340,6 @@ public class PostHog private constructor(
                 "Could not start recording. Session replay is disabled, or remote config and feature flags are still being executed.",
             )
             return
-        }
-
-        remoteConfig?.getCaptureEventInfo()?.let { (key, value) ->
-            // send feature_flag_called event when a flag is linked to session replay
-            sendFeatureFlagCalled(
-                key = key,
-                value = value,
-                sendFeatureFlagEvent = true,
-            )
         }
 
         sessionReplayHandler?.let {

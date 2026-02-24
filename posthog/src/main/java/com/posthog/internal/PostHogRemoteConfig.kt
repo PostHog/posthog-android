@@ -1,6 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.FeatureFlagResult
+import com.posthog.PostHogCaptureFeatureFlagCalledProvider
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
@@ -23,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property api the API
  * @property executor the Executor
  * @property defaultPersonPropertiesProvider the provider for default person properties
+ * @property captureFeatureFlagCalledProvider the provider for capturing event info
  * @property onRemoteConfigLoaded the remote config callback
  */
 @PostHogInternal
@@ -32,6 +34,7 @@ public class PostHogRemoteConfig(
     private val executor: ExecutorService,
     private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider =
         PostHogDefaultPersonPropertiesProvider { emptyMap() },
+    private val captureFeatureFlagCalledProvider: PostHogCaptureFeatureFlagCalledProvider = PostHogCaptureFeatureFlagCalledProvider {},
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
@@ -78,9 +81,6 @@ public class PostHogRemoteConfig(
 
     @Volatile
     private var sessionReplayFlagActive = false
-
-    @Volatile
-    private var captureEventInfo: Pair<String, Any?>? = null
 
     @Volatile
     private var hasSurveys = false
@@ -154,7 +154,7 @@ public class PostHogRemoteConfig(
         // we consider session replay is active
 
         if (flagKey != null && flagValue != null && recordingActive) {
-            captureEventInfo = flagKey to flagValue
+            captureFeatureFlagCalledProvider.onCaptureFeatureFlagCalled(flagKey to flagValue)
         }
 
         return recordingActive
@@ -858,8 +858,6 @@ public class PostHogRemoteConfig(
 
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
-    internal fun getCaptureEventInfo(): Pair<String, Any?>? = captureEventInfo
-
     override fun getRequestId(
         distinctId: String?,
         groups: Map<String, String>?,
@@ -1017,7 +1015,6 @@ public class PostHogRemoteConfig(
             sessionReplayFlagActive = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
-            captureEventInfo = null
             clearFlags()
         }
 

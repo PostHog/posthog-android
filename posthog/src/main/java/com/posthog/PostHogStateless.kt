@@ -67,7 +67,7 @@ public open class PostHogStateless protected constructor(
                         config.storagePrefix,
                         queueExecutor,
                     )
-                val remoteConfig = config.remoteConfigProvider(config, api, featureFlagsExecutor, null, null)
+                val remoteConfig = config.remoteConfigProvider(config, api, featureFlagsExecutor, null, null, null)
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
