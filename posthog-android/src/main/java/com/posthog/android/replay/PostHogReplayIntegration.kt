@@ -59,6 +59,7 @@ import com.posthog.android.internal.isValid
 import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
+import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
@@ -638,14 +639,17 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isTextInputSensitive(): Boolean {
+        if (isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
     }
 
     private fun View.isAnyInputSensitive(): Boolean {
+        if (isUnmasked()) return false
         return this.isTextInputSensitive() || config.sessionReplayConfig.maskAllImages
     }
 
     private fun TextView.shouldMaskTextView(): Boolean {
+        if (isUnmasked()) return false
         // inputType is 0-based
         return this.isTextInputSensitive() || passwordInputTypes.contains(inputType - 1)
     }
@@ -670,6 +674,10 @@ public class PostHogReplayIntegration(
                 findMaskableComposeWidgets(view, maskableWidgets)
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
+            }
+
+            view.isUnmasked() -> {
+                // ph-no-mask has precedence, skip masking
             }
 
             view.isNoCapture() -> {
@@ -776,15 +784,23 @@ public class PostHogReplayIntegration(
                     val hasPassword = node.config.contains(SemanticsProperties.Password)
                     val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
-                    val hasMaskModifier = node.config.contains(PostHogReplayMask)
-                    val isNoCapture = hasMaskModifier && node.config[PostHogReplayMask]
+                    // isEnabled=false means the modifier has no effect, as if it was never applied
+                    val isMaskEnabled = node.config.contains(PostHogReplayMask) && node.config[PostHogReplayMask]
+                    val isUnmaskEnabled = node.config.contains(PostHogReplayUnmask) && node.config[PostHogReplayUnmask]
 
                     when {
-                        isNoCapture -> {
+                        // postHogUnmask has precedence over everything, skip masking
+                        isUnmaskEnabled -> {
+                            // do not mask this node
+                        }
+
+                        // postHogMask forces masking
+                        isMaskEnabled -> {
                             maskableWidgets.add(node.boundsInWindow.toRect())
                         }
 
-                        !hasMaskModifier -> {
+                        // no active modifier, apply default config rules
+                        else -> {
                             when {
                                 (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
                                     maskableWidgets.add(node.boundsInWindow.toRect())
@@ -964,10 +980,12 @@ public class PostHogReplayIntegration(
     }
 
     private fun ImageView.shouldMaskImage(): Boolean {
+        if (isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.shouldMaskDrawable() == true
     }
 
     private fun Spinner.shouldMaskSpinner(): Boolean {
+        if (isUnmasked()) return false
         return this.isTextInputSensitive()
     }
 
@@ -1472,6 +1490,11 @@ public class PostHogReplayIntegration(
             contentDescription?.toString()?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true
     }
 
+    private fun View.isUnmasked(): Boolean {
+        return (tag as? String)?.lowercase()?.contains(PH_NO_MASK_LABEL) == true ||
+            contentDescription?.toString()?.lowercase()?.contains(PH_NO_MASK_LABEL) == true
+    }
+
     private fun Drawable.copy(): Drawable? {
         return constantState?.newDrawable()
     }
@@ -1511,6 +1534,7 @@ public class PostHogReplayIntegration(
 
     internal companion object {
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
+        const val PH_NO_MASK_LABEL: String = "ph-no-mask"
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
 
