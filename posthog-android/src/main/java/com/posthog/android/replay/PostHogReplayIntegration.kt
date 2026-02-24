@@ -640,18 +640,18 @@ public class PostHogReplayIntegration(
         return (parent as? ViewGroup)?.isInLayout == true
     }
 
-    private fun View.isTextInputSensitive(): Boolean {
-        if (isUnmasked()) return false
+    private fun View.isTextInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
     }
 
-    private fun View.isAnyInputSensitive(): Boolean {
-        if (isUnmasked()) return false
+    private fun View.isAnyInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return this.isTextInputSensitive() || config.sessionReplayConfig.maskAllImages
     }
 
-    private fun TextView.shouldMaskTextView(): Boolean {
-        if (isUnmasked()) return false
+    private fun TextView.shouldMaskTextView(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         // inputType is 0-based
         return this.isTextInputSensitive() || passwordInputTypes.contains(inputType - 1)
     }
@@ -998,21 +998,23 @@ public class PostHogReplayIntegration(
         )
     }
 
-    private fun ImageView.shouldMaskImage(): Boolean {
-        if (isUnmasked()) return false
+    private fun ImageView.shouldMaskImage(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.shouldMaskDrawable() == true
     }
 
-    private fun Spinner.shouldMaskSpinner(): Boolean {
-        if (isUnmasked()) return false
+    private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return this.isTextInputSensitive()
     }
 
-    private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
+    private fun View.toWireframe(parentId: Int? = null, ancestorUnmasked: Boolean = false): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
             return null
         }
+
+        val isUnmasked = ancestorUnmasked || view.isUnmasked()
 
         val viewId = System.identityHashCode(view)
 
@@ -1057,7 +1059,7 @@ public class PostHogReplayIntegration(
             val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
                 text =
-                    if (!view.shouldMaskTextView()) {
+                    if (!view.shouldMaskTextView(isUnmasked)) {
                         viewText
                     } else {
                         viewText.mask()
@@ -1067,7 +1069,7 @@ public class PostHogReplayIntegration(
             val hint = view.hint?.toString()
             if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
                 text =
-                    if (!view.shouldMaskTextView()) {
+                    if (!view.shouldMaskTextView(isUnmasked)) {
                         hint
                     } else {
                         hint.mask()
@@ -1192,7 +1194,7 @@ public class PostHogReplayIntegration(
         if (view is Spinner) {
             type = "input"
             inputType = "select"
-            val mask = view.shouldMaskSpinner()
+            val mask = view.shouldMaskSpinner(isUnmasked)
             view.selectedItem?.let {
                 val theValue =
                     if (!mask) {
@@ -1223,7 +1225,7 @@ public class PostHogReplayIntegration(
 
         if (view is ImageView) {
             type = "image"
-            if (!view.shouldMaskImage()) {
+            if (!view.shouldMaskImage(isUnmasked)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
                     base64 = drawable.base64(view.width, view.height)
@@ -1275,7 +1277,7 @@ public class PostHogReplayIntegration(
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(parentId = viewId)?.let {
+                viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
                     children.add(it)
                 }
             }
