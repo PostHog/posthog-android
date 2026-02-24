@@ -651,7 +651,6 @@ public class PostHogReplayIntegration(
     }
 
     private fun TextView.shouldMaskTextView(ancestorUnmasked: Boolean = false): Boolean {
-        if (ancestorUnmasked || isUnmasked()) return false
         // inputType is 0-based
         return this.isTextInputSensitive(ancestorUnmasked) || passwordInputTypes.contains(inputType - 1)
     }
@@ -1004,11 +1003,13 @@ public class PostHogReplayIntegration(
     }
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
-        if (ancestorUnmasked || isUnmasked()) return false
         return this.isTextInputSensitive(ancestorUnmasked)
     }
 
-    private fun View.toWireframe(parentId: Int? = null, ancestorUnmasked: Boolean = false): RRWireframe? {
+    private fun View.toWireframe(
+        parentId: Int? = null,
+        ancestorUnmasked: Boolean = false,
+    ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
             return null
