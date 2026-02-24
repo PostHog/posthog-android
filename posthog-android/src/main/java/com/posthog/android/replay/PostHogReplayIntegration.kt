@@ -45,7 +45,9 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -785,8 +787,9 @@ public class PostHogReplayIntegration(
                     val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
                     // isEnabled=false means the modifier has no effect, as if it was never applied
-                    val isMaskEnabled = node.config.contains(PostHogReplayMask) && node.config[PostHogReplayMask]
-                    val isUnmaskEnabled = node.config.contains(PostHogReplayUnmask) && node.config[PostHogReplayUnmask]
+                    // Check the node itself and its ancestors for mask/unmask modifiers
+                    val isMaskEnabled = node.hasActiveModifier(PostHogReplayMask)
+                    val isUnmaskEnabled = node.hasActiveModifier(PostHogReplayUnmask)
 
                     when {
                         // postHogUnmask has precedence over everything, skip masking
@@ -831,6 +834,22 @@ public class PostHogReplayIntegration(
 
     private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
         return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+    }
+
+    /**
+     * Checks if the given semantics node or any of its ancestors has the specified
+     * modifier actively enabled (value is true).
+     * This allows postHogMask and postHogUnmask to propagate to all descendants.
+     */
+    private fun SemanticsNode.hasActiveModifier(key: SemanticsPropertyKey<Boolean>): Boolean {
+        var current: SemanticsNode? = this
+        while (current != null) {
+            if (current.config.contains(key) && current.config[key]) {
+                return true
+            }
+            current = current.parent
+        }
+        return false
     }
 
     private fun View.isComposeView(): Boolean {
