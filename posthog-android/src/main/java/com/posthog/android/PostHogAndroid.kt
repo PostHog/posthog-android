@@ -120,6 +120,9 @@ public class PostHogAndroid private constructor() {
             val metaPropertiesApplier = PostHogMetaPropertiesApplier()
             metaPropertiesApplier.applyToConfig(context, config, releaseIdentifierFallback)
 
+            // Wire session replay sample rate provider so the core SDK can read the local value
+            config.sampleRateProvider = { config.sessionReplayConfig.sampleRate }
+
             val mainHandler = MainHandler()
             config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
             config.addIntegration(PostHogLogCatIntegration(config))

@@ -154,6 +154,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function5;
 	public final fun getReplayStoragePrefix ()Ljava/lang/String;
 	public final fun getReuseAnonymousId ()Z
+	public final fun getSampleRateProvider ()Lkotlin/jvm/functions/Function0;
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
@@ -193,6 +194,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setRemoteConfig (Z)V
 	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
 	public final fun setReuseAnonymousId (Z)V
+	public final fun setSampleRateProvider (Lkotlin/jvm/functions/Function0;)V
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V

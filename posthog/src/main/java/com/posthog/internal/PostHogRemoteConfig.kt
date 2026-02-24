@@ -321,14 +321,22 @@ public class PostHogRemoteConfig(
 
     /**
      * Parses a sample rate value which may come as a String decimal (from the API)
-     * or as a Number (from cache). Returns null if the value is absent or unparseable.
+     * or as a Number (from cache). Returns null if the value is absent, unparseable,
+     * or outside the valid range of 0.0 to 1.0.
      */
-    private fun parseSampleRate(raw: Any?): Double? =
-        when (raw) {
-            is String -> raw.toDoubleOrNull()
-            is Number -> raw.toDouble()
-            else -> null
+    private fun parseSampleRate(raw: Any?): Double? {
+        val value =
+            when (raw) {
+                is String -> raw.toDoubleOrNull()
+                is Number -> raw.toDouble()
+                else -> null
+            }
+        if (value != null && (value !in 0.0..1.0)) {
+            config.logger.log("Sample rate must be between 0.0 and 1.0, got $value. Ignoring.")
+            return null
         }
+        return value
+    }
 
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
@@ -879,7 +887,9 @@ public class PostHogRemoteConfig(
      * @return true if this session should be recorded, false otherwise
      */
     public fun makeSamplingDecision(sessionId: String): Boolean {
-        val sampleRate = sessionRecordingSampleRate ?: return true
+        // Local config takes precedence over remote config
+        val localSampleRate = parseSampleRate(config.sampleRateProvider?.invoke())
+        val sampleRate = localSampleRate ?: sessionRecordingSampleRate ?: return true
 
         val shouldSample = sampleOnProperty(sessionId, sampleRate)
 

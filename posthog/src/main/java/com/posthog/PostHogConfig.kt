@@ -328,6 +328,14 @@ public open class PostHogConfig(
     public var snapshotEndpoint: String = "/s/"
 
     /**
+     * Provider for the local session recording sample rate.
+     * Set by platform-specific modules (e.g., Android) to supply the sample rate
+     * from the session replay config without duplicating the field.
+     */
+    @PostHogInternal
+    public var sampleRateProvider: (() -> Double?)? = null
+
+    /**
      * Reference to the PostHogRemoteConfig instance, set during setup.
      * Used by integrations to check remote config values.
      */
