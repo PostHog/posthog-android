@@ -1,5 +1,7 @@
 package com.posthog.internal
 
+import java.util.TimeZone
+
 /**
  * The data structure for calling the flags API
  */
@@ -15,6 +17,7 @@ internal class PostHogFlagsRequest(
     init {
         this["api_key"] = apiKey
         this["distinct_id"] = distinctId
+        this["timezone"] = TimeZone.getDefault().id
         if (!anonymousId.isNullOrBlank()) {
             this["\$anon_distinct_id"] = anonymousId
         }

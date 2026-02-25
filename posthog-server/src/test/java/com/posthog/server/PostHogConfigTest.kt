@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
+@Suppress("DEPRECATION")
 internal class PostHogConfigTest {
     @Test
     fun `constructor sets all required parameters with defaults`() {

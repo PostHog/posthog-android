@@ -35,6 +35,7 @@ internal class PostHogBeforeSendTest {
         val trigger: (PostHogInterface) -> Unit,
     )
 
+    @Suppress("DEPRECATION")
     fun getSut(
         host: String,
         flushAt: Int = 1,

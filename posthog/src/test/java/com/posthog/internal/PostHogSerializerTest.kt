@@ -192,11 +192,13 @@ internal class PostHogSerializerTest {
         val serialized = StringWriter()
         sut.serialize(flagsRequest, serialized)
         val actualJson = serialized.toString()
+        val timezone = java.util.TimeZone.getDefault().id
         val expectedJson =
             """
             {
                 "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
                 "distinct_id": "test_user",
+                "timezone": "$timezone",
                 "person_properties": {
                     "string_prop": "test_value",
                     "int_prop": 42,
