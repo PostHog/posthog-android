@@ -58,12 +58,15 @@ public final class com/posthog/android/replay/PostHogMaskModifier {
 	public static final field INSTANCE Lcom/posthog/android/replay/PostHogMaskModifier;
 	public final fun postHogMask (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
 	public static synthetic fun postHogMask$default (Lcom/posthog/android/replay/PostHogMaskModifier;Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
+	public final fun postHogUnmask (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
+	public static synthetic fun postHogUnmask$default (Lcom/posthog/android/replay/PostHogMaskModifier;Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
 }
 
 public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration, com/posthog/internal/replay/PostHogSessionReplayHandler {
 	public static final field ANDROID_COMPOSE_VIEW Ljava/lang/String;
 	public static final field ANDROID_COMPOSE_VIEW_CLASS_NAME Ljava/lang/String;
 	public static final field PH_NO_CAPTURE_LABEL Ljava/lang/String;
+	public static final field PH_NO_MASK_LABEL Ljava/lang/String;
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun isActive ()Z
@@ -82,12 +85,14 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;Z)V
 	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJ)V
 	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJ)V
-	public synthetic fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJLjava/lang/Double;)V
+	public synthetic fun <init> (ZZZLcom/posthog/android/replay/PostHogDrawableConverter;ZJJLjava/lang/Double;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureLogcat ()Z
 	public final fun getDebouncerDelayMs ()J
 	public final fun getDrawableConverter ()Lcom/posthog/android/replay/PostHogDrawableConverter;
 	public final fun getMaskAllImages ()Z
 	public final fun getMaskAllTextInputs ()Z
+	public final fun getSampleRate ()Ljava/lang/Double;
 	public final fun getScreenshot ()Z
 	public final fun getThrottleDelayMs ()J
 	public final fun setCaptureLogcat (Z)V
@@ -95,6 +100,7 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun setDrawableConverter (Lcom/posthog/android/replay/PostHogDrawableConverter;)V
 	public final fun setMaskAllImages (Z)V
 	public final fun setMaskAllTextInputs (Z)V
+	public final fun setSampleRate (Ljava/lang/Double;)V
 	public final fun setScreenshot (Z)V
 	public final fun setThrottleDelayMs (J)V
 }

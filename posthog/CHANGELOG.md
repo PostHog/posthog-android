@@ -2,6 +2,12 @@
 
 - chore: Remove `config=true` from flags endpoint, add `timezone` to flags requests, deprecate `remoteConfig` option ([#421](https://github.com/PostHog/posthog-android/pull/421))
 
+## 6.6.3
+
+### Patch Changes
+
+- c751774: Support session recording `sampleRate` from remote config
+
 ## 6.6.2
 
 ### Patch Changes

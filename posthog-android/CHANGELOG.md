@@ -1,5 +1,17 @@
 ## Next
 
+## 3.34.0
+
+### Minor Changes
+
+- c751774: Support session recording `sampleRate` from remote config
+
+## 3.33.0
+
+### Minor Changes
+
+- ef1c8a9: feat: add postHogUnmask Compose modifier to prevent masking during recording
+
 ## 3.32.2
 
 ### Patch Changes
