@@ -154,6 +154,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function5;
 	public final fun getReplayStoragePrefix ()Ljava/lang/String;
 	public final fun getReuseAnonymousId ()Z
+	public final fun getSampleRateProvider ()Lkotlin/jvm/functions/Function0;
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
@@ -193,6 +194,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setRemoteConfig (Z)V
 	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
 	public final fun setReuseAnonymousId (Z)V
+	public final fun setSampleRateProvider (Lkotlin/jvm/functions/Function0;)V
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
@@ -805,6 +807,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public final fun getFlagDetails (Ljava/lang/String;)Lcom/posthog/internal/FeatureFlag;
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
+	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
 	public final fun getSurveys ()Ljava/util/List;
 	public final fun isAutocaptureExceptionsEnabled ()Z
 	public final fun isCaptureNetworkTimingEnabled ()Z
@@ -814,6 +817,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public static synthetic fun loadFeatureFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
+	public final fun makeSamplingDecision (Ljava/lang/String;)Z
 	public final fun resetGroupPropertiesForFlags (Ljava/lang/String;)V
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun resetPersonPropertiesForFlags ()V
