@@ -1324,6 +1324,16 @@ public class PostHog private constructor(
         return sessionReplayHandler?.isActive() == true && isSessionActive()
     }
 
+    private fun shouldRecordSession(): Boolean {
+        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
+        if (sessionId != null) {
+            // sampling is deterministic so we can sample again for the same session id
+            return remoteConfig?.makeSamplingDecision(sessionId) ?: true
+        }
+        // no session id
+        return false
+    }
+
     override fun startSessionReplay(resumeCurrent: Boolean) {
         if (!isEnabled()) {
             return
@@ -1343,19 +1353,17 @@ public class PostHog private constructor(
             }
 
             if (resumeCurrent) {
-                // resuming an existing session, sampling was already decided
+                if (!shouldRecordSession()) {
+                    return
+                }
+
                 it.start(true)
             } else {
                 endSession()
                 startSession()
 
-                // new session, make a fresh sampling decision
-                val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
-                if (sessionId != null) {
-                    val shouldRecord = remoteConfig?.makeSamplingDecision(sessionId) ?: true
-                    if (!shouldRecord) {
-                        return
-                    }
+                if (!shouldRecordSession()) {
+                    return
                 }
 
                 it.start(false)
