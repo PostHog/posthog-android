@@ -45,7 +45,9 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -59,6 +61,7 @@ import com.posthog.android.internal.isValid
 import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
+import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
@@ -637,17 +640,19 @@ public class PostHogReplayIntegration(
         return (parent as? ViewGroup)?.isInLayout == true
     }
 
-    private fun View.isTextInputSensitive(): Boolean {
+    private fun View.isTextInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
     }
 
-    private fun View.isAnyInputSensitive(): Boolean {
-        return this.isTextInputSensitive() || config.sessionReplayConfig.maskAllImages
+    private fun View.isAnyInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
+        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs) || config.sessionReplayConfig.maskAllImages
     }
 
-    private fun TextView.shouldMaskTextView(): Boolean {
+    private fun TextView.shouldMaskTextView(ancestorUnmasked: Boolean = false): Boolean {
         // inputType is 0-based
-        return this.isTextInputSensitive() || passwordInputTypes.contains(inputType - 1)
+        return this.isTextInputSensitive(ancestorUnmasked) || passwordInputTypes.contains(inputType - 1)
     }
 
     private fun findMaskableWidgets(
@@ -670,6 +675,10 @@ public class PostHogReplayIntegration(
                 findMaskableComposeWidgets(view, maskableWidgets)
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
+            }
+
+            view.isUnmasked() -> {
+                // ph-no-mask has precedence, skip masking
             }
 
             view.isNoCapture() -> {
@@ -776,15 +785,24 @@ public class PostHogReplayIntegration(
                     val hasPassword = node.config.contains(SemanticsProperties.Password)
                     val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
-                    val hasMaskModifier = node.config.contains(PostHogReplayMask)
-                    val isNoCapture = hasMaskModifier && node.config[PostHogReplayMask]
+                    // isEnabled=false means the modifier has no effect, as if it was never applied
+                    // Check the node itself and its ancestors for mask/unmask modifiers
+                    val isMaskEnabled = node.hasActiveModifier(PostHogReplayMask)
+                    val isUnmaskEnabled = node.hasActiveModifier(PostHogReplayUnmask)
 
                     when {
-                        isNoCapture -> {
+                        // postHogUnmask has precedence over everything, skip masking
+                        isUnmaskEnabled -> {
+                            // do not mask this node
+                        }
+
+                        // postHogMask forces masking
+                        isMaskEnabled -> {
                             maskableWidgets.add(node.boundsInWindow.toRect())
                         }
 
-                        !hasMaskModifier -> {
+                        // no active modifier, apply default config rules
+                        else -> {
                             when {
                                 (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
                                     maskableWidgets.add(node.boundsInWindow.toRect())
@@ -815,6 +833,22 @@ public class PostHogReplayIntegration(
 
     private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
         return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+    }
+
+    /**
+     * Checks if the given semantics node or any of its ancestors has the specified
+     * modifier actively enabled (value is true).
+     * This allows postHogMask and postHogUnmask to propagate to all descendants.
+     */
+    private fun SemanticsNode.hasActiveModifier(key: SemanticsPropertyKey<Boolean>): Boolean {
+        var current: SemanticsNode? = this
+        while (current != null) {
+            if (current.config.contains(key) && current.config[key]) {
+                return true
+            }
+            current = current.parent
+        }
+        return false
     }
 
     private fun View.isComposeView(): Boolean {
@@ -963,19 +997,25 @@ public class PostHogReplayIntegration(
         )
     }
 
-    private fun ImageView.shouldMaskImage(): Boolean {
+    private fun ImageView.shouldMaskImage(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.shouldMaskDrawable() == true
     }
 
-    private fun Spinner.shouldMaskSpinner(): Boolean {
-        return this.isTextInputSensitive()
+    private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
+        return this.isTextInputSensitive(ancestorUnmasked)
     }
 
-    private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
+    private fun View.toWireframe(
+        parentId: Int? = null,
+        ancestorUnmasked: Boolean = false,
+    ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
             return null
         }
+
+        val isUnmasked = ancestorUnmasked || view.isUnmasked()
 
         val viewId = System.identityHashCode(view)
 
@@ -1020,7 +1060,7 @@ public class PostHogReplayIntegration(
             val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
                 text =
-                    if (!view.shouldMaskTextView()) {
+                    if (!view.shouldMaskTextView(isUnmasked)) {
                         viewText
                     } else {
                         viewText.mask()
@@ -1030,7 +1070,7 @@ public class PostHogReplayIntegration(
             val hint = view.hint?.toString()
             if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
                 text =
-                    if (!view.shouldMaskTextView()) {
+                    if (!view.shouldMaskTextView(isUnmasked)) {
                         hint
                     } else {
                         hint.mask()
@@ -1155,7 +1195,7 @@ public class PostHogReplayIntegration(
         if (view is Spinner) {
             type = "input"
             inputType = "select"
-            val mask = view.shouldMaskSpinner()
+            val mask = view.shouldMaskSpinner(isUnmasked)
             view.selectedItem?.let {
                 val theValue =
                     if (!mask) {
@@ -1186,7 +1226,7 @@ public class PostHogReplayIntegration(
 
         if (view is ImageView) {
             type = "image"
-            if (!view.shouldMaskImage()) {
+            if (!view.shouldMaskImage(isUnmasked)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
                     base64 = drawable.base64(view.width, view.height)
@@ -1238,7 +1278,7 @@ public class PostHogReplayIntegration(
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(parentId = viewId)?.let {
+                viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
                     children.add(it)
                 }
             }
@@ -1472,6 +1512,11 @@ public class PostHogReplayIntegration(
             contentDescription?.toString()?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true
     }
 
+    private fun View.isUnmasked(): Boolean {
+        return (tag as? String)?.lowercase()?.contains(PH_NO_MASK_LABEL) == true ||
+            contentDescription?.toString()?.lowercase()?.contains(PH_NO_MASK_LABEL) == true
+    }
+
     private fun Drawable.copy(): Drawable? {
         return constantState?.newDrawable()
     }
@@ -1511,6 +1556,7 @@ public class PostHogReplayIntegration(
 
     internal companion object {
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
+        const val PH_NO_MASK_LABEL: String = "ph-no-mask"
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
 
