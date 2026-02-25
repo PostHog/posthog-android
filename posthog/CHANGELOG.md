@@ -1,5 +1,11 @@
 ## Next
 
+## 6.6.3
+
+### Patch Changes
+
+- c751774: Support session recording `sampleRate` from remote config
+
 ## 6.6.2
 
 ### Patch Changes

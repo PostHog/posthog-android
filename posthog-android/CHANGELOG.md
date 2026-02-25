@@ -1,5 +1,11 @@
 ## Next
 
+## 3.34.0
+
+### Minor Changes
+
+- c751774: Support session recording `sampleRate` from remote config
+
 ## 3.33.0
 
 ### Minor Changes
