@@ -1,5 +1,11 @@
 ## Next
 
+## 2.3.2
+
+### Patch Changes
+
+- f86f22e: Remove `config=true` from flags endpoint, add `timezone` to flags requests, and deprecate `remoteConfig` option
+
 ## 2.3.1
 
 ### Patch Changes

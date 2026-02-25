@@ -1,5 +1,11 @@
 ## Next
 
+## 6.6.4
+
+### Patch Changes
+
+- f86f22e: Remove `config=true` from flags endpoint, add `timezone` to flags requests, and deprecate `remoteConfig` option
+
 - chore: Remove `config=true` from flags endpoint, add `timezone` to flags requests, deprecate `remoteConfig` option ([#421](https://github.com/PostHog/posthog-android/pull/421))
 
 ## 6.6.3
