@@ -1,5 +1,7 @@
 ## Next
 
+- feat: start/stop integrations when calling `optIn()` or `optOut()`. ([#438](https://github.com/PostHog/posthog-android/pull/438))
+
 ## 6.6.2
 
 ### Patch Changes
