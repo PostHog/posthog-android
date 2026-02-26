@@ -1,5 +1,11 @@
 ## Next
 
+## 3.34.2
+
+### Patch Changes
+
+- ed40b09: fix: session recording perf improvements
+
 ## 3.34.1
 
 ### Patch Changes
