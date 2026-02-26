@@ -22,6 +22,8 @@ import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
+import com.posthog.surveys.canActivateRepeatedly
+import com.posthog.surveys.hasEvents
 
 public class PostHogSurveysIntegration(
     context: Context,
@@ -125,11 +127,6 @@ public class PostHogSurveysIntegration(
 
         val matchType = defaultMatchType(survey.conditions?.deviceTypesMatchType)
         return surveyValidationMap[matchType]?.invoke(deviceTypes, deviceType) ?: true
-    }
-
-    private fun canActivateRepeatedly(survey: Survey): Boolean {
-        return (survey.conditions?.events?.repeatedActivation == true && hasEvents(survey)) ||
-            survey.schedule == "always"
     }
 
     /**
@@ -846,10 +843,4 @@ public class PostHogSurveysIntegration(
         }
     }
 
-    /**
-     * Check if a survey has events defined
-     */
-    private fun hasEvents(survey: Survey): Boolean {
-        return survey.conditions?.events?.values?.isNotEmpty() == true
-    }
 }

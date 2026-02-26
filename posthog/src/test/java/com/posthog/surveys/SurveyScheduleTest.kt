@@ -7,21 +7,21 @@ import kotlin.test.assertTrue
 internal class SurveyScheduleTest {
     @Test
     fun `survey with schedule always can activate repeatedly`() {
-        val survey = createSurveyWithSchedule("always")
+        val survey = createSurveyWithSchedule(SurveySchedule.ALWAYS)
 
         assertTrue(canActivateRepeatedly(survey))
     }
 
     @Test
     fun `survey with schedule once cannot activate repeatedly by default`() {
-        val survey = createSurveyWithSchedule("once")
+        val survey = createSurveyWithSchedule(SurveySchedule.ONCE)
 
         assertFalse(canActivateRepeatedly(survey))
     }
 
     @Test
     fun `survey with schedule recurring cannot activate repeatedly by default`() {
-        val survey = createSurveyWithSchedule("recurring")
+        val survey = createSurveyWithSchedule(SurveySchedule.RECURRING)
 
         assertFalse(canActivateRepeatedly(survey))
     }
@@ -78,7 +78,7 @@ internal class SurveyScheduleTest {
                 seenSurveyWaitPeriodInDays = null,
                 events = eventConditions,
             )
-        val survey = createSurveyWithConditions(conditions, "always")
+        val survey = createSurveyWithConditions(conditions, SurveySchedule.ALWAYS)
 
         assertTrue(canActivateRepeatedly(survey))
     }
@@ -128,12 +128,12 @@ internal class SurveyScheduleTest {
                 seenSurveyWaitPeriodInDays = null,
                 events = eventConditions,
             )
-        val survey = createSurveyWithConditions(conditions, "always")
+        val survey = createSurveyWithConditions(conditions, SurveySchedule.ALWAYS)
 
         assertTrue(canActivateRepeatedly(survey))
     }
 
-    private fun createSurveyWithSchedule(schedule: String?): Survey {
+    private fun createSurveyWithSchedule(schedule: SurveySchedule?): Survey {
         return Survey(
             id = "test-survey",
             name = "Test Survey",
@@ -156,7 +156,7 @@ internal class SurveyScheduleTest {
 
     private fun createSurveyWithConditions(
         conditions: SurveyConditions?,
-        schedule: String?,
+        schedule: SurveySchedule?,
     ): Survey {
         return Survey(
             id = "test-survey",
@@ -176,14 +176,5 @@ internal class SurveyScheduleTest {
             endDate = null,
             schedule = schedule,
         )
-    }
-
-    private fun hasEvents(survey: Survey): Boolean {
-        return survey.conditions?.events?.values?.isNotEmpty() == true
-    }
-
-    private fun canActivateRepeatedly(survey: Survey): Boolean {
-        return (survey.conditions?.events?.repeatedActivation == true && hasEvents(survey)) ||
-            survey.schedule == "always"
     }
 }

@@ -1467,7 +1467,7 @@ public final class com/posthog/surveys/SingleSurveyQuestion : com/posthog/survey
 }
 
 public final class com/posthog/surveys/Survey {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;Lcom/posthog/surveys/SurveySchedule;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Lcom/posthog/surveys/SurveyConditions;
 	public final fun component11 ()Lcom/posthog/surveys/SurveyAppearance;
@@ -1475,6 +1475,7 @@ public final class com/posthog/surveys/Survey {
 	public final fun component13 ()Ljava/util/Date;
 	public final fun component14 ()Ljava/util/Date;
 	public final fun component15 ()Ljava/util/Date;
+	public final fun component16 ()Lcom/posthog/surveys/SurveySchedule;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lcom/posthog/surveys/SurveyType;
 	public final fun component4 ()Ljava/util/List;
@@ -1483,8 +1484,8 @@ public final class com/posthog/surveys/Survey {
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;)Lcom/posthog/surveys/Survey;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/Survey;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;ILjava/lang/Object;)Lcom/posthog/surveys/Survey;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;Lcom/posthog/surveys/SurveySchedule;)Lcom/posthog/surveys/Survey;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/Survey;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;Lcom/posthog/surveys/SurveySchedule;ILjava/lang/Object;)Lcom/posthog/surveys/Survey;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAppearance ()Lcom/posthog/surveys/SurveyAppearance;
 	public final fun getConditions ()Lcom/posthog/surveys/SurveyConditions;
@@ -1498,6 +1499,7 @@ public final class com/posthog/surveys/Survey {
 	public final fun getLinkedFlagKey ()Ljava/lang/String;
 	public final fun getName ()Ljava/lang/String;
 	public final fun getQuestions ()Ljava/util/List;
+	public final fun getSchedule ()Lcom/posthog/surveys/SurveySchedule;
 	public final fun getStartDate ()Ljava/util/Date;
 	public final fun getTargetingFlagKey ()Ljava/lang/String;
 	public final fun getType ()Lcom/posthog/surveys/SurveyType;
@@ -1752,6 +1754,20 @@ public final class com/posthog/surveys/SurveyRatingDisplayType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyRatingDisplayType;
 }
 
+public final class com/posthog/surveys/SurveySchedule : java/lang/Enum {
+	public static final field ALWAYS Lcom/posthog/surveys/SurveySchedule;
+	public static final field Companion Lcom/posthog/surveys/SurveySchedule$Companion;
+	public static final field ONCE Lcom/posthog/surveys/SurveySchedule;
+	public static final field RECURRING Lcom/posthog/surveys/SurveySchedule;
+	public final fun getValue ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveySchedule;
+	public static fun values ()[Lcom/posthog/surveys/SurveySchedule;
+}
+
+public final class com/posthog/surveys/SurveySchedule$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveySchedule;
+}
+
 public final class com/posthog/surveys/SurveyTextContentType : java/lang/Enum {
 	public static final field Companion Lcom/posthog/surveys/SurveyTextContentType$Companion;
 	public static final field HTML Lcom/posthog/surveys/SurveyTextContentType;
@@ -1777,5 +1793,10 @@ public final class com/posthog/surveys/SurveyType : java/lang/Enum {
 
 public final class com/posthog/surveys/SurveyType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyType;
+}
+
+public final class com/posthog/surveys/SurveyUtilsKt {
+	public static final fun canActivateRepeatedly (Lcom/posthog/surveys/Survey;)Z
+	public static final fun hasEvents (Lcom/posthog/surveys/Survey;)Z
 }
 

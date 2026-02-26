@@ -27,5 +27,5 @@ public data class Survey(
     val startDate: Date?,
     @SerializedName("end_date")
     val endDate: Date?,
-    val schedule: String?,
+    val schedule: SurveySchedule?,
 )

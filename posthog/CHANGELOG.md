@@ -1,5 +1,6 @@
 ## Next
 
+- support survey schedule 'always' to show every time ([#403](https://github.com/PostHog/posthog-android/pull/403))
 - update android types for new survey customization options ([#399](https://github.com/PostHog/posthog-android/pull/399))
 
 ## 6.3.0 - 2025-01-21
