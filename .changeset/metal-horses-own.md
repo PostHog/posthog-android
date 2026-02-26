@@ -2,4 +2,4 @@
 "posthog-android": patch
 ---
 
-fix: session recordiong perf improvements
+fix: session recording perf improvements
