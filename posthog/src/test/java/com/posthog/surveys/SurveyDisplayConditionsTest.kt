@@ -283,7 +283,134 @@ internal class SurveyDisplayConditionsTest {
         assertFalse(shouldShowSurvey(conditions, "mobile", "checkout_started", "https://example.com/home"))
     }
 
+    @Test
+    fun `survey with schedule always can activate repeatedly`() {
+        val survey =
+            Survey(
+                id = "test-survey",
+                name = "Test Survey",
+                type = SurveyType.POPOVER,
+                questions = emptyList(),
+                description = null,
+                featureFlagKeys = null,
+                linkedFlagKey = null,
+                targetingFlagKey = null,
+                internalTargetingFlagKey = null,
+                conditions = null,
+                appearance = null,
+                currentIteration = null,
+                currentIterationStartDate = null,
+                startDate = null,
+                endDate = null,
+                schedule = "always",
+            )
+
+        assertTrue(canActivateRepeatedly(survey))
+    }
+
+    @Test
+    fun `survey without schedule cannot activate repeatedly without events`() {
+        val survey =
+            Survey(
+                id = "test-survey",
+                name = "Test Survey",
+                type = SurveyType.POPOVER,
+                questions = emptyList(),
+                description = null,
+                featureFlagKeys = null,
+                linkedFlagKey = null,
+                targetingFlagKey = null,
+                internalTargetingFlagKey = null,
+                conditions = null,
+                appearance = null,
+                currentIteration = null,
+                currentIterationStartDate = null,
+                startDate = null,
+                endDate = null,
+            )
+
+        assertFalse(canActivateRepeatedly(survey))
+    }
+
+    @Test
+    fun `survey with schedule once cannot activate repeatedly`() {
+        val survey =
+            Survey(
+                id = "test-survey",
+                name = "Test Survey",
+                type = SurveyType.POPOVER,
+                questions = emptyList(),
+                description = null,
+                featureFlagKeys = null,
+                linkedFlagKey = null,
+                targetingFlagKey = null,
+                internalTargetingFlagKey = null,
+                conditions = null,
+                appearance = null,
+                currentIteration = null,
+                currentIterationStartDate = null,
+                startDate = null,
+                endDate = null,
+                schedule = "once",
+            )
+
+        assertFalse(canActivateRepeatedly(survey))
+    }
+
+    @Test
+    fun `survey with repeated activation events can activate repeatedly`() {
+        val eventConditions =
+            SurveyEventConditions(
+                repeatedActivation = true,
+                values =
+                    listOf(
+                        SurveyEventCondition(name = "app_opened"),
+                    ),
+            )
+
+        val conditions =
+            SurveyConditions(
+                url = null,
+                urlMatchType = null,
+                selector = null,
+                deviceTypes = null,
+                deviceTypesMatchType = null,
+                seenSurveyWaitPeriodInDays = null,
+                events = eventConditions,
+            )
+
+        val survey =
+            Survey(
+                id = "test-survey",
+                name = "Test Survey",
+                type = SurveyType.POPOVER,
+                questions = emptyList(),
+                description = null,
+                featureFlagKeys = null,
+                linkedFlagKey = null,
+                targetingFlagKey = null,
+                internalTargetingFlagKey = null,
+                conditions = conditions,
+                appearance = null,
+                currentIteration = null,
+                currentIterationStartDate = null,
+                startDate = null,
+                endDate = null,
+            )
+
+        assertTrue(canActivateRepeatedly(survey))
+    }
+
     // Helper methods to simulate condition matching logic
+    private fun canActivateRepeatedly(survey: Survey): Boolean {
+        return (survey.conditions?.events?.repeatedActivation == true && hasEvents(survey)) ||
+            survey.schedule == "always"
+    }
+
+    private fun hasEvents(survey: Survey): Boolean {
+        return survey.conditions?.events?.values?.isNotEmpty() == true
+    }
+
     private fun shouldShowForDeviceType(
         conditions: SurveyConditions,
         deviceType: String,
