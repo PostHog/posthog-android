@@ -436,11 +436,6 @@ public class PostHogReplayIntegration(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
     ) {
-        // bail out early if the screen has already changed
-        if (isOnDrawnCalled) {
-            return
-        }
-
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
         val window = windowRef.get() ?: return
@@ -710,12 +705,6 @@ public class PostHogReplayIntegration(
         maskableWidgets: MutableList<Rect>,
         visitedViews: MutableSet<Int> = mutableSetOf(),
     ): Boolean {
-        // bail out early if the screen has changed to avoid
-        // reading stale view state off the main thread
-        if (isOnDrawnCalled) {
-            return false
-        }
-
         val viewId = System.identityHashCode(view)
 
         // Check for cycles to prevent stack overflow
