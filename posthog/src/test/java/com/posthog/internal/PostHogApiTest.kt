@@ -20,12 +20,28 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogApiTest {
+    private class TestLogger : PostHogLogger {
+        val messages = mutableListOf<String>()
+
+        override fun log(message: String) {
+            messages.add(message)
+        }
+
+        override fun isEnabled(): Boolean = true
+    }
+
     private fun getSut(
         host: String,
         proxy: Proxy? = null,
+        debug: Boolean = false,
+        logger: PostHogLogger? = null,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
+        config.debug = debug
+        if (logger != null) {
+            config.logger = logger
+        }
         return PostHogApi(config)
     }
 
@@ -309,5 +325,119 @@ internal class PostHogApiTest {
                 sut.localEvaluation("test-personal-key")
             }
         assertEquals(401, exc.statusCode)
+    }
+
+    // Debug Header Logging Tests
+
+    @Test
+    fun `batch logs request headers in debug mode`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val logger = TestLogger()
+
+        val sut = getSut(host = url.toString(), debug = true, logger = logger)
+
+        val event = generateEvent()
+        sut.batch(listOf(event))
+
+        assertTrue(
+            logger.messages.any { it.contains("Request headers for") && it.contains("/batch") },
+            "Should log request headers for /batch endpoint",
+        )
+        assertTrue(
+            logger.messages.any { it.contains("User-Agent:") },
+            "Should include User-Agent header in log",
+        )
+    }
+
+    @Test
+    fun `batch does not log headers when debug is disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val logger = TestLogger()
+
+        val sut = getSut(host = url.toString(), debug = false, logger = logger)
+
+        val event = generateEvent()
+        sut.batch(listOf(event))
+
+        assertFalse(
+            logger.messages.any { it.contains("Request headers for") },
+            "Should not log request headers when debug is disabled",
+        )
+    }
+
+    @Test
+    fun `flags logs request headers in debug mode`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+        val logger = TestLogger()
+
+        val sut = getSut(host = url.toString(), debug = true, logger = logger)
+
+        sut.flags("distinctId", anonymousId = "anonId", emptyMap())
+
+        assertTrue(
+            logger.messages.any { it.contains("Request headers for") && it.contains("/flags") },
+            "Should log request headers for /flags endpoint",
+        )
+    }
+
+    @Test
+    fun `localEvaluation logs request headers including Authorization in debug mode`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(createLocalEvaluationJson())
+                        .setHeader("ETag", "\"test-etag\""),
+            )
+        val url = http.url("/")
+        val logger = TestLogger()
+
+        val sut = getSut(host = url.toString(), debug = true, logger = logger)
+
+        sut.localEvaluation("test-personal-key")
+
+        assertTrue(
+            logger.messages.any { it.contains("Request headers for") && it.contains("/local_evaluation") },
+            "Should log request headers for /local_evaluation endpoint",
+        )
+        assertTrue(
+            logger.messages.any { it.contains("Authorization:") },
+            "Should include Authorization header in log",
+        )
+    }
+
+    @Test
+    fun `remoteConfig logs request headers in debug mode`() {
+        val file = File("src/test/resources/json/basic-remote-config.json")
+        val responseApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseApi),
+            )
+        val url = http.url("/")
+        val logger = TestLogger()
+
+        val sut = getSut(host = url.toString(), debug = true, logger = logger)
+
+        sut.remoteConfig()
+
+        assertTrue(
+            logger.messages.any { it.contains("Request headers for") && it.contains("/array/") },
+            "Should log request headers for /array/ (remoteConfig) endpoint",
+        )
     }
 }
