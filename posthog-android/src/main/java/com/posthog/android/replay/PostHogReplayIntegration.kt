@@ -113,6 +113,26 @@ public class PostHogReplayIntegration(
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
 
+    // Reuse a single HandlerThread for PixelCopy callbacks instead of
+    // creating and destroying one per screenshot.
+    // TODO: On API 34+, use PixelCopy.Request.Builder.ofWindow(window) which accepts an Executor
+    //  directly, eliminating the need for a HandlerThread entirely. Requires compileSdk 34+.
+    private var pixelCopyThread: HandlerThread? = null
+    private var pixelCopyHandler: Handler? = null
+
+    private fun ensurePixelCopyHandler(): Handler {
+        pixelCopyThread?.let { thread ->
+            if (thread.isAlive) {
+                pixelCopyHandler?.let { return it }
+            }
+        }
+        val thread = HandlerThread("PostHogReplayScreenshot").apply { start() }
+        val handler = Handler(thread.looper)
+        pixelCopyThread = thread
+        pixelCopyHandler = handler
+        return handler
+    }
+
     private val displayMetrics by lazy {
         context.displayMetrics()
     }
@@ -121,6 +141,11 @@ public class PostHogReplayIntegration(
         Paint().apply {
             color = Color.BLACK
         }
+
+    // Reusable objects to avoid per-view allocations during screenshot masking.
+    // Only accessed from the PixelCopy callback thread (or executor), so no synchronization needed.
+    private val reusableRect = Rect()
+    private val reusablePoint = Point()
 
     @Volatile
     private var isSessionReplayActive: Boolean = false
@@ -378,6 +403,10 @@ public class PostHogReplayIntegration(
             isSessionReplayActive = false
             isOnDrawnCalled = false
 
+            pixelCopyThread?.quitSafely()
+            pixelCopyThread = null
+            pixelCopyHandler = null
+
             // clear to help GC
             clearSnapshotStates()
             decorViews.clear()
@@ -402,6 +431,11 @@ public class PostHogReplayIntegration(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
     ) {
+        // bail out early if the screen has already changed
+        if (isOnDrawnCalled) {
+            return
+        }
+
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
         val window = windowRef.get() ?: return
@@ -536,9 +570,8 @@ public class PostHogReplayIntegration(
                     current = view.parent
                 }
 
-                val offset = Point()
                 // Check if view is in a stable state before accessing matrix-dependent operations
-                return globalVisibleRect(offset = offset) != null
+                return hasGlobalVisibleRect()
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
 //            if (boundInView != null) {
@@ -567,9 +600,21 @@ public class PostHogReplayIntegration(
         return if (isViewStateStableForMatrixOperations()) {
             val rect = Rect()
             getGlobalVisibleRect(rect, offset)
-            return rect
+            rect
         } else {
             null
+        }
+    }
+
+    /**
+     * Fast visibility check that reuses a scratch Rect instead of allocating.
+     * Only checks whether the view has a non-empty visible rect, does not return the rect.
+     */
+    private fun View.hasGlobalVisibleRect(): Boolean {
+        return if (isViewStateStableForMatrixOperations()) {
+            getGlobalVisibleRect(reusableRect, reusablePoint)
+        } else {
+            false
         }
     }
 
@@ -660,6 +705,12 @@ public class PostHogReplayIntegration(
         maskableWidgets: MutableList<Rect>,
         visitedViews: MutableSet<Int> = mutableSetOf(),
     ): Boolean {
+        // bail out early if the screen has changed to avoid
+        // reading stale view state off the main thread
+        if (isOnDrawnCalled) {
+            return false
+        }
+
         val viewId = System.identityHashCode(view)
 
         // Check for cycles to prevent stack overflow
@@ -900,11 +951,7 @@ public class PostHogReplayIntegration(
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         val latch = CountDownLatch(1)
         var success = true
-        val thread = HandlerThread("PostHogReplayScreenshot")
-        thread.start()
-
-        // unfortunately we cannot use the Looper.myLooper() because it will be null
-        val handler = Handler(thread.looper)
+        val handler = ensurePixelCopyHandler()
 
         try {
             // reset the isOnDrawnCalled since we are about to take a screenshot
@@ -965,7 +1012,6 @@ public class PostHogReplayIntegration(
             }, handler)
         } catch (e: Throwable) {
             recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
-            thread.quit()
             success = false
             latch.countDown()
         }
@@ -981,7 +1027,6 @@ public class PostHogReplayIntegration(
             recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy timed out: $e.")
         } finally {
             isOnDrawnCalled = false
-            thread.quit()
             bitmap.recycle()
         }
 
