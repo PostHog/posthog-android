@@ -139,6 +139,9 @@ public class PostHog private constructor(
                         remoteConfigExecutor,
                         PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
                         onRemoteConfigLoaded,
+                        PostHogCaptureFeatureFlagCalledProvider { (key, value) ->
+                            sendFeatureFlagCalled(key, value, sendFeatureFlagEvent = true)
+                        }
                     )
 
                 // no need to lock optOut here since the setup is locked already
@@ -1080,6 +1083,9 @@ public class PostHog private constructor(
         value: Any?,
         sendFeatureFlagEvent: Boolean?,
     ) {
+        if (remoteConfig == null) {
+            return
+        }
         val effectiveSendFeatureFlagEvent =
             sendFeatureFlagEvent
                 ?: config?.sendFeatureFlagEvent

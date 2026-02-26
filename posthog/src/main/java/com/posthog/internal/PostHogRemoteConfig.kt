@@ -1,6 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.FeatureFlagResult
+import com.posthog.PostHogCaptureFeatureFlagCalledProvider
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
@@ -23,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property api the API
  * @property executor the Executor
  * @property defaultPersonPropertiesProvider the provider for default person properties
+ * @property captureFeatureFlagCalledProvider the provider for capturing event info
  * @property onRemoteConfigLoaded the remote config callback
  */
 @PostHogInternal
@@ -32,6 +34,7 @@ public class PostHogRemoteConfig(
     private val executor: ExecutorService,
     private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider =
         PostHogDefaultPersonPropertiesProvider { emptyMap() },
+    private val captureFeatureFlagCalledProvider: PostHogCaptureFeatureFlagCalledProvider = PostHogCaptureFeatureFlagCalledProvider {},
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
@@ -114,11 +117,15 @@ public class PostHogRemoteConfig(
         sessionRecording: Map<String, Any?>,
     ): Boolean {
         var recordingActive = true
+        var flagKey: String? = null
+        var flagValue: Any? = null
 
         // Check for boolean flags
         val linkedFlag = sessionRecording["linkedFlag"]
         if (linkedFlag is String) {
             val value = featureFlags[linkedFlag]
+            flagKey = linkedFlag
+            flagValue = value
             recordingActive =
                 when (value) {
                     is Boolean -> {
@@ -140,6 +147,8 @@ public class PostHogRemoteConfig(
             if (flag != null && variant != null) {
                 val value = featureFlags[flag] as? String
                 recordingActive = value == variant
+                flagKey = flag
+                flagValue = value
             } else {
                 // disable recording if the flag does not exist/quota limited
                 recordingActive = false
@@ -150,6 +159,10 @@ public class PostHogRemoteConfig(
         //    featureFlags[linkedFlag] != nil
         // is also a valid check but since we cannot check the value of the flag,
         // we consider session replay is active
+
+        if (flagKey != null && flagValue != null && recordingActive) {
+            captureFeatureFlagCalledProvider.onCaptureFeatureFlagCalled(flagKey to flagValue)
+        }
 
         return recordingActive
     }
@@ -1064,7 +1077,6 @@ public class PostHogRemoteConfig(
             sessionReplayFlagActive = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
-
             clearFlags()
         }
 
