@@ -102,7 +102,7 @@ public class PostHogReplayIntegration(
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
     private val passwordInputTypes =
-        listOf(
+        setOf(
             InputType.TYPE_TEXT_VARIATION_PASSWORD,
             InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
             InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
@@ -135,6 +135,11 @@ public class PostHogReplayIntegration(
 
     private val displayMetrics by lazy {
         context.displayMetrics()
+    }
+
+    // Cache density to avoid repeated property access through displayMetrics
+    private val screenDensity by lazy {
+        displayMetrics.density
     }
 
     private val paint =
@@ -245,7 +250,7 @@ public class PostHogReplayIntegration(
         if (imeVisible) {
             val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             payload["open"] = true
-            payload["height"] = imeHeight.densityValue(displayMetrics.density)
+            payload["height"] = imeHeight.densityValue(screenDensity)
         } else {
             payload["open"] = false
         }
@@ -310,8 +315,8 @@ public class PostHogReplayIntegration(
             try {
                 // if the id is 0, BE transformer will set it to the virtual bodyId
                 val id = motionEvent.getPointerId(index)
-                val absX = motionEvent.getRawXCompat(index).toInt().densityValue(displayMetrics.density)
-                val absY = motionEvent.getRawYCompat(index).toInt().densityValue(displayMetrics.density)
+                val absX = motionEvent.getRawXCompat(index).toInt().densityValue(screenDensity)
+                val absY = motionEvent.getRawYCompat(index).toInt().densityValue(screenDensity)
 
                 val mouseInteractionData =
                     RRIncrementalMouseInteractionData(
@@ -942,10 +947,10 @@ public class PostHogReplayIntegration(
             coordinates[0] = 0
             coordinates[1] = 0
         }
-        val x = coordinates[0].densityValue(displayMetrics.density)
-        val y = coordinates[1].densityValue(displayMetrics.density)
-        val width = view.width.densityValue(displayMetrics.density)
-        val height = view.height.densityValue(displayMetrics.density)
+        val x = coordinates[0].densityValue(screenDensity)
+        val y = coordinates[1].densityValue(screenDensity)
+        val width = view.width.densityValue(screenDensity)
+        val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -1072,10 +1077,10 @@ public class PostHogReplayIntegration(
             coordinates[0] = 0
             coordinates[1] = 0
         }
-        val x = coordinates[0].densityValue(displayMetrics.density)
-        val y = coordinates[1].densityValue(displayMetrics.density)
-        val width = view.width.densityValue(displayMetrics.density)
-        val height = view.height.densityValue(displayMetrics.density)
+        val x = coordinates[0].densityValue(screenDensity)
+        val y = coordinates[1].densityValue(screenDensity)
+        val width = view.width.densityValue(screenDensity)
+        val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
         var type: String? = null
@@ -1147,7 +1152,7 @@ public class PostHogReplayIntegration(
                 }
             }
 //            }
-            style.fontSize = view.textSize.toInt().densityValue(displayMetrics.density)
+            style.fontSize = view.textSize.toInt().densityValue(screenDensity)
             when (view.textAlignment) {
                 View.TEXT_ALIGNMENT_CENTER -> {
                     style.verticalAlign = "center"
@@ -1202,12 +1207,12 @@ public class PostHogReplayIntegration(
 
             // Do not set padding if the text is centered, otherwise the padding will be off
             if (style.verticalAlign != "center") {
-                style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
-                style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
+                style.paddingTop = view.totalPaddingTop.densityValue(screenDensity)
+                style.paddingBottom = view.totalPaddingBottom.densityValue(screenDensity)
             }
             if (style.horizontalAlign != "center") {
-                style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
-                style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
+                style.paddingLeft = view.totalPaddingLeft.densityValue(screenDensity)
+                style.paddingRight = view.totalPaddingRight.densityValue(screenDensity)
             }
         }
 
@@ -1275,10 +1280,10 @@ public class PostHogReplayIntegration(
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
                     base64 = drawable.base64(view.width, view.height)
-//                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
-//                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
-//                    style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
-//                    style.paddingRight = view.paddingRight.densityValue(displayMetrics.density)
+//                    style.paddingTop = view.paddingTop.densityValue(screenDensity)
+//                    style.paddingBottom = view.paddingBottom.densityValue(screenDensity)
+//                    style.paddingLeft = view.paddingLeft.densityValue(screenDensity)
+//                    style.paddingRight = view.paddingRight.densityValue(screenDensity)
                 }
             }
         }
@@ -1553,13 +1558,13 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isNoCapture(maskInput: Boolean = false): Boolean {
-        return maskInput || (tag as? String)?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true ||
-            contentDescription?.toString()?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true
+        return maskInput || (tag as? String)?.contains(PH_NO_CAPTURE_LABEL, ignoreCase = true) == true ||
+            contentDescription?.toString()?.contains(PH_NO_CAPTURE_LABEL, ignoreCase = true) == true
     }
 
     private fun View.isUnmasked(): Boolean {
-        return (tag as? String)?.lowercase()?.contains(PH_NO_MASK_LABEL) == true ||
-            contentDescription?.toString()?.lowercase()?.contains(PH_NO_MASK_LABEL) == true
+        return (tag as? String)?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true ||
+            contentDescription?.toString()?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true
     }
 
     private fun Drawable.copy(): Drawable? {
