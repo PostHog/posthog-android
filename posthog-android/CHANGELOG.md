@@ -1,5 +1,11 @@
 ## Next
 
+## 3.34.3
+
+### Patch Changes
+
+- 8de18b3: fix: prevent SIGSEGV crash from double bitmap recycle in screenshot mode
+
 ## 3.34.2
 
 ### Patch Changes
