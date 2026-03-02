@@ -910,14 +910,6 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun recycleAndLogBitmapDiscarded(
-        bitmap: Bitmap,
-        message: String = "Session Replay screenshot discarded due to screen changes.",
-    ) {
-        bitmap.recycle()
-        config.logger.log(message)
-    }
-
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
     private fun View.toScreenshotWireframe(window: Window): RRWireframe? {
@@ -947,6 +939,12 @@ public class PostHogReplayIntegration(
         var success = true
         val handler = ensurePixelCopyHandler()
 
+        // Track whether the PixelCopy callback has finished to avoid recycling the bitmap
+        // while the callback is still using it (e.g. if latch.await times out).
+        // We use the latch itself as the synchronization mechanism (await happens-before countDown),
+        // so volatile is not needed here — if latch.await returns true, the callback has completed.
+        var callbackCompleted = false
+
         try {
             // reset the isOnDrawnCalled since we are about to take a screenshot
             isOnDrawnCalled = false
@@ -954,7 +952,7 @@ public class PostHogReplayIntegration(
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
                     if (copyResult != PixelCopy.SUCCESS) {
-                        recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $copyResult.")
+                        config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                         success = false
                     } else {
                         if (!isOnDrawnCalled) {
@@ -962,7 +960,7 @@ public class PostHogReplayIntegration(
 
                             if (findMaskableWidgets(view, maskableWidgets)) {
                                 if (!bitmap.isValid()) {
-                                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay Bitmap is invalid.")
+                                    config.logger.log("Session Replay Bitmap is invalid.")
                                     success = false
                                     return@request
                                 }
@@ -971,25 +969,25 @@ public class PostHogReplayIntegration(
                                     try {
                                         Canvas(bitmap)
                                     } catch (e: Throwable) {
-                                        recycleAndLogBitmapDiscarded(bitmap, "Session Replay Canvas creation failed: $e.")
+                                        config.logger.log("Session Replay Canvas creation failed: $e.")
                                         success = false
                                         return@request
                                     }
 
                                 maskableWidgets.forEach {
                                     if (isOnDrawnCalled) {
-                                        recycleAndLogBitmapDiscarded(bitmap)
+                                        config.logger.log("Session Replay screenshot discarded due to screen changes.")
                                         success = false
                                         return@forEach
                                     }
                                     canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
                                 }
                             } else {
-                                recycleAndLogBitmapDiscarded(bitmap)
+                                config.logger.log("Session Replay screenshot discarded due to screen changes.")
                                 success = false
                             }
                         } else {
-                            recycleAndLogBitmapDiscarded(bitmap)
+                            config.logger.log("Session Replay screenshot discarded due to screen changes.")
                             // if isOnDrawnCalled is true, it means that the view has already been drawn
                             // again, so we don't need to draw the maskable widgets otherwise
                             // they might be out of sync (leaking possible PII)
@@ -997,16 +995,19 @@ public class PostHogReplayIntegration(
                         }
                     }
                 } catch (e: Throwable) {
-                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
+                    config.logger.log("Session Replay PixelCopy failed: $e.")
+                    success = false
                 } finally {
                     // reset the isOnDrawnCalled since we've taken the screenshot
                     isOnDrawnCalled = false
+                    callbackCompleted = true
                     latch.countDown()
                 }
             }, handler)
         } catch (e: Throwable) {
-            recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
+            config.logger.log("Session Replay PixelCopy failed: $e.")
             success = false
+            callbackCompleted = true
             latch.countDown()
         }
 
@@ -1018,10 +1019,15 @@ public class PostHogReplayIntegration(
                 base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
-            recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy timed out: $e.")
+            config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
             isOnDrawnCalled = false
-            bitmap.recycle()
+            // Only recycle the bitmap if the callback has completed.
+            // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
+            // on another thread; recycling it now would cause a native SIGSEGV.
+            if (callbackCompleted && !bitmap.isRecycled) {
+                bitmap.recycle()
+            }
         }
 
         return RRWireframe(
