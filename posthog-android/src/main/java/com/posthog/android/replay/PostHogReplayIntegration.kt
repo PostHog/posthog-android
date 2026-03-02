@@ -941,8 +941,7 @@ public class PostHogReplayIntegration(
 
         // Track whether the PixelCopy callback has finished to avoid recycling the bitmap
         // while the callback is still using it (e.g. if latch.await times out).
-        // We use the latch itself as the synchronization mechanism (await happens-before countDown),
-        // so volatile is not needed here — if latch.await returns true, the callback has completed.
+        // We use the latch itself as the synchronization mechanism (await happens-before countDown)
         var callbackCompleted = false
 
         try {
