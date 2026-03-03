@@ -31,6 +31,8 @@ internal class FlagEvaluator(
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.IS_NOT)
         private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
+        private val REGEX_SEMVER =
+            Regex("""^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.\d+)*(?:[-+].*)?$""")
 
         private val DATE_FORMATTER_WITH_SPACE_TZ =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX")
@@ -454,7 +456,7 @@ internal class FlagEvaluator(
     /**
      * A parsed semver version as (major, minor, patch) tuple
      */
-    private data class SemverVersion(
+    private class SemverVersion(
         val major: Int,
         val minor: Int,
         val patch: Int,
@@ -466,6 +468,19 @@ internal class FlagEvaluator(
             if (minorCmp != 0) return minorCmp
             return patch.compareTo(other.patch)
         }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is SemverVersion) return false
+            return major == other.major && minor == other.minor && patch == other.patch
+        }
+
+        override fun hashCode(): Int {
+            var result = major
+            result = 31 * result + minor
+            result = 31 * result + patch
+            return result
+        }
     }
 
     /**
@@ -474,67 +489,34 @@ internal class FlagEvaluator(
      * Parsing rules:
      * 1. Strip leading/trailing whitespace
      * 2. Strip v/V prefix (e.g., "v1.2.3" → "1.2.3")
-     * 3. Strip pre-release and build metadata suffixes (split on - or +, take first part)
-     * 4. Split on . and parse first 3 components as integers
+     * 3. Strip pre-release and build metadata suffixes (handled by regex)
+     * 4. Parse first 3 numeric components
      * 5. Default missing components to 0 (e.g., "1.2" → (1, 2, 0), "1" → (1, 0, 0))
      * 6. Ignore extra components beyond the third (e.g., "1.2.3.4" → (1, 2, 3))
      * 7. Throw an error for truly invalid input (empty string, non-numeric parts, leading dot)
      */
+    @Throws(InconclusiveMatchException::class)
     private fun parseSemver(version: String): SemverVersion {
-        // Step 1: Strip whitespace
         var cleaned = version.trim()
-
-        // Step 2: Strip v/V prefix
         if (cleaned.startsWith("v", ignoreCase = true)) {
             cleaned = cleaned.substring(1)
         }
 
-        // Step 3: Strip pre-release and build metadata suffixes
-        // Split on - or + and take the first part
-        val dashIndex = cleaned.indexOf('-')
-        val plusIndex = cleaned.indexOf('+')
-        val metadataIndex =
-            when {
-                dashIndex >= 0 && plusIndex >= 0 -> minOf(dashIndex, plusIndex)
-                dashIndex >= 0 -> dashIndex
-                plusIndex >= 0 -> plusIndex
-                else -> -1
-            }
-        if (metadataIndex >= 0) {
-            cleaned = cleaned.substring(0, metadataIndex)
-        }
+        val match =
+            REGEX_SEMVER.matchEntire(cleaned)
+                ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
 
-        // Check for empty string or leading dot
-        if (cleaned.isEmpty() || cleaned.startsWith(".")) {
-            throw InconclusiveMatchException("Invalid semver version: '$version'")
-        }
+        val major = match.groupValues[1].toInt()
+        val minor = match.groupValues[2].takeIf { it.isNotEmpty() }?.toInt() ?: 0
+        val patch = match.groupValues[3].takeIf { it.isNotEmpty() }?.toInt() ?: 0
 
-        // Step 4: Split on . and parse components
-        val parts = cleaned.split(".")
-        val components = mutableListOf<Int>()
-
-        for (i in 0 until minOf(3, parts.size)) {
-            val part = parts[i]
-            if (part.isEmpty()) {
-                throw InconclusiveMatchException("Invalid semver version: '$version'")
-            }
-            val num =
-                part.toIntOrNull()
-                    ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
-            components.add(num)
-        }
-
-        // Step 5: Default missing components to 0
-        while (components.size < 3) {
-            components.add(0)
-        }
-
-        return SemverVersion(components[0], components[1], components[2])
+        return SemverVersion(major, minor, patch)
     }
 
     /**
      * Compare two semver versions using the specified operator
      */
+    @Throws(InconclusiveMatchException::class)
     private fun compareSemver(
         overrideValue: Any?,
         propertyValue: Any?,
@@ -608,6 +590,7 @@ internal class FlagEvaluator(
      * Compute lower and upper bounds for tilde range (~X.Y.Z)
      * ~X.Y.Z → lower=(X,Y,Z), upper=(X,Y+1,0)
      */
+    @Throws(InconclusiveMatchException::class)
     private fun computeTildeBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
         val version =
             try {
@@ -627,6 +610,7 @@ internal class FlagEvaluator(
      * - X == 0, Y > 0 → lower=(0,Y,Z), upper=(0,Y+1,0)
      * - X == 0, Y == 0 → lower=(0,0,Z), upper=(0,0,Z+1)
      */
+    @Throws(InconclusiveMatchException::class)
     private fun computeCaretBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
         val version =
             try {
@@ -649,6 +633,7 @@ internal class FlagEvaluator(
      * - "X.*" or "X" with wildcard → lower=(X,0,0), upper=(X+1,0,0)
      * - "X.Y.*" → lower=(X,Y,0), upper=(X,Y+1,0)
      */
+    @Throws(InconclusiveMatchException::class)
     private fun computeWildcardBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
         var cleaned = propertyValue.trim()
 
