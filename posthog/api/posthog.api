@@ -904,6 +904,15 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field NOT_ICONTAINS Lcom/posthog/internal/PropertyOperator;
 	public static final field NOT_REGEX Lcom/posthog/internal/PropertyOperator;
 	public static final field REGEX Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_CARET Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_EQ Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_GT Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_GTE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_LT Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_LTE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_NEQ Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_TILDE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_WILDCARD Lcom/posthog/internal/PropertyOperator;
 	public static final field UNKNOWN Lcom/posthog/internal/PropertyOperator;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PropertyOperator;
 	public static fun values ()[Lcom/posthog/internal/PropertyOperator;
