@@ -1,4 +1,5 @@
 ---
+"posthog": patch
 "posthog-server": patch
 ---
 
