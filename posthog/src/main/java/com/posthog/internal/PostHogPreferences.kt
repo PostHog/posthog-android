@@ -38,6 +38,8 @@ public interface PostHogPreferences {
         internal const val FEATURE_FLAG_EVALUATED_AT = "feature_flag_evaluated_at"
         internal const val SESSION_REPLAY = "sessionReplay"
         internal const val SURVEYS = "surveys"
+        internal const val ERROR_TRACKING = "errorTracking"
+        internal const val CAPTURE_PERFORMANCE = "capturePerformance"
         internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
         internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
         public const val SURVEY_SEEN: String = "surveySeen"
@@ -66,6 +68,8 @@ public interface PostHogPreferences {
                 FLAGS,
                 PERSON_PROPERTIES_FOR_FLAGS,
                 GROUP_PROPERTIES_FOR_FLAGS,
+                ERROR_TRACKING,
+                CAPTURE_PERFORMANCE,
             )
     }
 }

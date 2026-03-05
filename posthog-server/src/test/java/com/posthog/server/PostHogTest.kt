@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.server.internal.FeatureFlagError
 import com.posthog.server.internal.PostHogFeatureFlags
 import okhttp3.mockwebserver.MockResponse
@@ -192,6 +193,41 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `getFeatureFlagResult works correctly`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val postHog = PostHog()
+        postHog.setup(config)
+
+        // With no remote config, should return null
+        val result = postHog.getFeatureFlagResult("user123", "test_flag")
+        assertNull(result)
+
+        postHog.close()
+    }
+
+    @Test
+    fun `getFeatureFlagResult with PostHogFeatureFlagOptions works correctly`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val postHog = PostHog()
+        postHog.setup(config)
+
+        val options =
+            PostHogFeatureFlagResultOptions.builder()
+                .group("organization", "org_123")
+                .personProperty("plan", "premium")
+                .groupProperty("org_123", "size", "large")
+                .build()
+
+        // Should not throw
+        val result = postHog.getFeatureFlagResult("user123", "feature_key", options)
+
+        // With no remote config, should return null
+        assertNull(result)
+
+        postHog.close()
+    }
+
+    @Test
     fun `PostHog implements PostHogInterface correctly`() {
         val config = PostHogConfig(apiKey = TEST_API_KEY)
         val postHogInterface: PostHogInterface = PostHog.with(config)
@@ -235,7 +271,7 @@ internal class PostHogTest {
         val postHog = spy(PostHog())
 
         // Set up a different implementation of the feature flags interface
-        val mockFeatureFlags = mock<com.posthog.internal.PostHogFeatureFlagsInterface>()
+        val mockFeatureFlags = mock<PostHogFeatureFlagsInterface>()
 
         // Use reflection to set the featureFlags field
         val featureFlagsField = postHog.javaClass.superclass.getDeclaredField("featureFlags")

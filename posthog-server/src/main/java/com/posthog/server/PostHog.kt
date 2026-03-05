@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHog
 import com.posthog.PostHogStateless
 import com.posthog.server.internal.PostHogFeatureFlags
@@ -118,6 +119,24 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             groups,
             personProperties,
             groupProperties,
+        )
+    }
+
+    override fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        sendFeatureFlagEvent: Boolean?,
+    ): FeatureFlagResult? {
+        return super.getFeatureFlagResultStateless(
+            distinctId,
+            key,
+            groups,
+            personProperties,
+            groupProperties,
+            sendFeatureFlagEvent,
         )
     }
 

@@ -15,7 +15,7 @@ class MyApp : Application() {
         // Demo:
 //        val apiKey = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
         // ManoelTesting:
-        val apiKey = "phc_QFbR1y41s5sxnNTZoyKG2NJo2RlsCIWkUfdpawgb40D"
+        val apiKey = "phc_6lqCaCDCBEWdIGieihq5R2dZpPVbAUFISA75vFZow06"
         // PaulKey
 //        val apiKey = "phc_GavhjwMwc75N4HsaLjMTEvH8Kpsz70rZ3N0E9ho89YJ"
 //        val config = PostHogAndroidConfig(apiKey, host = "https://3727-86-27-112-156.ngrok-free.app").apply {
@@ -26,7 +26,7 @@ class MyApp : Application() {
                 captureDeepLinks = false
                 captureApplicationLifecycleEvents = false
                 captureScreenViews = false
-                sessionReplay = false
+                sessionReplay = true
                 preloadFeatureFlags = true
                 sendFeatureFlagEvent = false
                 onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
@@ -41,7 +41,7 @@ class MyApp : Application() {
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true
                 sessionReplayConfig.screenshot = true
-                surveys = false
+                surveys = true
                 errorTrackingConfig.autoCapture = true
             }
         PostHogAndroid.setup(this, config)

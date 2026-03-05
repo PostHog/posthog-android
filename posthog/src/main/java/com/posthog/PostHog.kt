@@ -3,7 +3,9 @@ package com.posthog
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
 import com.posthog.internal.PostHogNoOpLogger
+import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
@@ -57,8 +59,11 @@ public class PostHog private constructor(
     private val featureFlagsCalledLock = Any()
     private val cachedPersonPropertiesLock = Any()
 
-    private var remoteConfig: PostHogRemoteConfig? = null
     private var replayQueue: PostHogQueueInterface? = null
+
+    private val remoteConfig: PostHogRemoteConfig?
+        get() = config?.remoteConfigHolder
+
     private val featureFlagsCalled = mutableMapOf<String, MutableList<Any?>>()
 
     // Used to deduplicate setPersonProperties calls
@@ -114,10 +119,27 @@ public class PostHog private constructor(
                         config.replayStoragePrefix,
                         replayExecutor,
                     )
-                val featureFlags =
-                    config.remoteConfigProvider(config, api, remoteConfigExecutor) {
-                        getDefaultPersonProperties()
+                val onRemoteConfigLoaded =
+                    PostHogOnRemoteConfigLoaded {
+                        try {
+                            val surveys = remoteConfig?.getSurveys() ?: emptyList()
+                            surveysHandler?.onSurveysLoaded(surveys)
+                        } catch (e: Throwable) {
+                            config.logger.log("Failed to notify surveys loaded: $e.")
+                        }
+
+                        // Notify all integrations about remote config changes
+                        notifyIntegrationsRemoteConfig(config)
                     }
+
+                val featureFlags =
+                    config.remoteConfigProvider(
+                        config,
+                        api,
+                        remoteConfigExecutor,
+                        PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
+                        onRemoteConfigLoaded,
+                    )
 
                 // no need to lock optOut here since the setup is locked already
                 val optOut =
@@ -143,17 +165,7 @@ public class PostHog private constructor(
                 this.replayQueue = replayQueue
 
                 if (featureFlags is PostHogRemoteConfig) {
-                    this.remoteConfig = featureFlags
-                }
-
-                // Notify surveys integration whenever remote config finishes loading
-                remoteConfig?.onRemoteConfigLoaded = {
-                    try {
-                        val surveys = remoteConfig?.getSurveys() ?: emptyList()
-                        surveysHandler?.onSurveysLoaded(surveys)
-                    } catch (e: Throwable) {
-                        config.logger.log("Failed to notify surveys loaded: $e.")
-                    }
+                    config.remoteConfigHolder = featureFlags
                 }
 
                 config.addIntegration(sendCachedEventsIntegration)
@@ -196,6 +208,7 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
+                @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
                     when {
                         config.remoteConfig ->
@@ -209,6 +222,16 @@ public class PostHog private constructor(
                 }
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
+            }
+        }
+    }
+
+    private fun notifyIntegrationsRemoteConfig(config: PostHogConfig) {
+        config.integrations.forEach { integration ->
+            try {
+                integration.onRemoteConfig()
+            } catch (e: Throwable) {
+                config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
             }
         }
     }
@@ -607,6 +630,54 @@ public class PostHog private constructor(
         props["alias"] = alias
 
         capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
+    }
+
+    public override fun captureFeatureView(
+        flag: String,
+        flagVariant: String?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        val props = mutableMapOf<String, Any>()
+        props["feature_flag"] = flag
+
+        val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
+        if (variant is String) {
+            props["feature_flag_variant"] = variant
+        }
+
+        val userProperties = mapOf("\$feature_view/$flag" to variant)
+
+        capture(
+            event = PostHogEventName.FEATURE_VIEW.event,
+            properties = props,
+            userProperties = userProperties,
+        )
+    }
+
+    public override fun captureFeatureInteraction(
+        flag: String,
+        flagVariant: String?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        val props = mutableMapOf<String, Any>()
+        props["feature_flag"] = flag
+
+        val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
+        if (variant is String) {
+            props["feature_flag_variant"] = variant
+        }
+
+        val userProperties = mapOf("\$feature_interaction/$flag" to variant)
+
+        capture(
+            PostHogEventName.FEATURE_INTERACTION.event,
+            properties = props,
+            userProperties = userProperties,
+        )
     }
 
     /**
@@ -1054,23 +1125,32 @@ public class PostHog private constructor(
         defaultValue: Any?,
         sendFeatureFlagEvent: Boolean?,
     ): Any? {
-        if (!isEnabled()) {
-            return defaultValue
-        }
-        val value = remoteConfig?.getFeatureFlag(key, defaultValue) ?: defaultValue
-
-        sendFeatureFlagCalled(key, value, sendFeatureFlagEvent)
-        return value
+        if (!isEnabled()) return defaultValue
+        val flagValue = remoteConfig?.getFeatureFlagResult(key)?.value ?: defaultValue
+        sendFeatureFlagCalled(key, flagValue, sendFeatureFlagEvent)
+        return flagValue
     }
 
     public override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
     ): Any? {
+        if (!isEnabled()) return defaultValue
+        return getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload ?: defaultValue
+    }
+
+    public override fun getFeatureFlagResult(
+        key: String,
+        sendFeatureFlagEvent: Boolean?,
+    ): FeatureFlagResult? {
         if (!isEnabled()) {
-            return defaultValue
+            return null
         }
-        return remoteConfig?.getFeatureFlagPayload(key, defaultValue) ?: defaultValue
+        val result = remoteConfig?.getFeatureFlagResult(key)
+
+        sendFeatureFlagCalled(key, result?.value, sendFeatureFlagEvent)
+
+        return result
     }
 
     public override fun flush() {
@@ -1245,6 +1325,16 @@ public class PostHog private constructor(
         return sessionReplayHandler?.isActive() == true && isSessionActive()
     }
 
+    private fun shouldRecordSession(): Boolean {
+        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
+        if (sessionId != null) {
+            // sampling is deterministic so we can sample again for the same session id
+            return remoteConfig?.makeSamplingDecision(sessionId) ?: true
+        }
+        // no session id
+        return false
+    }
+
     override fun startSessionReplay(resumeCurrent: Boolean) {
         if (!isEnabled()) {
             return
@@ -1264,10 +1354,19 @@ public class PostHog private constructor(
             }
 
             if (resumeCurrent) {
+                if (!shouldRecordSession()) {
+                    return
+                }
+
                 it.start(true)
             } else {
                 endSession()
                 startSession()
+
+                if (!shouldRecordSession()) {
+                    return
+                }
+
                 it.start(false)
             }
         } ?: run {
@@ -1421,6 +1520,11 @@ public class PostHog private constructor(
             defaultValue: Any?,
         ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
 
+        public override fun getFeatureFlagResult(
+            key: String,
+            sendFeatureFlagEvent: Boolean?,
+        ): FeatureFlagResult? = shared.getFeatureFlagResult(key, sendFeatureFlagEvent)
+
         public override fun flush() {
             shared.flush()
         }
@@ -1487,6 +1591,20 @@ public class PostHog private constructor(
 
         public override fun alias(alias: String) {
             shared.alias(alias)
+        }
+
+        public override fun captureFeatureView(
+            flag: String,
+            flagVariant: String?,
+        ) {
+            shared.captureFeatureView(flag, flagVariant)
+        }
+
+        public override fun captureFeatureInteraction(
+            flag: String,
+            flagVariant: String?,
+        ) {
+            shared.captureFeatureInteraction(flag, flagVariant)
         }
 
         public override fun isOptOut(): Boolean = shared.isOptOut()

@@ -133,6 +133,15 @@ public enum class PropertyOperator {
     IS_DATE_BEFORE,
     IS_DATE_AFTER,
     FLAG_EVALUATES_TO,
+    SEMVER_EQ,
+    SEMVER_NEQ,
+    SEMVER_GT,
+    SEMVER_GTE,
+    SEMVER_LT,
+    SEMVER_LTE,
+    SEMVER_TILDE,
+    SEMVER_CARET,
+    SEMVER_WILDCARD,
     ;
 
     public companion object {
@@ -154,6 +163,15 @@ public enum class PropertyOperator {
                 "is_date_before" -> IS_DATE_BEFORE
                 "is_date_after" -> IS_DATE_AFTER
                 "flag_evaluates_to" -> FLAG_EVALUATES_TO
+                "semver_eq" -> SEMVER_EQ
+                "semver_neq" -> SEMVER_NEQ
+                "semver_gt" -> SEMVER_GT
+                "semver_gte" -> SEMVER_GTE
+                "semver_lt" -> SEMVER_LT
+                "semver_lte" -> SEMVER_LTE
+                "semver_tilde" -> SEMVER_TILDE
+                "semver_caret" -> SEMVER_CARET
+                "semver_wildcard" -> SEMVER_WILDCARD
                 else -> UNKNOWN
             }
         }

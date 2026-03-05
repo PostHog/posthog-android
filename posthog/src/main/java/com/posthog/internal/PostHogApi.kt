@@ -39,7 +39,7 @@ public class PostHogApi(
     }
 
     private val client: OkHttpClient =
-        OkHttpClient.Builder()
+        config.httpClient ?: OkHttpClient.Builder()
             .proxy(config.proxy)
             .addInterceptor(GzipRequestInterceptor(config))
             .build()
@@ -137,7 +137,7 @@ public class PostHogApi(
                 config.evaluationContexts,
             )
 
-        val url = "$theHost/flags/?v=2&config=true"
+        val url = "$theHost/flags/?v=2"
         logRequest(flagsRequest, url)
 
         val request =

@@ -193,6 +193,61 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `failed flags should not overwrite cached values`() {
+        // First load: 4535-funnel-bar-viz is true with payload "true"
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.awaitExecution()
+
+        // Verify initial state: flag is true
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        // Verify initial payload exists
+        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        // Verify initial flag details show enabled=true
+        val initialDetails = requireNotNull(sut.getFlagDetails("4535-funnel-bar-viz"))
+        assertTrue(initialDetails.enabled)
+
+        // Second load: server returns errorsWhileComputingFlags=true,
+        // 4535-funnel-bar-viz has failed=true and enabled=false (with null payload),
+        // new-flag has failed=false and enabled=true
+        val failedFile = File("src/test/resources/json/basic-flags-with-failed-flag.json")
+
+        val response =
+            MockResponse()
+                .setBody(failedFile.readText())
+        http.enqueue(response)
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        // The failed flag should preserve its cached value (true), NOT be overwritten to false
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        // The cached payload should also be preserved
+        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz", defaultValue = false) as Boolean)
+        // The flag details should show the cached enabled=true, not the failed enabled=false
+        val cachedDetails = requireNotNull(sut.getFlagDetails("4535-funnel-bar-viz"))
+        assertTrue(cachedDetails.enabled)
+
+        // The non-failed new flag should be merged in normally
+        assertTrue(sut.getFeatureFlag("new-flag", defaultValue = false) as Boolean)
+        // The new flag's details should be available
+        val newFlagDetails = requireNotNull(sut.getFlagDetails("new-flag"))
+        assertTrue(newFlagDetails.enabled)
+        assertFalse(newFlagDetails.failed ?: true)
+    }
+
+    @Test
     fun `returns flag enabled if multivariant`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
 

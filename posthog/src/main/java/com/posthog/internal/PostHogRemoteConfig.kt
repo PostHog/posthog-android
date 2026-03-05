@@ -1,8 +1,11 @@
 package com.posthog.internal
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
+import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_AT
@@ -19,17 +22,36 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property config the Config
  * @property api the API
  * @property executor the Executor
- * @property getDefaultPersonProperties the lambda to get default person properties
+ * @property defaultPersonPropertiesProvider the provider for default person properties
+ * @property onRemoteConfigLoaded the remote config callback
  */
 @PostHogInternal
 public class PostHogRemoteConfig(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val executor: ExecutorService,
-    private val getDefaultPersonProperties: () -> Map<String, Any> = { emptyMap() },
+    private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider =
+        PostHogDefaultPersonPropertiesProvider { emptyMap() },
+    private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
     private var isLoadingRemoteConfig = AtomicBoolean(false)
+
+    // Track if an additional reload was requested while a request was in flight
+    // This prevents dropping reload requests (e.g., from identify()) when preload is in progress
+    private var pendingFeatureFlagsReload = AtomicBoolean(false)
+    private val pendingFeatureFlagsLock = Any()
+
+    // Stores the parameters for the pending feature flags reload
+    private data class PendingFeatureFlagsRequest(
+        val distinctId: String,
+        val anonymousId: String?,
+        val groups: Map<String, String>?,
+        val internalOnFeatureFlags: PostHogOnFeatureFlags?,
+        val onFeatureFlags: PostHogOnFeatureFlags?,
+    )
+
+    private var pendingFeatureFlagsRequest: PendingFeatureFlagsRequest? = null
 
     private val featureFlagsLock = Any()
     private val remoteConfigLock = Any()
@@ -60,22 +82,36 @@ public class PostHogRemoteConfig(
     @Volatile
     private var hasSurveys = false
 
+    // Remote config values for error tracking, logs, and capture performance.
+    // These represent the remote-enabled state (true = remote says enabled).
+    // The effective state is: remoteEnabled AND localEnabled.
+    @Volatile
+    private var autoCaptureExceptions = false
+
+    @Volatile
+    private var consoleLogRecordingEnabled = true
+
+    @Volatile
+    private var captureNetworkTiming = true
+
     /**
-     * Optional callback invoked after remote config finishes loading and surveys have been processed.
-     * Use this to notify listeners that cached surveys may have changed.
+     * The sample rate for session recording, a value between 0 and 1.
+     * null means no sampling (record everything).
      */
     @Volatile
-    public var onRemoteConfigLoaded: (() -> Unit)? = null
+    private var sessionRecordingSampleRate: Double? = null
 
     init {
-        preloadSessionReplayFlag()
+        preloadSessionRecordingConfig()
         preloadSurveys()
+        preloadErrorTrackingConfig()
+        preloadCapturePerformanceConfig()
         loadCachedPropertiesForFlags()
     }
 
     private fun isRecordingActive(
         featureFlags: Map<String, Any>,
-        sessionRecording: Map<String, Any>,
+        sessionRecording: Map<String, Any?>,
     ): Boolean {
         var recordingActive = true
 
@@ -163,6 +199,8 @@ public class PostHogRemoteConfig(
                     synchronized(remoteConfigLock) {
                         processSessionRecordingConfig(it.sessionRecording)
                         processSurveys(it.surveys)
+                        processErrorTrackingConfig(it.errorTracking)
+                        processCapturePerformanceConfig(it.capturePerformance)
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
@@ -171,12 +209,14 @@ public class PostHogRemoteConfig(
                                 if (distinctId.isNotBlank()) {
                                     // do not process session replay from flags API
                                     // since its already cached via the remote config API
+                                    // do not notify onRemoteConfigLoaded since loadRemoteConfig does it
                                     executeFeatureFlags(
                                         distinctId,
                                         anonymousId,
                                         groups,
                                         internalOnFeatureFlags = internalOnFeatureFlags,
                                         onFeatureFlags = onFeatureFlags,
+                                        notifyRemoteConfigLoaded = false,
                                     )
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
@@ -213,7 +253,7 @@ public class PostHogRemoteConfig(
 
                 if (shouldNotifyRemoteConfigLoaded) {
                     try {
-                        onRemoteConfigLoaded?.invoke()
+                        onRemoteConfigLoaded?.loaded()
                     } catch (e: Throwable) {
                         config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
                     }
@@ -234,11 +274,6 @@ public class PostHogRemoteConfig(
         hasSurveys = false
         config.cachePreferences?.remove(SURVEYS)
         surveys = null
-    }
-
-    private fun clearSessionRecording() {
-        sessionReplayFlagActive = false
-        config.cachePreferences?.remove(SESSION_REPLAY)
     }
 
     private fun processSurveys(surveys: Any?) {
@@ -284,12 +319,32 @@ public class PostHogRemoteConfig(
         }
     }
 
+    /**
+     * Parses a sample rate value which may come as a String decimal (from the API)
+     * or as a Number (from cache). Returns null if the value is absent, unparseable,
+     * or outside the valid range of 0.0 to 1.0.
+     */
+    private fun parseSampleRate(raw: Any?): Double? {
+        val value =
+            when (raw) {
+                is String -> raw.toDoubleOrNull()
+                is Number -> raw.toDouble()
+                else -> null
+            }
+        if (value != null && (value !in 0.0..1.0)) {
+            config.logger.log("Sample rate must be between 0.0 and 1.0, got $value. Ignoring.")
+            return null
+        }
+        return value
+    }
+
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
-                sessionReplayFlagActive = sessionRecording
+                sessionReplayFlagActive = false
+                consoleLogRecordingEnabled = false
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -300,7 +355,7 @@ public class PostHogRemoteConfig(
 
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
-                (sessionRecording as? Map<String, Any>)?.let {
+                (sessionRecording as? Map<String, Any?>)?.let {
                     // keeps the value from config.sessionReplay since having sessionRecording
                     // means its enabled on the project settings, but its only enabled
                     // when local config.sessionReplay is also enabled
@@ -308,12 +363,16 @@ public class PostHogRemoteConfig(
                         ?: config.snapshotEndpoint
 
                     sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+
+                    consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
+
+                    sessionRecordingSampleRate = parseSampleRate(it["sampleRate"])
+
                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
                     // TODO:
-                    // consoleLogRecordingEnabled -> Boolean or null
-                    // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true}
-                    // sampleRate, etc
+                    // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true},
+                    // masking -> array of key/value eg blockSelector: img, maskAllInputs: true, maskTextSelector: *
                 }
             }
             else -> {
@@ -322,12 +381,112 @@ public class PostHogRemoteConfig(
         }
     }
 
+    private fun clearErrorTracking() {
+        autoCaptureExceptions = false
+        config.cachePreferences?.remove(ERROR_TRACKING)
+    }
+
+    private fun processErrorTrackingConfig(errorTracking: Any?) {
+        when (errorTracking) {
+            is Boolean -> {
+                // if errorTracking is a Boolean, it's always false (disabled)
+                clearErrorTracking()
+            }
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                (errorTracking as? Map<String, Any>)?.let {
+                    val autocaptureExceptions = it["autocaptureExceptions"]
+                    autoCaptureExceptions = autocaptureExceptions as? Boolean ?: false
+                    config.cachePreferences?.setValue(ERROR_TRACKING, it)
+                }
+            }
+            else -> {
+                // do nothing
+            }
+        }
+    }
+
+    private fun preloadErrorTrackingConfig() {
+        synchronized(remoteConfigLock) {
+            config.cachePreferences?.let { preferences ->
+                @Suppress("UNCHECKED_CAST")
+                val errorTracking = preferences.getValue(ERROR_TRACKING) as? Map<String, Any>
+                if (errorTracking != null) {
+                    val autocaptureExceptions = errorTracking["autocaptureExceptions"]
+                    autoCaptureExceptions = autocaptureExceptions as? Boolean ?: false
+                }
+            }
+        }
+    }
+
+    private fun clearCapturePerformance() {
+        captureNetworkTiming = false
+        config.cachePreferences?.remove(CAPTURE_PERFORMANCE)
+    }
+
+    private fun processCapturePerformanceConfig(capturePerformance: Any?) {
+        when (capturePerformance) {
+            is Boolean -> {
+                // if capturePerformance is a Boolean, it's always false (disabled)
+                clearCapturePerformance()
+            }
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                (capturePerformance as? Map<String, Any?>)?.let {
+                    val networkTiming = it["network_timing"]
+                    captureNetworkTiming = networkTiming as? Boolean ?: false
+                    config.cachePreferences?.setValue(CAPTURE_PERFORMANCE, it)
+                }
+            }
+            else -> {
+                // do nothing
+            }
+        }
+    }
+
+    private fun preloadCapturePerformanceConfig() {
+        synchronized(remoteConfigLock) {
+            config.cachePreferences?.let { preferences ->
+                @Suppress("UNCHECKED_CAST")
+                val capturePerformance = preferences.getValue(CAPTURE_PERFORMANCE) as? Map<String, Any?>
+                if (capturePerformance != null) {
+                    val networkTiming = capturePerformance["network_timing"]
+                    captureNetworkTiming = networkTiming as? Boolean ?: false
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns whether autocapture of exceptions is enabled.
+     * Both remote config (errorTracking.autocaptureExceptions) AND local config
+     * (PostHogConfig.errorTrackingConfig.autoCapture) must be enabled.
+     */
+    public fun isAutocaptureExceptionsEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.autoCapture
+
+    /**
+     * Returns whether console log recording is enabled remotely.
+     * Both remote config (sessionRecording.consoleLogRecordingEnabled) AND local config must be enabled.
+     * The local config is platform-specific (e.g., PostHogAndroidConfig.sessionReplayConfig.captureLogcat).
+     * This method only checks the remote side; callers should AND with their local config.
+     */
+    public fun isConsoleLogRecordingEnabled(): Boolean = consoleLogRecordingEnabled
+
+    /**
+     * Returns whether network timing capture is enabled.
+     * Both remote config (capturePerformance.network_timing) AND local config must be enabled.
+     * The local config is on PostHogOkHttpInterceptor.captureNetworkTelemetry.
+     * This method only checks the remote side; callers should AND with their local config.
+     */
+    public fun isCaptureNetworkTimingEnabled(): Boolean = captureNetworkTiming
+
     private fun executeFeatureFlags(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
         onFeatureFlags: PostHogOnFeatureFlags?,
+        notifyRemoteConfigLoaded: Boolean = true,
     ) {
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Network isn't connected.")
@@ -339,7 +498,20 @@ public class PostHogRemoteConfig(
         }
 
         if (isLoadingFeatureFlags.getAndSet(true)) {
-            config.logger.log("Feature flags are being loaded already.")
+            config.logger.log("Feature flags are being loaded already, queuing reload.")
+            // Queue the reload request instead of dropping it
+            // This ensures that requests with $anon_distinct_id (from identify()) are not lost
+            synchronized(pendingFeatureFlagsLock) {
+                pendingFeatureFlagsReload.set(true)
+                pendingFeatureFlagsRequest =
+                    PendingFeatureFlagsRequest(
+                        distinctId = distinctId,
+                        anonymousId = anonymousId,
+                        groups = groups,
+                        internalOnFeatureFlags = internalOnFeatureFlags,
+                        onFeatureFlags = onFeatureFlags,
+                    )
+            }
             return
         }
 
@@ -367,15 +539,30 @@ public class PostHogRemoteConfig(
 
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // if not all flags were computed, we upsert flags instead of replacing them
-                        this.flags = (this.flags ?: mapOf()) + (normalizedResponse.flags ?: mapOf())
+                        // but filter out flags that failed evaluation to avoid overwriting cached values
+                        val responseFlags = normalizedResponse.flags
+                        if (responseFlags != null) {
+                            // V4 response: filter out failed flags using the 'failed' field
+                            val successfulFlags = responseFlags.filterValues { flag -> flag.failed != true }
+                            val successfulKeys = successfulFlags.keys
 
-                        this.featureFlags =
-                            (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
+                            this.flags = (this.flags ?: mapOf()) + successfulFlags
 
-                        val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            val newFeatureFlags =
+                                normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf()
+                            this.featureFlags = (this.featureFlags ?: mapOf()) + newFeatureFlags
 
-                        this.featureFlagPayloads =
-                            (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+                            val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            this.featureFlagPayloads =
+                                (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads.filterKeys { it in successfulKeys }
+                        } else {
+                            // V1 response: no 'flags' property, merge all featureFlags (legacy behavior)
+                            this.featureFlags =
+                                (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
+
+                            val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
+                            this.featureFlagPayloads = (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+                        }
                     } else {
                         this.flags = normalizedResponse.flags
                         this.featureFlags = normalizedResponse.featureFlags
@@ -385,6 +572,16 @@ public class PostHogRemoteConfig(
 
                     // since flags might have changed, we need to check if session recording is active again
                     processSessionRecordingConfig(it.sessionRecording)
+
+                    // TODO: surveys depends on remoteConfig for now
+                    // otherwise surveysHandler?.onSurveysLoaded will be called multiple times
+                    // processSurveys(it.surveys)
+
+                    // only process values if not yet processed by remote config
+                    if (notifyRemoteConfigLoaded) {
+                        processCapturePerformanceConfig(it.capturePerformance)
+                        processErrorTrackingConfig(it.errorTracking)
+                    }
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -397,6 +594,14 @@ public class PostHogRemoteConfig(
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
                 }
                 isFeatureFlagsLoaded = true
+
+                if (notifyRemoteConfigLoaded) {
+                    try {
+                        onRemoteConfigLoaded?.loaded()
+                    } catch (e: Throwable) {
+                        config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
+                    }
+                }
             } ?: run {
                 isFeatureFlagsLoaded = false
             }
@@ -407,7 +612,29 @@ public class PostHogRemoteConfig(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
             )
+
+            // Check if there's a pending reload request and execute it
+            val pendingRequest: PendingFeatureFlagsRequest?
+            synchronized(pendingFeatureFlagsLock) {
+                if (pendingFeatureFlagsReload.getAndSet(false)) {
+                    pendingRequest = pendingFeatureFlagsRequest
+                    pendingFeatureFlagsRequest = null
+                } else {
+                    pendingRequest = null
+                }
+            }
             isLoadingFeatureFlags.set(false)
+
+            pendingRequest?.let { request ->
+                config.logger.log("Executing pending feature flags reload.")
+                executeFeatureFlags(
+                    distinctId = request.distinctId,
+                    anonymousId = request.anonymousId,
+                    groups = request.groups,
+                    internalOnFeatureFlags = request.internalOnFeatureFlags,
+                    onFeatureFlags = request.onFeatureFlags,
+                )
+            }
         }
     }
 
@@ -459,11 +686,11 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun preloadSessionReplayFlag() {
+    private fun preloadSessionRecordingConfig() {
         synchronized(featureFlagsLock) {
             config.cachePreferences?.let { preferences ->
                 @Suppress("UNCHECKED_CAST")
-                val sessionRecording = preferences.getValue(SESSION_REPLAY) as? Map<String, Any>
+                val sessionRecording = preferences.getValue(SESSION_REPLAY) as? Map<String, Any?>
 
                 @Suppress("UNCHECKED_CAST")
                 val flags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any>
@@ -473,6 +700,10 @@ public class PostHogRemoteConfig(
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
+
+                    consoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
+
+                    sessionRecordingSampleRate = parseSampleRate(sessionRecording["sampleRate"])
                 }
             }
         }
@@ -569,46 +800,64 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun readFeatureFlag(
+    override fun getFeatureFlagResult(
         key: String,
-        defaultValue: Any?,
-        flags: Map<String, Any?>?,
-    ): Any? {
-        val value: Any?
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): FeatureFlagResult? {
+        loadFeatureFlagsFromCacheIfNeeded()
 
         synchronized(featureFlagsLock) {
-            value = flags?.get(key)
+            val value = featureFlags?.get(key) ?: return null
+            val payload = featureFlagPayloads?.get(key)
+
+            val (enabled, variant) =
+                when (value) {
+                    is Boolean -> value to null
+                    is String -> true to value
+                    else -> return null
+                }
+
+            return FeatureFlagResult(key, enabled, variant, payload)
         }
-
-        return value ?: defaultValue
     }
 
-    override fun getFeatureFlag(
+    public fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
-        distinctId: String?,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any? {
-        // since we pass featureFlags as a value, we need to load it from cache if needed
-        loadFeatureFlagsFromCacheIfNeeded()
-
-        return readFeatureFlag(key, defaultValue, featureFlags)
+        val result =
+            getFeatureFlagResult(
+                key,
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+            )
+        return result?.value ?: defaultValue
     }
 
-    override fun getFeatureFlagPayload(
+    public fun getFeatureFlagPayload(
         key: String,
-        defaultValue: Any?,
-        distinctId: String?,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
+        defaultValue: Any? = null,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
     ): Any? {
-        // since we pass featureFlags as a value, we need to load it from cache if needed
-        loadFeatureFlagsFromCacheIfNeeded()
-
-        return readFeatureFlag(key, defaultValue, featureFlagPayloads)
+        return getFeatureFlagResult(
+            key,
+            distinctId,
+            groups,
+            personProperties,
+            groupProperties,
+        )?.payload ?: defaultValue
     }
 
     override fun getFeatureFlags(
@@ -617,7 +866,7 @@ public class PostHogRemoteConfig(
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Map<String, Any>? {
-        val flags: Map<String, Any>?
+        var flags: Map<String, Any>?
         synchronized(featureFlagsLock) {
             flags = featureFlags?.toMap()
         }
@@ -625,6 +874,38 @@ public class PostHogRemoteConfig(
     }
 
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
+
+    /**
+     * Makes a sampling decision for session recording based on the sample rate
+     * from remote config and the given session ID.
+     *
+     * If there is no sample rate configured (null), recording is always allowed.
+     * The decision is deterministic based on the session ID hash, matching
+     * the JS SDK's sampleOnProperty logic.
+     *
+     * @param sessionId the current session ID
+     * @return true if this session should be recorded, false otherwise
+     */
+    public fun makeSamplingDecision(sessionId: String): Boolean {
+        // Local config takes precedence over remote config
+        val localSampleRate = parseSampleRate(config.sampleRateProvider?.invoke())
+        val sampleRate = localSampleRate ?: sessionRecordingSampleRate ?: return true
+
+        val shouldSample = sampleOnProperty(sessionId, sampleRate)
+
+        if (!shouldSample) {
+            config.logger.log(
+                "Sample rate ($sampleRate) has determined that this sessionId ($sessionId) will not be sent to the server.",
+            )
+        }
+
+        return shouldSample
+    }
+
+    /**
+     * Returns the current session recording sample rate, or null if not set.
+     */
+    public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
 
     override fun getRequestId(
         distinctId: String?,
@@ -733,7 +1014,7 @@ public class PostHogRemoteConfig(
 
             // Always include fresh default properties if enabled
             if (config.setDefaultPersonProperties) {
-                val defaultProperties = getDefaultPersonProperties()
+                val defaultProperties = defaultPersonPropertiesProvider.getDefaultPersonProperties()
                 properties.putAll(defaultProperties)
             }
 
@@ -781,6 +1062,7 @@ public class PostHogRemoteConfig(
     override fun clear() {
         synchronized(featureFlagsLock) {
             sessionReplayFlagActive = false
+            consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
 
             clearFlags()
@@ -788,6 +1070,8 @@ public class PostHogRemoteConfig(
 
         synchronized(remoteConfigLock) {
             clearSurveys()
+            clearErrorTracking()
+            clearCapturePerformance()
         }
 
         // Clear person and group properties for flags

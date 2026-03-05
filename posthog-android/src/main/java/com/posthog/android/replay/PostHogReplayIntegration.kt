@@ -45,7 +45,9 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -59,6 +61,7 @@ import com.posthog.android.internal.isValid
 import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
+import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
@@ -99,7 +102,7 @@ public class PostHogReplayIntegration(
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
     private val passwordInputTypes =
-        listOf(
+        setOf(
             InputType.TYPE_TEXT_VARIATION_PASSWORD,
             InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
             InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
@@ -110,14 +113,44 @@ public class PostHogReplayIntegration(
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
 
+    // Reuse a single HandlerThread for PixelCopy callbacks instead of
+    // creating and destroying one per screenshot.
+    // TODO: On API 34+, use PixelCopy.Request.Builder.ofWindow(window) which accepts an Executor
+    //  directly, eliminating the need for a HandlerThread entirely. Requires compileSdk 34+.
+    private var pixelCopyThread: HandlerThread? = null
+    private var pixelCopyHandler: Handler? = null
+
+    private fun ensurePixelCopyHandler(): Handler {
+        pixelCopyThread?.let { thread ->
+            if (thread.isAlive) {
+                pixelCopyHandler?.let { return it }
+            }
+        }
+        val thread = HandlerThread("PostHogReplayScreenshot").apply { start() }
+        val handler = Handler(thread.looper)
+        pixelCopyThread = thread
+        pixelCopyHandler = handler
+        return handler
+    }
+
     private val displayMetrics by lazy {
         context.displayMetrics()
+    }
+
+    // Cache density to avoid repeated property access through displayMetrics
+    private val screenDensity by lazy {
+        displayMetrics.density
     }
 
     private val paint =
         Paint().apply {
             color = Color.BLACK
         }
+
+    // Reusable objects to avoid per-view allocations during screenshot masking.
+    // Only accessed from the PixelCopy callback thread (or executor), so no synchronization needed.
+    private val reusableRect = Rect()
+    private val reusablePoint = Point()
 
     @Volatile
     private var isSessionReplayActive: Boolean = false
@@ -217,7 +250,7 @@ public class PostHogReplayIntegration(
         if (imeVisible) {
             val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             payload["open"] = true
-            payload["height"] = imeHeight.densityValue(displayMetrics.density)
+            payload["height"] = imeHeight.densityValue(screenDensity)
         } else {
             payload["open"] = false
         }
@@ -282,8 +315,8 @@ public class PostHogReplayIntegration(
             try {
                 // if the id is 0, BE transformer will set it to the virtual bodyId
                 val id = motionEvent.getPointerId(index)
-                val absX = motionEvent.getRawXCompat(index).toInt().densityValue(displayMetrics.density)
-                val absY = motionEvent.getRawYCompat(index).toInt().densityValue(displayMetrics.density)
+                val absX = motionEvent.getRawXCompat(index).toInt().densityValue(screenDensity)
+                val absY = motionEvent.getRawYCompat(index).toInt().densityValue(screenDensity)
 
                 val mouseInteractionData =
                     RRIncrementalMouseInteractionData(
@@ -374,6 +407,10 @@ public class PostHogReplayIntegration(
 
             isSessionReplayActive = false
             isOnDrawnCalled = false
+
+            pixelCopyThread?.quitSafely()
+            pixelCopyThread = null
+            pixelCopyHandler = null
 
             // clear to help GC
             clearSnapshotStates()
@@ -533,9 +570,8 @@ public class PostHogReplayIntegration(
                     current = view.parent
                 }
 
-                val offset = Point()
                 // Check if view is in a stable state before accessing matrix-dependent operations
-                return globalVisibleRect(offset = offset) != null
+                return hasGlobalVisibleRect()
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
 //            if (boundInView != null) {
@@ -564,9 +600,56 @@ public class PostHogReplayIntegration(
         return if (isViewStateStableForMatrixOperations()) {
             val rect = Rect()
             getGlobalVisibleRect(rect, offset)
-            return rect
+            rect
         } else {
             null
+        }
+    }
+
+    /**
+     * Fast visibility check that reuses a scratch Rect instead of allocating.
+     * Only checks whether the view has a non-empty visible rect, does not return the rect.
+     */
+    private fun View.hasGlobalVisibleRect(): Boolean {
+        return if (isViewStateStableForMatrixOperations()) {
+            getGlobalVisibleRect(reusableRect, reusablePoint)
+        } else {
+            false
+        }
+    }
+
+    /**
+     * Returns the global visible rect of just the text content area within a TextView.
+     * For EditText, Button, and CompoundButton subclasses (CheckBox, RadioButton, Switch),
+     * this excludes the padding and compound drawables, masking only the text area.
+     * For regular TextView, this falls back to the full view rect.
+     */
+    private fun TextView.getTextAreaGlobalVisibleRect(): Rect? {
+        // Only adjust bounds for views that typically have significant padding or compound drawables
+        // EditText: has border/underline padding
+        // Button: has background padding
+        // CompoundButton (CheckBox, RadioButton, Switch): has checkbox/radio/switch drawable
+        val shouldAdjustBounds = this is EditText || this is Button
+
+        if (!shouldAdjustBounds) {
+            return globalVisibleRect()
+        }
+
+        return globalVisibleRect()?.let { fullRect ->
+            // Calculate the text area bounds by accounting for compound padding
+            // Compound padding includes both regular padding and drawable padding
+            val textAreaLeft = fullRect.left + compoundPaddingLeft
+            val textAreaTop = fullRect.top + compoundPaddingTop
+            val textAreaRight = fullRect.right - compoundPaddingRight
+            val textAreaBottom = fullRect.bottom - compoundPaddingBottom
+
+            // Ensure we have valid bounds
+            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
+                Rect(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
+            } else {
+                // Fall back to full rect if text area is too small
+                fullRect
+            }
         }
     }
 
@@ -602,17 +685,19 @@ public class PostHogReplayIntegration(
         return (parent as? ViewGroup)?.isInLayout == true
     }
 
-    private fun View.isTextInputSensitive(): Boolean {
+    private fun View.isTextInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
     }
 
-    private fun View.isAnyInputSensitive(): Boolean {
-        return this.isTextInputSensitive() || config.sessionReplayConfig.maskAllImages
+    private fun View.isAnyInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
+        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs) || config.sessionReplayConfig.maskAllImages
     }
 
-    private fun TextView.shouldMaskTextView(): Boolean {
+    private fun TextView.shouldMaskTextView(ancestorUnmasked: Boolean = false): Boolean {
         // inputType is 0-based
-        return this.isTextInputSensitive() || passwordInputTypes.contains(inputType - 1)
+        return this.isTextInputSensitive(ancestorUnmasked) || passwordInputTypes.contains(inputType - 1)
     }
 
     private fun findMaskableWidgets(
@@ -628,9 +713,17 @@ public class PostHogReplayIntegration(
         }
         visitedViews.add(viewId)
 
+        var walkChildren = false
+
         when {
             view.isComposeView() -> {
                 findMaskableComposeWidgets(view, maskableWidgets)
+                // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
+                walkChildren = true
+            }
+
+            view.isUnmasked() -> {
+                // ph-no-mask has precedence, skip masking
             }
 
             view.isNoCapture() -> {
@@ -654,7 +747,9 @@ public class PostHogReplayIntegration(
                 }
 
                 if (maskIt) {
-                    view.globalVisibleRect()?.let {
+                    // For EditText, mask only the text area (excluding padding and compound drawables)
+                    // For regular TextView, mask the full view
+                    view.getTextAreaGlobalVisibleRect()?.let {
                         maskableWidgets.add(it)
                     }
                 }
@@ -685,25 +780,30 @@ public class PostHogReplayIntegration(
             }
 
             view is ViewGroup && view.childCount > 0 -> {
-                for (i in 0 until view.childCount) {
-                    if (isOnDrawnCalled) {
-                        config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                        return false
-                    }
+                walkChildren = true
+            }
+        }
 
-                    val viewChild = view.getChildAt(i) ?: continue
+        if (walkChildren && view is ViewGroup && view.childCount > 0) {
+            for (i in 0 until view.childCount) {
+                if (isOnDrawnCalled) {
+                    config.logger.log("Session Replay screenshot discarded due to screen changes.")
+                    return false
+                }
 
-                    if (!viewChild.isVisible()) {
-                        continue
-                    }
+                val viewChild = view.getChildAt(i) ?: continue
 
-                    if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
-                        // do not continue if the screen has changed
-                        return false
-                    }
+                if (!viewChild.isVisible()) {
+                    continue
+                }
+
+                if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
+                    // do not continue if the screen has changed
+                    return false
                 }
             }
         }
+
         return true
     }
 
@@ -730,15 +830,24 @@ public class PostHogReplayIntegration(
                     val hasPassword = node.config.contains(SemanticsProperties.Password)
                     val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
-                    val hasMaskModifier = node.config.contains(PostHogReplayMask)
-                    val isNoCapture = hasMaskModifier && node.config[PostHogReplayMask]
+                    // isEnabled=false means the modifier has no effect, as if it was never applied
+                    // Check the node itself and its ancestors for mask/unmask modifiers
+                    val isMaskEnabled = node.hasActiveModifier(PostHogReplayMask)
+                    val isUnmaskEnabled = node.hasActiveModifier(PostHogReplayUnmask)
 
                     when {
-                        isNoCapture -> {
+                        // postHogUnmask has precedence over everything, skip masking
+                        isUnmaskEnabled -> {
+                            // do not mask this node
+                        }
+
+                        // postHogMask forces masking
+                        isMaskEnabled -> {
                             maskableWidgets.add(node.boundsInWindow.toRect())
                         }
 
-                        !hasMaskModifier -> {
+                        // no active modifier, apply default config rules
+                        else -> {
                             when {
                                 (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
                                     maskableWidgets.add(node.boundsInWindow.toRect())
@@ -771,6 +880,22 @@ public class PostHogReplayIntegration(
         return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
     }
 
+    /**
+     * Checks if the given semantics node or any of its ancestors has the specified
+     * modifier actively enabled (value is true).
+     * This allows postHogMask and postHogUnmask to propagate to all descendants.
+     */
+    private fun SemanticsNode.hasActiveModifier(key: SemanticsPropertyKey<Boolean>): Boolean {
+        var current: SemanticsNode? = this
+        while (current != null) {
+            if (current.config.contains(key) && current.config[key]) {
+                return true
+            }
+            current = current.parent
+        }
+        return false
+    }
+
     private fun View.isComposeView(): Boolean {
         return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)
     }
@@ -783,14 +908,6 @@ public class PostHogReplayIntegration(
             config.logger.log("Compose not available: $e.")
             false
         }
-    }
-
-    private fun recycleAndLogBitmapDiscarded(
-        bitmap: Bitmap,
-        message: String = "Session Replay screenshot discarded due to screen changes.",
-    ) {
-        bitmap.recycle()
-        config.logger.log(message)
     }
 
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
@@ -811,20 +928,21 @@ public class PostHogReplayIntegration(
             coordinates[0] = 0
             coordinates[1] = 0
         }
-        val x = coordinates[0].densityValue(displayMetrics.density)
-        val y = coordinates[1].densityValue(displayMetrics.density)
-        val width = view.width.densityValue(displayMetrics.density)
-        val height = view.height.densityValue(displayMetrics.density)
+        val x = coordinates[0].densityValue(screenDensity)
+        val y = coordinates[1].densityValue(screenDensity)
+        val width = view.width.densityValue(screenDensity)
+        val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         val latch = CountDownLatch(1)
         var success = true
-        val thread = HandlerThread("PostHogReplayScreenshot")
-        thread.start()
+        val handler = ensurePixelCopyHandler()
 
-        // unfortunately we cannot use the Looper.myLooper() because it will be null
-        val handler = Handler(thread.looper)
+        // Track whether the PixelCopy callback has finished to avoid recycling the bitmap
+        // while the callback is still using it (e.g. if latch.await times out).
+        // We use the latch itself as the synchronization mechanism (await happens-before countDown)
+        var callbackCompleted = false
 
         try {
             // reset the isOnDrawnCalled since we are about to take a screenshot
@@ -833,7 +951,7 @@ public class PostHogReplayIntegration(
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
                     if (copyResult != PixelCopy.SUCCESS) {
-                        recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $copyResult.")
+                        config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                         success = false
                     } else {
                         if (!isOnDrawnCalled) {
@@ -841,7 +959,7 @@ public class PostHogReplayIntegration(
 
                             if (findMaskableWidgets(view, maskableWidgets)) {
                                 if (!bitmap.isValid()) {
-                                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay Bitmap is invalid.")
+                                    config.logger.log("Session Replay Bitmap is invalid.")
                                     success = false
                                     return@request
                                 }
@@ -850,25 +968,25 @@ public class PostHogReplayIntegration(
                                     try {
                                         Canvas(bitmap)
                                     } catch (e: Throwable) {
-                                        recycleAndLogBitmapDiscarded(bitmap, "Session Replay Canvas creation failed: $e.")
+                                        config.logger.log("Session Replay Canvas creation failed: $e.")
                                         success = false
                                         return@request
                                     }
 
                                 maskableWidgets.forEach {
                                     if (isOnDrawnCalled) {
-                                        recycleAndLogBitmapDiscarded(bitmap)
+                                        config.logger.log("Session Replay screenshot discarded due to screen changes.")
                                         success = false
                                         return@forEach
                                     }
                                     canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
                                 }
                             } else {
-                                recycleAndLogBitmapDiscarded(bitmap)
+                                config.logger.log("Session Replay screenshot discarded due to screen changes.")
                                 success = false
                             }
                         } else {
-                            recycleAndLogBitmapDiscarded(bitmap)
+                            config.logger.log("Session Replay screenshot discarded due to screen changes.")
                             // if isOnDrawnCalled is true, it means that the view has already been drawn
                             // again, so we don't need to draw the maskable widgets otherwise
                             // they might be out of sync (leaking possible PII)
@@ -876,17 +994,19 @@ public class PostHogReplayIntegration(
                         }
                     }
                 } catch (e: Throwable) {
-                    recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
+                    config.logger.log("Session Replay PixelCopy failed: $e.")
+                    success = false
                 } finally {
                     // reset the isOnDrawnCalled since we've taken the screenshot
                     isOnDrawnCalled = false
+                    callbackCompleted = true
                     latch.countDown()
                 }
             }, handler)
         } catch (e: Throwable) {
-            recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy failed: $e.")
-            thread.quit()
+            config.logger.log("Session Replay PixelCopy failed: $e.")
             success = false
+            callbackCompleted = true
             latch.countDown()
         }
 
@@ -898,11 +1018,15 @@ public class PostHogReplayIntegration(
                 base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
-            recycleAndLogBitmapDiscarded(bitmap, "Session Replay PixelCopy timed out: $e.")
+            config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
             isOnDrawnCalled = false
-            thread.quit()
-            bitmap.recycle()
+            // Only recycle the bitmap if the callback has completed.
+            // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
+            // on another thread; recycling it now would cause a native SIGSEGV.
+            if (callbackCompleted && !bitmap.isRecycled) {
+                bitmap.recycle()
+            }
         }
 
         return RRWireframe(
@@ -917,19 +1041,25 @@ public class PostHogReplayIntegration(
         )
     }
 
-    private fun ImageView.shouldMaskImage(): Boolean {
+    private fun ImageView.shouldMaskImage(ancestorUnmasked: Boolean = false): Boolean {
+        if (ancestorUnmasked || isUnmasked()) return false
         return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.shouldMaskDrawable() == true
     }
 
-    private fun Spinner.shouldMaskSpinner(): Boolean {
-        return this.isTextInputSensitive()
+    private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
+        return this.isTextInputSensitive(ancestorUnmasked)
     }
 
-    private fun View.toWireframe(parentId: Int? = null): RRWireframe? {
+    private fun View.toWireframe(
+        parentId: Int? = null,
+        ancestorUnmasked: Boolean = false,
+    ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
             return null
         }
+
+        val isUnmasked = ancestorUnmasked || view.isUnmasked()
 
         val viewId = System.identityHashCode(view)
 
@@ -941,10 +1071,10 @@ public class PostHogReplayIntegration(
             coordinates[0] = 0
             coordinates[1] = 0
         }
-        val x = coordinates[0].densityValue(displayMetrics.density)
-        val y = coordinates[1].densityValue(displayMetrics.density)
-        val width = view.width.densityValue(displayMetrics.density)
-        val height = view.height.densityValue(displayMetrics.density)
+        val x = coordinates[0].densityValue(screenDensity)
+        val y = coordinates[1].densityValue(screenDensity)
+        val width = view.width.densityValue(screenDensity)
+        val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
         var type: String? = null
@@ -974,7 +1104,7 @@ public class PostHogReplayIntegration(
             val viewText = view.text?.toString()
             if (!viewText.isNullOrEmpty()) {
                 text =
-                    if (!view.shouldMaskTextView()) {
+                    if (!view.shouldMaskTextView(isUnmasked)) {
                         viewText
                     } else {
                         viewText.mask()
@@ -984,7 +1114,7 @@ public class PostHogReplayIntegration(
             val hint = view.hint?.toString()
             if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
                 text =
-                    if (!view.shouldMaskTextView()) {
+                    if (!view.shouldMaskTextView(isUnmasked)) {
                         hint
                     } else {
                         hint.mask()
@@ -1016,7 +1146,7 @@ public class PostHogReplayIntegration(
                 }
             }
 //            }
-            style.fontSize = view.textSize.toInt().densityValue(displayMetrics.density)
+            style.fontSize = view.textSize.toInt().densityValue(screenDensity)
             when (view.textAlignment) {
                 View.TEXT_ALIGNMENT_CENTER -> {
                     style.verticalAlign = "center"
@@ -1071,12 +1201,12 @@ public class PostHogReplayIntegration(
 
             // Do not set padding if the text is centered, otherwise the padding will be off
             if (style.verticalAlign != "center") {
-                style.paddingTop = view.totalPaddingTop.densityValue(displayMetrics.density)
-                style.paddingBottom = view.totalPaddingBottom.densityValue(displayMetrics.density)
+                style.paddingTop = view.totalPaddingTop.densityValue(screenDensity)
+                style.paddingBottom = view.totalPaddingBottom.densityValue(screenDensity)
             }
             if (style.horizontalAlign != "center") {
-                style.paddingLeft = view.totalPaddingLeft.densityValue(displayMetrics.density)
-                style.paddingRight = view.totalPaddingRight.densityValue(displayMetrics.density)
+                style.paddingLeft = view.totalPaddingLeft.densityValue(screenDensity)
+                style.paddingRight = view.totalPaddingRight.densityValue(screenDensity)
             }
         }
 
@@ -1109,7 +1239,7 @@ public class PostHogReplayIntegration(
         if (view is Spinner) {
             type = "input"
             inputType = "select"
-            val mask = view.shouldMaskSpinner()
+            val mask = view.shouldMaskSpinner(isUnmasked)
             view.selectedItem?.let {
                 val theValue =
                     if (!mask) {
@@ -1140,14 +1270,14 @@ public class PostHogReplayIntegration(
 
         if (view is ImageView) {
             type = "image"
-            if (!view.shouldMaskImage()) {
+            if (!view.shouldMaskImage(isUnmasked)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
                     base64 = drawable.base64(view.width, view.height)
-//                    style.paddingTop = view.paddingTop.densityValue(displayMetrics.density)
-//                    style.paddingBottom = view.paddingBottom.densityValue(displayMetrics.density)
-//                    style.paddingLeft = view.paddingLeft.densityValue(displayMetrics.density)
-//                    style.paddingRight = view.paddingRight.densityValue(displayMetrics.density)
+//                    style.paddingTop = view.paddingTop.densityValue(screenDensity)
+//                    style.paddingBottom = view.paddingBottom.densityValue(screenDensity)
+//                    style.paddingLeft = view.paddingLeft.densityValue(screenDensity)
+//                    style.paddingRight = view.paddingRight.densityValue(screenDensity)
                 }
             }
         }
@@ -1192,7 +1322,7 @@ public class PostHogReplayIntegration(
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(parentId = viewId)?.let {
+                viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
                     children.add(it)
                 }
             }
@@ -1422,8 +1552,13 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.isNoCapture(maskInput: Boolean = false): Boolean {
-        return maskInput || (tag as? String)?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true ||
-            contentDescription?.toString()?.lowercase()?.contains(PH_NO_CAPTURE_LABEL) == true
+        return maskInput || (tag as? String)?.contains(PH_NO_CAPTURE_LABEL, ignoreCase = true) == true ||
+            contentDescription?.toString()?.contains(PH_NO_CAPTURE_LABEL, ignoreCase = true) == true
+    }
+
+    private fun View.isUnmasked(): Boolean {
+        return (tag as? String)?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true ||
+            contentDescription?.toString()?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true
     }
 
     private fun Drawable.copy(): Drawable? {
@@ -1465,6 +1600,7 @@ public class PostHogReplayIntegration(
 
     internal companion object {
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
+        const val PH_NO_MASK_LABEL: String = "ph-no-mask"
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
 
