@@ -224,7 +224,7 @@ public open class PostHogConfig(
         ExecutorService,
         PostHogDefaultPersonPropertiesProvider?,
         PostHogOnRemoteConfigLoaded?,
-        PostHogCaptureFeatureFlagCalledProvider?
+        PostHogCaptureFeatureFlagCalledProvider?,
     ) -> PostHogFeatureFlagsInterface =
         {
                 config,
@@ -241,8 +241,8 @@ public open class PostHogConfig(
                 defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider {
                     emptyMap()
                 },
-                captureFeatureFlagCalled ?: PostHogCaptureFeatureFlagCalledProvider {},
-                onRemoteConfigLoaded
+                captureFeatureFlagCalled ?: PostHogCaptureFeatureFlagCalledProvider { _, _ -> },
+                onRemoteConfigLoaded,
             )
         },
     /**

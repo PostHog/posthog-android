@@ -139,9 +139,9 @@ public class PostHog private constructor(
                         remoteConfigExecutor,
                         PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
                         onRemoteConfigLoaded,
-                        PostHogCaptureFeatureFlagCalledProvider { (key, value) ->
+                        PostHogCaptureFeatureFlagCalledProvider { key, value ->
                             sendFeatureFlagCalled(key, value, sendFeatureFlagEvent = true)
-                        }
+                        },
                     )
 
                 // no need to lock optOut here since the setup is locked already

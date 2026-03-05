@@ -34,7 +34,8 @@ public class PostHogRemoteConfig(
     private val executor: ExecutorService,
     private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider =
         PostHogDefaultPersonPropertiesProvider { emptyMap() },
-    private val captureFeatureFlagCalledProvider: PostHogCaptureFeatureFlagCalledProvider = PostHogCaptureFeatureFlagCalledProvider {},
+    private val captureFeatureFlagCalledProvider: PostHogCaptureFeatureFlagCalledProvider =
+        PostHogCaptureFeatureFlagCalledProvider { _, _ -> },
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
@@ -153,8 +154,8 @@ public class PostHogRemoteConfig(
         // is also a valid check but since we cannot check the value of the flag,
         // we consider session replay is active
 
-        if (flagKey != null && flagValue != null && recordingActive) {
-            captureFeatureFlagCalledProvider.onCaptureFeatureFlagCalled(flagKey to flagValue)
+        if (flagKey != null && flagValue != null) {
+            captureFeatureFlagCalledProvider.onCaptureFeatureFlagCalled(flagKey, flagValue)
         }
 
         return recordingActive
