@@ -141,7 +141,7 @@ public class PostHogAndroid private constructor() {
             }
             config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
             if (config.surveys) {
-                config.addIntegration(PostHogSurveysIntegration(context))
+                config.addIntegration(PostHogSurveysIntegration(context, config))
             }
         }
     }

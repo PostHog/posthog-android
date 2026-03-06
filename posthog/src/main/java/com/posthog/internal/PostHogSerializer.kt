@@ -20,6 +20,7 @@ import com.posthog.internal.surveys.GsonSurveyQuestionAdapter
 import com.posthog.internal.surveys.GsonSurveyQuestionBranchingAdapter
 import com.posthog.internal.surveys.GsonSurveyQuestionTypeAdapter
 import com.posthog.internal.surveys.GsonSurveyRatingDisplayTypeAdapter
+import com.posthog.internal.surveys.GsonSurveyScheduleAdapter
 import com.posthog.internal.surveys.GsonSurveyTextContentTypeAdapter
 import com.posthog.internal.surveys.GsonSurveyTypeAdapter
 import com.posthog.surveys.SurveyAppearancePosition
@@ -29,6 +30,7 @@ import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
 import com.posthog.surveys.SurveyQuestionType
 import com.posthog.surveys.SurveyRatingDisplayType
+import com.posthog.surveys.SurveySchedule
 import com.posthog.surveys.SurveyTextContentType
 import com.posthog.surveys.SurveyType
 import java.io.IOException
@@ -68,6 +70,7 @@ public class PostHogSerializer(private val config: PostHogConfig) {
 
             registerTypeAdapter(SurveyQuestionType::class.java, GsonSurveyQuestionTypeAdapter(config))
             registerTypeAdapter(SurveyRatingDisplayType::class.java, GsonSurveyRatingDisplayTypeAdapter(config))
+            registerTypeAdapter(SurveySchedule::class.java, GsonSurveyScheduleAdapter(config))
             registerTypeAdapter(SurveyTextContentType::class.java, GsonSurveyTextContentTypeAdapter(config))
             registerTypeAdapter(SurveyType::class.java, GsonSurveyTypeAdapter(config))
             registerTypeAdapter(SurveyQuestion::class.java, GsonSurveyQuestionAdapter(config))

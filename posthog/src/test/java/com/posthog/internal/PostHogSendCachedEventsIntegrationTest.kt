@@ -1,6 +1,5 @@
 package com.posthog.internal
 
-import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.mockHttp
@@ -12,7 +11,6 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.mockito.Mockito.mock
 import java.io.File
-import java.text.ParsePosition
 import java.util.Calendar
 import java.util.Date
 import java.util.concurrent.Executors
@@ -222,7 +220,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
     @Test
     fun `only send files past the integration run`() {
-        val date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
+        val date = parseISO8601Date("2023-09-20T11:58:49.000Z")!!
         val storagePrefix = writeFile(listOf(event), date = date)
         val http = mockHttp()
         val url = http.url("/")

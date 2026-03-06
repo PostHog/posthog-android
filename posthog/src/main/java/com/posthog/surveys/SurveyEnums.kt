@@ -151,3 +151,21 @@ public enum class SurveyQuestionBranchingType(public val value: String) {
         }
     }
 }
+
+public enum class SurveySchedule(public val value: String) {
+    ONCE("once"),
+    RECURRING("recurring"),
+    ALWAYS("always"),
+    ;
+
+    public companion object {
+        public fun fromValue(value: String): SurveySchedule? {
+            return when (value) {
+                "once" -> ONCE
+                "recurring" -> RECURRING
+                "always" -> ALWAYS
+                else -> null
+            }
+        }
+    }
+}
