@@ -823,7 +823,7 @@ public class PostHogSurveysIntegration(
         val lastSeenDate = getLastSeenSurveyDate() ?: return true
 
         val now = config.dateProvider.currentDate()
-        val diffSeconds = abs(now.time - lastSeenDate.time) / 1000.0
+        val diffSeconds = abs(now.time - lastSeenDate.time) / 1000
         val diffDays = ceil(diffSeconds / SECONDS_PER_DAY).toInt()
         return diffDays > waitPeriodInDays
     }
