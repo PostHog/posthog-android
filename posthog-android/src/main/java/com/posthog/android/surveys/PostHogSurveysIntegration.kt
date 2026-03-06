@@ -12,6 +12,7 @@ import com.posthog.internal.parseISO8601Date
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.internal.surveys.canActivateRepeatedly
 import com.posthog.internal.surveys.hasEvents
+import com.posthog.internal.surveys.hasWaitPeriodPassed
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
@@ -26,8 +27,6 @@ import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
 import java.util.Date
-import kotlin.math.abs
-import kotlin.math.ceil
 
 public class PostHogSurveysIntegration(
     context: Context,
@@ -173,7 +172,7 @@ public class PostHogSurveysIntegration(
             if (getSurveySeen(survey)) return@filter false
 
             // 3.5. Filter out surveys whose wait period has not passed
-            if (!hasWaitPeriodPassed(survey)) return@filter false
+            if (!hasWaitPeriodPassed(survey, getLastSeenSurveyDate(), config.dateProvider.currentDate())) return@filter false
 
             // 4. Check feature flags (collect all non-empty keys and verify they're enabled)
             val allKeys = mutableListOf<String>()
@@ -810,22 +809,6 @@ public class PostHogSurveysIntegration(
 
     private companion object {
         private const val NEXT_SURVEY_TRANSITION_DELAY_MS = 750L
-        private const val SECONDS_PER_DAY = 86400.0
-    }
-
-    /**
-     * Checks if the wait period has passed since the last seen survey date.
-     * If the survey has no wait period configured, returns true (no filtering).
-     * If no survey has been seen before, returns true.
-     */
-    private fun hasWaitPeriodPassed(survey: Survey): Boolean {
-        val waitPeriodInDays = survey.conditions?.seenSurveyWaitPeriodInDays ?: return true
-        val lastSeenDate = getLastSeenSurveyDate() ?: return true
-
-        val now = config.dateProvider.currentDate()
-        val diffSeconds = abs(now.time - lastSeenDate.time) / 1000
-        val diffDays = ceil(diffSeconds / SECONDS_PER_DAY).toInt()
-        return diffDays > waitPeriodInDays
     }
 
     /**

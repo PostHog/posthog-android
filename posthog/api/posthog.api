@@ -1279,6 +1279,7 @@ public abstract interface class com/posthog/internal/surveys/PostHogSurveysHandl
 public final class com/posthog/internal/surveys/SurveyUtilsKt {
 	public static final fun canActivateRepeatedly (Lcom/posthog/surveys/Survey;)Z
 	public static final fun hasEvents (Lcom/posthog/surveys/Survey;)Z
+	public static final fun hasWaitPeriodPassed (Lcom/posthog/surveys/Survey;Ljava/util/Date;Ljava/util/Date;)Z
 }
 
 public final class com/posthog/surveys/LinkSurveyQuestion : com/posthog/surveys/SurveyQuestion {
