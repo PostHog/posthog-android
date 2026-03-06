@@ -663,6 +663,11 @@ public abstract interface class com/posthog/internal/PostHogDateProvider {
 	public abstract fun nanoTime ()J
 }
 
+public final class com/posthog/internal/PostHogDateUtilsKt {
+	public static final fun formatISO8601Date (Ljava/util/Date;)Ljava/lang/String;
+	public static final fun parseISO8601Date (Ljava/lang/String;)Ljava/util/Date;
+}
+
 public abstract interface class com/posthog/internal/PostHogDefaultPersonPropertiesProvider {
 	public abstract fun getDefaultPersonProperties ()Ljava/util/Map;
 }
