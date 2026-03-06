@@ -1,5 +1,11 @@
 ## Next
 
+## 3.35.0
+
+### Minor Changes
+
+- 417dbb0: support survey schedule 'always' to show every time and respect survey wait period
+
 ## 3.34.3
 
 ### Patch Changes
