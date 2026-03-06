@@ -19,4 +19,5 @@ public data class FeatureFlag(
     val variant: String?,
     val metadata: FeatureFlagMetadata,
     val reason: EvaluationReason?,
+    val failed: Boolean? = null,
 )

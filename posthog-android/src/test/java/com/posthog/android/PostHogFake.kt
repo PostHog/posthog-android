@@ -1,5 +1,6 @@
 package com.posthog.android
 
+import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
@@ -71,6 +72,13 @@ public class PostHogFake : PostHogInterface {
         return null
     }
 
+    override fun getFeatureFlagResult(
+        key: String,
+        sendFeatureFlagEvent: Boolean?,
+    ): FeatureFlagResult? {
+        return null
+    }
+
     override fun flush() {
     }
 
@@ -99,6 +107,18 @@ public class PostHogFake : PostHogInterface {
     override fun resetGroupPropertiesForFlags(
         type: String?,
         reloadFeatureFlags: Boolean,
+    ) {
+    }
+
+    override fun captureFeatureView(
+        flag: String,
+        flagVariant: String?,
+    ) {
+    }
+
+    override fun captureFeatureInteraction(
+        flag: String,
+        flagVariant: String?,
     ) {
     }
 

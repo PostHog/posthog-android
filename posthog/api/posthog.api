@@ -1,3 +1,16 @@
+public final class com/posthog/FeatureFlagResult {
+	public fun <init> (Ljava/lang/String;ZLjava/lang/String;Ljava/lang/Object;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEnabled ()Z
+	public final fun getKey ()Ljava/lang/String;
+	public final fun getPayload ()Ljava/lang/Object;
+	public final fun getPayloadAs (Ljava/lang/Class;)Ljava/lang/Object;
+	public final synthetic fun getValue ()Ljava/lang/Object;
+	public final fun getVariant ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/posthog/PersonProfiles : java/lang/Enum {
 	public static final field ALWAYS Lcom/posthog/PersonProfiles;
 	public static final field IDENTIFIED_ONLY Lcom/posthog/PersonProfiles;
@@ -12,6 +25,8 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun alias (Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
+	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
+	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public fun close ()V
 	public fun distinctId ()Ljava/lang/String;
 	public fun endSession ()V
@@ -19,6 +34,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
 	public fun getSessionId ()Ljava/util/UUID;
 	public fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
@@ -48,6 +64,8 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun alias (Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
+	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
+	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public fun close ()V
 	public fun debug (Z)V
 	public fun distinctId ()Ljava/lang/String;
@@ -56,6 +74,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
 	public fun getSessionId ()Ljava/util/UUID;
 	public fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
@@ -96,8 +115,8 @@ public class com/posthog/PostHogConfig {
 	public static final field DEFAULT_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function5;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function5;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
@@ -115,6 +134,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getGetAnonymousId ()Lkotlin/jvm/functions/Function1;
 	public final fun getHost ()Ljava/lang/String;
+	public final fun getHttpClient ()Lokhttp3/OkHttpClient;
 	public final fun getIntegrations ()Ljava/util/List;
 	public final fun getLegacyStoragePrefix ()Ljava/lang/String;
 	public final fun getLogger ()Lcom/posthog/internal/PostHogLogger;
@@ -130,9 +150,11 @@ public class com/posthog/PostHogConfig {
 	public final fun getQueueProvider ()Lkotlin/jvm/functions/Function5;
 	public final fun getReleaseIdentifier ()Ljava/lang/String;
 	public final fun getRemoteConfig ()Z
-	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function4;
+	public final fun getRemoteConfigHolder ()Lcom/posthog/internal/PostHogRemoteConfig;
+	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function5;
 	public final fun getReplayStoragePrefix ()Ljava/lang/String;
 	public final fun getReuseAnonymousId ()Z
+	public final fun getSampleRateProvider ()Lkotlin/jvm/functions/Function0;
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
@@ -156,6 +178,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setGetAnonymousId (Lkotlin/jvm/functions/Function1;)V
+	public final fun setHttpClient (Lokhttp3/OkHttpClient;)V
 	public final fun setLegacyStoragePrefix (Ljava/lang/String;)V
 	public final fun setLogger (Lcom/posthog/internal/PostHogLogger;)V
 	public final fun setMaxBatchSize (I)V
@@ -171,6 +194,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setRemoteConfig (Z)V
 	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
 	public final fun setReuseAnonymousId (Z)V
+	public final fun setSampleRateProvider (Lkotlin/jvm/functions/Function0;)V
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
@@ -242,6 +266,8 @@ public final class com/posthog/PostHogEventName : java/lang/Enum {
 	public static final field Companion Lcom/posthog/PostHogEventName$Companion;
 	public static final field EXCEPTION Lcom/posthog/PostHogEventName;
 	public static final field FEATURE_FLAG_CALLED Lcom/posthog/PostHogEventName;
+	public static final field FEATURE_INTERACTION Lcom/posthog/PostHogEventName;
+	public static final field FEATURE_VIEW Lcom/posthog/PostHogEventName;
 	public static final field GROUP_IDENTIFY Lcom/posthog/PostHogEventName;
 	public static final field IDENTIFY Lcom/posthog/PostHogEventName;
 	public static final field SCREEN Lcom/posthog/PostHogEventName;
@@ -261,11 +287,13 @@ public abstract interface annotation class com/posthog/PostHogExperimental : jav
 
 public abstract interface class com/posthog/PostHogIntegration {
 	public abstract fun install (Lcom/posthog/PostHogInterface;)V
+	public abstract fun onRemoteConfig ()V
 	public abstract fun uninstall ()V
 }
 
 public final class com/posthog/PostHogIntegration$DefaultImpls {
 	public static fun install (Lcom/posthog/PostHogIntegration;Lcom/posthog/PostHogInterface;)V
+	public static fun onRemoteConfig (Lcom/posthog/PostHogIntegration;)V
 	public static fun uninstall (Lcom/posthog/PostHogIntegration;)V
 }
 
@@ -273,11 +301,14 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun alias (Ljava/lang/String;)V
 	public abstract fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public abstract fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
+	public abstract fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun distinctId ()Ljava/lang/String;
 	public abstract fun endSession ()V
 	public abstract fun getConfig ()Lcom/posthog/PostHogConfig;
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
 	public abstract fun getSessionId ()Ljava/util/UUID;
 	public abstract fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun isFeatureEnabled (Ljava/lang/String;ZLjava/lang/Boolean;)Z
@@ -301,8 +332,11 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun capture$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)V
 	public static synthetic fun captureException$default (Lcom/posthog/PostHogInterface;Ljava/lang/Throwable;Ljava/util/Map;ILjava/lang/Object;)V
+	public static synthetic fun captureFeatureInteraction$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun captureFeatureView$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagResult$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/FeatureFlagResult;
 	public static synthetic fun group$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZLjava/lang/Boolean;ILjava/lang/Object;)Z
 	public static synthetic fun reloadFeatureFlags$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
@@ -352,6 +386,7 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	protected fun getConfig ()Lcom/posthog/PostHogConfig;
 	protected final fun getEnabled ()Z
 	public fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public fun getFeatureFlagResultStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
 	public fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	protected final fun getFeatureFlags ()Lcom/posthog/internal/PostHogFeatureFlagsInterface;
 	protected final fun getMemoryPreferences ()Lcom/posthog/internal/PostHogPreferences;
@@ -383,6 +418,7 @@ public final class com/posthog/PostHogStateless$Companion : com/posthog/PostHogS
 	public fun debug (Z)V
 	public fun flush ()V
 	public fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public fun getFeatureFlagResultStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
 	public fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public fun groupStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
@@ -401,6 +437,7 @@ public abstract interface class com/posthog/PostHogStatelessInterface : com/post
 	public abstract fun captureExceptionStateless (Ljava/lang/Throwable;Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun captureStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public abstract fun getFeatureFlagPayloadStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public abstract fun getFeatureFlagResultStateless (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
 	public abstract fun getFeatureFlagStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun groupStateless (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun isFeatureEnabledStateless (Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;)Z
@@ -410,6 +447,7 @@ public final class com/posthog/PostHogStatelessInterface$DefaultImpls {
 	public static synthetic fun captureExceptionStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/Throwable;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun captureStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)V
 	public static synthetic fun getFeatureFlagPayloadStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagResultStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/FeatureFlagResult;
 	public static synthetic fun getFeatureFlagStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun groupStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun isFeatureEnabledStateless$default (Lcom/posthog/PostHogStatelessInterface;Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Z
@@ -421,6 +459,7 @@ public abstract interface annotation class com/posthog/PostHogVisibleForTesting 
 public final class com/posthog/errortracking/PostHogErrorTrackingAutoCaptureIntegration : com/posthog/PostHogIntegration, java/lang/Thread$UncaughtExceptionHandler {
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
+	public fun onRemoteConfig ()V
 	public fun uncaughtException (Ljava/lang/Thread;Ljava/lang/Throwable;)V
 	public fun uninstall ()V
 }
@@ -451,16 +490,19 @@ public final class com/posthog/internal/EvaluationReason {
 }
 
 public final class com/posthog/internal/FeatureFlag {
-	public fun <init> (Ljava/lang/String;ZLjava/lang/String;Lcom/posthog/internal/FeatureFlagMetadata;Lcom/posthog/internal/EvaluationReason;)V
+	public fun <init> (Ljava/lang/String;ZLjava/lang/String;Lcom/posthog/internal/FeatureFlagMetadata;Lcom/posthog/internal/EvaluationReason;Ljava/lang/Boolean;)V
+	public synthetic fun <init> (Ljava/lang/String;ZLjava/lang/String;Lcom/posthog/internal/FeatureFlagMetadata;Lcom/posthog/internal/EvaluationReason;Ljava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Z
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()Lcom/posthog/internal/FeatureFlagMetadata;
 	public final fun component5 ()Lcom/posthog/internal/EvaluationReason;
-	public final fun copy (Ljava/lang/String;ZLjava/lang/String;Lcom/posthog/internal/FeatureFlagMetadata;Lcom/posthog/internal/EvaluationReason;)Lcom/posthog/internal/FeatureFlag;
-	public static synthetic fun copy$default (Lcom/posthog/internal/FeatureFlag;Ljava/lang/String;ZLjava/lang/String;Lcom/posthog/internal/FeatureFlagMetadata;Lcom/posthog/internal/EvaluationReason;ILjava/lang/Object;)Lcom/posthog/internal/FeatureFlag;
+	public final fun component6 ()Ljava/lang/Boolean;
+	public final fun copy (Ljava/lang/String;ZLjava/lang/String;Lcom/posthog/internal/FeatureFlagMetadata;Lcom/posthog/internal/EvaluationReason;Ljava/lang/Boolean;)Lcom/posthog/internal/FeatureFlag;
+	public static synthetic fun copy$default (Lcom/posthog/internal/FeatureFlag;Ljava/lang/String;ZLjava/lang/String;Lcom/posthog/internal/FeatureFlagMetadata;Lcom/posthog/internal/EvaluationReason;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/internal/FeatureFlag;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getEnabled ()Z
+	public final fun getFailed ()Ljava/lang/Boolean;
 	public final fun getKey ()Ljava/lang/String;
 	public final fun getMetadata ()Lcom/posthog/internal/FeatureFlagMetadata;
 	public final fun getReason ()Lcom/posthog/internal/EvaluationReason;
@@ -621,6 +663,10 @@ public abstract interface class com/posthog/internal/PostHogDateProvider {
 	public abstract fun nanoTime ()J
 }
 
+public abstract interface class com/posthog/internal/PostHogDefaultPersonPropertiesProvider {
+	public abstract fun getDefaultPersonProperties ()Ljava/util/Map;
+}
+
 public final class com/posthog/internal/PostHogDeviceDateProvider : com/posthog/internal/PostHogDateProvider {
 	public fun <init> ()V
 	public fun addSecondsToCurrentDate (I)Ljava/util/Date;
@@ -632,9 +678,8 @@ public final class com/posthog/internal/PostHogDeviceDateProvider : com/posthog/
 public abstract interface class com/posthog/internal/PostHogFeatureFlagsInterface {
 	public abstract fun clear ()V
 	public abstract fun getEvaluatedAt (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Long;
-	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagError (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
-	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public abstract fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/FeatureFlagResult;
 	public abstract fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public abstract fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public abstract fun shutDown ()V
@@ -642,10 +687,9 @@ public abstract interface class com/posthog/internal/PostHogFeatureFlagsInterfac
 
 public final class com/posthog/internal/PostHogFeatureFlagsInterface$DefaultImpls {
 	public static synthetic fun getEvaluatedAt$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Long;
-	public static synthetic fun getFeatureFlag$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public static fun getFeatureFlagError (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public static synthetic fun getFeatureFlagError$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/String;
-	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagResult$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/FeatureFlagResult;
 	public static synthetic fun getFeatureFlags$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/Map;
 	public static synthetic fun getRequestId$default (Lcom/posthog/internal/PostHogFeatureFlagsInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/String;
 	public static fun shutDown (Lcom/posthog/internal/PostHogFeatureFlagsInterface;)V
@@ -699,6 +743,10 @@ public final class com/posthog/internal/PostHogNoOpLogger : com/posthog/internal
 	public fun log (Ljava/lang/String;)V
 }
 
+public abstract interface class com/posthog/internal/PostHogOnRemoteConfigLoaded {
+	public abstract fun loaded ()V
+}
+
 public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field ANONYMOUS_ID Ljava/lang/String;
 	public static final field BUILD Ljava/lang/String;
@@ -746,36 +794,44 @@ public abstract interface class com/posthog/internal/PostHogQueueInterface {
 }
 
 public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/internal/PostHogFeatureFlagsInterface {
-	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lkotlin/jvm/functions/Function0;)V
-	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;)V
+	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun clear ()V
 	public fun getEvaluatedAt (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Long;
-	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlag$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagError (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
-	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public final fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
+	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ljava/lang/Object;
+	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/FeatureFlagResult;
 	public fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public final fun getFlagDetails (Ljava/lang/String;)Lcom/posthog/internal/FeatureFlag;
-	public final fun getOnRemoteConfigLoaded ()Lkotlin/jvm/functions/Function0;
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
+	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
 	public final fun getSurveys ()Ljava/util/List;
+	public final fun isAutocaptureExceptionsEnabled ()Z
+	public final fun isCaptureNetworkTimingEnabled ()Z
+	public final fun isConsoleLogRecordingEnabled ()Z
 	public final fun isSessionReplayFlagActive ()Z
 	public final fun loadFeatureFlags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadFeatureFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
+	public final fun makeSamplingDecision (Ljava/lang/String;)Z
 	public final fun resetGroupPropertiesForFlags (Ljava/lang/String;)V
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun resetPersonPropertiesForFlags ()V
 	public final fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;)V
-	public final fun setOnRemoteConfigLoaded (Lkotlin/jvm/functions/Function0;)V
 	public final fun setPersonPropertiesForFlags (Ljava/util/Map;)V
 	public fun shutDown ()V
 }
 
 public class com/posthog/internal/PostHogRemoteConfigResponse {
 	public fun <init> ()V
-	public fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;)V
-	public synthetic fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;Ljava/lang/Object;Ljava/lang/Object;)V
+	public synthetic fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;Ljava/lang/Object;Ljava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCapturePerformance ()Ljava/lang/Object;
+	public final fun getErrorTracking ()Ljava/lang/Object;
 	public final fun getHasFeatureFlags ()Ljava/lang/Boolean;
 	public final fun getSessionRecording ()Ljava/lang/Object;
 	public final fun getSurveys ()Ljava/lang/Object;
@@ -792,7 +848,9 @@ public final class com/posthog/internal/PostHogSessionManager {
 	public static final field INSTANCE Lcom/posthog/internal/PostHogSessionManager;
 	public final fun endSession ()V
 	public final fun getActiveSessionId ()Ljava/util/UUID;
+	public final fun isReactNative ()Z
 	public final fun isSessionActive ()Z
+	public final fun setReactNative (Z)V
 	public final fun setSessionId (Ljava/util/UUID;)V
 	public final fun startSession ()V
 }
@@ -846,6 +904,15 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field NOT_ICONTAINS Lcom/posthog/internal/PropertyOperator;
 	public static final field NOT_REGEX Lcom/posthog/internal/PropertyOperator;
 	public static final field REGEX Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_CARET Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_EQ Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_GT Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_GTE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_LT Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_LTE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_NEQ Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_TILDE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_WILDCARD Lcom/posthog/internal/PropertyOperator;
 	public static final field UNKNOWN Lcom/posthog/internal/PropertyOperator;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PropertyOperator;
 	public static fun values ()[Lcom/posthog/internal/PropertyOperator;

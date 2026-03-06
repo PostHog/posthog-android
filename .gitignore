@@ -162,3 +162,9 @@ gradle-app.setting
 
 # vscode
 .vscode/settings.json
+
+# ralph loop claude code
+.ralph/
+
+# Node
+node_modules/

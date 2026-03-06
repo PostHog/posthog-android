@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.FeatureFlagResult
 import java.util.Date
 
 public sealed interface PostHogInterface {
@@ -371,6 +372,70 @@ public sealed interface PostHogInterface {
             groups = null,
             personProperties = null,
             groupProperties = null,
+        )
+    }
+
+    /**
+     * Returns the feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @param sendFeatureFlagEvent whether to send the $feature_flag_called event, or null to use config default
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+        sendFeatureFlagEvent: Boolean? = null,
+    ): FeatureFlagResult?
+
+    /**
+     * Returns the feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+    ): FeatureFlagResult? {
+        return getFeatureFlagResult(
+            distinctId,
+            key,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+            sendFeatureFlagEvent = null,
+        )
+    }
+
+    /**
+     * Returns the feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the Key
+     * @param options the feature flag result options containing groups, personProperties, groupProperties, and sendFeatureFlagEvent
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagResultOptions,
+    ): FeatureFlagResult? {
+        return getFeatureFlagResult(
+            distinctId,
+            key,
+            groups = options.groups,
+            personProperties = options.personProperties,
+            groupProperties = options.groupProperties,
+            sendFeatureFlagEvent = options.sendFeatureFlagEvent,
         )
     }
 

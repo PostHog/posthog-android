@@ -74,6 +74,25 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
     ): Any?
 
     /**
+     * Returns the feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @param distinctId the distinctId
+     * @param key the feature flag key
+     * @param groups the groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return FeatureFlagResult if the flag exists, null otherwise
+     */
+    public fun getFeatureFlagResultStateless(
+        distinctId: String,
+        key: String,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+        sendFeatureFlagEvent: Boolean? = null,
+    ): FeatureFlagResult?
+
+    /**
      * Creates a group
      * Docs https://posthog.com/docs/product-analytics/group-analytics
      * @param distinctId the distinctId

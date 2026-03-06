@@ -1948,6 +1948,583 @@ internal class FlagEvaluatorTest {
         assertEquals(true, resultAbsent)
     }
 
+    // Semver Operator Tests
+
+    @Test
+    internal fun testSemverEq() {
+        // Exact match cases
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+
+        // v-prefix handling
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "v1.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "V1.2.3")))
+
+        // Pre-release suffix stripping
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3-alpha")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3+build123")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3-beta.1+build")))
+
+        // Whitespace handling
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to " 1.2.3 ")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "  v1.2.3  ")))
+    }
+
+    @Test
+    internal fun testSemverNeq() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_NEQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+    }
+
+    @Test
+    internal fun testSemverGt() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_GT,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.3.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.1.9")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.9.9")))
+    }
+
+    @Test
+    internal fun testSemverGte() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_GTE,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.3.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.1.9")))
+    }
+
+    @Test
+    internal fun testSemverLt() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_LT,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.3.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.1.9")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "0.9.9")))
+    }
+
+    @Test
+    internal fun testSemverLte() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_LTE,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.3.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "0.9.9")))
+    }
+
+    @Test
+    internal fun testSemverTilde() {
+        // ~1.2.3 means >=1.2.3 and <1.3.0
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_TILDE,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        // Lower boundary (inclusive)
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.99")))
+
+        // Upper boundary (exclusive)
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.3.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.3.1")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+
+        // Below range
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.1.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.9.9")))
+    }
+
+    @Test
+    internal fun testSemverTildeWithZeroMinor() {
+        // ~1.0.0 means >=1.0.0 and <1.1.0
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.0.0",
+                propertyOperator = PropertyOperator.SEMVER_TILDE,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.0.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.0.5")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.1.0")))
+    }
+
+    @Test
+    internal fun testSemverCaretMajorGreaterThanZero() {
+        // ^1.2.3 means >=1.2.3 <2.0.0 (when major > 0)
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_CARET,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        // Lower boundary (inclusive)
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.4")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.3.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.99.99")))
+
+        // Upper boundary (exclusive)
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.1")))
+
+        // Below range
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.2.2")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.1.0")))
+    }
+
+    @Test
+    internal fun testSemverCaretMajorZeroMinorGreaterThanZero() {
+        // ^0.2.3 means >=0.2.3 <0.3.0 (when major=0, minor>0)
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "0.2.3",
+                propertyOperator = PropertyOperator.SEMVER_CARET,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        // In range
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "0.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "0.2.4")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "0.2.99")))
+
+        // Upper boundary (exclusive)
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.3.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.0.0")))
+
+        // Below range
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.2.2")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.1.0")))
+    }
+
+    @Test
+    internal fun testSemverCaretMajorAndMinorZero() {
+        // ^0.0.3 means >=0.0.3 <0.0.4 (when major=0, minor=0)
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "0.0.3",
+                propertyOperator = PropertyOperator.SEMVER_CARET,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        // Only exact match (within the patch increment)
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "0.0.3")))
+
+        // Upper boundary (exclusive)
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.0.4")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.1.0")))
+
+        // Below range
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.0.2")))
+    }
+
+    @Test
+    internal fun testSemverWildcardMajorOnly() {
+        // 1.* means >=1.0.0 <2.0.0
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.*",
+                propertyOperator = PropertyOperator.SEMVER_WILDCARD,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        // In range
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.0.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.5.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.99.99")))
+
+        // Upper boundary (exclusive)
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+
+        // Below range
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "0.9.9")))
+    }
+
+    @Test
+    internal fun testSemverWildcardMajorAndMinor() {
+        // 1.2.* means >=1.2.0 <1.3.0
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.*",
+                propertyOperator = PropertyOperator.SEMVER_WILDCARD,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        // In range
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.5")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.99")))
+
+        // Upper boundary (exclusive)
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.3.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+
+        // Below range
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "1.1.9")))
+    }
+
+    @Test
+    internal fun testSemverPartialVersions() {
+        // "1.2" should be parsed as "1.2.0"
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.0",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.0")))
+
+        // "1" should be parsed as "1.0.0"
+        val propertySingle =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.0.0",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(propertySingle, mapOf("version" to "1")))
+        assertTrue(evaluator.matchProperty(propertySingle, mapOf("version" to "1.0")))
+        assertTrue(evaluator.matchProperty(propertySingle, mapOf("version" to "1.0.0")))
+    }
+
+    @Test
+    internal fun testSemverFourPartVersions() {
+        // "1.2.3.4" should be parsed as "1.2.3" (extra parts ignored)
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3.4")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3.99")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3.0.0.0")))
+    }
+
+    @Test
+    internal fun testSemverLeadingZeros() {
+        // "01.02.03" should parse as (1, 2, 3)
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "01.02.03")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "001.002.003")))
+    }
+
+    @Test
+    internal fun testSemverInvalidEmptyString() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        try {
+            evaluator.matchProperty(property, mapOf("version" to ""))
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("not a valid semver") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testSemverInvalidLeadingDot() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        try {
+            evaluator.matchProperty(property, mapOf("version" to ".1.2.3"))
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("not a valid semver") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testSemverInvalidNonNumeric() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        try {
+            evaluator.matchProperty(property, mapOf("version" to "abc"))
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("not a valid semver") ?: false)
+        }
+
+        try {
+            evaluator.matchProperty(property, mapOf("version" to "1.x.3"))
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("not a valid semver") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testSemverInvalidConditionValue() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "invalid",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        try {
+            evaluator.matchProperty(property, mapOf("version" to "1.2.3"))
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("not a valid semver") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testSemverMissingPropertyKey() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        try {
+            evaluator.matchProperty(property, mapOf("other_key" to "1.2.3"))
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            assertTrue(e.message?.contains("without a given property value") ?: false)
+        }
+    }
+
+    @Test
+    internal fun testSemverNullPropertyValue() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        // Null values return false before reaching operator logic
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to null)))
+    }
+
+    @Test
+    internal fun testSemverWithVPrefixInCondition() {
+        // Condition value with v prefix should work
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "v1.2.3",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.2.3")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "v1.2.3")))
+    }
+
+    @Test
+    internal fun testSemverWildcardWithVPrefix() {
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "v1.*",
+                propertyOperator = PropertyOperator.SEMVER_WILDCARD,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.0.0")))
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "1.5.0")))
+        assertFalse(evaluator.matchProperty(property, mapOf("version" to "2.0.0")))
+    }
+
+    @Test
+    internal fun testSemverInFeatureFlag() {
+        // Test semver operator in a full flag evaluation
+        val json =
+            """
+            {
+              "id": 1,
+              "name": "Semver Flag",
+              "key": "semver-flag",
+              "active": true,
+              "filters": {
+                "groups": [
+                  {
+                    "properties": [
+                      {
+                        "key": "app_version",
+                        "value": "2.0.0",
+                        "operator": "semver_gte",
+                        "type": "person",
+                        "negation": false
+                      }
+                    ],
+                    "rollout_percentage": 100
+                  }
+                ]
+              },
+              "version": 1
+            }
+            """.trimIndent()
+
+        val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
+
+        // User with version >= 2.0.0 should match
+        val propsMatch = mapOf("app_version" to "2.1.0")
+        val resultMatch = evaluator.matchFeatureFlagProperties(flag, "user-123", propsMatch)
+        assertEquals(true, resultMatch)
+
+        // User with version < 2.0.0 should not match
+        val propsNoMatch = mapOf("app_version" to "1.9.9")
+        val resultNoMatch = evaluator.matchFeatureFlagProperties(flag, "user-123", propsNoMatch)
+        assertEquals(false, resultNoMatch)
+    }
+
     @Test
     internal fun testBooleanFlagDependencyMatchesFalse() {
         // Regression test for bug: Boolean flag should match false expectation

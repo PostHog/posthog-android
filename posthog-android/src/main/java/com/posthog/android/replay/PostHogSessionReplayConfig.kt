@@ -46,6 +46,14 @@ public class PostHogSessionReplayConfig
          * Defaults to 1000ms = 1s
          */
         public var throttleDelayMs: Long = 1000,
+        /**
+         * Local sample rate for session recording, a value between 0.0 and 1.0.
+         * When set, this takes precedence over the remote config sample rate.
+         * null means no local override (use the remote config value).
+         * This is a convenience property that sets PostHogConfig.sampleRate.
+         * Defaults to null
+         */
+        public var sampleRate: Double? = null,
     ) {
         init {
             // for keeping back compatibility

@@ -16,7 +16,15 @@ public object PostHogSessionManager {
 
     private var sessionId = sessionIdNone
 
+    @Volatile
+    public var isReactNative: Boolean = false
+
     public fun startSession() {
+        if (isReactNative) {
+            // RN manages its own session
+            return
+        }
+
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
                 sessionId = TimeBasedEpochGenerator.generate()
@@ -25,6 +33,11 @@ public object PostHogSessionManager {
     }
 
     public fun endSession() {
+        if (isReactNative) {
+            // RN manages its own session
+            return
+        }
+
         synchronized(sessionLock) {
             sessionId = sessionIdNone
         }
@@ -39,6 +52,7 @@ public object PostHogSessionManager {
     }
 
     public fun setSessionId(sessionId: UUID) {
+        // RN can only set its own session id directly
         synchronized(sessionLock) {
             this.sessionId = sessionId
         }

@@ -1,0 +1,33 @@
+{
+  "autocaptureExceptions": false,
+  "toolbarParams": {},
+  "errorsWhileComputingFlags": false,
+  "capturePerformance": {
+    "network_timing": true,
+    "web_vitals": false
+  },
+  "autocapture_opt_out": false,
+  "isAuthenticated": false,
+  "supportedCompression": [
+    "gzip",
+    "gzip-js"
+  ],
+  "config": {
+    "enable_collect_everything": true
+  },
+  "errorTracking": {
+    "autocaptureExceptions": true
+  },
+  "featureFlagPayloads": {
+    "4535-funnel-bar-viz": "true"
+  },
+  "featureFlags": {
+    "4535-funnel-bar-viz": true
+  },
+  "sessionRecording": {
+    "endpoint": "/s/",
+    "consoleLogRecordingEnabled": true
+  },
+  "siteApps": [],
+  "editorParams": {}
+}

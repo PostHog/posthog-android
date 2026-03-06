@@ -1,6 +1,7 @@
 package com.posthog.internal.surveys
 
 import com.posthog.PostHogInternal
+import com.posthog.surveys.Survey
 
 @PostHogInternal
 public interface PostHogSurveysHandler {
@@ -15,5 +16,5 @@ public interface PostHogSurveysHandler {
      *
      * @param surveys List of surveys loaded from remote config (may be empty)
      */
-    public fun onSurveysLoaded(surveys: List<com.posthog.surveys.Survey>)
+    public fun onSurveysLoaded(surveys: List<Survey>)
 }

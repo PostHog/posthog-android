@@ -31,6 +31,8 @@ internal class FlagEvaluator(
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.IS_NOT)
         private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
+        private val REGEX_SEMVER =
+            Regex("""^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.\d+)*(?:[-+].*)?$""")
 
         private val DATE_FORMATTER_WITH_SPACE_TZ =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX")
@@ -184,6 +186,22 @@ internal class FlagEvaluator(
 
             PropertyOperator.IS_DATE_BEFORE, PropertyOperator.IS_DATE_AFTER ->
                 compareDates(
+                    overrideValue,
+                    propertyValue,
+                    propertyOperator,
+                )
+
+            PropertyOperator.SEMVER_EQ,
+            PropertyOperator.SEMVER_NEQ,
+            PropertyOperator.SEMVER_GT,
+            PropertyOperator.SEMVER_GTE,
+            PropertyOperator.SEMVER_LT,
+            PropertyOperator.SEMVER_LTE,
+            PropertyOperator.SEMVER_TILDE,
+            PropertyOperator.SEMVER_CARET,
+            PropertyOperator.SEMVER_WILDCARD,
+            ->
+                compareSemver(
                     overrideValue,
                     propertyValue,
                     propertyOperator,
@@ -433,6 +451,232 @@ internal class FlagEvaluator(
         }
 
         throw DateTimeParseException("Unable to parse date: $propertyValue", propertyValue, 0)
+    }
+
+    /**
+     * A parsed semver version as (major, minor, patch) tuple
+     */
+    private class SemverVersion(
+        val major: Int,
+        val minor: Int,
+        val patch: Int,
+    ) : Comparable<SemverVersion> {
+        override fun compareTo(other: SemverVersion): Int {
+            val majorCmp = major.compareTo(other.major)
+            if (majorCmp != 0) return majorCmp
+            val minorCmp = minor.compareTo(other.minor)
+            if (minorCmp != 0) return minorCmp
+            return patch.compareTo(other.patch)
+        }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is SemverVersion) return false
+            return major == other.major && minor == other.minor && patch == other.patch
+        }
+
+        override fun hashCode(): Int {
+            var result = major
+            result = 31 * result + minor
+            result = 31 * result + patch
+            return result
+        }
+    }
+
+    /**
+     * Parse a version string into a SemverVersion.
+     *
+     * Parsing rules:
+     * 1. Strip leading/trailing whitespace
+     * 2. Strip v/V prefix (e.g., "v1.2.3" → "1.2.3")
+     * 3. Strip pre-release and build metadata suffixes (handled by regex)
+     * 4. Parse first 3 numeric components
+     * 5. Default missing components to 0 (e.g., "1.2" → (1, 2, 0), "1" → (1, 0, 0))
+     * 6. Ignore extra components beyond the third (e.g., "1.2.3.4" → (1, 2, 3))
+     * 7. Throw an error for truly invalid input (empty string, non-numeric parts, leading dot)
+     */
+    @Throws(InconclusiveMatchException::class)
+    private fun parseSemver(version: String): SemverVersion {
+        var cleaned = version.trim()
+        if (cleaned.startsWith("v", ignoreCase = true)) {
+            cleaned = cleaned.substring(1)
+        }
+
+        val match =
+            REGEX_SEMVER.matchEntire(cleaned)
+                ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+
+        val major = match.groupValues[1].toInt()
+        val minor = match.groupValues[2].takeIf { it.isNotEmpty() }?.toInt() ?: 0
+        val patch = match.groupValues[3].takeIf { it.isNotEmpty() }?.toInt() ?: 0
+
+        return SemverVersion(major, minor, patch)
+    }
+
+    /**
+     * Compare two semver versions using the specified operator
+     */
+    @Throws(InconclusiveMatchException::class)
+    private fun compareSemver(
+        overrideValue: Any?,
+        propertyValue: Any?,
+        propertyOperator: PropertyOperator,
+    ): Boolean {
+        val overrideVersion =
+            try {
+                parseSemver(overrideValue.toString())
+            } catch (e: InconclusiveMatchException) {
+                throw InconclusiveMatchException("The person property value is not a valid semver: ${e.message}")
+            }
+
+        val propertyString = propertyValue.toString()
+
+        return when (propertyOperator) {
+            PropertyOperator.SEMVER_EQ,
+            PropertyOperator.SEMVER_NEQ,
+            PropertyOperator.SEMVER_GT,
+            PropertyOperator.SEMVER_GTE,
+            PropertyOperator.SEMVER_LT,
+            PropertyOperator.SEMVER_LTE,
+            -> {
+                val conditionVersion =
+                    try {
+                        parseSemver(propertyString)
+                    } catch (e: InconclusiveMatchException) {
+                        throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
+                    }
+                compareSemverVersions(overrideVersion, conditionVersion, propertyOperator)
+            }
+
+            PropertyOperator.SEMVER_TILDE -> {
+                val (lower, upper) = computeTildeBounds(propertyString)
+                overrideVersion >= lower && overrideVersion < upper
+            }
+
+            PropertyOperator.SEMVER_CARET -> {
+                val (lower, upper) = computeCaretBounds(propertyString)
+                overrideVersion >= lower && overrideVersion < upper
+            }
+
+            PropertyOperator.SEMVER_WILDCARD -> {
+                val (lower, upper) = computeWildcardBounds(propertyString)
+                overrideVersion >= lower && overrideVersion < upper
+            }
+
+            else -> throw InconclusiveMatchException("Unknown semver operator: $propertyOperator")
+        }
+    }
+
+    /**
+     * Compare two parsed semver versions
+     */
+    private fun compareSemverVersions(
+        override: SemverVersion,
+        condition: SemverVersion,
+        operator: PropertyOperator,
+    ): Boolean {
+        return when (operator) {
+            PropertyOperator.SEMVER_EQ -> override == condition
+            PropertyOperator.SEMVER_NEQ -> override != condition
+            PropertyOperator.SEMVER_GT -> override > condition
+            PropertyOperator.SEMVER_GTE -> override >= condition
+            PropertyOperator.SEMVER_LT -> override < condition
+            PropertyOperator.SEMVER_LTE -> override <= condition
+            else -> false
+        }
+    }
+
+    /**
+     * Compute lower and upper bounds for tilde range (~X.Y.Z)
+     * ~X.Y.Z → lower=(X,Y,Z), upper=(X,Y+1,0)
+     */
+    @Throws(InconclusiveMatchException::class)
+    private fun computeTildeBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
+        val version =
+            try {
+                parseSemver(propertyValue)
+            } catch (e: InconclusiveMatchException) {
+                throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
+            }
+        val lower = version
+        val upper = SemverVersion(version.major, version.minor + 1, 0)
+        return Pair(lower, upper)
+    }
+
+    /**
+     * Compute lower and upper bounds for caret range (^X.Y.Z)
+     * ^X.Y.Z where:
+     * - X > 0 → lower=(X,Y,Z), upper=(X+1,0,0)
+     * - X == 0, Y > 0 → lower=(0,Y,Z), upper=(0,Y+1,0)
+     * - X == 0, Y == 0 → lower=(0,0,Z), upper=(0,0,Z+1)
+     */
+    @Throws(InconclusiveMatchException::class)
+    private fun computeCaretBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
+        val version =
+            try {
+                parseSemver(propertyValue)
+            } catch (e: InconclusiveMatchException) {
+                throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
+            }
+        val lower = version
+        val upper =
+            when {
+                version.major > 0 -> SemverVersion(version.major + 1, 0, 0)
+                version.minor > 0 -> SemverVersion(0, version.minor + 1, 0)
+                else -> SemverVersion(0, 0, version.patch + 1)
+            }
+        return Pair(lower, upper)
+    }
+
+    /**
+     * Compute lower and upper bounds for wildcard range
+     * - "X.*" or "X" with wildcard → lower=(X,0,0), upper=(X+1,0,0)
+     * - "X.Y.*" → lower=(X,Y,0), upper=(X,Y+1,0)
+     */
+    @Throws(InconclusiveMatchException::class)
+    private fun computeWildcardBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
+        var cleaned = propertyValue.trim()
+
+        // Strip v/V prefix
+        if (cleaned.startsWith("v", ignoreCase = true)) {
+            cleaned = cleaned.substring(1)
+        }
+
+        // Remove trailing .* wildcards
+        cleaned = cleaned.trimEnd('*', '.')
+
+        if (cleaned.isEmpty()) {
+            throw InconclusiveMatchException("Invalid wildcard version: '$propertyValue'")
+        }
+
+        val parts = cleaned.split(".")
+        val components = mutableListOf<Int>()
+
+        for (part in parts) {
+            if (part.isEmpty()) continue
+            val num =
+                part.toIntOrNull()
+                    ?: throw InconclusiveMatchException("Invalid wildcard version: '$propertyValue'")
+            components.add(num)
+        }
+
+        if (components.isEmpty()) {
+            throw InconclusiveMatchException("Invalid wildcard version: '$propertyValue'")
+        }
+
+        return when (components.size) {
+            1 -> {
+                // "X.*" or just "X" → lower=(X,0,0), upper=(X+1,0,0)
+                val major = components[0]
+                Pair(SemverVersion(major, 0, 0), SemverVersion(major + 1, 0, 0))
+            }
+            else -> {
+                // "X.Y.*" → lower=(X,Y,0), upper=(X,Y+1,0)
+                val major = components[0]
+                val minor = components[1]
+                Pair(SemverVersion(major, minor, 0), SemverVersion(major, minor + 1, 0))
+            }
+        }
     }
 
     /**
