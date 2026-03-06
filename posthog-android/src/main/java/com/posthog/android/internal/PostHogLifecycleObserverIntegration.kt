@@ -101,6 +101,7 @@ internal class PostHogLifecycleObserverIntegration(
         if (config.captureApplicationLifecycleEvents) {
             postHog?.capture("Application Backgrounded")
         }
+        postHog?.flush()
 
         val currentTimeMillis = config.dateProvider.currentTimeMillis()
         lastUpdatedSession.set(currentTimeMillis)

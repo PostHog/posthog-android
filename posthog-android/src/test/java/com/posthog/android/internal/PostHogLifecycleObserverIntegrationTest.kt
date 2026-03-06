@@ -106,4 +106,37 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         sut.uninstall()
     }
+
+    @Test
+    fun `onStop flushes the event queue`() {
+        val sut = getSut()
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+        sut.onStop(ProcessLifecycleOwner.get())
+
+        assertEquals(1, fake.flushes)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStop flushes even when captureApplicationLifecycleEvents is disabled`() {
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+        sut.onStop(ProcessLifecycleOwner.get())
+
+        assertEquals(1, fake.flushes)
+
+        sut.uninstall()
+    }
 }
