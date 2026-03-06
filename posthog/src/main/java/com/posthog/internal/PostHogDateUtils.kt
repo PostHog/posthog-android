@@ -7,11 +7,7 @@ import java.util.Date
 
 @PostHogInternal
 public fun parseISO8601Date(dateString: String): Date? {
-    return try {
-        ISO8601Utils.parse(dateString, ParsePosition(0))
-    } catch (e: Throwable) {
-        null
-    }
+    return ISO8601Utils.parse(dateString, ParsePosition(0))
 }
 
 @PostHogInternal

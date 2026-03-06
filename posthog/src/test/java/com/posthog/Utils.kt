@@ -1,14 +1,13 @@
 package com.posthog
 
-import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.parseISO8601Date
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
 import okio.GzipSource
 import okio.buffer
 import java.lang.RuntimeException
-import java.text.ParsePosition
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -45,7 +44,7 @@ public fun ExecutorService.awaitExecution() {
     submit {}.get()
 }
 
-public val date: Date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
+public val date: Date = parseISO8601Date("2023-09-20T11:58:49.000Z")!!
 public const val EVENT: String = "event"
 public const val DISTINCT_ID: String = "distinctId"
 public const val ANON_ID: String = "anonId"
