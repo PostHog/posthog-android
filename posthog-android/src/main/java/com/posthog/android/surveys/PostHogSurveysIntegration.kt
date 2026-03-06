@@ -842,5 +842,4 @@ public class PostHogSurveysIntegration(
             showNextSurvey()
         }
     }
-
 }
