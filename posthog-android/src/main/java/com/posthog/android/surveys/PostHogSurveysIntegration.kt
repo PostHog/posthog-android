@@ -8,6 +8,8 @@ import com.posthog.android.internal.getDeviceType
 import com.posthog.android.internal.isMatchingRegex
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.surveys.PostHogSurveysHandler
+import com.posthog.internal.surveys.canActivateRepeatedly
+import com.posthog.internal.surveys.hasEvents
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
@@ -22,8 +24,12 @@ import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
-import com.posthog.surveys.canActivateRepeatedly
-import com.posthog.surveys.hasEvents
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import kotlin.math.abs
+import kotlin.math.ceil
 
 public class PostHogSurveysIntegration(
     context: Context,
@@ -56,10 +62,6 @@ public class PostHogSurveysIntegration(
     // Survey seen tracking
     private val surveySeenKeyPrefix = "seenSurvey_"
     private var seenSurveyKeys: MutableMap<String, Boolean>? = null
-
-    private companion object {
-        private const val NEXT_SURVEY_TRANSITION_DELAY_MS = 750L
-    }
 
     // Event activation tracking
     private val eventActivatedSurveys = mutableSetOf<String>()
@@ -174,6 +176,9 @@ public class PostHogSurveysIntegration(
 
             // 3. Filter out seen surveys (unless they can activate repeatedly)
             if (getSurveySeen(survey)) return@filter false
+
+            // 3.5. Filter out surveys whose wait period has not passed
+            if (!hasWaitPeriodPassed(survey)) return@filter false
 
             // 4. Check feature flags (collect all non-empty keys and verify they're enabled)
             val allKeys = mutableListOf<String>()
@@ -806,6 +811,60 @@ public class PostHogSurveysIntegration(
             val config = postHog?.getConfig() as? PostHogConfig
             config?.cachePreferences?.setValue(PostHogPreferences.SURVEY_SEEN, currentKeys)
         }
+
+        // Update last seen survey date
+        setLastSeenSurveyDate(Date())
+    }
+
+    // Wait Period Methods
+
+    private companion object {
+        private const val NEXT_SURVEY_TRANSITION_DELAY_MS = 750L
+        private const val SECONDS_PER_DAY = 86400.0
+        private const val ISO_8601_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+    }
+
+    /**
+     * Checks if the wait period has passed since the last seen survey date.
+     * If the survey has no wait period configured, returns true (no filtering).
+     * If no survey has been seen before, returns true.
+     */
+    private fun hasWaitPeriodPassed(survey: Survey): Boolean {
+        val waitPeriodInDays = survey.conditions?.seenSurveyWaitPeriodInDays ?: return true
+        val lastSeenDate = getLastSeenSurveyDate() ?: return true
+
+        val now = Date()
+        val diffSeconds = abs(now.time - lastSeenDate.time) / 1000.0
+        val diffDays = ceil(diffSeconds / SECONDS_PER_DAY).toInt()
+        return diffDays > waitPeriodInDays
+    }
+
+    /**
+     * Gets the last seen survey date from storage.
+     */
+    private fun getLastSeenSurveyDate(): Date? {
+        val postHog = postHog ?: return null
+        val config = postHog.getConfig() as? PostHogConfig ?: return null
+        val dateString = config.cachePreferences?.getValue(PostHogPreferences.LAST_SEEN_SURVEY_DATE) as? String ?: return null
+        return try {
+            val formatter = SimpleDateFormat(ISO_8601_FORMAT, Locale.US)
+            formatter.timeZone = TimeZone.getTimeZone("UTC")
+            formatter.parse(dateString)
+        } catch (e: Exception) {
+            config.logger.log("Failed to parse last seen survey date: $dateString")
+            null
+        }
+    }
+
+    /**
+     * Sets the last seen survey date in storage.
+     */
+    private fun setLastSeenSurveyDate(date: Date) {
+        val postHog = postHog ?: return
+        val config = postHog.getConfig() as? PostHogConfig ?: return
+        val formatter = SimpleDateFormat(ISO_8601_FORMAT, Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        config.cachePreferences?.setValue(PostHogPreferences.LAST_SEEN_SURVEY_DATE, formatter.format(date))
     }
 
     // Event Activation Methods

@@ -753,6 +753,7 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field Companion Lcom/posthog/internal/PostHogPreferences$Companion;
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
+	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
@@ -768,6 +769,7 @@ public final class com/posthog/internal/PostHogPreferences$Companion {
 	public static final field BUILD Ljava/lang/String;
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
+	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
@@ -1267,6 +1269,11 @@ public final class com/posthog/internal/replay/RRWireframe {
 public abstract interface class com/posthog/internal/surveys/PostHogSurveysHandler {
 	public abstract fun onEvent (Ljava/lang/String;)V
 	public abstract fun onSurveysLoaded (Ljava/util/List;)V
+}
+
+public final class com/posthog/internal/surveys/SurveyUtilsKt {
+	public static final fun canActivateRepeatedly (Lcom/posthog/surveys/Survey;)Z
+	public static final fun hasEvents (Lcom/posthog/surveys/Survey;)Z
 }
 
 public final class com/posthog/surveys/LinkSurveyQuestion : com/posthog/surveys/SurveyQuestion {
@@ -1860,10 +1867,5 @@ public final class com/posthog/surveys/SurveyType : java/lang/Enum {
 
 public final class com/posthog/surveys/SurveyType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyType;
-}
-
-public final class com/posthog/surveys/SurveyUtilsKt {
-	public static final fun canActivateRepeatedly (Lcom/posthog/surveys/Survey;)Z
-	public static final fun hasEvents (Lcom/posthog/surveys/Survey;)Z
 }
 

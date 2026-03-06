@@ -43,6 +43,7 @@ public interface PostHogPreferences {
         internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
         internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
         public const val SURVEY_SEEN: String = "surveySeen"
+        public const val LAST_SEEN_SURVEY_DATE: String = "lastSeenSurveyDate"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
@@ -60,6 +61,7 @@ public interface PostHogPreferences {
                 SESSION_REPLAY,
                 SURVEYS,
                 SURVEY_SEEN,
+                LAST_SEEN_SURVEY_DATE,
                 VERSION,
                 BUILD,
                 STRINGIFIED_KEYS,
