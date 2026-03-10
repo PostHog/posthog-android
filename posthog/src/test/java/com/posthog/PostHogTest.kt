@@ -2086,6 +2086,52 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `send feature flag called when session starts`() {
+        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val integration = PostHogSessionReplayHandlerFake(true)
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                integration = integration,
+            )
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        sut.startSessionReplay()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+
+        sut.close()
+    }
+
+    @Test
     fun `startSessionReplay starts session with resumeCurrent false`() {
         val http = mockHttp()
         val url = http.url("/")
