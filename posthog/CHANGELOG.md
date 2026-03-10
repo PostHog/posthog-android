@@ -1,5 +1,12 @@
 ## Next
 
+## 6.7.1
+
+### Patch Changes
+
+- 4bfee1c: Respect sendFeatureFlagEvent config when capturing $feature_flag_called on session replay start
+- 5307792: Capture the $feature_flag_called event for Android Session Replay when enabled via feature flag
+
 ## 6.7.0
 
 ### Minor Changes
