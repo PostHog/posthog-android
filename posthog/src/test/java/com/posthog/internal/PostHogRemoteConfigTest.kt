@@ -17,6 +17,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogRemoteConfigTest {
@@ -1157,6 +1158,399 @@ internal class PostHogRemoteConfigTest {
         assertTrue(sut.isCaptureNetworkTimingEnabled())
         // sessionRecording is boolean false in features-enabled.json
         assertFalse(sut.isConsoleLogRecordingEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    // --- Sample Rate tests ---
+
+    @Test
+    fun `simpleHash produces consistent positive values`() {
+        val hash1 = simpleHash("test-session-id")
+        val hash2 = simpleHash("test-session-id")
+        assertEquals(hash1, hash2)
+        assertTrue(hash1 >= 0)
+    }
+
+    @Test
+    fun `simpleHash produces different values for different inputs`() {
+        val hash1 = simpleHash("session-1")
+        val hash2 = simpleHash("session-2")
+        assertTrue(hash1 != hash2)
+    }
+
+    @Test
+    fun `sampleOnProperty returns true when rate is 1`() {
+        assertTrue(sampleOnProperty("any-session-id", 1.0))
+    }
+
+    @Test
+    fun `sampleOnProperty returns false when rate is 0`() {
+        assertFalse(sampleOnProperty("any-session-id", 0.0))
+    }
+
+    @Test
+    fun `sampleOnProperty is deterministic for same session id and rate`() {
+        val result1 = sampleOnProperty("my-session", 0.5)
+        val result2 = sampleOnProperty("my-session", 0.5)
+        assertEquals(result1, result2)
+    }
+
+    @Test
+    fun `makeSamplingDecision returns true when no sample rate is configured`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        // No sample rate set, should always return true
+        assertTrue(sut.makeSamplingDecision("any-session-id"))
+        assertNull(sut.getSessionRecordingSampleRate())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision returns true when sample rate is 1`() {
+        // Cache a session recording config with sampleRate "1"
+        val cachedConfig = mapOf("sampleRate" to "1")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertEquals(1.0, sut.getSessionRecordingSampleRate())
+        assertTrue(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision returns false when sample rate is 0`() {
+        val cachedConfig = mapOf("sampleRate" to "0")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertEquals(0.0, sut.getSessionRecordingSampleRate())
+        assertFalse(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `processSessionRecordingConfig parses sampleRate as string from remote config`() {
+        val file = File("src/test/resources/json/basic-remote-config-with-sample-rate.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(0.5, sut.getSessionRecordingSampleRate())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `processSessionRecordingConfig sets null sampleRate when not present`() {
+        val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertNull(sut.getSessionRecordingSampleRate())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `preloads sampleRate from cache on start`() {
+        val cachedConfig = mapOf("sampleRate" to "0.75")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertEquals(0.75, sut.getSessionRecordingSampleRate())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `preloads sampleRate from cache as number`() {
+        // Some serializers may store numbers rather than strings in the cache
+        val cachedConfig = mapOf("sampleRate" to 0.5)
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertEquals(0.5, sut.getSessionRecordingSampleRate())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision uses local sample rate when set`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Set local sample rate to 0 (should never record)
+        config!!.sampleRateProvider = { 0.0 }
+
+        assertFalse(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision local sample rate takes precedence over remote`() {
+        // Cache a remote sample rate of 1.0 (always record)
+        val cachedConfig = mapOf("sampleRate" to "1")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Local overrides remote: set to 0 (never record)
+        config!!.sampleRateProvider = { 0.0 }
+
+        assertFalse(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision falls back to remote when local is null`() {
+        // Cache a remote sample rate of 0 (never record)
+        val cachedConfig = mapOf("sampleRate" to "0")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Local is null (default), so remote takes effect
+        assertNull(config!!.sampleRateProvider)
+
+        assertFalse(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision local sample rate 1 overrides remote 0`() {
+        // Cache a remote sample rate of 0 (never record)
+        val cachedConfig = mapOf("sampleRate" to "0")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Local overrides remote: set to 1 (always record)
+        config!!.sampleRateProvider = { 1.0 }
+
+        assertTrue(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision ignores local sample rate above 1`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Invalid local rate should be ignored, no remote rate set, so returns true
+        config!!.sampleRateProvider = { 1.5 }
+
+        assertTrue(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision ignores local sample rate below 0`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Invalid local rate should be ignored, no remote rate set, so returns true
+        config!!.sampleRateProvider = { -0.5 }
+
+        assertTrue(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `makeSamplingDecision ignores invalid local sample rate and falls back to remote`() {
+        // Cache a remote sample rate of 0 (never record)
+        val cachedConfig = mapOf("sampleRate" to "0")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Invalid local rate should be ignored, falls back to remote (0)
+        config!!.sampleRateProvider = { 2.0 }
+
+        assertFalse(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `parseSampleRate ignores invalid remote sample rate from cache`() {
+        // Cache an out-of-range remote sample rate
+        val cachedConfig = mapOf("sampleRate" to "1.5")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        // Invalid remote rate should be ignored (parsed as null)
+        assertNull(sut.getSessionRecordingSampleRate())
+        // No valid rate, so should return true
+        assertTrue(sut.makeSamplingDecision("any-session-id"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `parseSampleRate ignores negative remote sample rate from cache`() {
+        val cachedConfig = mapOf("sampleRate" to "-0.5")
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertNull(sut.getSessionRecordingSampleRate())
+        assertTrue(sut.makeSamplingDecision("any-session-id"))
 
         sut.clear()
         http.shutdown()

@@ -1,0 +1,41 @@
+name: "Setup Workspace Environment"
+description: "Sets up a Node.js environment with pnpm and installs dependencies"
+
+inputs:
+  node_version:
+    description: "Node.js version to use"
+    required: false
+    default: "24"
+  install:
+    description: "Whether to install dependencies"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # pin v4.2.0
+
+    - name: Get pnpm cache directory path
+      id: pnpm-cache-dir
+      shell: bash
+      run: echo "PNPM_STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node_version }}
+        cache: "pnpm"
+
+    - uses: actions/cache@v5
+      id: pnpm-cache
+      with:
+        path: ${{ steps.pnpm-cache-dir.outputs.PNPM_STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: ${{ runner.os }}-pnpm-
+
+    - name: Install package.json dependencies with pnpm
+      if: ${{ inputs.install == 'true' }}
+      shell: bash
+      run: pnpm install --frozen-lockfile

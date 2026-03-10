@@ -1,6 +1,5 @@
 package com.posthog.internal
 
-import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
@@ -16,7 +15,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.text.ParsePosition
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.Test
@@ -137,7 +135,7 @@ internal class PostHogQueueTest {
         val fakeCurrentTime = FakePostHogDateProvider()
         val sut = getSut(host = url.toString(), flushAt = 1, dateProvider = fakeCurrentTime)
         // if this code lives up to 2050 we are fine.
-        val date = ISO8601Utils.parse("2050-09-20T11:58:49.000Z", ParsePosition(0))
+        val date = parseISO8601Date("2050-09-20T11:58:49.000Z")!!
         fakeCurrentTime.setAddSecondsToCurrentDate(date)
 
         sut.add(generateEvent())
@@ -305,7 +303,7 @@ internal class PostHogQueueTest {
         val sut = getSut(host = url.toString(), flushAt = 1, storagePrefix = path, dateProvider = fakeCurrentTime, maxBatchSize = 1)
 
         // to be sure that the delay is before now
-        val date = ISO8601Utils.parse("1970-09-20T11:58:49.000Z", ParsePosition(0))
+        val date = parseISO8601Date("1970-09-20T11:58:49.000Z")!!
         fakeCurrentTime.setAddSecondsToCurrentDate(date)
 
         sut.add(generateEvent())

@@ -7,14 +7,18 @@ import com.posthog.PostHogInterface
 import com.posthog.android.internal.getDeviceType
 import com.posthog.android.internal.isMatchingRegex
 import com.posthog.internal.PostHogPreferences
+import com.posthog.internal.formatISO8601Date
+import com.posthog.internal.parseISO8601Date
 import com.posthog.internal.surveys.PostHogSurveysHandler
+import com.posthog.internal.surveys.canActivateRepeatedly
+import com.posthog.internal.surveys.hasEvents
+import com.posthog.internal.surveys.hasWaitPeriodPassed
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogNextSurveyQuestion
 import com.posthog.surveys.PostHogSurveyResponse
-import com.posthog.surveys.PostHogSurveysDefaultDelegate
 import com.posthog.surveys.PostHogSurveysDelegate
 import com.posthog.surveys.RatingSurveyQuestion
 import com.posthog.surveys.SingleSurveyQuestion
@@ -22,9 +26,11 @@ import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
+import java.util.Date
 
 public class PostHogSurveysIntegration(
     context: Context,
+    private val config: PostHogConfig,
 ) : PostHogIntegration, PostHogSurveysHandler {
     private val surveyValidationMap: Map<SurveyMatchType, (List<String>, String) -> Boolean> =
         mapOf(
@@ -46,7 +52,6 @@ public class PostHogSurveysIntegration(
     private val lifecycleLock = Any()
 
     private var postHog: PostHogInterface? = null
-    private var config: PostHogConfig? = null
 
     // Cached surveys pushed from PostHog Remote Config
     private var cachedSurveys: List<Survey> = emptyList()
@@ -54,10 +59,6 @@ public class PostHogSurveysIntegration(
     // Survey seen tracking
     private val surveySeenKeyPrefix = "seenSurvey_"
     private var seenSurveyKeys: MutableMap<String, Boolean>? = null
-
-    private companion object {
-        private const val NEXT_SURVEY_TRANSITION_DELAY_MS = 750L
-    }
 
     // Event activation tracking
     private val eventActivatedSurveys = mutableSetOf<String>()
@@ -69,7 +70,6 @@ public class PostHogSurveysIntegration(
 
     public override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
-        this.config = postHog.getConfig() as? PostHogConfig
 
         // Start the survey integration lifecycle
         synchronized(lifecycleLock) {
@@ -88,7 +88,6 @@ public class PostHogSurveysIntegration(
         clearActiveSurvey()
 
         this.postHog = null
-        this.config = null
     }
 
     // Push-based callback from PostHog when surveys are loaded/updated
@@ -112,7 +111,7 @@ public class PostHogSurveysIntegration(
      * @return The surveys delegate from PostHogConfig.surveysConfig
      */
     private fun getSurveysDelegate(): PostHogSurveysDelegate {
-        return config?.surveysConfig?.surveysDelegate ?: PostHogSurveysDefaultDelegate(config)
+        return config.surveysConfig.surveysDelegate
     }
 
     private fun defaultMatchType(matchType: SurveyMatchType?): SurveyMatchType {
@@ -127,10 +126,6 @@ public class PostHogSurveysIntegration(
         return surveyValidationMap[matchType]?.invoke(deviceTypes, deviceType) ?: true
     }
 
-    private fun canActivateRepeatedly(survey: Survey): Boolean {
-        return survey.conditions?.events?.repeatedActivation == true && hasEvents(survey)
-    }
-
     /**
      * Get surveys enabled for the current user.
      * Uses the cached surveys pushed from remote config and filters for active matching surveys.
@@ -139,8 +134,7 @@ public class PostHogSurveysIntegration(
      */
     private fun getActiveMatchingSurveys(): List<Survey> {
         // Check if surveys are enabled in config
-        val config = config
-        if (config?.surveys != true) {
+        if (!config.surveys) {
             return emptyList()
         }
 
@@ -176,6 +170,9 @@ public class PostHogSurveysIntegration(
 
             // 3. Filter out seen surveys (unless they can activate repeatedly)
             if (getSurveySeen(survey)) return@filter false
+
+            // 3.5. Filter out surveys whose wait period has not passed
+            if (!hasWaitPeriodPassed(survey, getLastSeenSurveyDate(), config.dateProvider.currentDate())) return@filter false
 
             // 4. Check feature flags (collect all non-empty keys and verify they're enabled)
             val allKeys = mutableListOf<String>()
@@ -227,7 +224,7 @@ public class PostHogSurveysIntegration(
     internal fun showSurvey(survey: Survey) {
         // Check if we can show a survey (no active survey)
         if (!canShowNextSurvey()) {
-            config?.logger?.log("Cannot show survey - another survey is already active")
+            config.logger.log("Cannot show survey - another survey is already active")
             return
         }
 
@@ -255,7 +252,7 @@ public class PostHogSurveysIntegration(
                     eventActivatedSurveys.remove(originalSurvey.id)
                 }
             } else {
-                config?.logger?.log("Received a show event for a non-matching survey: ${shownSurvey.id} vs ${originalSurvey.id}")
+                config.logger.log("Received a show event for a non-matching survey: ${shownSurvey.id} vs ${originalSurvey.id}")
             }
         }
 
@@ -265,7 +262,7 @@ public class PostHogSurveysIntegration(
 
             // Validate that this survey matches the currently active survey
             if (currentActiveSurvey == null || responseSurvey.id != currentActiveSurvey.id) {
-                config?.logger?.log("Received a response event for a non-active survey")
+                config.logger.log("Received a response event for a non-active survey")
                 null
             } else {
                 // Calculate next question based on current response
@@ -292,7 +289,7 @@ public class PostHogSurveysIntegration(
 
             // Validate that this survey matches the currently active survey
             if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
-                config?.logger?.log("[Surveys] Received a close event for a non-active survey")
+                config.logger.log("[Surveys] Received a close event for a non-active survey")
                 return@onSurveyClosed
             }
 
@@ -395,7 +392,7 @@ public class PostHogSurveysIntegration(
         responseValues: Map<String, Any>,
     ): PostHogNextSurveyQuestion? {
         if (question == null) {
-            config?.logger?.log("[Surveys] Got response based branching, but missing the actual question.")
+            config.logger.log("[Surveys] Got response based branching, but missing the actual question.")
             return null
         }
 
@@ -407,7 +404,7 @@ public class PostHogSurveysIntegration(
                 handleRatingResponseBranching(question, response, responseValues, survey.questions.size)
             }
             else -> {
-                config?.logger?.log("[Surveys] Got response based branching for an unsupported question type.")
+                config.logger.log("[Surveys] Got response based branching for an unsupported question type.")
                 null
             }
         }
@@ -441,7 +438,7 @@ public class PostHogSurveysIntegration(
             }
         }
 
-        config?.logger?.log("[Surveys] Could not find response index for specific question.")
+        config.logger.log("[Surveys] Could not find response index for specific question.")
         return null
     }
 
@@ -470,7 +467,7 @@ public class PostHogSurveysIntegration(
             }
         }
 
-        config?.logger?.log("[Surveys] Could not get response bucket for rating question.")
+        config.logger.log("[Surveys] Could not get response bucket for rating question.")
         return null
     }
 
@@ -766,11 +763,8 @@ public class PostHogSurveysIntegration(
      */
     private fun getSeenSurveyKeys(): Map<String, Boolean> {
         if (seenSurveyKeys == null) {
-            val postHog = postHog
-            val config = postHog?.getConfig() as? PostHogConfig
-
             @Suppress("UNCHECKED_CAST")
-            val storedKeys = config?.cachePreferences?.getValue(PostHogPreferences.SURVEY_SEEN) as? Map<String, Boolean>
+            val storedKeys = config.cachePreferences?.getValue(PostHogPreferences.SURVEY_SEEN) as? Map<String, Boolean>
             seenSurveyKeys = storedKeys?.toMutableMap() ?: mutableMapOf()
         }
         return seenSurveyKeys ?: emptyMap()
@@ -804,10 +798,37 @@ public class PostHogSurveysIntegration(
             seenSurveyKeys = currentKeys
 
             // Persist to disk immediately
-            val postHog = postHog
-            val config = postHog?.getConfig() as? PostHogConfig
-            config?.cachePreferences?.setValue(PostHogPreferences.SURVEY_SEEN, currentKeys)
+            config.cachePreferences?.setValue(PostHogPreferences.SURVEY_SEEN, currentKeys)
         }
+
+        // Update last seen survey date
+        setLastSeenSurveyDate(config.dateProvider.currentDate())
+    }
+
+    // Wait Period Methods
+
+    private companion object {
+        private const val NEXT_SURVEY_TRANSITION_DELAY_MS = 750L
+    }
+
+    /**
+     * Gets the last seen survey date from storage.
+     */
+    private fun getLastSeenSurveyDate(): Date? {
+        val dateString = config.cachePreferences?.getValue(PostHogPreferences.LAST_SEEN_SURVEY_DATE) as? String ?: return null
+        return try {
+            parseISO8601Date(dateString)
+        } catch (e: Exception) {
+            config.logger.log("Failed to parse last seen survey date: $dateString")
+            null
+        }
+    }
+
+    /**
+     * Sets the last seen survey date in storage.
+     */
+    private fun setLastSeenSurveyDate(date: Date) {
+        config.cachePreferences?.setValue(PostHogPreferences.LAST_SEEN_SURVEY_DATE, formatISO8601Date(date))
     }
 
     // Event Activation Methods
@@ -843,12 +864,5 @@ public class PostHogSurveysIntegration(
         if (shouldShowSurvey) {
             showNextSurvey()
         }
-    }
-
-    /**
-     * Check if a survey has events defined
-     */
-    private fun hasEvents(survey: Survey): Boolean {
-        return survey.conditions?.events?.values?.isNotEmpty() == true
     }
 }

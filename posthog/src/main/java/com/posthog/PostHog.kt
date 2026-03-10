@@ -211,6 +211,7 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
+                @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
                     when {
                         config.remoteConfig ->
@@ -1330,6 +1331,16 @@ public class PostHog private constructor(
         return sessionReplayHandler?.isActive() == true && isSessionActive()
     }
 
+    private fun shouldRecordSession(): Boolean {
+        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
+        if (sessionId != null) {
+            // sampling is deterministic so we can sample again for the same session id
+            return remoteConfig?.makeSamplingDecision(sessionId) ?: true
+        }
+        // no session id
+        return false
+    }
+
     override fun startSessionReplay(resumeCurrent: Boolean) {
         if (!isEnabled()) {
             return
@@ -1349,10 +1360,19 @@ public class PostHog private constructor(
             }
 
             if (resumeCurrent) {
+                if (!shouldRecordSession()) {
+                    return
+                }
+
                 it.start(true)
             } else {
                 endSession()
                 startSession()
+
+                if (!shouldRecordSession()) {
+                    return
+                }
+
                 it.start(false)
             }
         } ?: run {

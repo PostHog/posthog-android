@@ -165,3 +165,6 @@ gradle-app.setting
 
 # ralph loop claude code
 .ralph/
+
+# Node
+node_modules/

@@ -1,5 +1,31 @@
 ## Next
 
+## 2.3.3
+
+### Patch Changes
+
+- 17ba416: Add semver comparison operators to local feature flag evaluation
+
+  This adds 9 semver operators for targeting users based on app version:
+
+  - `semver_eq`, `semver_neq` — exact match / not equal
+  - `semver_gt`, `semver_gte`, `semver_lt`, `semver_lte` — comparison operators
+  - `semver_tilde` — patch-level range (~1.2.3 means >=1.2.3 <1.3.0)
+  - `semver_caret` — compatible-with range (^1.2.3 means >=1.2.3 <2.0.0)
+  - `semver_wildcard` — wildcard range (1.2.\* means >=1.2.0 <1.3.0)
+
+## 2.3.2
+
+### Patch Changes
+
+- f86f22e: Remove `config=true` from flags endpoint, add `timezone` to flags requests, and deprecate `remoteConfig` option
+
+## 2.3.1
+
+### Patch Changes
+
+- 1e73791: test new release process
+
 ## 2.3.0 - 2026-02-05
 
 - feat: Expose `getFeatureFlagResult` to public API ([#405](https://github.com/PostHog/posthog-android/pull/405))

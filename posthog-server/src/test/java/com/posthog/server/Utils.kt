@@ -2,18 +2,17 @@ package com.posthog.server
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import com.google.gson.internal.bind.util.ISO8601Utils
 import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.internal.PostHogLogger
+import com.posthog.internal.parseISO8601Date
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okio.Buffer
 import okio.GzipSource
 import okio.buffer
-import java.text.ParsePosition
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -55,7 +54,7 @@ public fun ExecutorService.shutdownAndAwaitTermination() {
 }
 
 // Event generation utilities
-public val date: Date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
+public val date: Date = parseISO8601Date("2023-09-20T11:58:49.000Z")!!
 public const val EVENT: String = "event"
 public const val DISTINCT_ID: String = "distinctId"
 public val props: Map<String, Any> = mapOf<String, Any>("prop" to "value")

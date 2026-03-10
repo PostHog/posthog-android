@@ -48,6 +48,10 @@ public open class PostHogConfig constructor(
      * Preload PostHog remote config automatically
      * Defaults to true
      */
+    @Deprecated(
+        message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
+        level = DeprecationLevel.WARNING,
+    )
     public var remoteConfig: Boolean = true,
     /**
      * Number of minimum events before they are sent over the wire
@@ -149,6 +153,7 @@ public open class PostHogConfig constructor(
         integrations.add(integration)
     }
 
+    @Suppress("DEPRECATION")
     @JvmSynthetic
     internal fun asCoreConfig(): com.posthog.PostHogConfig {
         val coreConfig =
@@ -226,6 +231,8 @@ public open class PostHogConfig constructor(
         private var debug: Boolean = false
         private var sendFeatureFlagEvent: Boolean = true
         private var preloadFeatureFlags: Boolean = true
+
+        @Suppress("DEPRECATION")
         private var remoteConfig: Boolean = true
         private var flushAt: Int = DEFAULT_FLUSH_AT
         private var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE
@@ -250,6 +257,11 @@ public open class PostHogConfig constructor(
 
         public fun preloadFeatureFlags(preloadFeatureFlags: Boolean): Builder = apply { this.preloadFeatureFlags = preloadFeatureFlags }
 
+        @Deprecated(
+            message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
+            level = DeprecationLevel.WARNING,
+        )
+        @Suppress("DEPRECATION")
         public fun remoteConfig(remoteConfig: Boolean): Builder = apply { this.remoteConfig = remoteConfig }
 
         public fun flushAt(flushAt: Int): Builder = apply { this.flushAt = flushAt }
@@ -288,6 +300,7 @@ public open class PostHogConfig constructor(
 
         public fun evaluationContexts(evaluationContexts: List<String>?): Builder = apply { this.evaluationContexts = evaluationContexts }
 
+        @Suppress("DEPRECATION")
         public fun build(): PostHogConfig =
             PostHogConfig(
                 apiKey = apiKey,
