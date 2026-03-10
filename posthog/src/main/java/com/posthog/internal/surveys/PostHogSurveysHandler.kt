@@ -8,7 +8,10 @@ public interface PostHogSurveysHandler {
     /**
      * To be called by Posthog when an event is captured
      */
-    public fun onEvent(event: String)
+    public fun onEvent(
+        event: String,
+        properties: Map<String, Any>? = null,
+    )
 
     /**
      * Notifies the integration that surveys have been loaded or updated from remote config.

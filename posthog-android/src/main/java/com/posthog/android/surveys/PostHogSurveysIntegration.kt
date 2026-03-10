@@ -24,6 +24,7 @@ import com.posthog.surveys.RatingSurveyQuestion
 import com.posthog.surveys.SingleSurveyQuestion
 import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyMatchType
+import com.posthog.surveys.SurveyPropertyFilter
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
 import java.util.Date
@@ -40,6 +41,14 @@ public class PostHogSurveysIntegration(
             SurveyMatchType.NOT_REGEX to { targets, value -> targets.all { pattern -> !isMatchingRegex(value, pattern) } },
             SurveyMatchType.EXACT to { targets, value -> targets.any { value == it } },
             SurveyMatchType.IS_NOT to { targets, value -> targets.all { value != it } },
+            SurveyMatchType.GT to { targets, value ->
+                val numValue = value.toDoubleOrNull()
+                numValue != null && targets.any { t -> t.toDoubleOrNull()?.let { numValue > it } == true }
+            },
+            SurveyMatchType.LT to { targets, value ->
+                val numValue = value.toDoubleOrNull()
+                numValue != null && targets.any { t -> t.toDoubleOrNull()?.let { numValue < it } == true }
+            },
         )
 
     private val deviceType: String = getDeviceType(context) ?: "Mobile"
@@ -62,7 +71,7 @@ public class PostHogSurveysIntegration(
 
     // Event activation tracking
     private val eventActivatedSurveys = mutableSetOf<String>()
-    private val eventsToSurveys = mutableMapOf<String, List<String>>()
+    private val eventsToSurveys = mutableMapOf<String, List<SurveyEventMapping>>()
 
     // Survey response tracking
     private val currentSurveyResponses = mutableMapOf<String, PostHogSurveyResponse>()
@@ -132,7 +141,7 @@ public class PostHogSurveysIntegration(
      *
      * @return List of filtered surveys
      */
-    private fun getActiveMatchingSurveys(): List<Survey> {
+    internal fun getActiveMatchingSurveys(): List<Survey> {
         // Check if surveys are enabled in config
         if (!config.surveys) {
             return emptyList()
@@ -143,12 +152,13 @@ public class PostHogSurveysIntegration(
     }
 
     private fun rebuildEventsToSurveysMap(surveys: List<Survey>) {
-        val eventMap = mutableMapOf<String, MutableList<String>>()
+        val eventMap = mutableMapOf<String, MutableList<SurveyEventMapping>>()
         surveys.forEach { survey ->
             survey.conditions?.events?.values?.forEach { eventCondition ->
                 val eventName = eventCondition.name
                 if (eventName.isNotEmpty()) {
-                    eventMap.getOrPut(eventName) { mutableListOf() }.add(survey.id)
+                    eventMap.getOrPut(eventName) { mutableListOf() }
+                        .add(SurveyEventMapping(surveyId = survey.id, condition = eventCondition))
                 }
             }
         }
@@ -845,16 +855,26 @@ public class PostHogSurveysIntegration(
     /**
      * Called when an event is captured to activate associated surveys
      */
-    public override fun onEvent(event: String) {
-        val activatedSurveys =
+    public override fun onEvent(
+        event: String,
+        properties: Map<String, Any>?,
+    ) {
+        val candidates =
             synchronized(eventActivationLock) {
                 // Copy to avoid concurrent modification issues
                 eventsToSurveys[event]?.toList()
             } ?: return
-        if (activatedSurveys.isEmpty()) return
+        if (candidates.isEmpty()) return
+
+        val matchingSurveyIds =
+            candidates
+                .filter { matchPropertyFilters(it.condition.propertyFilters, properties) }
+                .map { it.surveyId }
+
+        if (matchingSurveyIds.isEmpty()) return
 
         synchronized(eventActivationLock) {
-            for (surveyId in activatedSurveys) {
+            for (surveyId in matchingSurveyIds) {
                 eventActivatedSurveys.add(surveyId)
             }
         }
@@ -863,6 +883,20 @@ public class PostHogSurveysIntegration(
         val shouldShowSurvey = synchronized(lifecycleLock) { isStarted }
         if (shouldShowSurvey) {
             showNextSurvey()
+        }
+    }
+
+    private fun matchPropertyFilters(
+        propertyFilters: Map<String, SurveyPropertyFilter>?,
+        eventProperties: Map<String, Any>?,
+    ): Boolean {
+        if (propertyFilters.isNullOrEmpty()) return true
+
+        return propertyFilters.all { (propertyName, filter) ->
+            val eventValue = eventProperties?.get(propertyName) ?: return@all false
+            val validator = surveyValidationMap[filter.operator] ?: return@all false
+            val eventValueString = eventValue.toString()
+            validator(filter.values, eventValueString)
         }
     }
 }
