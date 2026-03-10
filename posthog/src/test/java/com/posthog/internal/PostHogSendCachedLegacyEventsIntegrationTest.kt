@@ -10,7 +10,6 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.mockito.Mockito.mock
 import java.io.File
-import java.util.Date
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -28,7 +27,6 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     private val event = file.readText()
 
     private fun getSut(
-        date: Date = Date(),
         legacyStoragePrefix: String = tmpDir.newFolder().absolutePath,
         host: String,
         maxBatchSize: Int = 50,
@@ -41,7 +39,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
                 this.maxBatchSize = maxBatchSize
             }
         val api = PostHogApi(config)
-        return PostHogSendCachedEventsIntegration(config, api, date, executor = executor)
+        return PostHogSendCachedEventsIntegration(config, api, executor = executor)
     }
 
     @AfterTest
@@ -72,7 +70,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val legacyStoragePrefix = writeLegacyFile(listOf(event))
 
         val sut =
-            getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host", networkStatus = {
+            getSut(legacyStoragePrefix = legacyStoragePrefix, host = "host", networkStatus = {
                 false
             })
 
@@ -89,7 +87,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     fun `removes file from the legacy queue if not a valid event`() {
         val legacyStoragePrefix = writeLegacyFile(listOf("invalid event"))
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host")
+        val sut = getSut(legacyStoragePrefix = legacyStoragePrefix, host = "host")
 
         sut.install(mock())
 
@@ -106,7 +104,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
+        val sut = getSut(legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install(mock())
 
@@ -123,7 +121,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val http = mockHttp(2)
         val url = http.url("/")
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
+        val sut = getSut(legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
         sut.install(mock())
 
@@ -141,7 +139,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val http = mockHttp(2)
         val url = http.url("/")
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
+        val sut = getSut(legacyStoragePrefix = legacyStoragePrefix, host = url.toString(), maxBatchSize = 1)
 
         sut.install(mock())
 
@@ -160,7 +158,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val http = mockHttp(response = response)
         val url = http.url("/")
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
+        val sut = getSut(legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install(mock())
 
@@ -179,7 +177,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val http = mockHttp(response = response)
         val url = http.url("/")
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
+        val sut = getSut(legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install(mock())
 
@@ -198,7 +196,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val http = mockHttp(response = response)
         val url = http.url("/")
 
-        val sut = getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
+        val sut = getSut(legacyStoragePrefix = legacyStoragePrefix, host = url.toString())
 
         sut.install(mock())
 

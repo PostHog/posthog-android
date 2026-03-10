@@ -44,6 +44,9 @@ internal class PostHogQueue(
 
     private var isFlushing = AtomicBoolean(false)
 
+    @Volatile
+    private var cachedEventsLoaded = false
+
     private var dirCreated = false
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
@@ -99,10 +102,27 @@ internal class PostHogQueue(
         }
     }
 
+    /**
+     * Ensures cached events from disk are loaded into the deque exactly once.
+     * Must be called on the executor thread (single-threaded executor, no lock needed).
+     */
+    private fun ensureCachedEventsLoaded() {
+        if (!cachedEventsLoaded) {
+            try {
+                loadCachedEvents()
+            } catch (e: Throwable) {
+                config.logger.log("Failed to load cached events: $e.")
+            } finally {
+                cachedEventsLoaded = true
+            }
+        }
+    }
+
     private fun flushEventSync(
         event: PostHogEvent,
         isFatal: Boolean = false,
     ) {
+        ensureCachedEventsLoaded()
         removeEventSync()
         if (addEventSync(event)) {
             // this is best effort since we dont know if theres
@@ -328,6 +348,37 @@ internal class PostHogQueue(
                 }
             this.timerTask = timerTask
             this.timer = timer
+        }
+    }
+
+    /**
+     * Loads cached event files from disk into the deque so they are sent in order
+     * with any new events added after SDK start.
+     */
+    private fun loadCachedEvents() {
+        storagePrefix?.let {
+            val dir = File(it, config.apiKey)
+
+            if (!dir.existsSafely(config)) {
+                return
+            }
+
+            val files = (dir.listFiles() ?: emptyArray()).toMutableList()
+
+            // sort by last modified date ascending so events are sent in order
+            files.sortBy { file -> file.lastModified() }
+
+            if (files.isNotEmpty()) {
+                synchronized(dequeLock) {
+                    // prepend cached files before any events already in the deque
+                    // so that older events are sent first
+                    val existingFiles = deque.toList()
+                    deque.clear()
+                    deque.addAll(files)
+                    deque.addAll(existingFiles)
+                }
+                config.logger.log("Loaded ${files.size} cached events from disk for $endpoint.")
+            }
         }
     }
 

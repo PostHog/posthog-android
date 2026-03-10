@@ -9,6 +9,7 @@ import com.posthog.generateEvent
 import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertFalse
@@ -384,5 +385,120 @@ internal class PostHogQueueTest {
 
         assertEquals(0, sut.dequeList.size)
         assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+    }
+
+    @Test
+    fun `loads cached events from disk on first add`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        val dir = File(path, API_KEY)
+        dir.mkdirs()
+
+        val eventFile = File("src/test/resources/json/basic-event.json")
+        val eventContent = eventFile.readText()
+
+        // write 3 cached event files
+        for (i in 1..3) {
+            val uuid = TimeBasedEpochGenerator.generate()
+            val file = File(dir, "$uuid.event")
+            file.writeText(eventContent)
+            file.setLastModified(System.currentTimeMillis() - (4 - i) * 1000L)
+        }
+
+        val sut = getSut(host = url.toString(), storagePrefix = path)
+
+        // trigger lazy loading via add
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        // 3 cached + 1 new
+        assertEquals(4, sut.dequeList.size)
+    }
+
+    @Test
+    fun `loads cached events and flushes them when add triggers threshold`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        val dir = File(path, API_KEY)
+        dir.mkdirs()
+
+        val eventFile = File("src/test/resources/json/basic-event.json")
+        val eventContent = eventFile.readText()
+
+        val uuid = TimeBasedEpochGenerator.generate()
+        val file = File(dir, "$uuid.event")
+        file.writeText(eventContent)
+
+        // flushAt=1 so the cached event triggers a flush on the first add
+        val sut = getSut(host = url.toString(), storagePrefix = path, flushAt = 1)
+
+        // add triggers ensureCachedEventsLoaded (1 cached) + new event, hitting flushAt
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+        assertEquals(0, sut.dequeList.size)
+    }
+
+    @Test
+    fun `no cached events loaded if directory does not exist`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        // don't create the API_KEY subdirectory
+
+        val sut = getSut(host = url.toString(), storagePrefix = path)
+
+        // trigger lazy loading, should not fail
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        // only the new event
+        assertEquals(1, sut.dequeList.size)
+    }
+
+    @Test
+    fun `cached events are loaded in sorted order by last modified`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        val dir = File(path, API_KEY)
+        dir.mkdirs()
+
+        val eventFile = File("src/test/resources/json/basic-event.json")
+        val eventContent = eventFile.readText()
+
+        // write cached event files with different timestamps
+        val uuid1 = TimeBasedEpochGenerator.generate()
+        val file1 = File(dir, "$uuid1.event")
+        file1.writeText(eventContent)
+        file1.setLastModified(System.currentTimeMillis() - 20000L)
+
+        val uuid2 = TimeBasedEpochGenerator.generate()
+        val file2 = File(dir, "$uuid2.event")
+        file2.writeText(eventContent)
+        file2.setLastModified(System.currentTimeMillis() - 10000L)
+
+        val sut = getSut(host = url.toString(), storagePrefix = path)
+
+        // trigger lazy loading via add
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        val dequeFiles = sut.dequeList
+        // cached files first (sorted by last modified), then the new event
+        assertEquals(3, dequeFiles.size)
+        assertEquals(file1.name, dequeFiles[0].name)
+        assertEquals(file2.name, dequeFiles[1].name)
     }
 }
