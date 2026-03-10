@@ -281,14 +281,20 @@ jobs:
 
             - name: Tag and push ${{ matrix.package.name }}
               if: steps.detect-version.outputs.has-new-version == 'true'
+              env:
+                  RELEASE_TAG: ${{ steps.detect-version.outputs.tag }}
+                  RELEASE_VERSION: ${{ steps.detect-version.outputs.version }}
+                  PACKAGE_NAME: ${{ matrix.package.name }}
               run: |
-                  git tag -a "${{ steps.detect-version.outputs.tag }}" -m "${{ matrix.package.name }} ${{ steps.detect-version.outputs.version }}"
-                  git push origin "${{ steps.detect-version.outputs.tag }}"
+                  git tag -a "$RELEASE_TAG" -m "$PACKAGE_NAME $RELEASE_VERSION"
+                  git push origin "$RELEASE_TAG"
 
             - name: Create GitHub release for ${{ matrix.package.name }}
               if: steps.detect-version.outputs.has-new-version == 'true'
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  RELEASE_TAG: ${{ steps.detect-version.outputs.tag }}
+                  CHANGELOG_FILE: ${{ matrix.package.changelog }}
               run: |
                   # Read the latest changelog entry, skipping "## Next" and the version header line
                   # e.g. given: ## Next\n\n# 3.32.1 - 2026-02-19\n\n- no user facing changes\n\n## 3.31.0 ...
@@ -299,15 +305,15 @@ jobs:
                     found_version && /^## / { exit }
                     found_version { print }
                     END { if (!found_version) print defText }
-                  ' ${{ matrix.package.changelog }} | sed '/[^[:space:]]/,$!d' | tac | sed '/[^[:space:]]/,$!d' | tac)
+                  ' "$CHANGELOG_FILE" | sed '/[^[:space:]]/,$!d' | tac | sed '/[^[:space:]]/,$!d' | tac)
                   gh api \
                     --method POST \
                     -H "Accept: application/vnd.github+json" \
                     -H "X-GitHub-Api-Version: 2022-11-28" \
                     /repos/${{ github.repository }}/releases \
-                    -f tag_name="${{ steps.detect-version.outputs.tag }}" \
+                    -f tag_name="$RELEASE_TAG" \
                     -f target_commitish='main' \
-                    -f name="${{ steps.detect-version.outputs.tag }}" \
+                    -f name="$RELEASE_TAG" \
                     -f body="$LAST_CHANGELOG_ENTRY" \
                     -F draft=false \
                     -F prerelease=false \
