@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property api the API
  * @property executor the Executor
  * @property defaultPersonPropertiesProvider the provider for default person properties
- * @property captureFeatureFlagCalledProvider the provider for capturing event info
+ * @property featureFlagCalledProvider the provider for capturing event info
  * @property onRemoteConfigLoaded the remote config callback
  */
 @PostHogInternal
@@ -33,7 +33,7 @@ public class PostHogRemoteConfig(
     private val executor: ExecutorService,
     private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider =
         PostHogDefaultPersonPropertiesProvider { emptyMap() },
-    private val captureFeatureFlagCalledProvider: PostHogFeatureFlagCalledProvider =
+    private val featureFlagCalledProvider: PostHogFeatureFlagCalledProvider =
         PostHogFeatureFlagCalledProvider { _, _ -> },
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
@@ -161,7 +161,7 @@ public class PostHogRemoteConfig(
         // we consider session replay is active
 
         if (flagKey != null && flagValue != null) {
-            captureFeatureFlagCalledProvider.onFeatureFlagCalled(flagKey, flagValue)
+            featureFlagCalledProvider.onFeatureFlagCalled(flagKey, flagValue)
         }
 
         return recordingActive

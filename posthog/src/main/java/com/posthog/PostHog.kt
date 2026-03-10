@@ -141,7 +141,7 @@ public class PostHog private constructor(
                         PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
                         onRemoteConfigLoaded,
                         PostHogFeatureFlagCalledProvider { key, value ->
-                            sendFeatureFlagCalled(key, value, sendFeatureFlagEvent = true)
+                            sendFeatureFlagCalled(key = key, value = value)
                         },
                     )
 
@@ -1082,7 +1082,7 @@ public class PostHog private constructor(
     private fun sendFeatureFlagCalled(
         key: String,
         value: Any?,
-        sendFeatureFlagEvent: Boolean?,
+        sendFeatureFlagEvent: Boolean? = null,
     ) {
         if (remoteConfig == null) {
             return
