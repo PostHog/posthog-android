@@ -1,7 +1,6 @@
 package com.posthog.internal
 
 import com.posthog.FeatureFlagResult
-import com.posthog.PostHogCaptureFeatureFlagCalledProvider
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
@@ -34,8 +33,8 @@ public class PostHogRemoteConfig(
     private val executor: ExecutorService,
     private val defaultPersonPropertiesProvider: PostHogDefaultPersonPropertiesProvider =
         PostHogDefaultPersonPropertiesProvider { emptyMap() },
-    private val captureFeatureFlagCalledProvider: PostHogCaptureFeatureFlagCalledProvider =
-        PostHogCaptureFeatureFlagCalledProvider { _, _ -> },
+    private val captureFeatureFlagCalledProvider: PostHogFeatureFlagCalledProvider =
+        PostHogFeatureFlagCalledProvider { _, _ -> },
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
     private var isLoadingFeatureFlags = AtomicBoolean(false)
@@ -162,7 +161,7 @@ public class PostHogRemoteConfig(
         // we consider session replay is active
 
         if (flagKey != null && flagValue != null) {
-            captureFeatureFlagCalledProvider.onCaptureFeatureFlagCalled(flagKey, flagValue)
+            captureFeatureFlagCalledProvider.onFeatureFlagCalled(flagKey, flagValue)
         }
 
         return recordingActive

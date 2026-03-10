@@ -4,6 +4,7 @@ import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
+import com.posthog.internal.PostHogFeatureFlagCalledProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
@@ -139,7 +140,7 @@ public class PostHog private constructor(
                         remoteConfigExecutor,
                         PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
                         onRemoteConfigLoaded,
-                        PostHogCaptureFeatureFlagCalledProvider { key, value ->
+                        PostHogFeatureFlagCalledProvider { key, value ->
                             sendFeatureFlagCalled(key, value, sendFeatureFlagEvent = true)
                         },
                     )
