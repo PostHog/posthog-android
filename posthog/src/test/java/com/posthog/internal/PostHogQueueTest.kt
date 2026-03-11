@@ -384,11 +384,19 @@ internal class PostHogQueueTest {
     }
 
     @Test
-    fun `retries on 504`() {
-        val e = PostHogApiError(504, "", null)
+    fun `retries on 429`() {
+        val e = PostHogApiError(429, "", null)
         val config = PostHogConfig(API_KEY)
 
         assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `does not retry on 504`() {
+        val e = PostHogApiError(504, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertTrue(deleteFilesIfAPIError(e, config))
     }
 
     @Test
