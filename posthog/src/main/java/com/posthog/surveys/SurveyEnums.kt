@@ -63,6 +63,8 @@ public enum class SurveyMatchType(public val value: String) {
     IS_NOT("is_not"),
     I_CONTAINS("icontains"),
     NOT_I_CONTAINS("not_icontains"),
+    GT("gt"),
+    LT("lt"),
     ;
 
     public companion object {
@@ -74,6 +76,8 @@ public enum class SurveyMatchType(public val value: String) {
                 "is_not" -> IS_NOT
                 "icontains" -> I_CONTAINS
                 "not_icontains" -> NOT_I_CONTAINS
+                "gt" -> GT
+                "lt" -> LT
                 else -> null
             }
         }

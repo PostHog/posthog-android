@@ -1283,8 +1283,12 @@ public final class com/posthog/internal/replay/RRWireframe {
 }
 
 public abstract interface class com/posthog/internal/surveys/PostHogSurveysHandler {
-	public abstract fun onEvent (Ljava/lang/String;)V
+	public abstract fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun onSurveysLoaded (Ljava/util/List;)V
+}
+
+public final class com/posthog/internal/surveys/PostHogSurveysHandler$DefaultImpls {
+	public static synthetic fun onEvent$default (Lcom/posthog/internal/surveys/PostHogSurveysHandler;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 }
 
 public final class com/posthog/internal/surveys/SurveyUtilsKt {
@@ -1715,12 +1719,15 @@ public final class com/posthog/surveys/SurveyConditions {
 }
 
 public final class com/posthog/surveys/SurveyEventCondition {
-	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;)Lcom/posthog/surveys/SurveyEventCondition;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/SurveyEventCondition;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/surveys/SurveyEventCondition;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Ljava/util/Map;)Lcom/posthog/surveys/SurveyEventCondition;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/SurveyEventCondition;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/surveys/SurveyEventCondition;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getName ()Ljava/lang/String;
+	public final fun getPropertyFilters ()Ljava/util/Map;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1754,8 +1761,10 @@ public final class com/posthog/surveys/SurveyFeatureFlagKeyValue {
 public final class com/posthog/surveys/SurveyMatchType : java/lang/Enum {
 	public static final field Companion Lcom/posthog/surveys/SurveyMatchType$Companion;
 	public static final field EXACT Lcom/posthog/surveys/SurveyMatchType;
+	public static final field GT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field IS_NOT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field I_CONTAINS Lcom/posthog/surveys/SurveyMatchType;
+	public static final field LT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field NOT_I_CONTAINS Lcom/posthog/surveys/SurveyMatchType;
 	public static final field NOT_REGEX Lcom/posthog/surveys/SurveyMatchType;
 	public static final field REGEX Lcom/posthog/surveys/SurveyMatchType;
@@ -1766,6 +1775,12 @@ public final class com/posthog/surveys/SurveyMatchType : java/lang/Enum {
 
 public final class com/posthog/surveys/SurveyMatchType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyMatchType;
+}
+
+public final class com/posthog/surveys/SurveyPropertyFilter {
+	public fun <init> (Ljava/util/List;Lcom/posthog/surveys/SurveyMatchType;)V
+	public final fun getOperator ()Lcom/posthog/surveys/SurveyMatchType;
+	public final fun getValues ()Ljava/util/List;
 }
 
 public class com/posthog/surveys/SurveyQuestion {
