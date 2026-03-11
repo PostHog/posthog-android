@@ -1,5 +1,11 @@
 ## Next
 
+## 3.36.1
+
+### Patch Changes
+
+- cd5efe1: Load cached disk events into PostHogQueue on start so they are sent in order with new events
+
 ## 3.36.0
 
 ### Minor Changes

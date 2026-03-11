@@ -1,5 +1,11 @@
 ## Next
 
+## 6.7.2
+
+### Patch Changes
+
+- cd5efe1: Load cached disk events into PostHogQueue on start so they are sent in order with new events
+
 ## 6.7.1
 
 ### Patch Changes
