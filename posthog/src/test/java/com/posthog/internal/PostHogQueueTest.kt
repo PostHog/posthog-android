@@ -444,6 +444,7 @@ internal class PostHogQueueTest {
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }
 
     @Test
