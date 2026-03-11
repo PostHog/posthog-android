@@ -283,18 +283,22 @@ internal class PostHogQueue(
     }
 
     override fun flush() {
-        // only flushes if the queue is above the threshold (not empty in this case)
-        if (!isAboveThreshold(1)) {
-            return
-        }
-
         if (isFlushing.getAndSet(true)) {
             config.logger.log("Queue is flushing.")
             return
         }
 
         executor.executeSafely {
+            // load any cached events from disk before checking the threshold
+            ensureCachedEventsLoaded()
+
             if (!isConnected()) {
+                isFlushing.set(false)
+                return@executeSafely
+            }
+
+            // only flushes if the queue is above the threshold (not empty in this case)
+            if (!isAboveThreshold(1)) {
                 isFlushing.set(false)
                 return@executeSafely
             }
@@ -364,6 +368,8 @@ internal class PostHogQueue(
             }
 
             val files = (dir.listFiles() ?: emptyArray()).toMutableList()
+
+            if (files.isEmpty()) return
 
             // sort by last modified date ascending so events are sent in order
             files.sortBy { file -> file.lastModified() }
