@@ -168,7 +168,10 @@ internal class PostHogMemoryQueueTest {
             getSut(
                 http.url("/").toString(),
                 flushAt = 1,
-                networkStatus = PostHogNetworkStatus { false },
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = false
+                    },
             )
 
         sut.add(generateEvent())

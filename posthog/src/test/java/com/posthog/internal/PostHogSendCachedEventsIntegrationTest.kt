@@ -60,9 +60,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
         val storagePrefix = writeFile(listOf(event))
 
         val sut =
-            getSut(storagePrefix = storagePrefix, host = "host", networkStatus = {
-                false
-            })
+            getSut(
+                storagePrefix = storagePrefix,
+                host = "host",
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = false
+                    },
+            )
 
         sut.install(mock())
 

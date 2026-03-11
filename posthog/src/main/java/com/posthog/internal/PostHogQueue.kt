@@ -353,6 +353,11 @@ internal class PostHogQueue(
             this.timerTask = timerTask
             this.timer = timer
         }
+
+        config.networkStatus?.register {
+            config.logger.log("Network is available, flushing queued events.")
+            flush()
+        }
     }
 
     /**
@@ -397,6 +402,8 @@ internal class PostHogQueue(
         synchronized(timerLock) {
             stopTimer()
         }
+
+        config.networkStatus?.unregister()
     }
 
     override fun clear() {
