@@ -2,6 +2,7 @@ package com.posthog.compliance
 
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
+import com.posthog.internal.GzipRequestInterceptor
 import com.posthog.internal.PostHogContext
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.gson.gson
@@ -15,7 +16,6 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import com.posthog.internal.GzipRequestInterceptor
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.util.UUID
