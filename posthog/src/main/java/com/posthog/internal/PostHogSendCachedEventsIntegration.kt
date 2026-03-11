@@ -5,22 +5,18 @@ import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import java.io.File
-import java.io.FileFilter
 import java.io.IOException
-import java.util.Date
 import java.util.concurrent.ExecutorService
 
 /**
- * The integration that send all the cached events, triggered once the SDK is setup
+ * The integration that sends all the cached legacy events, triggered once the SDK is setup
  * @property config the Config
  * @property api the API class
- * @property startDate the startDate cut off so we don't race with the Queue
  * @property executor the Executor
  */
 internal class PostHogSendCachedEventsIntegration(
     private val config: PostHogConfig,
     private val api: PostHogApi,
-    private val startDate: Date,
     private val executor: ExecutorService,
 ) : PostHogIntegration {
     private companion object {
@@ -41,8 +37,6 @@ internal class PostHogSendCachedEventsIntegration(
             }
 
             flushLegacyEvents()
-            flushEvents(config.storagePrefix, PostHogApiEndpoint.BATCH)
-            flushEvents(config.replayStoragePrefix, PostHogApiEndpoint.SNAPSHOT)
         }
         executor.shutdown()
     }
@@ -136,114 +130,12 @@ internal class PostHogSendCachedEventsIntegration(
         }
     }
 
-    private fun deleteFileSafely(
-        file: File,
-        iterator: MutableIterator<File>,
-        throwable: Throwable? = null,
-    ) {
-        config.logger.log("File: ${file.name} failed to parse: $throwable.")
-        iterator.remove()
-        file.deleteSafely(config)
-    }
-
     private fun removeFileSafely(
         iterator: MutableIterator<ByteArray>,
         throwable: Throwable? = null,
     ) {
         config.logger.log("Event failed to parse: $throwable.")
         iterator.remove()
-    }
-
-    @Throws(PostHogApiError::class, IOException::class)
-    private fun flushEvents(
-        storagePrefix: String?,
-        endpoint: PostHogApiEndpoint,
-    ) {
-        storagePrefix?.let {
-            val dir = File(it, config.apiKey)
-
-            if (!dir.existsSafely(config)) {
-                return
-            }
-            try {
-                // so that we don't try to send events in this batch that is already in the queue
-                // but just cached events
-                val time = startDate.time
-                val fileFilter = FileFilter { file -> file.lastModified() <= time }
-
-                val listFiles = (dir.listFiles(fileFilter) ?: emptyArray()).toMutableList()
-
-                // sort by date asc so its sent in order
-                listFiles.sortBy { file ->
-                    file.lastModified()
-                }
-
-                while (listFiles.isNotEmpty()) {
-                    val events = mutableListOf<PostHogEvent>()
-                    val iterator = listFiles.iterator()
-                    var eventsCount = 0
-
-                    while (iterator.hasNext()) {
-                        val file = iterator.next()
-
-                        try {
-                            val inputStream =
-                                config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
-                            inputStream.use { theInputStream ->
-                                val event = config.serializer.deserialize<PostHogEvent?>(theInputStream.reader().buffered())
-                                event?.let {
-                                    events.add(event)
-                                    eventsCount++
-                                } ?: run {
-                                    deleteFileSafely(file, iterator)
-                                }
-                            }
-                        } catch (e: Throwable) {
-                            deleteFileSafely(file, iterator, e)
-                        }
-
-                        // stop the while loop since the batch is full
-                        if (events.size >= config.maxBatchSize) {
-                            break
-                        }
-                    }
-
-                    if (events.isNotEmpty()) {
-                        var deleteFiles = true
-                        try {
-                            when (endpoint) {
-                                PostHogApiEndpoint.BATCH -> api.batch(events)
-                                PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
-                            }
-                        } catch (e: PostHogApiError) {
-                            deleteFiles = deleteFilesIfAPIError(e, config)
-
-                            throw e
-                        } catch (e: IOException) {
-                            // no connection should try again
-                            if (e.isNetworkingError()) {
-                                deleteFiles = false
-                            }
-                            throw e
-                        } finally {
-                            if (deleteFiles) {
-                                for (i in 1..eventsCount) {
-                                    var file: File? = null
-                                    try {
-                                        file = listFiles.removeFirst()
-                                        file.deleteSafely(config)
-                                    } catch (e: Throwable) {
-                                        config.logger.log("Failed to remove file: ${file?.name}: $e.")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e: Throwable) {
-                config.logger.log("Flushing events failed: $e.")
-            }
-        }
     }
 
     override fun uninstall() {

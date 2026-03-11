@@ -155,12 +155,10 @@ public class PostHog private constructor(
                     config.optOut = optOut
                 }
 
-                val startDate = config.dateProvider.currentDate()
                 val sendCachedEventsIntegration =
                     PostHogSendCachedEventsIntegration(
                         config,
                         api,
-                        startDate,
                         cachedEventsExecutor,
                     )
 
