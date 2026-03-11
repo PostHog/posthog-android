@@ -191,16 +191,11 @@ internal class PostHogQueue(
         executeBatch()
     }
 
-    private fun executeBatch() {
-        if (!isConnected()) {
-            isFlushing.set(false)
-            return
-        }
-
+    private fun executeWithRetry(block: () -> Unit) {
         var retry = false
         var retryAfterSeconds: Int? = null
         try {
-            batchEvents()
+            block()
             retryCount = 0
         } catch (e: Throwable) {
             config.logger.log("Flushing failed: $e.")
@@ -222,6 +217,17 @@ internal class PostHogQueue(
             calculateDelay(retry, retryAfterSeconds)
 
             isFlushing.set(false)
+        }
+    }
+
+    private fun executeBatch() {
+        if (!isConnected()) {
+            isFlushing.set(false)
+            return
+        }
+
+        executeWithRetry {
+            batchEvents()
         }
     }
 
@@ -322,33 +328,10 @@ internal class PostHogQueue(
                 return@executeSafely
             }
 
-            var retry = false
-            var retryAfterSeconds: Int? = null
-            try {
+            executeWithRetry {
                 while (deque.isNotEmpty()) {
                     batchEvents()
                 }
-                retryCount = 0
-            } catch (e: Throwable) {
-                config.logger.log("Flushing failed: $e.")
-
-                retryCount++
-
-                if (retryCount > config.maxRetries) {
-                    config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping events.")
-                    retryCount = 0
-                    dropAllEvents()
-                } else {
-                    retry = true
-
-                    if (e is PostHogApiError) {
-                        retryAfterSeconds = e.retryAfterSeconds
-                    }
-                }
-            } finally {
-                calculateDelay(retry, retryAfterSeconds)
-
-                isFlushing.set(false)
             }
         }
     }
