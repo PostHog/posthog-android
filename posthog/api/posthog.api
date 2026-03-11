@@ -744,6 +744,13 @@ public final class com/posthog/internal/PostHogMemoryPreferences : com/posthog/i
 
 public abstract interface class com/posthog/internal/PostHogNetworkStatus {
 	public abstract fun isConnected ()Z
+	public abstract fun register (Lkotlin/jvm/functions/Function0;)V
+	public abstract fun unregister ()V
+}
+
+public final class com/posthog/internal/PostHogNetworkStatus$DefaultImpls {
+	public static fun register (Lcom/posthog/internal/PostHogNetworkStatus;Lkotlin/jvm/functions/Function0;)V
+	public static fun unregister (Lcom/posthog/internal/PostHogNetworkStatus;)V
 }
 
 public final class com/posthog/internal/PostHogNoOpLogger : com/posthog/internal/PostHogLogger {

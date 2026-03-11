@@ -72,9 +72,15 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         val legacyStoragePrefix = writeLegacyFile(listOf(event))
 
         val sut =
-            getSut(Date(), legacyStoragePrefix = legacyStoragePrefix, host = "host", networkStatus = {
-                false
-            })
+            getSut(
+                Date(),
+                legacyStoragePrefix = legacyStoragePrefix,
+                host = "host",
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = false
+                    },
+            )
 
         sut.install(mock())
 
