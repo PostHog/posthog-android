@@ -1,5 +1,11 @@
 ## Next
 
+## 3.37.0
+
+### Minor Changes
+
+- 2cbd3f1: feat: Add event buffer flush to onStop hook
+
 ## 3.36.1
 
 ### Patch Changes
