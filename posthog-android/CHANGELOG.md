@@ -1,5 +1,12 @@
 ## Next
 
+## 3.38.0
+
+### Minor Changes
+
+- b660096: Flush queued events when network becomes available via ConnectivityManager callback
+- 05504e3: support survey event property filters
+
 ## 3.37.0
 
 ### Minor Changes
