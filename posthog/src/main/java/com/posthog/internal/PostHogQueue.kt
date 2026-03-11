@@ -206,6 +206,7 @@ internal class PostHogQueue(
             if (retryCount > config.maxRetries) {
                 config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping events.")
                 retryCount = 0
+                pausedUntil = null
                 dropAllEvents()
             } else {
                 retry = true
