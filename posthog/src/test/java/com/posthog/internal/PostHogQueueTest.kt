@@ -161,9 +161,14 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val sut =
-            getSut(host = url.toString(), flushAt = 1, networkStatus = {
-                false
-            })
+            getSut(
+                host = url.toString(),
+                flushAt = 1,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = false
+                    },
+            )
 
         sut.add(generateEvent())
 
@@ -179,9 +184,14 @@ internal class PostHogQueueTest {
 
         var connected = false
         val sut =
-            getSut(host = url.toString(), flushAt = 1, networkStatus = {
-                connected
-            })
+            getSut(
+                host = url.toString(),
+                flushAt = 1,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+                    },
+            )
 
         sut.add(generateEvent())
 
@@ -194,6 +204,47 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `flushes queued events when network becomes available`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        var connected = false
+        var onAvailableCallback: (() -> Unit)? = null
+        val sut =
+            getSut(
+                host = url.toString(),
+                flushAt = 1,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+
+                        override fun register(callback: () -> Unit) {
+                            onAvailableCallback = callback
+                        }
+                    },
+            )
+
+        sut.start()
+
+        sut.add(generateEvent())
+
+        executor.awaitExecution()
+
+        // event was queued but not flushed because network is disconnected
+        assertEquals(0, http.requestCount)
+        assertEquals(1, sut.dequeList.size)
+
+        // simulate network becoming available
+        connected = true
+        onAvailableCallback?.invoke()
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+        assertEquals(0, sut.dequeList.size)
     }
 
     @Test
