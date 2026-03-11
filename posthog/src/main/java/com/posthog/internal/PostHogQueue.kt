@@ -484,7 +484,7 @@ internal fun deleteFilesIfAPIError(
         return false
     }
     // Transient server errors and rate limiting, retry
-    if (e.statusCode in listOf(429, 500, 502, 503)) {
+    if (e.statusCode in listOf(429, 500, 502, 503, 504)) {
         config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
