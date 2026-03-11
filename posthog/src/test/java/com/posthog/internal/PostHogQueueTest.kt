@@ -368,6 +368,38 @@ internal class PostHogQueueTest {
     }
 
     @Test
+    fun `retries on 500`() {
+        val e = PostHogApiError(500, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 502`() {
+        val e = PostHogApiError(502, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 504`() {
+        val e = PostHogApiError(504, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 503`() {
+        val e = PostHogApiError(503, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
     fun `flush the event right away if exception and fatal`() {
         val http = mockHttp()
         val url = http.url("/")

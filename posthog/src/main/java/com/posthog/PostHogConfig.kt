@@ -122,6 +122,11 @@ public open class PostHogConfig(
      * Defaults to 50
      */
     public var maxBatchSize: Int = 50,
+    /**
+     * Maximum number of retries for failed flush attempts before events are dropped
+     * Defaults to 3
+     */
+    public var maxRetries: Int = 3,
     // (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     /**
      * Interval in seconds for sending events over the wire

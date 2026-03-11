@@ -15,6 +15,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import com.posthog.internal.GzipRequestInterceptor
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.util.UUID
@@ -214,13 +215,6 @@ fun main() {
                     // Close existing instance if any
                     AdapterContext.postHog?.close()
 
-                    // Create OkHttpClient with tracking interceptor
-                    // The SDK will add its own gzip interceptor after this
-                    val httpClient =
-                        okhttp3.OkHttpClient.Builder()
-                            .addInterceptor(TrackingInterceptor())
-                            .build()
-
                     // Create new config
                     val flushIntervalMs = req.flush_interval_ms ?: 100
                     val flushIntervalSeconds = maxOf(1, flushIntervalMs / 1000) // Min 1 second
@@ -235,7 +229,16 @@ fun main() {
                             preloadFeatureFlags = false,
                         )
 
+                    // Create OkHttpClient with tracking and gzip interceptors
+                    val httpClient =
+                        okhttp3.OkHttpClient.Builder()
+                            .addInterceptor(TrackingInterceptor())
+                            .addInterceptor(GzipRequestInterceptor(config))
+                            .build()
+
                     config.httpClient = httpClient
+
+                    req.max_retries?.let { config.maxRetries = it }
 
                     // Set storage prefix for file-backed queue
                     config.storagePrefix = "/tmp/posthog-queue"

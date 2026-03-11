@@ -574,6 +574,11 @@ public final class com/posthog/internal/FlagProperty {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/posthog/internal/GzipRequestInterceptor : okhttp3/Interceptor {
+	public fun <init> (Lcom/posthog/PostHogConfig;)V
+	public fun intercept (Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;
+}
+
 public final class com/posthog/internal/LocalEvaluationApiResponse {
 	public static final field Companion Lcom/posthog/internal/LocalEvaluationApiResponse$Companion;
 	public synthetic fun <init> (Lcom/posthog/internal/LocalEvaluationResponse;Ljava/lang/String;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -639,9 +644,11 @@ public final class com/posthog/internal/PostHogApiEndpoint : java/lang/Enum {
 }
 
 public final class com/posthog/internal/PostHogApiError : java/lang/RuntimeException {
-	public fun <init> (ILjava/lang/String;Lokhttp3/ResponseBody;)V
+	public fun <init> (ILjava/lang/String;Lokhttp3/ResponseBody;Ljava/lang/Integer;)V
+	public synthetic fun <init> (ILjava/lang/String;Lokhttp3/ResponseBody;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getBody ()Lokhttp3/ResponseBody;
 	public fun getMessage ()Ljava/lang/String;
+	public final fun getRetryAfterSeconds ()Ljava/lang/Integer;
 	public final fun getStatusCode ()I
 	public fun toString ()Ljava/lang/String;
 }
