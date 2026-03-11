@@ -310,6 +310,12 @@ internal class PostHogQueue(
                 return@executeSafely
             }
 
+            // respect Retry-After / backoff pause
+            if (!canFlushBatch()) {
+                isFlushing.set(false)
+                return@executeSafely
+            }
+
             // only flushes if the queue is above the threshold (not empty in this case)
             if (!isAboveThreshold(1)) {
                 isFlushing.set(false)
