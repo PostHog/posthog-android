@@ -197,6 +197,7 @@ internal class PostHogQueue(
         try {
             block()
             retryCount = 0
+            pausedUntil = null
         } catch (e: Throwable) {
             config.logger.log("Flushing failed: $e.")
 
