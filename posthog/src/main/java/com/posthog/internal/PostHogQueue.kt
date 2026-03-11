@@ -280,7 +280,11 @@ internal class PostHogQueue(
         } catch (e: PostHogApiError) {
             deleteFiles = deleteFilesIfAPIError(e, config)
 
-            throw e
+            // only re-throw if retriable (files kept), so executeWithRetry
+            // can track retryCount and apply backoff
+            if (!deleteFiles) {
+                throw e
+            }
         } catch (e: IOException) {
             // no connection should try again
             if (e.isNetworkingError()) {

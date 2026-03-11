@@ -130,7 +130,7 @@ internal class PostHogQueueTest {
 
     @Test
     fun `does not flush if paused`() {
-        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setBody("error"))
         val url = http.url("/")
 
         val fakeCurrentTime = FakePostHogDateProvider()
