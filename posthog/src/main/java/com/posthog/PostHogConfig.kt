@@ -7,6 +7,7 @@ import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
 import com.posthog.internal.PostHogDeviceDateProvider
+import com.posthog.internal.PostHogFeatureFlagCalledProvider
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
@@ -228,6 +229,7 @@ public open class PostHogConfig(
         ExecutorService,
         PostHogDefaultPersonPropertiesProvider?,
         PostHogOnRemoteConfigLoaded?,
+        PostHogFeatureFlagCalledProvider?,
     ) -> PostHogFeatureFlagsInterface =
         {
                 config,
@@ -235,6 +237,7 @@ public open class PostHogConfig(
                 executor,
                 defaultPersonPropertiesProvider,
                 onRemoteConfigLoaded,
+                featureFlagCalledProvider,
             ->
             PostHogRemoteConfig(
                 config,
@@ -243,6 +246,7 @@ public open class PostHogConfig(
                 defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider {
                     emptyMap()
                 },
+                featureFlagCalledProvider ?: PostHogFeatureFlagCalledProvider { _, _ -> },
                 onRemoteConfigLoaded,
             )
         },

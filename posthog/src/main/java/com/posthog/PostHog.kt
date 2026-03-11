@@ -4,6 +4,7 @@ import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
+import com.posthog.internal.PostHogFeatureFlagCalledProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
@@ -139,6 +140,9 @@ public class PostHog private constructor(
                         remoteConfigExecutor,
                         PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
                         onRemoteConfigLoaded,
+                        PostHogFeatureFlagCalledProvider { key, value ->
+                            sendFeatureFlagCalled(key = key, value = value)
+                        },
                     )
 
                 // no need to lock optOut here since the setup is locked already
@@ -151,12 +155,10 @@ public class PostHog private constructor(
                     config.optOut = optOut
                 }
 
-                val startDate = config.dateProvider.currentDate()
                 val sendCachedEventsIntegration =
                     PostHogSendCachedEventsIntegration(
                         config,
                         api,
-                        startDate,
                         cachedEventsExecutor,
                     )
 
@@ -1078,8 +1080,11 @@ public class PostHog private constructor(
     private fun sendFeatureFlagCalled(
         key: String,
         value: Any?,
-        sendFeatureFlagEvent: Boolean?,
+        sendFeatureFlagEvent: Boolean? = null,
     ) {
+        if (remoteConfig == null) {
+            return
+        }
         val effectiveSendFeatureFlagEvent =
             sendFeatureFlagEvent
                 ?: config?.sendFeatureFlagEvent
