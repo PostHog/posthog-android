@@ -274,6 +274,10 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val fakeCurrentTime = FakePostHogDateProvider()
+        // set pause to the past so flush() is not blocked by backoff
+        val date = parseISO8601Date("1970-09-20T11:58:49.000Z")!!
+        fakeCurrentTime.setAddSecondsToCurrentDate(date)
+
         val path = tmpDir.newFolder().absolutePath
         val sut = getSut(host = url.toString(), flushAt = 1, storagePrefix = path, dateProvider = fakeCurrentTime)
 
