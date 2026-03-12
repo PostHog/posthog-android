@@ -450,14 +450,7 @@ internal class PostHogQueue(
 
     override fun clear() {
         executor.executeSafely {
-            val tempFiles: List<File>
-            synchronized(dequeLock) {
-                tempFiles = deque.toList()
-                deque.clear()
-            }
-            tempFiles.forEach {
-                it.deleteSafely(config)
-            }
+            dropAllEvents()
         }
     }
 
