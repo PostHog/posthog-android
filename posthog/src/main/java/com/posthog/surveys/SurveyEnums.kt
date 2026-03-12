@@ -63,6 +63,8 @@ public enum class SurveyMatchType(public val value: String) {
     IS_NOT("is_not"),
     I_CONTAINS("icontains"),
     NOT_I_CONTAINS("not_icontains"),
+    GT("gt"),
+    LT("lt"),
     ;
 
     public companion object {
@@ -74,6 +76,8 @@ public enum class SurveyMatchType(public val value: String) {
                 "is_not" -> IS_NOT
                 "icontains" -> I_CONTAINS
                 "not_icontains" -> NOT_I_CONTAINS
+                "gt" -> GT
+                "lt" -> LT
                 else -> null
             }
         }
@@ -146,6 +150,24 @@ public enum class SurveyQuestionBranchingType(public val value: String) {
                 "end" -> END
                 "response_based" -> RESPONSE_BASED
                 "specific_question" -> SPECIFIC_QUESTION
+                else -> null
+            }
+        }
+    }
+}
+
+public enum class SurveySchedule(public val value: String) {
+    ONCE("once"),
+    RECURRING("recurring"),
+    ALWAYS("always"),
+    ;
+
+    public companion object {
+        public fun fromValue(value: String): SurveySchedule? {
+            return when (value) {
+                "once" -> ONCE
+                "recurring" -> RECURRING
+                "always" -> ALWAYS
                 else -> null
             }
         }

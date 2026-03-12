@@ -262,6 +262,28 @@ public interface PostHogInterface : PostHogCoreInterface {
         reloadFeatureFlags: Boolean = true,
     )
 
+    /**
+     * Captures a feature view event when a user sees a feature in the UI.
+     *
+     * @param flag The feature flag key.
+     * @param flagVariant Optional variant key.
+     */
+    public fun captureFeatureView(
+        flag: String,
+        flagVariant: String? = null,
+    )
+
+    /**
+     * Captures a feature interaction event when a user interacts with a feature.
+     *
+     * @param flag The feature flag key
+     * @param flagVariant Optional variant key.
+     */
+    public fun captureFeatureInteraction(
+        flag: String,
+        flagVariant: String? = null,
+    )
+
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
 }

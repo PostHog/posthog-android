@@ -1,6 +1,5 @@
 package com.posthog.internal
 
-import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
@@ -12,7 +11,6 @@ import java.io.File
 import java.io.StringWriter
 import java.math.BigDecimal
 import java.math.BigInteger
-import java.text.ParsePosition
 import java.util.Date
 import java.util.UUID
 import kotlin.test.AfterTest
@@ -36,7 +34,7 @@ internal class PostHogSerializerTest {
         assertEquals("value", event.properties!!["prop"])
         assertEquals("8c04e5c1-8f6e-4002-96fd-1804799b6ffe", event.uuid.toString())
 
-        val date = ISO8601Utils.parse("2023-09-20T11:58:49.000Z", ParsePosition(0))
+        val date = parseISO8601Date("2023-09-20T11:58:49.000Z")!!
         assertTrue(event.timestamp.compareTo(date) == 0)
     }
 
@@ -192,11 +190,13 @@ internal class PostHogSerializerTest {
         val serialized = StringWriter()
         sut.serialize(flagsRequest, serialized)
         val actualJson = serialized.toString()
+        val timezone = java.util.TimeZone.getDefault().id
         val expectedJson =
             """
             {
                 "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
                 "distinct_id": "test_user",
+                "timezone": "$timezone",
                 "person_properties": {
                     "string_prop": "test_value",
                     "int_prop": 42,

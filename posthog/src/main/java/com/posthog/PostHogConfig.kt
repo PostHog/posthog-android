@@ -7,6 +7,7 @@ import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
 import com.posthog.internal.PostHogDeviceDateProvider
+import com.posthog.internal.PostHogFeatureFlagCalledProvider
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogNetworkStatus
@@ -100,6 +101,10 @@ public open class PostHogConfig(
      * Preload PostHog remote config automatically
      * Defaults to true
      */
+    @Deprecated(
+        message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
+        level = DeprecationLevel.WARNING,
+    )
     public var remoteConfig: Boolean = true,
     /**
      * Number of minimum events before they are sent over the wire
@@ -224,6 +229,7 @@ public open class PostHogConfig(
         ExecutorService,
         PostHogDefaultPersonPropertiesProvider?,
         PostHogOnRemoteConfigLoaded?,
+        PostHogFeatureFlagCalledProvider?,
     ) -> PostHogFeatureFlagsInterface =
         {
                 config,
@@ -231,6 +237,7 @@ public open class PostHogConfig(
                 executor,
                 defaultPersonPropertiesProvider,
                 onRemoteConfigLoaded,
+                featureFlagCalledProvider,
             ->
             PostHogRemoteConfig(
                 config,
@@ -239,6 +246,7 @@ public open class PostHogConfig(
                 defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider {
                     emptyMap()
                 },
+                featureFlagCalledProvider ?: PostHogFeatureFlagCalledProvider { _, _ -> },
                 onRemoteConfigLoaded,
             )
         },
@@ -326,6 +334,14 @@ public open class PostHogConfig(
 
     @PostHogInternal
     public var snapshotEndpoint: String = "/s/"
+
+    /**
+     * Provider for the local session recording sample rate.
+     * Set by platform-specific modules (e.g., Android) to supply the sample rate
+     * from the session replay config without duplicating the field.
+     */
+    @PostHogInternal
+    public var sampleRateProvider: (() -> Double?)? = null
 
     /**
      * Reference to the PostHogRemoteConfig instance, set during setup.

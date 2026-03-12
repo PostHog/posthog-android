@@ -4,6 +4,7 @@ import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
+import com.posthog.internal.PostHogFeatureFlagCalledProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
@@ -139,6 +140,9 @@ public class PostHog private constructor(
                         remoteConfigExecutor,
                         PostHogDefaultPersonPropertiesProvider { getDefaultPersonProperties() },
                         onRemoteConfigLoaded,
+                        PostHogFeatureFlagCalledProvider { key, value ->
+                            sendFeatureFlagCalled(key = key, value = value)
+                        },
                     )
 
                 // no need to lock optOut here since the setup is locked already
@@ -151,12 +155,10 @@ public class PostHog private constructor(
                     config.optOut = optOut
                 }
 
-                val startDate = config.dateProvider.currentDate()
                 val sendCachedEventsIntegration =
                     PostHogSendCachedEventsIntegration(
                         config,
                         api,
-                        startDate,
                         cachedEventsExecutor,
                     )
 
@@ -208,6 +210,7 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
+                @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
                     when {
                         config.remoteConfig ->
@@ -531,7 +534,7 @@ public class PostHog private constructor(
                     timestamp,
                 )
                 // Notify surveys integration about the event
-                surveysHandler?.onEvent(event)
+                surveysHandler?.onEvent(event, mergedProperties)
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
@@ -629,6 +632,54 @@ public class PostHog private constructor(
         props["alias"] = alias
 
         capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
+    }
+
+    public override fun captureFeatureView(
+        flag: String,
+        flagVariant: String?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        val props = mutableMapOf<String, Any>()
+        props["feature_flag"] = flag
+
+        val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
+        if (variant is String) {
+            props["feature_flag_variant"] = variant
+        }
+
+        val userProperties = mapOf("\$feature_view/$flag" to variant)
+
+        capture(
+            event = PostHogEventName.FEATURE_VIEW.event,
+            properties = props,
+            userProperties = userProperties,
+        )
+    }
+
+    public override fun captureFeatureInteraction(
+        flag: String,
+        flagVariant: String?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        val props = mutableMapOf<String, Any>()
+        props["feature_flag"] = flag
+
+        val variant = flagVariant ?: getFeatureFlag(flag, sendFeatureFlagEvent = false) ?: true
+        if (variant is String) {
+            props["feature_flag_variant"] = variant
+        }
+
+        val userProperties = mapOf("\$feature_interaction/$flag" to variant)
+
+        capture(
+            PostHogEventName.FEATURE_INTERACTION.event,
+            properties = props,
+            userProperties = userProperties,
+        )
     }
 
     /**
@@ -1029,8 +1080,11 @@ public class PostHog private constructor(
     private fun sendFeatureFlagCalled(
         key: String,
         value: Any?,
-        sendFeatureFlagEvent: Boolean?,
+        sendFeatureFlagEvent: Boolean? = null,
     ) {
+        if (remoteConfig == null) {
+            return
+        }
         val effectiveSendFeatureFlagEvent =
             sendFeatureFlagEvent
                 ?: config?.sendFeatureFlagEvent
@@ -1276,6 +1330,16 @@ public class PostHog private constructor(
         return sessionReplayHandler?.isActive() == true && isSessionActive()
     }
 
+    private fun shouldRecordSession(): Boolean {
+        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString()
+        if (sessionId != null) {
+            // sampling is deterministic so we can sample again for the same session id
+            return remoteConfig?.makeSamplingDecision(sessionId) ?: true
+        }
+        // no session id
+        return false
+    }
+
     override fun startSessionReplay(resumeCurrent: Boolean) {
         if (!isEnabled()) {
             return
@@ -1295,10 +1359,19 @@ public class PostHog private constructor(
             }
 
             if (resumeCurrent) {
+                if (!shouldRecordSession()) {
+                    return
+                }
+
                 it.start(true)
             } else {
                 endSession()
                 startSession()
+
+                if (!shouldRecordSession()) {
+                    return
+                }
+
                 it.start(false)
             }
         } ?: run {
@@ -1523,6 +1596,20 @@ public class PostHog private constructor(
 
         public override fun alias(alias: String) {
             shared.alias(alias)
+        }
+
+        public override fun captureFeatureView(
+            flag: String,
+            flagVariant: String?,
+        ) {
+            shared.captureFeatureView(flag, flagVariant)
+        }
+
+        public override fun captureFeatureInteraction(
+            flag: String,
+            flagVariant: String?,
+        ) {
+            shared.captureFeatureInteraction(flag, flagVariant)
         }
 
         public override fun isOptOut(): Boolean = shared.isOptOut()

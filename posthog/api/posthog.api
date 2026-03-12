@@ -25,6 +25,8 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun alias (Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
+	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
+	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public fun close ()V
 	public fun distinctId ()Ljava/lang/String;
 	public fun endSession ()V
@@ -62,6 +64,8 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun alias (Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
+	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
+	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public fun close ()V
 	public fun debug (Z)V
 	public fun distinctId ()Ljava/lang/String;
@@ -111,8 +115,8 @@ public class com/posthog/PostHogConfig {
 	public static final field DEFAULT_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function5;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function5;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getApiKey ()Ljava/lang/String;
@@ -147,9 +151,10 @@ public class com/posthog/PostHogConfig {
 	public final fun getReleaseIdentifier ()Ljava/lang/String;
 	public final fun getRemoteConfig ()Z
 	public final fun getRemoteConfigHolder ()Lcom/posthog/internal/PostHogRemoteConfig;
-	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function5;
+	public final fun getRemoteConfigProvider ()Lkotlin/jvm/functions/Function6;
 	public final fun getReplayStoragePrefix ()Ljava/lang/String;
 	public final fun getReuseAnonymousId ()Z
+	public final fun getSampleRateProvider ()Lkotlin/jvm/functions/Function0;
 	public final fun getSdkName ()Ljava/lang/String;
 	public final fun getSdkVersion ()Ljava/lang/String;
 	public final fun getSendFeatureFlagEvent ()Z
@@ -189,6 +194,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setRemoteConfig (Z)V
 	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
 	public final fun setReuseAnonymousId (Z)V
+	public final fun setSampleRateProvider (Lkotlin/jvm/functions/Function0;)V
 	public final fun setSdkName (Ljava/lang/String;)V
 	public final fun setSdkVersion (Ljava/lang/String;)V
 	public final fun setSendFeatureFlagEvent (Z)V
@@ -260,6 +266,8 @@ public final class com/posthog/PostHogEventName : java/lang/Enum {
 	public static final field Companion Lcom/posthog/PostHogEventName$Companion;
 	public static final field EXCEPTION Lcom/posthog/PostHogEventName;
 	public static final field FEATURE_FLAG_CALLED Lcom/posthog/PostHogEventName;
+	public static final field FEATURE_INTERACTION Lcom/posthog/PostHogEventName;
+	public static final field FEATURE_VIEW Lcom/posthog/PostHogEventName;
 	public static final field GROUP_IDENTIFY Lcom/posthog/PostHogEventName;
 	public static final field IDENTIFY Lcom/posthog/PostHogEventName;
 	public static final field SCREEN Lcom/posthog/PostHogEventName;
@@ -293,6 +301,8 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun alias (Ljava/lang/String;)V
 	public abstract fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public abstract fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
+	public abstract fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun distinctId ()Ljava/lang/String;
 	public abstract fun endSession ()V
 	public abstract fun getConfig ()Lcom/posthog/PostHogConfig;
@@ -322,6 +332,8 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun capture$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)V
 	public static synthetic fun captureException$default (Lcom/posthog/PostHogInterface;Ljava/lang/Throwable;Ljava/util/Map;ILjava/lang/Object;)V
+	public static synthetic fun captureFeatureInteraction$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun captureFeatureView$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun getFeatureFlag$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagPayload$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun getFeatureFlagResult$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/FeatureFlagResult;
@@ -651,6 +663,11 @@ public abstract interface class com/posthog/internal/PostHogDateProvider {
 	public abstract fun nanoTime ()J
 }
 
+public final class com/posthog/internal/PostHogDateUtilsKt {
+	public static final fun formatISO8601Date (Ljava/util/Date;)Ljava/lang/String;
+	public static final fun parseISO8601Date (Ljava/lang/String;)Ljava/util/Date;
+}
+
 public abstract interface class com/posthog/internal/PostHogDefaultPersonPropertiesProvider {
 	public abstract fun getDefaultPersonProperties ()Ljava/util/Map;
 }
@@ -661,6 +678,10 @@ public final class com/posthog/internal/PostHogDeviceDateProvider : com/posthog/
 	public fun currentDate ()Ljava/util/Date;
 	public fun currentTimeMillis ()J
 	public fun nanoTime ()J
+}
+
+public abstract interface class com/posthog/internal/PostHogFeatureFlagCalledProvider {
+	public abstract fun onFeatureFlagCalled (Ljava/lang/String;Ljava/lang/Object;)V
 }
 
 public abstract interface class com/posthog/internal/PostHogFeatureFlagsInterface {
@@ -723,6 +744,13 @@ public final class com/posthog/internal/PostHogMemoryPreferences : com/posthog/i
 
 public abstract interface class com/posthog/internal/PostHogNetworkStatus {
 	public abstract fun isConnected ()Z
+	public abstract fun register (Lkotlin/jvm/functions/Function0;)V
+	public abstract fun unregister ()V
+}
+
+public final class com/posthog/internal/PostHogNetworkStatus$DefaultImpls {
+	public static fun register (Lcom/posthog/internal/PostHogNetworkStatus;Lkotlin/jvm/functions/Function0;)V
+	public static fun unregister (Lcom/posthog/internal/PostHogNetworkStatus;)V
 }
 
 public final class com/posthog/internal/PostHogNoOpLogger : com/posthog/internal/PostHogLogger {
@@ -741,6 +769,7 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field Companion Lcom/posthog/internal/PostHogPreferences$Companion;
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
+	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
@@ -756,6 +785,7 @@ public final class com/posthog/internal/PostHogPreferences$Companion {
 	public static final field BUILD Ljava/lang/String;
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
+	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
@@ -782,8 +812,8 @@ public abstract interface class com/posthog/internal/PostHogQueueInterface {
 }
 
 public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/internal/PostHogFeatureFlagsInterface {
-	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;)V
-	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogFeatureFlagCalledProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;)V
+	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogFeatureFlagCalledProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun clear ()V
 	public fun getEvaluatedAt (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Long;
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
@@ -795,6 +825,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public final fun getFlagDetails (Ljava/lang/String;)Lcom/posthog/internal/FeatureFlag;
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
+	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
 	public final fun getSurveys ()Ljava/util/List;
 	public final fun isAutocaptureExceptionsEnabled ()Z
 	public final fun isCaptureNetworkTimingEnabled ()Z
@@ -804,6 +835,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public static synthetic fun loadFeatureFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
+	public final fun makeSamplingDecision (Ljava/lang/String;)Z
 	public final fun resetGroupPropertiesForFlags (Ljava/lang/String;)V
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun resetPersonPropertiesForFlags ()V
@@ -834,7 +866,9 @@ public final class com/posthog/internal/PostHogSessionManager {
 	public static final field INSTANCE Lcom/posthog/internal/PostHogSessionManager;
 	public final fun endSession ()V
 	public final fun getActiveSessionId ()Ljava/util/UUID;
+	public final fun isReactNative ()Z
 	public final fun isSessionActive ()Z
+	public final fun setReactNative (Z)V
 	public final fun setSessionId (Ljava/util/UUID;)V
 	public final fun startSession ()V
 }
@@ -888,6 +922,15 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field NOT_ICONTAINS Lcom/posthog/internal/PropertyOperator;
 	public static final field NOT_REGEX Lcom/posthog/internal/PropertyOperator;
 	public static final field REGEX Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_CARET Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_EQ Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_GT Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_GTE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_LT Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_LTE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_NEQ Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_TILDE Lcom/posthog/internal/PropertyOperator;
+	public static final field SEMVER_WILDCARD Lcom/posthog/internal/PropertyOperator;
 	public static final field UNKNOWN Lcom/posthog/internal/PropertyOperator;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PropertyOperator;
 	public static fun values ()[Lcom/posthog/internal/PropertyOperator;
@@ -1240,8 +1283,18 @@ public final class com/posthog/internal/replay/RRWireframe {
 }
 
 public abstract interface class com/posthog/internal/surveys/PostHogSurveysHandler {
-	public abstract fun onEvent (Ljava/lang/String;)V
+	public abstract fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun onSurveysLoaded (Ljava/util/List;)V
+}
+
+public final class com/posthog/internal/surveys/PostHogSurveysHandler$DefaultImpls {
+	public static synthetic fun onEvent$default (Lcom/posthog/internal/surveys/PostHogSurveysHandler;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+}
+
+public final class com/posthog/internal/surveys/SurveyUtilsKt {
+	public static final fun canActivateRepeatedly (Lcom/posthog/surveys/Survey;)Z
+	public static final fun hasEvents (Lcom/posthog/surveys/Survey;)Z
+	public static final fun hasWaitPeriodPassed (Lcom/posthog/surveys/Survey;Ljava/util/Date;Ljava/util/Date;)Z
 }
 
 public final class com/posthog/surveys/LinkSurveyQuestion : com/posthog/surveys/SurveyQuestion {
@@ -1509,7 +1562,7 @@ public final class com/posthog/surveys/SingleSurveyQuestion : com/posthog/survey
 }
 
 public final class com/posthog/surveys/Survey {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;Lcom/posthog/surveys/SurveySchedule;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component10 ()Lcom/posthog/surveys/SurveyConditions;
 	public final fun component11 ()Lcom/posthog/surveys/SurveyAppearance;
@@ -1517,6 +1570,7 @@ public final class com/posthog/surveys/Survey {
 	public final fun component13 ()Ljava/util/Date;
 	public final fun component14 ()Ljava/util/Date;
 	public final fun component15 ()Ljava/util/Date;
+	public final fun component16 ()Lcom/posthog/surveys/SurveySchedule;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lcom/posthog/surveys/SurveyType;
 	public final fun component4 ()Ljava/util/List;
@@ -1525,8 +1579,8 @@ public final class com/posthog/surveys/Survey {
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
 	public final fun component9 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;)Lcom/posthog/surveys/Survey;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/Survey;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;ILjava/lang/Object;)Lcom/posthog/surveys/Survey;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;Lcom/posthog/surveys/SurveySchedule;)Lcom/posthog/surveys/Survey;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/Survey;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyType;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/SurveyConditions;Lcom/posthog/surveys/SurveyAppearance;Ljava/lang/Integer;Ljava/util/Date;Ljava/util/Date;Ljava/util/Date;Lcom/posthog/surveys/SurveySchedule;ILjava/lang/Object;)Lcom/posthog/surveys/Survey;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAppearance ()Lcom/posthog/surveys/SurveyAppearance;
 	public final fun getConditions ()Lcom/posthog/surveys/SurveyConditions;
@@ -1540,6 +1594,7 @@ public final class com/posthog/surveys/Survey {
 	public final fun getLinkedFlagKey ()Ljava/lang/String;
 	public final fun getName ()Ljava/lang/String;
 	public final fun getQuestions ()Ljava/util/List;
+	public final fun getSchedule ()Lcom/posthog/surveys/SurveySchedule;
 	public final fun getStartDate ()Ljava/util/Date;
 	public final fun getTargetingFlagKey ()Ljava/lang/String;
 	public final fun getType ()Lcom/posthog/surveys/SurveyType;
@@ -1664,12 +1719,15 @@ public final class com/posthog/surveys/SurveyConditions {
 }
 
 public final class com/posthog/surveys/SurveyEventCondition {
-	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;)Lcom/posthog/surveys/SurveyEventCondition;
-	public static synthetic fun copy$default (Lcom/posthog/surveys/SurveyEventCondition;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/surveys/SurveyEventCondition;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Ljava/util/Map;)Lcom/posthog/surveys/SurveyEventCondition;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/SurveyEventCondition;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/surveys/SurveyEventCondition;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getName ()Ljava/lang/String;
+	public final fun getPropertyFilters ()Ljava/util/Map;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1703,8 +1761,10 @@ public final class com/posthog/surveys/SurveyFeatureFlagKeyValue {
 public final class com/posthog/surveys/SurveyMatchType : java/lang/Enum {
 	public static final field Companion Lcom/posthog/surveys/SurveyMatchType$Companion;
 	public static final field EXACT Lcom/posthog/surveys/SurveyMatchType;
+	public static final field GT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field IS_NOT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field I_CONTAINS Lcom/posthog/surveys/SurveyMatchType;
+	public static final field LT Lcom/posthog/surveys/SurveyMatchType;
 	public static final field NOT_I_CONTAINS Lcom/posthog/surveys/SurveyMatchType;
 	public static final field NOT_REGEX Lcom/posthog/surveys/SurveyMatchType;
 	public static final field REGEX Lcom/posthog/surveys/SurveyMatchType;
@@ -1715,6 +1775,12 @@ public final class com/posthog/surveys/SurveyMatchType : java/lang/Enum {
 
 public final class com/posthog/surveys/SurveyMatchType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyMatchType;
+}
+
+public final class com/posthog/surveys/SurveyPropertyFilter {
+	public fun <init> (Ljava/util/List;Lcom/posthog/surveys/SurveyMatchType;)V
+	public final fun getOperator ()Lcom/posthog/surveys/SurveyMatchType;
+	public final fun getValues ()Ljava/util/List;
 }
 
 public class com/posthog/surveys/SurveyQuestion {
@@ -1792,6 +1858,20 @@ public final class com/posthog/surveys/SurveyRatingDisplayType : java/lang/Enum 
 
 public final class com/posthog/surveys/SurveyRatingDisplayType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyRatingDisplayType;
+}
+
+public final class com/posthog/surveys/SurveySchedule : java/lang/Enum {
+	public static final field ALWAYS Lcom/posthog/surveys/SurveySchedule;
+	public static final field Companion Lcom/posthog/surveys/SurveySchedule$Companion;
+	public static final field ONCE Lcom/posthog/surveys/SurveySchedule;
+	public static final field RECURRING Lcom/posthog/surveys/SurveySchedule;
+	public final fun getValue ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveySchedule;
+	public static fun values ()[Lcom/posthog/surveys/SurveySchedule;
+}
+
+public final class com/posthog/surveys/SurveySchedule$Companion {
+	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveySchedule;
 }
 
 public final class com/posthog/surveys/SurveyTextContentType : java/lang/Enum {

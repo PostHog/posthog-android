@@ -1,5 +1,75 @@
 ## Next
 
+## 6.8.0
+
+### Minor Changes
+
+- b660096: Flush queued events when network becomes available via ConnectivityManager callback
+- 05504e3: support survey event property filters
+
+## 6.7.2
+
+### Patch Changes
+
+- cd5efe1: Load cached disk events into PostHogQueue on start so they are sent in order with new events
+
+## 6.7.1
+
+### Patch Changes
+
+- 4bfee1c: Respect sendFeatureFlagEvent config when capturing $feature_flag_called on session replay start
+- 5307792: Capture the $feature_flag_called event for Android Session Replay when enabled via feature flag
+
+## 6.7.0
+
+### Minor Changes
+
+- 417dbb0: support survey schedule 'always' to show every time and respect survey wait period
+
+## 6.6.5
+
+### Patch Changes
+
+- 17ba416: Add semver comparison operators to local feature flag evaluation
+
+  This adds 9 semver operators for targeting users based on app version:
+
+  - `semver_eq`, `semver_neq` — exact match / not equal
+  - `semver_gt`, `semver_gte`, `semver_lt`, `semver_lte` — comparison operators
+  - `semver_tilde` — patch-level range (~1.2.3 means >=1.2.3 <1.3.0)
+  - `semver_caret` — compatible-with range (^1.2.3 means >=1.2.3 <2.0.0)
+  - `semver_wildcard` — wildcard range (1.2.\* means >=1.2.0 <1.3.0)
+
+## 6.6.4
+
+### Patch Changes
+
+- f86f22e: Remove `config=true` from flags endpoint, add `timezone` to flags requests, and deprecate `remoteConfig` option
+
+- chore: Remove `config=true` from flags endpoint, add `timezone` to flags requests, deprecate `remoteConfig` option ([#421](https://github.com/PostHog/posthog-android/pull/421))
+
+## 6.6.3
+
+### Patch Changes
+
+- c751774: Support session recording `sampleRate` from remote config
+
+## 6.6.2
+
+### Patch Changes
+
+- 1e73791: test new release process
+
+## 6.6.1
+
+### Patch Changes
+
+- 112bb2a: test new release process
+
+## 6.6.0 - 2026-02-19
+
+- feat: Add `captureFeatureView` and `captureFeatureInteraction` to `PostHogInterface`. ([#416](https://github.com/PostHog/posthog-android/pull/416))
+
 ## 6.5.0 - 2026-02-16
 
 - feat: Support remote config for error tracking ([#415](https://github.com/PostHog/posthog-android/pull/415))

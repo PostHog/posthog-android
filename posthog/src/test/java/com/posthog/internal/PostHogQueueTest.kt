@@ -1,6 +1,5 @@
 package com.posthog.internal
 
-import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
@@ -10,13 +9,13 @@ import com.posthog.generateEvent
 import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.text.ParsePosition
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.Test
@@ -137,7 +136,7 @@ internal class PostHogQueueTest {
         val fakeCurrentTime = FakePostHogDateProvider()
         val sut = getSut(host = url.toString(), flushAt = 1, dateProvider = fakeCurrentTime)
         // if this code lives up to 2050 we are fine.
-        val date = ISO8601Utils.parse("2050-09-20T11:58:49.000Z", ParsePosition(0))
+        val date = parseISO8601Date("2050-09-20T11:58:49.000Z")!!
         fakeCurrentTime.setAddSecondsToCurrentDate(date)
 
         sut.add(generateEvent())
@@ -162,9 +161,14 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val sut =
-            getSut(host = url.toString(), flushAt = 1, networkStatus = {
-                false
-            })
+            getSut(
+                host = url.toString(),
+                flushAt = 1,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = false
+                    },
+            )
 
         sut.add(generateEvent())
 
@@ -180,9 +184,14 @@ internal class PostHogQueueTest {
 
         var connected = false
         val sut =
-            getSut(host = url.toString(), flushAt = 1, networkStatus = {
-                connected
-            })
+            getSut(
+                host = url.toString(),
+                flushAt = 1,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+                    },
+            )
 
         sut.add(generateEvent())
 
@@ -195,6 +204,47 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `flushes queued events when network becomes available`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        var connected = false
+        var onAvailableCallback: (() -> Unit)? = null
+        val sut =
+            getSut(
+                host = url.toString(),
+                flushAt = 1,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+
+                        override fun register(callback: () -> Unit) {
+                            onAvailableCallback = callback
+                        }
+                    },
+            )
+
+        sut.start()
+
+        sut.add(generateEvent())
+
+        executor.awaitExecution()
+
+        // event was queued but not flushed because network is disconnected
+        assertEquals(0, http.requestCount)
+        assertEquals(1, sut.dequeList.size)
+
+        // simulate network becoming available
+        connected = true
+        onAvailableCallback?.invoke()
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+        assertEquals(0, sut.dequeList.size)
     }
 
     @Test
@@ -305,7 +355,7 @@ internal class PostHogQueueTest {
         val sut = getSut(host = url.toString(), flushAt = 1, storagePrefix = path, dateProvider = fakeCurrentTime, maxBatchSize = 1)
 
         // to be sure that the delay is before now
-        val date = ISO8601Utils.parse("1970-09-20T11:58:49.000Z", ParsePosition(0))
+        val date = parseISO8601Date("1970-09-20T11:58:49.000Z")!!
         fakeCurrentTime.setAddSecondsToCurrentDate(date)
 
         sut.add(generateEvent())
@@ -386,5 +436,121 @@ internal class PostHogQueueTest {
 
         assertEquals(0, sut.dequeList.size)
         assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+    }
+
+    @Test
+    fun `loads cached events from disk on first add`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        val dir = File(path, API_KEY)
+        dir.mkdirs()
+
+        val eventFile = File("src/test/resources/json/basic-event.json")
+        val eventContent = eventFile.readText()
+
+        // write 3 cached event files
+        for (i in 1..3) {
+            val uuid = TimeBasedEpochGenerator.generate()
+            val file = File(dir, "$uuid.event")
+            file.writeText(eventContent)
+            file.setLastModified(System.currentTimeMillis() - (4 - i) * 1000L)
+        }
+
+        val sut = getSut(host = url.toString(), storagePrefix = path)
+
+        // trigger lazy loading via add
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        // 3 cached + 1 new
+        assertEquals(4, sut.dequeList.size)
+    }
+
+    @Test
+    fun `loads cached events and flushes them when add triggers threshold`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        val dir = File(path, API_KEY)
+        dir.mkdirs()
+
+        val eventFile = File("src/test/resources/json/basic-event.json")
+        val eventContent = eventFile.readText()
+
+        val uuid = TimeBasedEpochGenerator.generate()
+        val file = File(dir, "$uuid.event")
+        file.writeText(eventContent)
+
+        // flushAt=1 so the cached event triggers a flush on the first add
+        val sut = getSut(host = url.toString(), storagePrefix = path, flushAt = 1)
+
+        // add triggers ensureCachedEventsLoaded (1 cached) + new event, hitting flushAt
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+        assertEquals(0, sut.dequeList.size)
+        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+    }
+
+    @Test
+    fun `no cached events loaded if directory does not exist`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        // don't create the API_KEY subdirectory
+
+        val sut = getSut(host = url.toString(), storagePrefix = path)
+
+        // trigger lazy loading, should not fail
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        // only the new event
+        assertEquals(1, sut.dequeList.size)
+    }
+
+    @Test
+    fun `cached events are loaded in sorted order by last modified`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val path = tmpDir.newFolder().absolutePath
+        val dir = File(path, API_KEY)
+        dir.mkdirs()
+
+        val eventFile = File("src/test/resources/json/basic-event.json")
+        val eventContent = eventFile.readText()
+
+        // write cached event files with different timestamps
+        val uuid1 = TimeBasedEpochGenerator.generate()
+        val file1 = File(dir, "$uuid1.event")
+        file1.writeText(eventContent)
+        file1.setLastModified(System.currentTimeMillis() - 20000L)
+
+        val uuid2 = TimeBasedEpochGenerator.generate()
+        val file2 = File(dir, "$uuid2.event")
+        file2.writeText(eventContent)
+        file2.setLastModified(System.currentTimeMillis() - 10000L)
+
+        val sut = getSut(host = url.toString(), storagePrefix = path)
+
+        // trigger lazy loading via add
+        sut.add(generateEvent())
+
+        executor.shutdownAndAwaitTermination()
+
+        val dequeFiles = sut.dequeList
+        // cached files first (sorted by last modified), then the new event
+        assertEquals(3, dequeFiles.size)
+        assertEquals(file1.name, dequeFiles[0].name)
+        assertEquals(file2.name, dequeFiles[1].name)
     }
 }

@@ -12,6 +12,7 @@ public class PostHogFake : PostHogInterface {
     public var screenTitle: String? = null
     public var properties: Map<String, Any>? = null
     public var captures: Int = 0
+    public var flushes: Int = 0
 
     override fun <T : PostHogConfig> setup(config: T) {
     }
@@ -80,6 +81,7 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun flush() {
+        flushes++
     }
 
     override fun setPersonProperties(
@@ -107,6 +109,18 @@ public class PostHogFake : PostHogInterface {
     override fun resetGroupPropertiesForFlags(
         type: String?,
         reloadFeatureFlags: Boolean,
+    ) {
+    }
+
+    override fun captureFeatureView(
+        flag: String,
+        flagVariant: String?,
+    ) {
+    }
+
+    override fun captureFeatureInteraction(
+        flag: String,
+        flagVariant: String?,
     ) {
     }
 

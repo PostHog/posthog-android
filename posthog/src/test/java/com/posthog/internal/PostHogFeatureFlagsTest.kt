@@ -56,9 +56,13 @@ internal class PostHogFeatureFlagsTest {
         val url = http.url("/")
 
         val sut =
-            getSut(host = url.toString(), networkStatus = {
-                false
-            })
+            getSut(
+                host = url.toString(),
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = false
+                    },
+            )
 
         sut.loadFeatureFlags("distinctId", anonymousId = "anonId", emptyMap())
 

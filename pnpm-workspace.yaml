@@ -1,0 +1,5 @@
+packages:
+    - "posthog"
+    - "posthog-android"
+    - "posthog-server"
+    - "posthog-android-gradle-plugin"
