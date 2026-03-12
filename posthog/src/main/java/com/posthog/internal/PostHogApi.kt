@@ -68,7 +68,9 @@ public class PostHogApi(
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
-            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
+            if (!response.isSuccessful) {
+                throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
+            }
         }
     }
 
@@ -92,7 +94,17 @@ public class PostHogApi(
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
-            if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
+            if (!response.isSuccessful) {
+                throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
+            }
+        }
+    }
+
+    private fun parseRetryAfter(response: Response): Int? {
+        return try {
+            response.header("Retry-After")?.toIntOrNull()
+        } catch (e: Throwable) {
+            null
         }
     }
 

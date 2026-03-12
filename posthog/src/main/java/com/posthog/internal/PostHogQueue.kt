@@ -14,6 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
+
+private val RETRYABLE_STATUS_CODES = setOf(429, 500, 502, 503, 504)
 
 /**
  * The class that manages the events Queue
@@ -33,7 +36,7 @@ internal class PostHogQueue(
     private val timerLock = Any()
     private var pausedUntil: Date? = null
     private var retryCount = 0
-    private val retryDelaySeconds = 5
+    private val initialRetryDelaySeconds = 1
     private val maxRetryDelaySeconds = 30
 
     @Volatile
@@ -190,25 +193,45 @@ internal class PostHogQueue(
         executeBatch()
     }
 
+    private fun executeWithRetry(block: () -> Unit) {
+        var retry = false
+        var retryAfterSeconds: Int? = null
+        try {
+            block()
+            retryCount = 0
+            pausedUntil = null
+        } catch (e: Throwable) {
+            config.logger.log("Flushing failed: $e.")
+
+            retryCount++
+
+            if (retryCount > config.maxRetries) {
+                config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping events.")
+                retryCount = 0
+                pausedUntil = null
+                dropAllEvents()
+            } else {
+                retry = true
+
+                if (e is PostHogApiError) {
+                    retryAfterSeconds = e.retryAfterSeconds
+                }
+            }
+        } finally {
+            calculateDelay(retry, retryAfterSeconds)
+
+            isFlushing.set(false)
+        }
+    }
+
     private fun executeBatch() {
         if (!isConnected()) {
             isFlushing.set(false)
             return
         }
 
-        var retry = false
-        try {
+        executeWithRetry {
             batchEvents()
-            retryCount = 0
-        } catch (e: Throwable) {
-            config.logger.log("Flushing failed: $e.")
-
-            retry = true
-            retryCount++
-        } finally {
-            calculateDelay(retry)
-
-            isFlushing.set(false)
         }
     }
 
@@ -259,7 +282,11 @@ internal class PostHogQueue(
         } catch (e: PostHogApiError) {
             deleteFiles = deleteFilesIfAPIError(e, config)
 
-            throw e
+            // only re-throw if retriable (files kept), so executeWithRetry
+            // can track retryCount and apply backoff
+            if (!deleteFiles) {
+                throw e
+            }
         } catch (e: IOException) {
             // no connection should try again
             if (e.isNetworkingError()) {
@@ -297,26 +324,22 @@ internal class PostHogQueue(
                 return@executeSafely
             }
 
+            // respect Retry-After / backoff pause
+            if (!canFlushBatch()) {
+                isFlushing.set(false)
+                return@executeSafely
+            }
+
             // only flushes if the queue is above the threshold (not empty in this case)
             if (!isAboveThreshold(1)) {
                 isFlushing.set(false)
                 return@executeSafely
             }
 
-            var retry = false
-            try {
+            executeWithRetry {
                 while (deque.isNotEmpty()) {
                     batchEvents()
                 }
-                retryCount = 0
-            } catch (e: Throwable) {
-                config.logger.log("Flushing failed: $e.")
-                retry = true
-                retryCount++
-            } finally {
-                calculateDelay(retry)
-
-                isFlushing.set(false)
             }
         }
     }
@@ -329,9 +352,28 @@ internal class PostHogQueue(
         return true
     }
 
-    private fun calculateDelay(retry: Boolean) {
+    private fun dropAllEvents() {
+        val tempFiles: List<File>
+        synchronized(dequeLock) {
+            tempFiles = deque.toList()
+            deque.clear()
+        }
+        tempFiles.forEach {
+            it.deleteSafely(config)
+        }
+    }
+
+    private fun calculateDelay(
+        retry: Boolean,
+        retryAfterSeconds: Int? = null,
+    ) {
         if (retry) {
-            val delay = min(retryCount * retryDelaySeconds, maxRetryDelaySeconds)
+            val delay =
+                if (retryAfterSeconds != null && retryAfterSeconds > 0) {
+                    retryAfterSeconds
+                } else {
+                    min(initialRetryDelaySeconds * 2.0.pow((retryCount - 1).toDouble()).toInt(), maxRetryDelaySeconds)
+                }
             pausedUntil = config.dateProvider.addSecondsToCurrentDate(delay)
         }
     }
@@ -408,14 +450,7 @@ internal class PostHogQueue(
 
     override fun clear() {
         executor.executeSafely {
-            val tempFiles: List<File>
-            synchronized(dequeLock) {
-                tempFiles = deque.toList()
-                deque.clear()
-            }
-            tempFiles.forEach {
-                it.deleteSafely(config)
-            }
+            dropAllEvents()
         }
     }
 
@@ -451,6 +486,12 @@ internal fun deleteFilesIfAPIError(
         config.flushAt = calcFloor(config.flushAt)
 
         config.logger.log("Flushing failed with ${e.statusCode}, let's try again with a smaller batch.")
+
+        return false
+    }
+    // Transient server errors and rate limiting, retry
+    if (e.statusCode in RETRYABLE_STATUS_CODES) {
+        config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
     }

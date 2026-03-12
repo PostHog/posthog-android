@@ -19,6 +19,7 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogInternal
 import okhttp3.Interceptor
 import okhttp3.MediaType
 import okhttp3.MultipartBody
@@ -36,7 +37,8 @@ import java.io.IOException
  * This interceptor compresses the HTTP request body. Many webservers can't handle this!
  * @property config The Config
  */
-internal class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
+@PostHogInternal
+public class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
