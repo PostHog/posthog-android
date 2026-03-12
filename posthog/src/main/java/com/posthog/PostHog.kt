@@ -534,7 +534,7 @@ public class PostHog private constructor(
                     timestamp,
                 )
                 // Notify surveys integration about the event
-                surveysHandler?.onEvent(event)
+                surveysHandler?.onEvent(event, mergedProperties)
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
