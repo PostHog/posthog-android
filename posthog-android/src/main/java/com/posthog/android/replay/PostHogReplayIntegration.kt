@@ -442,7 +442,6 @@ public class PostHogReplayIntegration(
 
         // Check view is still valid before any access to avoid native crashes
         if (!view.isAliveAndAttachedToWindow()) return
-        if (view.width <= 0 || view.height <= 0) return
 
         // Check window still has valid decor view
         if (window.peekDecorView() == null) return
@@ -558,6 +557,8 @@ public class PostHogReplayIntegration(
      */
     private fun View.isVisible(): Boolean {
         try {
+            if (width <= 0 || height <= 0) return false
+
             if (isAttachedToWindow) {
                 // Attached to invisible window means this view is not visible.
                 if (windowVisibility != View.VISIBLE) {
