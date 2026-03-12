@@ -130,7 +130,7 @@ internal class PostHogQueueTest {
 
     @Test
     fun `does not flush if paused`() {
-        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setBody("error"))
         val url = http.url("/")
 
         val fakeCurrentTime = FakePostHogDateProvider()
@@ -325,6 +325,10 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val fakeCurrentTime = FakePostHogDateProvider()
+        // set pause to the past so flush() is not blocked by backoff
+        val date = parseISO8601Date("1970-09-20T11:58:49.000Z")!!
+        fakeCurrentTime.setAddSecondsToCurrentDate(date)
+
         val path = tmpDir.newFolder().absolutePath
         val sut = getSut(host = url.toString(), flushAt = 1, storagePrefix = path, dateProvider = fakeCurrentTime)
 
@@ -416,6 +420,46 @@ internal class PostHogQueueTest {
         val config = PostHogConfig(API_KEY)
 
         assertTrue(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 500`() {
+        val e = PostHogApiError(500, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 502`() {
+        val e = PostHogApiError(502, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 429`() {
+        val e = PostHogApiError(429, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 504`() {
+        val e = PostHogApiError(504, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
+    }
+
+    @Test
+    fun `retries on 503`() {
+        val e = PostHogApiError(503, "", null)
+        val config = PostHogConfig(API_KEY)
+
+        assertFalse(deleteFilesIfAPIError(e, config))
     }
 
     @Test

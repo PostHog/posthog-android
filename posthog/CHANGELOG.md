@@ -1,5 +1,11 @@
 ## Next
 
+## 6.8.1
+
+### Patch Changes
+
+- 2b8ac9c: Fix SDK compliance: retry on 5xx errors with exponential backoff, respect Retry-After header, add maxRetries config, and make GzipRequestInterceptor public for custom HTTP clients
+
 ## 6.8.0
 
 ### Minor Changes
