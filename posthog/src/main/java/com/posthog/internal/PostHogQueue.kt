@@ -16,6 +16,8 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
+private val RETRYABLE_STATUS_CODES = setOf(429, 500, 502, 503, 504)
+
 /**
  * The class that manages the events Queue
  * @property config the Config
@@ -495,7 +497,7 @@ internal fun deleteFilesIfAPIError(
         return false
     }
     // Transient server errors and rate limiting, retry
-    if (e.statusCode in listOf(429, 500, 502, 503, 504)) {
+    if (e.statusCode in RETRYABLE_STATUS_CODES) {
         config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
