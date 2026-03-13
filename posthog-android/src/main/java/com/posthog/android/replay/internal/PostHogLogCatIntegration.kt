@@ -28,7 +28,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
-        if (integrationInstalled || !isSupported()) {
+        if (integrationInstalled) {
             return
         }
         val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
@@ -91,11 +91,6 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                 }
             }
         logcatThread?.start()
-    }
-
-    private fun isSupported(): Boolean {
-        // Always true since minSdk >= 23 (M)
-        return true
     }
 
     override fun onRemoteConfig() {

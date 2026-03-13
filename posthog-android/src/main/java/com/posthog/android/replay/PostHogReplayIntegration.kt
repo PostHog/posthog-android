@@ -377,7 +377,7 @@ public class PostHogReplayIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled || !isSupported()) {
+        if (integrationInstalled) {
             return
         }
         integrationInstalled = true
@@ -1379,26 +1379,24 @@ public class PostHogReplayIntegration(
             }
 
             is GradientDrawable -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    colors?.let { rgcColors ->
-                        if (rgcColors.isNotEmpty()) {
-                            // Get the first color from the array
-                            val color = rgcColors[0]
+                colors?.let { rgcColors ->
+                    if (rgcColors.isNotEmpty()) {
+                        // Get the first color from the array
+                        val color = rgcColors[0]
 
-                            // Extract RGB values
-                            val red = Color.red(color)
-                            val green = Color.green(color)
-                            val blue = Color.blue(color)
+                        // Extract RGB values
+                        val red = Color.red(color)
+                        val green = Color.green(color)
+                        val blue = Color.blue(color)
 
-                            // Construct the RGB color
-                            val rgb = Color.rgb(red, green, blue)
-                            return rgb.toRGBColor()
-                        }
+                        // Construct the RGB color
+                        val rgb = Color.rgb(red, green, blue)
+                        return rgb.toRGBColor()
                     }
-                    color?.let {
-                        if (it.defaultColor != -1) {
-                            return it.defaultColor.toRGBColor()
-                        }
+                }
+                color?.let {
+                    if (it.defaultColor != -1) {
+                        return it.defaultColor.toRGBColor()
                     }
                 }
             }
@@ -1575,11 +1573,6 @@ public class PostHogReplayIntegration(
 
     private fun String.mask(): String {
         return "*".repeat(length)
-    }
-
-    @SuppressLint("AnnotateVersionCheck")
-    private fun isSupported(): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
     }
 
     override fun start(resumeCurrent: Boolean) {
