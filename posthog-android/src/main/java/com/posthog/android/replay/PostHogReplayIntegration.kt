@@ -64,6 +64,7 @@ import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
+import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -440,6 +441,9 @@ public class PostHogReplayIntegration(
         val status = decorViews[view] ?: return
         val window = windowRef.get() ?: return
 
+        // Check view is still alive to avoid native crashes
+        if (!view.isAlive()) return
+
         val timestamp = config.dateProvider.currentTimeMillis()
 
         val wireframe =
@@ -551,6 +555,8 @@ public class PostHogReplayIntegration(
      */
     private fun View.isVisible(): Boolean {
         try {
+            if (width <= 0 || height <= 0) return false
+
             if (isAttachedToWindow) {
                 // Attached to invisible window means this view is not visible.
                 if (windowVisibility != View.VISIBLE) {
