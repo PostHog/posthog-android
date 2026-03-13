@@ -159,15 +159,8 @@ internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String?
 internal fun Intent.getReferrerInfo(config: PostHogAndroidConfig): Map<String, String> {
     val referrerInfoMap = mutableMapOf<String, String>()
     try {
-        val referrer: Uri?
-        val referrerName: String?
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
-            referrer = this.getParcelableExtra(Intent.EXTRA_REFERRER)
-            referrerName = this.getStringExtra(Intent.EXTRA_REFERRER_NAME)
-        } else {
-            referrer = this.getParcelableExtra("android.intent.extra.REFERRER")
-            referrerName = this.getStringExtra("android.intent.extra.REFERRER_NAME")
-        }
+        val referrer: Uri? = this.getParcelableExtra(Intent.EXTRA_REFERRER)
+        val referrerName: String? = this.getStringExtra(Intent.EXTRA_REFERRER_NAME)
         referrer?.let {
             referrerInfoMap["\$referrer"] = referrer.toString()
             referrer.host?.let { referrerInfoMap["\$referring_domain"] = it }
@@ -192,6 +185,7 @@ internal fun String.tryParse(config: PostHogAndroidConfig): Uri? {
     }
 }
 
+@Suppress("DEPRECATION")
 internal fun isMainThread(mainHandler: MainHandler): Boolean {
     return Thread.currentThread().id == mainHandler.mainLooper.thread.id
 }

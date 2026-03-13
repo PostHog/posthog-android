@@ -1379,24 +1379,26 @@ public class PostHogReplayIntegration(
             }
 
             is GradientDrawable -> {
-                colors?.let { rgcColors ->
-                    if (rgcColors.isNotEmpty()) {
-                        // Get the first color from the array
-                        val color = rgcColors[0]
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    colors?.let { rgcColors ->
+                        if (rgcColors.isNotEmpty()) {
+                            // Get the first color from the array
+                            val color = rgcColors[0]
 
-                        // Extract RGB values
-                        val red = Color.red(color)
-                        val green = Color.green(color)
-                        val blue = Color.blue(color)
+                            // Extract RGB values
+                            val red = Color.red(color)
+                            val green = Color.green(color)
+                            val blue = Color.blue(color)
 
-                        // Construct the RGB color
-                        val rgb = Color.rgb(red, green, blue)
-                        return rgb.toRGBColor()
+                            // Construct the RGB color
+                            val rgb = Color.rgb(red, green, blue)
+                            return rgb.toRGBColor()
+                        }
                     }
-                }
-                color?.let {
-                    if (it.defaultColor != -1) {
-                        return it.defaultColor.toRGBColor()
+                    color?.let {
+                        if (it.defaultColor != -1) {
+                            return it.defaultColor.toRGBColor()
+                        }
                     }
                 }
             }

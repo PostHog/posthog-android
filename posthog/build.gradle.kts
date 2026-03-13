@@ -33,6 +33,8 @@ buildConfig {
 
 java {
     withSourcesJar()
+    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
 }
 
 val dokkaJavadocJar by tasks.register<Jar>("dokkaJavadocJar") {
@@ -71,7 +73,6 @@ tasks.withType<KotlinCompile>().configureEach {
 
 kotlin {
     explicitApi()
-    jvmToolchain(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion.toInt())
 }
 
 configure<SourceSetContainer> {
@@ -87,6 +88,7 @@ animalsniffer {
 //    [Undefined reference | android-api-level-21-5.0.1_r2] com.posthog.internal.(RREvent.kt:1)
 //    >> int Integer.hashCode(int)
     ignore("java.util.HashMap")
+    ignore("java.lang.Boolean")
 }
 
 dependencies {
@@ -112,7 +114,6 @@ dependencies {
     testImplementation("org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
     testImplementation("com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}")
-    testImplementation(project(mapOf("path" to ":posthog-android")))
 }
 
 tasks.javadoc {

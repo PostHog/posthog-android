@@ -13,21 +13,19 @@ kotlin {
 }
 
 dependencies {
-    // do not upgrade to >= 1.9 otherwise it does not work with Kotlin 1.7
     // also update PosthogBuildConfig.Kotlin.KOTLIN and posthog-android-gradle-plugin
-    val kotlinVersion = "1.8.22"
-    // there's no 1.8.22 for dokka yet
+    val kotlinVersion = "2.1.10"
     // also update posthog-android-gradle-plugin
-    val dokkaVersion = "1.8.20"
-    // 8.3+ throws Could not determine the dependencies of task ':posthog:generateJvmTestLintModel'.
-    implementation("com.android.tools.build:gradle:8.2.2")
-    // kotlin version has to match kotlinCompilerExtensionVersion
+    val dokkaVersion = "1.9.20"
+    implementation("com.android.tools.build:gradle:8.9.1")
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    // Compose compiler plugin for Kotlin 2.0+ (used by sample app)
+    implementation("org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlinVersion")
 
     // publish
     implementation("org.jetbrains.dokka:dokka-gradle-plugin:$dokkaVersion")
     implementation("io.github.gradle-nexus:publish-plugin:1.3.0")
 
     // tests
-    implementation("org.jetbrains.kotlinx:kover-gradle-plugin:0.7.6")
+    implementation("org.jetbrains.kotlinx:kover-gradle-plugin:0.9.0")
 }

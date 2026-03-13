@@ -354,7 +354,6 @@ public open class PostHogConfig(
      */
     @PostHogInternal
     public var remoteConfigHolder: PostHogRemoteConfig? = null
-        internal set
 
     @PostHogInternal
     public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()

@@ -75,9 +75,9 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
-        languageVersion = "1.6"
+        languageVersion = "2.0"
         allWarningsAsErrors = true
-        apiVersion = "1.6"
+        apiVersion = "2.0"
         freeCompilerArgs += "-Xexplicit-api=strict"
     }
 }
@@ -174,5 +174,5 @@ dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.10")
 }

@@ -1,4 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 8.2.2" type="baseline" client="gradle" dependencies="true" name="AGP (8.2.2)" variant="all" version="8.2.2">
+<issues format="6" by="lint 8.9.1" type="baseline" client="gradle" dependencies="true" name="AGP (8.9.1)" variant="all" version="8.9.1">
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 24 (current min is 23): `android.graphics.drawable.GradientDrawable#getColors`"
+        errorLine1="                colors?.let { rgcColors ->"
+        errorLine2="                ~~~~~~">
+        <location
+            file="src/main/java/com/posthog/android/replay/PostHogReplayIntegration.kt"
+            line="1382"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 24 (current min is 23): `android.graphics.drawable.GradientDrawable#getColor`"
+        errorLine1="                color?.let {"
+        errorLine2="                ~~~~~">
+        <location
+            file="src/main/java/com/posthog/android/replay/PostHogReplayIntegration.kt"
+            line="1397"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 23"
+        errorLine1="                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/posthog/android/internal/PostHogAndroidContext.kt"
+            line="86"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 23"
+        errorLine1="        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/posthog/android/internal/PostHogAndroidUtils.kt"
+            line="164"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 23"
+        errorLine1="        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M"
+        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/posthog/android/replay/internal/PostHogLogCatIntegration.kt"
+            line="100"
+            column="16"/>
+    </issue>
 
 </issues>
