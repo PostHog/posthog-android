@@ -64,7 +64,7 @@ java {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain((versions["jdkVersion"] as String).toInt())
 }
 
 val dokkaJavadocJar by tasks.register<Jar>("dokkaJavadocJar") {
@@ -81,17 +81,17 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
 
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-        languageVersion = "2.0"
+        jvmTarget = JavaVersion.toVersion(versions["jdkVersion"] as String).toString()
+        languageVersion = versions["kotlinCompatibility"] as String
         allWarningsAsErrors = true
-        apiVersion = "2.0"
+        apiVersion = versions["kotlinCompatibility"] as String
         freeCompilerArgs += "-Xexplicit-api=strict"
     }
 }
 
 kotlin {
     explicitApi()
-    jvmToolchain(JavaVersion.VERSION_17.majorVersion.toInt())
+    jvmToolchain((versions["jdkVersion"] as String).toInt())
 }
 
 configure<SourceSetContainer> {

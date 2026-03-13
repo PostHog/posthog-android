@@ -4,7 +4,6 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonIOException
 import com.google.gson.JsonSyntaxException
-import com.google.gson.Strictness
 import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
@@ -43,6 +42,7 @@ import java.util.Date
  * The JSON serializer using Gson
  * @property config the Config
  */
+@Suppress("DEPRECATION")
 @PostHogInternal
 public class PostHogSerializer(private val config: PostHogConfig) {
     public val gson: Gson =
@@ -59,7 +59,7 @@ public class PostHogSerializer(private val config: PostHogConfig) {
                 object : TypeToken<MutableMap<String, Any?>>() {}.type,
                 mapSerializer,
             )
-                .setStrictness(Strictness.LENIENT)
+                .setLenient()
             // replay
             registerTypeAdapter(RREventType::class.java, GsonRREventTypeSerializer(config))
             registerTypeAdapter(RRIncrementalSource::class.java, GsonRRIncrementalSourceSerializer(config))

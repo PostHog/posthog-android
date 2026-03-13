@@ -20,7 +20,7 @@ object PosthogBuildConfig {
         val JAVA_VERSION = JavaVersion.VERSION_1_8
 
         // JDK toolchain version for compilation (AGP 8.9+ requires JDK 17)
-        val JDK_VERSION = 17
+        val JDK_VERSION = (versions["jdkVersion"] as String).toInt()
     }
 
     object Android {
@@ -34,7 +34,7 @@ object PosthogBuildConfig {
 
     object Kotlin {
         // languageVersion and apiVersion for backward compatibility with consumers
-        val KOTLIN_COMPATIBILITY = "2.0"
+        val KOTLIN_COMPATIBILITY = versions["kotlinCompatibility"] as String
 
         val KOTLIN = versions["kotlinVersion"] as String
     }
@@ -53,8 +53,8 @@ object PosthogBuildConfig {
 
     object Dependencies {
         // runtime
-        val LIFECYCLE = "2.8.7"
-        val GSON = "2.11.0"
+        val LIFECYCLE = "2.6.2"
+        val GSON = "2.10.1"
 
         val OKHTTP = "4.12.0"
         val CURTAINS = "1.2.5"

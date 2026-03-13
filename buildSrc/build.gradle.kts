@@ -10,15 +10,15 @@ repositories {
     gradlePluginPortal()
 }
 
-kotlin {
-    jvmToolchain(17)
-}
-
 // shared versions — loaded from root gradle.properties (single source of truth)
 val versions =
     Properties().apply {
         file("../gradle.properties").inputStream().use { load(it) }
     }
+
+kotlin {
+    jvmToolchain((versions["jdkVersion"] as String).toInt())
+}
 
 dependencies {
     implementation("com.android.tools.build:gradle:${versions["agpVersion"]}")

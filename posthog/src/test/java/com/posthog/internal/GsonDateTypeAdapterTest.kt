@@ -2,7 +2,6 @@ package com.posthog.internal
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import com.google.gson.Strictness
 import com.google.gson.reflect.TypeToken
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
@@ -17,10 +16,11 @@ internal class GsonDateTypeAdapterTest {
     private val config = PostHogConfig(API_KEY)
     private val gsonFakeDateType = object : TypeToken<FakeDate>() {}.type
 
+    @Suppress("DEPRECATION")
     private fun getSut(): Gson {
         return GsonBuilder().apply {
             registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))
-                .setStrictness(Strictness.LENIENT)
+                .setLenient()
         }.create()
     }
 
