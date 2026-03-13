@@ -377,7 +377,7 @@ public class PostHogReplayIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled || !isSupported()) {
+        if (integrationInstalled) {
             return
         }
         integrationInstalled = true
@@ -1573,11 +1573,6 @@ public class PostHogReplayIntegration(
 
     private fun String.mask(): String {
         return "*".repeat(length)
-    }
-
-    @SuppressLint("AnnotateVersionCheck")
-    private fun isSupported(): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
     }
 
     override fun start(resumeCurrent: Boolean) {

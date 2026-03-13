@@ -80,8 +80,7 @@ android {
 }
 
 kotlin {
-    val javaVersion = JavaLanguageVersion.of(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion).asInt()
-    jvmToolchain(javaVersion)
+    jvmToolchain(PosthogBuildConfig.Build.JDK_VERSION)
 }
 
 dependencies {
