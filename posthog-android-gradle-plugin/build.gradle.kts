@@ -1,5 +1,12 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URI
+import java.util.Properties
+
+// shared versions — loaded from root gradle.properties (single source of truth)
+val versions =
+    Properties().apply {
+        file("../gradle.properties").inputStream().use { load(it) }
+    }
 
 val postHogGroupId = "com.posthog"
 group = postHogGroupId
@@ -49,7 +56,7 @@ plugins {
     `maven-publish`
     signing
     id("org.jetbrains.dokka")
-    id("io.github.gradle-nexus.publish-plugin") version "1.3.0"
+    id("io.github.gradle-nexus.publish-plugin")
 }
 
 java {
@@ -174,5 +181,5 @@ dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.10")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
 }

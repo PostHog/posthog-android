@@ -1,6 +1,12 @@
 import org.gradle.api.JavaVersion
 
 object PosthogBuildConfig {
+    // shared versions — loaded from gradle.properties (single source of truth)
+    private val versions =
+        java.util.Properties().apply {
+            java.io.File("gradle.properties").inputStream().use { load(it) }
+        }
+
     fun shouldSkipDebugVariant(name: String): Boolean {
         return isCI() && name == "debug"
     }
@@ -30,8 +36,7 @@ object PosthogBuildConfig {
         // languageVersion and apiVersion for backward compatibility with consumers
         val KOTLIN_COMPATIBILITY = "2.0"
 
-        // also update buildSrc/build.gradle.kts - kotlinVersion
-        val KOTLIN = "2.1.10"
+        val KOTLIN = versions["kotlinVersion"] as String
     }
 
     object Plugins {
