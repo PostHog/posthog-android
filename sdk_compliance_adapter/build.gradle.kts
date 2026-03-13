@@ -21,7 +21,8 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.4.14")
 
     // OkHttp (for interceptor)
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
+    implementation("com.squareup.okhttp3:okhttp")
 }
 
 application {
@@ -30,7 +31,7 @@ application {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = JavaVersion.VERSION_11.toString()
     }
 }
 
