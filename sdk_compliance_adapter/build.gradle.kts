@@ -31,13 +31,13 @@ application {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
     }
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
 }
 
 // Disable API validation for test adapter
