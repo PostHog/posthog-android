@@ -24,6 +24,7 @@ import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
 
 /**
@@ -103,7 +104,11 @@ public class PostHogAndroid private constructor() {
             // Defaults to PostHogDeviceDateProvider when api < 33
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (config.dateProvider is PostHogDeviceDateProvider) {
-                    config.dateProvider = PostHogAndroidDateProvider()
+                    val dateProvider = PostHogAndroidDateProvider()
+                    config.dateProvider = dateProvider
+                    TimeBasedEpochGenerator.setDateProvider(dateProvider)
+                } else {
+                    TimeBasedEpochGenerator.setDateProvider(config.dateProvider)
                 }
             }
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)

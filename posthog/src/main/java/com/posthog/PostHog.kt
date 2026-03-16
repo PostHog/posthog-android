@@ -166,8 +166,6 @@ public class PostHog private constructor(
                 this.queue = queue
                 this.replayQueue = replayQueue
 
-                TimeBasedEpochGenerator.customTimeProvider = config.dateProvider::currentTimeMillis
-
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
                 }
@@ -300,8 +298,6 @@ public class PostHog private constructor(
                 featureFlagsCalled.clear()
 
                 endSession()
-
-                TimeBasedEpochGenerator.customTimeProvider = null
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
