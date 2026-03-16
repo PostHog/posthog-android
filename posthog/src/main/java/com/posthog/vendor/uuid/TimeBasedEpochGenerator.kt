@@ -24,6 +24,11 @@ internal object TimeBasedEpochGenerator {
     private val numberGenerator: Random = SecureRandom()
     private val lock: Lock = ReentrantLock()
 
+    private val defaultTimeProvider: () -> Long = { System.currentTimeMillis() }
+
+    @Volatile
+    var customTimeProvider: (() -> Long)? = null
+
     /*
     / **********************************************************************
     / * UUID generation
@@ -34,7 +39,7 @@ internal object TimeBasedEpochGenerator {
      * @return unix epoch time based UUID
      */
     fun generate(): UUID {
-        return generate(System.currentTimeMillis())
+        return generate((customTimeProvider ?: defaultTimeProvider)())
     }
 
     /**
