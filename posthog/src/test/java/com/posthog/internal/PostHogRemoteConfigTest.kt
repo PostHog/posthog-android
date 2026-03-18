@@ -1594,4 +1594,110 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
         http.shutdown()
     }
+
+    @Test
+    fun `getEventTriggers returns null when not configured`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertNull(sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `getEventTriggers returns null when eventTriggers is empty array`() {
+        val cachedConfig = mapOf("eventTriggers" to emptyList<String>())
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertNull(sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `getEventTriggers returns list when configured`() {
+        val triggers = listOf("checkout_started", "payment_completed")
+        val cachedConfig = mapOf("eventTriggers" to triggers)
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertEquals(triggers, sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `processSessionRecordingConfig parses eventTriggers from remote config`() {
+        val file = File("src/test/resources/json/basic-remote-config-with-event-triggers.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(listOf("checkout_started", "payment_completed"), sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `preloads eventTriggers from cache on start`() {
+        val triggers = listOf("button_clicked", "form_submitted")
+        val cachedConfig = mapOf("eventTriggers" to triggers)
+        preferences.setValue(SESSION_REPLAY, cachedConfig)
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertEquals(triggers, sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
 }
