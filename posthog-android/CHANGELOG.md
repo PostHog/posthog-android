@@ -1,5 +1,11 @@
 ## Next
 
+## 3.38.2
+
+### Patch Changes
+
+- 52d2576: - fix: Add validity checks in Session Replay to prevent native crashes when views are destroyed during snapshot
+
 ## 3.38.1
 
 ### Patch Changes
