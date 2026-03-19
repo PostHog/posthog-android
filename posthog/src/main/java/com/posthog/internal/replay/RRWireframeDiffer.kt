@@ -141,40 +141,61 @@ public object RRWireframeDiffer {
         oldOrphans: ArrayList<RRWireframe>,
         newOrphans: ArrayList<RRWireframe>,
     ) {
-        val minSize = minOf(oldList.size, newList.size)
+        val oldSize = oldList.size
+        val newSize = newList.size
 
-        for (i in 0 until minSize) {
-            val oldItem = oldList[i]
-            val newItem = newList[i]
-
-            if (oldItem.id == newItem.id) {
-                // Same node — compare properties directly (no HashMap)
-                if (!wireframePropertiesEqual(oldItem, newItem)) {
-                    updated.add(newItem)
+        // Fast path: same-size lists (very common for stable UIs)
+        if (oldSize == newSize) {
+            for (i in 0 until oldSize) {
+                val oldItem = oldList[i]
+                val newItem = newList[i]
+                if (oldItem.id == newItem.id) {
+                    if (!wireframePropertiesEqual(oldItem, newItem)) {
+                        updated.add(newItem)
+                    }
+                    val oldChildren = oldItem.childWireframes
+                    val newChildren = newItem.childWireframes
+                    if (oldChildren != null && newChildren != null) {
+                        parallelWalk(oldChildren, newChildren, added, removed, updated, oldOrphans, newOrphans)
+                    } else if (oldChildren != null) {
+                        flattenInto(oldChildren, removed)
+                    } else if (newChildren != null) {
+                        flattenInto(newChildren, added)
+                    }
+                } else {
+                    flattenNodeInto(oldItem, oldOrphans)
+                    flattenNodeInto(newItem, newOrphans)
                 }
-                // Recurse into children
-                val oldChildren = oldItem.childWireframes
-                val newChildren = newItem.childWireframes
-                if (oldChildren != null && newChildren != null) {
-                    parallelWalk(oldChildren, newChildren, added, removed, updated, oldOrphans, newOrphans)
-                } else if (oldChildren != null) {
-                    flattenInto(oldChildren, removed)
-                } else if (newChildren != null) {
-                    flattenInto(newChildren, added)
-                }
-            } else {
-                // IDs diverged — collect subtrees as orphans for HashMap reconciliation
-                flattenNodeInto(oldItem, oldOrphans)
-                flattenNodeInto(newItem, newOrphans)
             }
-        }
-
-        // Remaining items in longer list
-        for (i in minSize until oldList.size) {
-            flattenNodeInto(oldList[i], oldOrphans)
-        }
-        for (i in minSize until newList.size) {
-            flattenNodeInto(newList[i], newOrphans)
+        } else {
+            val minSize = minOf(oldSize, newSize)
+            for (i in 0 until minSize) {
+                val oldItem = oldList[i]
+                val newItem = newList[i]
+                if (oldItem.id == newItem.id) {
+                    if (!wireframePropertiesEqual(oldItem, newItem)) {
+                        updated.add(newItem)
+                    }
+                    val oldChildren = oldItem.childWireframes
+                    val newChildren = newItem.childWireframes
+                    if (oldChildren != null && newChildren != null) {
+                        parallelWalk(oldChildren, newChildren, added, removed, updated, oldOrphans, newOrphans)
+                    } else if (oldChildren != null) {
+                        flattenInto(oldChildren, removed)
+                    } else if (newChildren != null) {
+                        flattenInto(newChildren, added)
+                    }
+                } else {
+                    flattenNodeInto(oldItem, oldOrphans)
+                    flattenNodeInto(newItem, newOrphans)
+                }
+            }
+            for (i in minSize until oldSize) {
+                flattenNodeInto(oldList[i], oldOrphans)
+            }
+            for (i in minSize until newSize) {
+                flattenNodeInto(newList[i], newOrphans)
+            }
         }
     }
 
