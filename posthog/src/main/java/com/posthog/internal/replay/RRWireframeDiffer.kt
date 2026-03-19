@@ -79,14 +79,19 @@ public object RRWireframeDiffer {
      */
     /**
      * Convenience overload for single-root trees (the common case in session replay).
-     * Avoids allocating wrapper lists.
+     * Avoids allocating wrapper lists by handling the single-root case directly.
      */
     public fun diffTrees(
         oldRoot: RRWireframe?,
         newRoot: RRWireframe,
     ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        val oldList = if (oldRoot != null) listOf(oldRoot) else emptyList()
-        return diffTrees(oldList, listOf(newRoot))
+        if (oldRoot == null) {
+            // No previous snapshot — everything is added
+            val added = ArrayList<RRWireframe>()
+            flattenNodeInto(newRoot, added)
+            return Triple(added, emptyList(), emptyList())
+        }
+        return diffTrees(listOf(oldRoot), listOf(newRoot))
     }
 
     public fun diffTrees(
