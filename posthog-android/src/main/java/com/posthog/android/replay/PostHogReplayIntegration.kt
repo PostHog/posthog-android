@@ -69,6 +69,7 @@ import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.replay.RRCustomEvent
+import com.posthog.internal.replay.RRWireframeDiffer
 import com.posthog.internal.replay.RREvent
 import com.posthog.internal.replay.RRFullSnapshotEvent
 import com.posthog.internal.replay.RRIncrementalMouseInteractionData
@@ -496,9 +497,9 @@ public class PostHogReplayIntegration(
             val lastSnapshot = status.lastSnapshot
             val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
             val (addedItems, removedItems, updatedItems) =
-                findAddedAndRemovedItems(
-                    lastSnapshots.flattenChildren(),
-                    listOf(wireframe).flattenChildren(),
+                RRWireframeDiffer.diffTrees(
+                    lastSnapshots,
+                    listOf(wireframe),
                 )
 
             val addedNodes = mutableListOf<RRMutatedNode>()
@@ -1464,7 +1465,7 @@ public class PostHogReplayIntegration(
 
     private fun Int.toRGBColor(): String {
         // TODO: missing alpha
-        return String.format("#%06X", (0xFFFFFF and this))
+        return RRWireframeDiffer.toRGBColor(this)
     }
 
     private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
