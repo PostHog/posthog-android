@@ -236,8 +236,38 @@ public object RRWireframeDiffer {
             (a.label === b.label || a.label == b.label) &&
             (a.value === b.value || a.value == b.value) &&
             (a.base64 === b.base64 || a.base64 == b.base64) &&
-            (a.style === b.style || a.style == b.style) &&
+            (a.style === b.style || styleEquals(a.style, b.style)) &&
             (a.options === b.options || a.options == b.options)
+    }
+
+    /**
+     * Custom equality check for RRStyle that uses reference equality (===)
+     * for string fields before falling back to deep equality.
+     * Handles null-null comparisons cheaply.
+     */
+    private fun styleEquals(
+        a: RRStyle?,
+        b: RRStyle?,
+    ): Boolean {
+        if (a === b) return true
+        if (a == null || b == null) return false
+        return a.borderWidth == b.borderWidth &&
+            a.borderRadius == b.borderRadius &&
+            a.fontSize == b.fontSize &&
+            a.paddingTop == b.paddingTop &&
+            a.paddingBottom == b.paddingBottom &&
+            a.paddingLeft == b.paddingLeft &&
+            a.paddingRight == b.paddingRight &&
+            (a.color === b.color || a.color == b.color) &&
+            (a.backgroundColor === b.backgroundColor || a.backgroundColor == b.backgroundColor) &&
+            (a.backgroundImage === b.backgroundImage || a.backgroundImage == b.backgroundImage) &&
+            (a.borderColor === b.borderColor || a.borderColor == b.borderColor) &&
+            (a.fontFamily === b.fontFamily || a.fontFamily == b.fontFamily) &&
+            (a.horizontalAlign === b.horizontalAlign || a.horizontalAlign == b.horizontalAlign) &&
+            (a.verticalAlign === b.verticalAlign || a.verticalAlign == b.verticalAlign) &&
+            (a.bar === b.bar || a.bar == b.bar) &&
+            (a.iconLeft === b.iconLeft || a.iconLeft == b.iconLeft) &&
+            (a.iconRight === b.iconRight || a.iconRight == b.iconRight)
     }
 
     private val HEX_CHARS = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
