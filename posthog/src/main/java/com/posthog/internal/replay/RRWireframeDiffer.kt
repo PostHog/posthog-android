@@ -70,59 +70,106 @@ public object RRWireframeDiffer {
     }
 
     /**
-     * Combined flatten + diff in one pass: builds the old map while traversing the old tree,
-     * then diffs while traversing the new tree. Avoids allocating two flat lists entirely.
+     * Combined flatten + diff using parallel tree walk with HashMap fallback.
+     *
+     * Since consecutive frames usually have identical tree structure, we walk both
+     * trees in parallel. When nodes at the same position share the same ID (common case),
+     * we compare directly without any HashMap lookup. When IDs diverge or list sizes
+     * differ, those subtrees are collected and reconciled via a HashMap at the end.
      */
     public fun diffTrees(
         oldTree: List<RRWireframe>,
         newTree: List<RRWireframe>,
     ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        // Phase 1: Build map from old tree via traversal (no flat list needed)
-        val oldMap = HashMap<Int, RRWireframe>(128)
-        buildMapFromTree(oldTree, oldMap)
-
-        // Phase 2: Traverse new tree, diff against old map
         val addedItems = ArrayList<RRWireframe>()
+        val removedItems = ArrayList<RRWireframe>()
         val updatedItems = ArrayList<RRWireframe>()
-        diffNewTree(newTree, oldMap, addedItems, updatedItems)
 
-        // Remaining entries = removed
-        val removedItems = ArrayList<RRWireframe>(oldMap.size)
-        removedItems.addAll(oldMap.values)
+        // Collect orphans for HashMap reconciliation only when structure diverges
+        val oldOrphans = ArrayList<RRWireframe>()
+        val newOrphans = ArrayList<RRWireframe>()
+
+        parallelWalk(oldTree, newTree, addedItems, removedItems, updatedItems, oldOrphans, newOrphans)
+
+        // Reconcile structurally mismatched nodes via HashMap (rare path)
+        if (oldOrphans.isNotEmpty() && newOrphans.isNotEmpty()) {
+            val oldMap = HashMap<Int, RRWireframe>(oldOrphans.size * 2)
+            for (item in oldOrphans) {
+                oldMap[item.id] = item
+            }
+            for (newItem in newOrphans) {
+                val oldItem = oldMap.remove(newItem.id)
+                if (oldItem == null) {
+                    addedItems.add(newItem)
+                } else if (!wireframePropertiesEqual(oldItem, newItem)) {
+                    updatedItems.add(newItem)
+                }
+            }
+            removedItems.addAll(oldMap.values)
+        } else if (oldOrphans.isNotEmpty()) {
+            removedItems.addAll(oldOrphans)
+        } else if (newOrphans.isNotEmpty()) {
+            addedItems.addAll(newOrphans)
+        }
 
         return Triple(addedItems, removedItems, updatedItems)
     }
 
-    private fun buildMapFromTree(
-        wireframes: List<RRWireframe>,
-        map: HashMap<Int, RRWireframe>,
+    private fun parallelWalk(
+        oldList: List<RRWireframe>,
+        newList: List<RRWireframe>,
+        added: ArrayList<RRWireframe>,
+        removed: ArrayList<RRWireframe>,
+        updated: ArrayList<RRWireframe>,
+        oldOrphans: ArrayList<RRWireframe>,
+        newOrphans: ArrayList<RRWireframe>,
     ) {
-        for (item in wireframes) {
-            map[item.id] = item
-            val children = item.childWireframes
-            if (children != null) {
-                buildMapFromTree(children, map)
+        val minSize = minOf(oldList.size, newList.size)
+
+        for (i in 0 until minSize) {
+            val oldItem = oldList[i]
+            val newItem = newList[i]
+
+            if (oldItem.id == newItem.id) {
+                // Same node — compare properties directly (no HashMap)
+                if (!wireframePropertiesEqual(oldItem, newItem)) {
+                    updated.add(newItem)
+                }
+                // Recurse into children
+                val oldChildren = oldItem.childWireframes
+                val newChildren = newItem.childWireframes
+                if (oldChildren != null && newChildren != null) {
+                    parallelWalk(oldChildren, newChildren, added, removed, updated, oldOrphans, newOrphans)
+                } else if (oldChildren != null) {
+                    flattenInto(oldChildren, removed)
+                } else if (newChildren != null) {
+                    flattenInto(newChildren, added)
+                }
+            } else {
+                // IDs diverged — collect subtrees as orphans for HashMap reconciliation
+                flattenNodeInto(oldItem, oldOrphans)
+                flattenNodeInto(newItem, newOrphans)
             }
+        }
+
+        // Remaining items in longer list
+        for (i in minSize until oldList.size) {
+            flattenNodeInto(oldList[i], oldOrphans)
+        }
+        for (i in minSize until newList.size) {
+            flattenNodeInto(newList[i], newOrphans)
         }
     }
 
-    private fun diffNewTree(
-        wireframes: List<RRWireframe>,
-        oldMap: HashMap<Int, RRWireframe>,
-        addedItems: ArrayList<RRWireframe>,
-        updatedItems: ArrayList<RRWireframe>,
+    /** Flatten a single node and all its descendants into a list. */
+    private fun flattenNodeInto(
+        wireframe: RRWireframe,
+        result: ArrayList<RRWireframe>,
     ) {
-        for (newItem in wireframes) {
-            val oldItem = oldMap.remove(newItem.id)
-            if (oldItem == null) {
-                addedItems.add(newItem)
-            } else if (!wireframePropertiesEqual(oldItem, newItem)) {
-                updatedItems.add(newItem)
-            }
-            val children = newItem.childWireframes
-            if (children != null) {
-                diffNewTree(children, oldMap, addedItems, updatedItems)
-            }
+        result.add(wireframe)
+        val children = wireframe.childWireframes
+        if (children != null) {
+            flattenInto(children, result)
         }
     }
 
