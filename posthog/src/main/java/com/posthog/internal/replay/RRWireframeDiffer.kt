@@ -70,6 +70,63 @@ public object RRWireframeDiffer {
     }
 
     /**
+     * Combined flatten + diff in one pass: builds the old map while traversing the old tree,
+     * then diffs while traversing the new tree. Avoids allocating two flat lists entirely.
+     */
+    public fun diffTrees(
+        oldTree: List<RRWireframe>,
+        newTree: List<RRWireframe>,
+    ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
+        // Phase 1: Build map from old tree via traversal (no flat list needed)
+        val oldMap = HashMap<Int, RRWireframe>(128)
+        buildMapFromTree(oldTree, oldMap)
+
+        // Phase 2: Traverse new tree, diff against old map
+        val addedItems = ArrayList<RRWireframe>()
+        val updatedItems = ArrayList<RRWireframe>()
+        diffNewTree(newTree, oldMap, addedItems, updatedItems)
+
+        // Remaining entries = removed
+        val removedItems = ArrayList<RRWireframe>(oldMap.size)
+        removedItems.addAll(oldMap.values)
+
+        return Triple(addedItems, removedItems, updatedItems)
+    }
+
+    private fun buildMapFromTree(
+        wireframes: List<RRWireframe>,
+        map: HashMap<Int, RRWireframe>,
+    ) {
+        for (item in wireframes) {
+            map[item.id] = item
+            val children = item.childWireframes
+            if (children != null) {
+                buildMapFromTree(children, map)
+            }
+        }
+    }
+
+    private fun diffNewTree(
+        wireframes: List<RRWireframe>,
+        oldMap: HashMap<Int, RRWireframe>,
+        addedItems: ArrayList<RRWireframe>,
+        updatedItems: ArrayList<RRWireframe>,
+    ) {
+        for (newItem in wireframes) {
+            val oldItem = oldMap.remove(newItem.id)
+            if (oldItem == null) {
+                addedItems.add(newItem)
+            } else if (!wireframePropertiesEqual(oldItem, newItem)) {
+                updatedItems.add(newItem)
+            }
+            val children = newItem.childWireframes
+            if (children != null) {
+                diffNewTree(children, oldMap, addedItems, updatedItems)
+            }
+        }
+    }
+
+    /**
      * Compares two wireframes by all properties except childWireframes,
      * avoiding the allocation of copy() calls.
      */

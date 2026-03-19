@@ -118,18 +118,14 @@ internal class RRWireframeDifferBenchmarkTest {
 
         // Warmup
         repeat(WARMUP_ITERATIONS) {
-            val oldFlat = RRWireframeDiffer.flattenChildren(listOf(oldTree))
-            val newFlat = RRWireframeDiffer.flattenChildren(listOf(newTree))
-            RRWireframeDiffer.findAddedAndRemovedItems(oldFlat, newFlat)
+            RRWireframeDiffer.diffTrees(listOf(oldTree), listOf(newTree))
         }
 
         // Benchmark
         val times = LongArray(BENCH_ITERATIONS)
         for (i in 0 until BENCH_ITERATIONS) {
             val start = System.nanoTime()
-            val oldFlat = RRWireframeDiffer.flattenChildren(listOf(oldTree))
-            val newFlat = RRWireframeDiffer.flattenChildren(listOf(newTree))
-            RRWireframeDiffer.findAddedAndRemovedItems(oldFlat, newFlat)
+            RRWireframeDiffer.diffTrees(listOf(oldTree), listOf(newTree))
             times[i] = System.nanoTime() - start
         }
 
