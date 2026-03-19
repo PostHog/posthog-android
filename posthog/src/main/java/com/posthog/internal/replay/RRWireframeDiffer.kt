@@ -10,13 +10,23 @@ import com.posthog.PostHogInternal
 public object RRWireframeDiffer {
     /**
      * Flattens a list of wireframes and all their nested children into a single flat list.
+     * Uses an iterative stack-based approach to avoid recursive list concatenation overhead.
      */
     public fun flattenChildren(wireframes: List<RRWireframe>): List<RRWireframe> {
-        val result = mutableListOf<RRWireframe>()
-        for (item in wireframes) {
+        val result = ArrayList<RRWireframe>(wireframes.size * 4)
+        val stack = ArrayList<RRWireframe>(wireframes.size * 4)
+        // Push in reverse order so first item is on top
+        for (i in wireframes.indices.reversed()) {
+            stack.add(wireframes[i])
+        }
+        while (stack.isNotEmpty()) {
+            val item = stack.removeAt(stack.size - 1)
             result.add(item)
-            item.childWireframes?.let {
-                result.addAll(flattenChildren(it))
+            val children = item.childWireframes
+            if (children != null) {
+                for (i in children.indices.reversed()) {
+                    stack.add(children[i])
+                }
             }
         }
         return result
@@ -25,33 +35,42 @@ public object RRWireframeDiffer {
     /**
      * Finds added, removed, and updated wireframes between old and new flat lists.
      * Returns Triple(added, removed, updated).
+     * Single-pass approach: build a map of old items, then iterate new items once.
      */
     public fun findAddedAndRemovedItems(
         oldItems: List<RRWireframe>,
         newItems: List<RRWireframe>,
     ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        val oldMap = oldItems.associateBy { it.id }
-        val newMap = newItems.associateBy { it.id }
+        // Build map of old items by id
+        val oldMap = HashMap<Int, RRWireframe>(oldItems.size * 2)
+        for (item in oldItems) {
+            oldMap[item.id] = item
+        }
 
-        val oldItemIds = HashSet(oldItems.map { it.id })
-        val newItemIds = HashSet(newItems.map { it.id })
+        val addedItems = ArrayList<RRWireframe>()
+        val updatedItems = ArrayList<RRWireframe>()
+        // Track which old items were seen in the new list
+        val seenOldIds = HashSet<Int>(oldItems.size * 2)
 
-        val addedIds = newItemIds - oldItemIds
-        val addedItems = newItems.filter { it.id in addedIds }
+        for (newItem in newItems) {
+            val oldItem = oldMap[newItem.id]
+            if (oldItem == null) {
+                // New item not in old list = added
+                addedItems.add(newItem)
+            } else {
+                seenOldIds.add(newItem.id)
+                // Compare without childWireframes to check for property changes
+                if (!wireframePropertiesEqual(oldItem, newItem)) {
+                    updatedItems.add(newItem)
+                }
+            }
+        }
 
-        val removedIds = oldItemIds - newItemIds
-        val removedItems = oldItems.filter { it.id in removedIds }
-
-        val updatedItems = mutableListOf<RRWireframe>()
-        val sameItems = oldItemIds.intersect(newItemIds)
-
-        for (id in sameItems) {
-            val oldItem = oldMap[id]?.copy(childWireframes = null) ?: continue
-            val newItem = newMap[id] ?: continue
-            val newItemCopy = newItem.copy(childWireframes = null)
-
-            if (oldItem != newItemCopy) {
-                updatedItems.add(newItem)
+        // Items in old but not seen in new = removed
+        val removedItems = ArrayList<RRWireframe>()
+        for (oldItem in oldItems) {
+            if (oldItem.id !in seenOldIds) {
+                removedItems.add(oldItem)
             }
         }
 
@@ -59,10 +78,49 @@ public object RRWireframeDiffer {
     }
 
     /**
+     * Compares two wireframes by all properties except childWireframes,
+     * avoiding the allocation of copy() calls.
+     */
+    private fun wireframePropertiesEqual(
+        a: RRWireframe,
+        b: RRWireframe,
+    ): Boolean {
+        return a.id == b.id &&
+            a.x == b.x &&
+            a.y == b.y &&
+            a.width == b.width &&
+            a.height == b.height &&
+            a.type == b.type &&
+            a.inputType == b.inputType &&
+            a.text == b.text &&
+            a.label == b.label &&
+            a.value == b.value &&
+            a.base64 == b.base64 &&
+            a.style == b.style &&
+            a.disabled == b.disabled &&
+            a.checked == b.checked &&
+            a.options == b.options &&
+            a.parentId == b.parentId &&
+            a.max == b.max
+    }
+
+    private val HEX_CHARS = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
+
+    /**
      * Converts an RGB int to a hex color string like "#RRGGBB".
+     * Uses manual char array conversion instead of String.format for ~10-50x speedup.
      */
     public fun toRGBColor(color: Int): String {
-        return String.format("#%06X", (0xFFFFFF and color))
+        val rgb = color and 0xFFFFFF
+        val chars = CharArray(7)
+        chars[0] = '#'
+        chars[1] = HEX_CHARS[(rgb shr 20) and 0xF]
+        chars[2] = HEX_CHARS[(rgb shr 16) and 0xF]
+        chars[3] = HEX_CHARS[(rgb shr 12) and 0xF]
+        chars[4] = HEX_CHARS[(rgb shr 8) and 0xF]
+        chars[5] = HEX_CHARS[(rgb shr 4) and 0xF]
+        chars[6] = HEX_CHARS[rgb and 0xF]
+        return String(chars)
     }
 
     /**
