@@ -83,11 +83,13 @@ Since `PostHogReplayIntegration` methods are private and depend on Android views
 
 - **Content hash on RRWireframe**: Adds overhead for 90% matching nodes. +2.5%.
 
-### Total improvement: 265µs → ~80µs (70% faster)
+10. **Same-size fast path in parallelWalk** (80→78µs, ~3%): Skip `minOf` and trailing loops when both lists have same size.
+
+### Total improvement: 265µs → ~78µs (71% faster)
 
 ### Summary
 The diffing algorithm has been fundamentally redesigned:
 - Original: flatten both trees → create 6+ intermediate collections → multi-pass diffing with copy()
 - Optimized: parallel tree walk comparing nodes at same positions directly, zero-copy property comparison, HashMap fallback only for structural changes (rare)
 
-Production code also improved: reusable coordinates array, lazy node list allocation, pre-sized ArrayLists, dead code removal, manual hex color conversion (17x faster).
+Production code also improved: reusable coordinates array, lazy node list allocation, pre-sized ArrayLists, dead code removal, manual hex color conversion (17x faster), GradientDrawable color simplification, correctness test suite (7 tests).
