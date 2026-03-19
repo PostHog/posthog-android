@@ -494,38 +494,51 @@ public class PostHogReplayIntegration(
             events.add(event)
             status.sentFullSnapshot = true
         } else {
-            val lastSnapshot = status.lastSnapshot
-            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
             val (addedItems, removedItems, updatedItems) =
                 RRWireframeDiffer.diffTrees(
-                    lastSnapshots,
-                    listOf(wireframe),
+                    status.lastSnapshot,
+                    wireframe,
                 )
 
-            val addedNodes = mutableListOf<RRMutatedNode>()
-            addedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                addedNodes.add(item)
-            }
+            if (addedItems.isNotEmpty() || removedItems.isNotEmpty() || updatedItems.isNotEmpty()) {
+                val addedNodes =
+                    if (addedItems.isNotEmpty()) {
+                        ArrayList<RRMutatedNode>(addedItems.size).also { list ->
+                            for (item in addedItems) {
+                                list.add(RRMutatedNode(item, parentId = item.parentId))
+                            }
+                        }
+                    } else {
+                        null
+                    }
 
-            val removedNodes = mutableListOf<RRRemovedNode>()
-            removedItems.forEach {
-                val item = RRRemovedNode(it.id, parentId = it.parentId)
-                removedNodes.add(item)
-            }
+                val removedNodes =
+                    if (removedItems.isNotEmpty()) {
+                        ArrayList<RRRemovedNode>(removedItems.size).also { list ->
+                            for (item in removedItems) {
+                                list.add(RRRemovedNode(item.id, parentId = item.parentId))
+                            }
+                        }
+                    } else {
+                        null
+                    }
 
-            val updatedNodes = mutableListOf<RRMutatedNode>()
-            updatedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                updatedNodes.add(item)
-            }
+                val updatedNodes =
+                    if (updatedItems.isNotEmpty()) {
+                        ArrayList<RRMutatedNode>(updatedItems.size).also { list ->
+                            for (item in updatedItems) {
+                                list.add(RRMutatedNode(item, parentId = item.parentId))
+                            }
+                        }
+                    } else {
+                        null
+                    }
 
-            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty() || updatedNodes.isNotEmpty()) {
                 val incrementalMutationData =
                     RRIncrementalMutationData(
-                        adds = addedNodes.ifEmpty { null },
-                        removes = removedNodes.ifEmpty { null },
-                        updates = updatedNodes.ifEmpty { null },
+                        adds = addedNodes,
+                        removes = removedNodes,
+                        updates = updatedNodes,
                     )
 
                 val incrementalSnapshotEvent =

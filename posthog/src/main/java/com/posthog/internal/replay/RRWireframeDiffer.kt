@@ -77,6 +77,18 @@ public object RRWireframeDiffer {
      * we compare directly without any HashMap lookup. When IDs diverge or list sizes
      * differ, those subtrees are collected and reconciled via a HashMap at the end.
      */
+    /**
+     * Convenience overload for single-root trees (the common case in session replay).
+     * Avoids allocating wrapper lists.
+     */
+    public fun diffTrees(
+        oldRoot: RRWireframe?,
+        newRoot: RRWireframe,
+    ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
+        val oldList = if (oldRoot != null) listOf(oldRoot) else emptyList()
+        return diffTrees(oldList, listOf(newRoot))
+    }
+
     public fun diffTrees(
         oldTree: List<RRWireframe>,
         newTree: List<RRWireframe>,
