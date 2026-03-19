@@ -143,59 +143,35 @@ public object RRWireframeDiffer {
     ) {
         val oldSize = oldList.size
         val newSize = newList.size
+        val minSize = if (oldSize < newSize) oldSize else newSize
 
-        // Fast path: same-size lists (very common for stable UIs)
-        if (oldSize == newSize) {
-            for (i in 0 until oldSize) {
-                val oldItem = oldList[i]
-                val newItem = newList[i]
-                if (oldItem.id == newItem.id) {
-                    if (!wireframePropertiesEqual(oldItem, newItem)) {
-                        updated.add(newItem)
-                    }
-                    val oldChildren = oldItem.childWireframes
-                    val newChildren = newItem.childWireframes
-                    if (oldChildren != null && newChildren != null) {
-                        parallelWalk(oldChildren, newChildren, added, removed, updated, oldOrphans, newOrphans)
-                    } else if (oldChildren != null) {
-                        flattenInto(oldChildren, removed)
-                    } else if (newChildren != null) {
-                        flattenInto(newChildren, added)
-                    }
-                } else {
-                    flattenNodeInto(oldItem, oldOrphans)
-                    flattenNodeInto(newItem, newOrphans)
+        for (i in 0 until minSize) {
+            val oldItem = oldList[i]
+            val newItem = newList[i]
+            if (oldItem.id == newItem.id) {
+                if (!wireframePropertiesEqual(oldItem, newItem)) {
+                    updated.add(newItem)
                 }
-            }
-        } else {
-            val minSize = minOf(oldSize, newSize)
-            for (i in 0 until minSize) {
-                val oldItem = oldList[i]
-                val newItem = newList[i]
-                if (oldItem.id == newItem.id) {
-                    if (!wireframePropertiesEqual(oldItem, newItem)) {
-                        updated.add(newItem)
-                    }
-                    val oldChildren = oldItem.childWireframes
-                    val newChildren = newItem.childWireframes
-                    if (oldChildren != null && newChildren != null) {
-                        parallelWalk(oldChildren, newChildren, added, removed, updated, oldOrphans, newOrphans)
-                    } else if (oldChildren != null) {
-                        flattenInto(oldChildren, removed)
-                    } else if (newChildren != null) {
-                        flattenInto(newChildren, added)
-                    }
-                } else {
-                    flattenNodeInto(oldItem, oldOrphans)
-                    flattenNodeInto(newItem, newOrphans)
+                val oldChildren = oldItem.childWireframes
+                val newChildren = newItem.childWireframes
+                if (oldChildren != null && newChildren != null) {
+                    parallelWalk(oldChildren, newChildren, added, removed, updated, oldOrphans, newOrphans)
+                } else if (oldChildren != null) {
+                    flattenInto(oldChildren, removed)
+                } else if (newChildren != null) {
+                    flattenInto(newChildren, added)
                 }
+            } else {
+                flattenNodeInto(oldItem, oldOrphans)
+                flattenNodeInto(newItem, newOrphans)
             }
-            for (i in minSize until oldSize) {
-                flattenNodeInto(oldList[i], oldOrphans)
-            }
-            for (i in minSize until newSize) {
-                flattenNodeInto(newList[i], newOrphans)
-            }
+        }
+
+        for (i in minSize until oldSize) {
+            flattenNodeInto(oldList[i], oldOrphans)
+        }
+        for (i in minSize until newSize) {
+            flattenNodeInto(newList[i], newOrphans)
         }
     }
 
