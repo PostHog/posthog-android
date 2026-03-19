@@ -316,7 +316,7 @@ public class PostHogReplayIntegration(
         motionEvent: MotionEvent,
         type: RRMouseInteraction,
     ) {
-        val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
+        val mouseInteractions = ArrayList<RRIncrementalMouseInteractionEvent>(motionEvent.pointerCount)
         for (index in 0 until motionEvent.pointerCount) {
             try {
                 // if the id is 0, BE transformer will set it to the virtual bodyId
@@ -468,7 +468,8 @@ public class PostHogReplayIntegration(
             }
         }
 
-        val events = mutableListOf<RREvent>()
+        // Typically 1-3 events per snapshot (meta + full/incremental + optional keyboard)
+        val events = ArrayList<RREvent>(3)
 
         if (!status.sentMetaEvent) {
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
