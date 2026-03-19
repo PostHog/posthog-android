@@ -41,7 +41,8 @@ public object RRWireframeDiffer {
         oldItems: List<RRWireframe>,
         newItems: List<RRWireframe>,
     ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        // Build map of old items by id
+        // Build mutable map of old items — entries are removed as they're matched,
+        // so whatever remains at the end is the removed set. Avoids a separate HashSet.
         val oldMap = HashMap<Int, RRWireframe>(oldItems.size * 2)
         for (item in oldItems) {
             oldMap[item.id] = item
@@ -49,30 +50,21 @@ public object RRWireframeDiffer {
 
         val addedItems = ArrayList<RRWireframe>()
         val updatedItems = ArrayList<RRWireframe>()
-        // Track which old items were seen in the new list
-        val seenOldIds = HashSet<Int>(oldItems.size * 2)
 
         for (newItem in newItems) {
-            val oldItem = oldMap[newItem.id]
+            val oldItem = oldMap.remove(newItem.id)
             if (oldItem == null) {
-                // New item not in old list = added
                 addedItems.add(newItem)
             } else {
-                seenOldIds.add(newItem.id)
-                // Compare without childWireframes to check for property changes
                 if (!wireframePropertiesEqual(oldItem, newItem)) {
                     updatedItems.add(newItem)
                 }
             }
         }
 
-        // Items in old but not seen in new = removed
-        val removedItems = ArrayList<RRWireframe>()
-        for (oldItem in oldItems) {
-            if (oldItem.id !in seenOldIds) {
-                removedItems.add(oldItem)
-            }
-        }
+        // Remaining entries in oldMap are items that were removed
+        val removedItems = ArrayList<RRWireframe>(oldMap.size)
+        removedItems.addAll(oldMap.values)
 
         return Triple(addedItems, removedItems, updatedItems)
     }
