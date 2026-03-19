@@ -1,20 +1,20 @@
-# Autoresearch Ideas
+# Autoresearch Ideas — FINAL
 
-## Remaining ideas (all at diminishing returns — 78µs floor reached)
+## Optimization surface exhausted at ~60µs (77% from 265µs baseline)
 
-- **Lazy RRStyle creation in toWireframe**: Only allocate when ≥1 property is non-null. Saves ~500+ allocations/frame. Android-only, not JVM benchmarkable.
-- **HashSet → primitive IntSet for visitedViews in findMaskableWidgets**: Avoids boxing. Android-only.
-- **ByteArrayOutputStream pre-sizing in webpBase64**: Current uses `allocationByteCount` (full pixel data) but compressed output is ~10x smaller. Android-only.
+At 60µs for 781 nodes, we're at ~77ns/node. The inner loop does ~34 field comparisons
+per node (17 wireframe + 17 style) at ~2.3ns per comparison — near hardware limits.
 
-## Exhausted (tried and confirmed no improvement)
-- Parallel walk with callbacks — lambda overhead 2x worse
-- IntObjectMap — parallel walk bypasses HashMap
-- Iterative stack parallelWalk — Pair allocation negates benefit
-- HashMap capacity tuning — 128 optimal, parallel walk bypasses it
-- Reusable HashMap — clear() costly
-- Early rejection in properties — rarely triggers
-- Content hash on RRWireframe — adds overhead for matching nodes
-- DiffAccumulator — no improvement over direct lists
-- mask() with CharArray.fill — no primary impact
-- Lazy orphan lists via arrayOfNulls — net zero
-- Index-based loops — JVM scalarizes iterators
+## Remaining Android-only ideas (not JVM benchmarkable)
+- **Lazy RRStyle creation in toWireframe**: Skip allocation when all fields null. ~500 allocs/frame saved.
+- **ByteArrayOutputStream pre-sizing in webpBase64**: Use compressed size estimate instead of full pixel data.
+- **String interning for toRGBColor output**: Let `===` succeed in styleEquals for repeated colors.
+
+## Fully exhausted approaches
+- Parallel walk variants (callbacks, iterative stack, DiffAccumulator, lazy orphans)
+- HashMap alternatives (IntObjectMap, capacity tuning, reusable map)
+- Comparison optimizations (content hash, early rejection, field reordering)
+- Collection optimizations (all pre-sized, lazy allocation where beneficial)
+- Loop optimizations (index-based, while loops)
+- mask() alternatives (CharArray.fill, Arrays.fill)
+- Code duplication for same-size fast path (JIT handles it)
