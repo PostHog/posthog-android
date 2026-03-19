@@ -35,22 +35,24 @@ internal class RRWireframeDifferBenchmarkTest {
             }
         }
 
-        val wireframe = RRWireframe(
-            id = myId,
-            x = myId * 10,
-            y = myId * 5,
-            width = 100,
-            height = 50,
-            type = if (depth == 0) "text" else null,
-            text = if (depth == 0) "Hello World $myId" else null,
-            style = RRStyle(
-                backgroundColor = "#FF0000",
-                color = if (depth == 0) "#000000" else null,
-                fontSize = if (depth == 0) 14 else null,
-            ),
-            childWireframes = children.ifEmpty { null },
-            parentId = parentId,
-        )
+        val wireframe =
+            RRWireframe(
+                id = myId,
+                x = myId * 10,
+                y = myId * 5,
+                width = 100,
+                height = 50,
+                type = if (depth == 0) "text" else null,
+                text = if (depth == 0) "Hello World $myId" else null,
+                style =
+                    RRStyle(
+                        backgroundColor = "#FF0000",
+                        color = if (depth == 0) "#000000" else null,
+                        fontSize = if (depth == 0) 14 else null,
+                    ),
+                childWireframes = children.ifEmpty { null },
+                parentId = parentId,
+            )
 
         return Pair(wireframe, nextId)
     }
@@ -80,22 +82,31 @@ internal class RRWireframeDifferBenchmarkTest {
 
         val isModified = myId % changeEvery == 0
 
-        val wireframe = RRWireframe(
-            id = myId,
-            x = if (isModified) myId * 10 + 5 else myId * 10,
-            y = myId * 5,
-            width = 100,
-            height = 50,
-            type = if (depth == 0) "text" else null,
-            text = if (depth == 0 && isModified) "Modified $myId" else if (depth == 0) "Hello World $myId" else null,
-            style = RRStyle(
-                backgroundColor = "#FF0000",
-                color = if (depth == 0) "#000000" else null,
-                fontSize = if (depth == 0) 14 else null,
-            ),
-            childWireframes = children.ifEmpty { null },
-            parentId = parentId,
-        )
+        val wireframe =
+            RRWireframe(
+                id = myId,
+                x = if (isModified) myId * 10 + 5 else myId * 10,
+                y = myId * 5,
+                width = 100,
+                height = 50,
+                type = if (depth == 0) "text" else null,
+                text =
+                    if (depth == 0 && isModified) {
+                        "Modified $myId"
+                    } else if (depth == 0) {
+                        "Hello World $myId"
+                    } else {
+                        null
+                    },
+                style =
+                    RRStyle(
+                        backgroundColor = "#FF0000",
+                        color = if (depth == 0) "#000000" else null,
+                        fontSize = if (depth == 0) 14 else null,
+                    ),
+                childWireframes = children.ifEmpty { null },
+                parentId = parentId,
+            )
 
         return Pair(wireframe, nextId)
     }
