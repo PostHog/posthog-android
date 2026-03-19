@@ -154,6 +154,10 @@ public class PostHogReplayIntegration(
     private val reusableRect = Rect()
     private val reusablePoint = Point()
 
+    // Reusable coordinates array for getLocationOnScreen to avoid per-view IntArray(2) allocation.
+    // Only accessed from the executor thread.
+    private val reusableCoordinates = IntArray(2)
+
     @Volatile
     private var isSessionReplayActive: Boolean = false
 
@@ -940,7 +944,7 @@ public class PostHogReplayIntegration(
 
         val viewId = System.identityHashCode(view)
 
-        val coordinates = IntArray(2)
+        val coordinates = reusableCoordinates
         if (view.isViewStateStableForMatrixOperations()) {
             view.getLocationOnScreen(coordinates)
         } else {
@@ -1083,7 +1087,7 @@ public class PostHogReplayIntegration(
 
         val viewId = System.identityHashCode(view)
 
-        val coordinates = IntArray(2)
+        val coordinates = reusableCoordinates
         if (view.isViewStateStableForMatrixOperations()) {
             view.getLocationOnScreen(coordinates)
         } else {
