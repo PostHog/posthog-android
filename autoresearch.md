@@ -66,11 +66,28 @@ Since `PostHogReplayIntegration` methods are private and depend on Android views
 6. **Integration wiring**: Updated PostHogReplayIntegration.kt to use RRWireframeDiffer.diffTrees and toRGBColor.
 7. **Property comparison ordering**: Primitives first, `style` reference equality before deep equals.
 
+8. **Parallel tree walk** (106→80µs, -25%): Walk old/new trees in parallel. When IDs match at same position (common case), compare directly without HashMap. Falls back to HashMap only for structural changes.
+9. **Production wiring**: Lazy MutatedNode/RemovedNode lists, single-root diffTrees overload, pre-sized ArrayLists, reusable IntArray coordinates, null-root fast path.
+
 ### Dead ends (discarded)
 - **Pre-count nodes for HashMap sizing**: Extra traversal costs more than resize savings (+17%).
 - **HashMap initial capacity 1024**: Over-allocation hurts (+10%).
 - **HashMap initial capacity 256/512**: No measurable improvement.
 - **Reusable HashMap (clear between frames)**: `map.clear()` on 781 entries is costly (+9%).
 - **mask() with CharArray.fill**: Primary unchanged, only mask secondary improved.
+- **Parallel walk with callback pattern**: Lambda/call overhead 2x worse than HashMap (236µs).
+- **DiffAccumulator with lazy orphan lists**: No improvement over parallel walk with direct lists.
+- **IntObjectMap (open-addressing, no boxing)**: No impact — parallel walk bypasses HashMap entirely.
+- **Iterative parallelWalk with Pair stack**: Pair allocation offsets saved call frames, worse p95.
+- **Early rejection in wireframePropertiesEqual**: Only 10% differ so early exit rarely triggers.
 
-### Total improvement: 265µs → ~100µs (62% faster)
+- **Content hash on RRWireframe**: Adds overhead for 90% matching nodes. +2.5%.
+
+### Total improvement: 265µs → ~80µs (70% faster)
+
+### Summary
+The diffing algorithm has been fundamentally redesigned:
+- Original: flatten both trees → create 6+ intermediate collections → multi-pass diffing with copy()
+- Optimized: parallel tree walk comparing nodes at same positions directly, zero-copy property comparison, HashMap fallback only for structural changes (rare)
+
+Production code also improved: reusable coordinates array, lazy node list allocation, pre-sized ArrayLists, dead code removal, manual hex color conversion (17x faster).

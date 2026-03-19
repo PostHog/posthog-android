@@ -1,21 +1,18 @@
 # Autoresearch Ideas
 
-## Deferred Optimizations
+## Remaining ideas (diminishing returns expected at 80µs floor)
 
-- **Reuse IntArray(2) for coordinates in toWireframe**: Currently allocates per view. Could use a field-level reusable array. (Android-only, not in current benchmark)
-- **Avoid `mutableListOf<RRMutatedNode>()` in generateSnapshot**: Pre-size based on diff result counts. (Android-only)
-- **Lazy RRStyle creation**: Only create style when at least one property is non-null. (Android-only)
-- **Parallel tree walk for diffTrees**: When trees have identical structure (common case), compare nodes at same positions without HashMap. Could bypass HashMap entirely for ~90% of nodes.
-- **Open-addressing IntObjectMap for diffing**: Replace HashMap<Int, RRWireframe> with a primitive int-keyed map to avoid boxing. Custom implementation needed (no deps).
-- **Structural hash on RRWireframe**: Pre-compute a hash of all non-child fields during construction. Compare hash first, only do field-by-field on hash match. Trades memory for CPU.
-- **Avoid Triple allocation in diffTrees**: Return results via callback or mutable holder to avoid Triple + 3 ArrayList allocations per call.
+- **Lazy RRStyle creation in toWireframe**: Only allocate RRStyle when ≥1 property is non-null. Saves ~500+ object allocations per frame in production. Not benchmarkable without Robolectric.
+- **Avoid mutableListOf for maskableWidgets in screenshot path**: Pre-size or use reusable list. Minor.
+- **String interning for type/inputType fields**: Tiny impact on comparisons.
 
-## Pruned (already tried or not viable)
-- ~~Pool/reuse RRStyle objects~~ — toWireframe is Android-only, not benchmarkable currently
-- ~~Cache mask strings by length~~ — mask is already fast (26-48µs for 500 strings)
-- ~~Use StringBuilder instead of string templates~~ — no string templates in hot path
-- ~~@JvmField on RRWireframe~~ — it's a data class, properties are already fields
-- ~~Reuse coordinates IntArray in toScreenshotWireframe~~ — Android-only
-- ~~Move away from PixelCopy thread~~ — architectural, not algorithmic
-- ~~Reusable HashMap~~ — tried, clear() is costly
-- ~~HashMap capacity tuning~~ — tried 128/256/512/1024, 128 is optimal
+## Exhausted / not viable
+- ~~Parallel walk with callbacks~~ — lambda overhead 2x worse
+- ~~IntObjectMap~~ — parallel walk bypasses HashMap
+- ~~Iterative stack-based parallelWalk~~ — Pair allocation negates benefit
+- ~~HashMap capacity tuning~~ — parallel walk bypasses it
+- ~~Reusable HashMap~~ — clear() costly
+- ~~Early rejection in properties~~ — rarely triggers (90% match)
+- ~~Content hash on RRWireframe~~ — adds overhead for matching nodes
+- ~~DiffAccumulator~~ — no improvement over direct lists
+- ~~mask() with CharArray.fill~~ — no primary impact
