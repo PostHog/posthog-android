@@ -10,26 +10,26 @@ import com.posthog.PostHogInternal
 public object RRWireframeDiffer {
     /**
      * Flattens a list of wireframes and all their nested children into a single flat list.
-     * Uses an iterative stack-based approach to avoid recursive list concatenation overhead.
+     * Uses a recursive helper that appends directly to a single result list,
+     * avoiding intermediate list creation and stack overhead.
      */
     public fun flattenChildren(wireframes: List<RRWireframe>): List<RRWireframe> {
         val result = ArrayList<RRWireframe>(wireframes.size * 4)
-        val stack = ArrayList<RRWireframe>(wireframes.size * 4)
-        // Push in reverse order so first item is on top
-        for (i in wireframes.indices.reversed()) {
-            stack.add(wireframes[i])
-        }
-        while (stack.isNotEmpty()) {
-            val item = stack.removeAt(stack.size - 1)
+        flattenInto(wireframes, result)
+        return result
+    }
+
+    private fun flattenInto(
+        wireframes: List<RRWireframe>,
+        result: ArrayList<RRWireframe>,
+    ) {
+        for (item in wireframes) {
             result.add(item)
             val children = item.childWireframes
             if (children != null) {
-                for (i in children.indices.reversed()) {
-                    stack.add(children[i])
-                }
+                flattenInto(children, result)
             }
         }
-        return result
     }
 
     /**
