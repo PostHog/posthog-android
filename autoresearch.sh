@@ -10,6 +10,9 @@ for f in posthog/src/main/java/com/posthog/internal/replay/RRWireframeDiffer.kt 
     fi
 done
 
+# Clean test results to force re-run (Gradle UP-TO-DATE check skips unchanged tests)
+rm -rf posthog/build/test-results/test
+
 # Run benchmark tests
 if ! ./gradlew :posthog:test --tests "com.posthog.internal.replay.RRWireframeDifferBenchmarkTest" --no-daemon --quiet 2>&1; then
     echo "METRIC total_µs=0"

@@ -1404,17 +1404,8 @@ public class PostHogReplayIntegration(
             is GradientDrawable -> {
                 colors?.let { rgcColors ->
                     if (rgcColors.isNotEmpty()) {
-                        // Get the first color from the array
-                        val color = rgcColors[0]
-
-                        // Extract RGB values
-                        val red = Color.red(color)
-                        val green = Color.green(color)
-                        val blue = Color.blue(color)
-
-                        // Construct the RGB color
-                        val rgb = Color.rgb(red, green, blue)
-                        return rgb.toRGBColor()
+                        // toRGBColor already masks to 0xFFFFFF, so no need to decompose/recompose
+                        return rgcColors[0].toRGBColor()
                     }
                 }
                 color?.let {
