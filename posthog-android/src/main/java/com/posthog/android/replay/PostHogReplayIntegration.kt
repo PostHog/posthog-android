@@ -1468,59 +1468,7 @@ public class PostHogReplayIntegration(
         return RRWireframeDiffer.toRGBColor(this)
     }
 
-    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
-        val result = mutableListOf<RRWireframe>()
-
-        for (item in this) {
-            result.add(item)
-
-            item.childWireframes?.let {
-                result.addAll(it.flattenChildren())
-            }
-        }
-
-        return result
-    }
-
-    private fun findAddedAndRemovedItems(
-        oldItems: List<RRWireframe>,
-        newItems: List<RRWireframe>,
-    ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        val oldMap = oldItems.associateBy { it.id }
-        val newMap = newItems.associateBy { it.id }
-
-        // Create HashSet to track unique IDs
-        val oldItemIds = HashSet(oldItems.map { it.id })
-        val newItemIds = HashSet(newItems.map { it.id })
-
-        // Find added items by subtracting oldItemIds from newItemIds
-        val addedIds = newItemIds - oldItemIds
-        val addedItems = newItems.filter { it.id in addedIds }
-
-        // Find removed items by subtracting newItemIds from oldItemIds
-        val removedIds = oldItemIds - newItemIds
-        val removedItems = oldItems.filter { it.id in removedIds }
-
-        val updatedItems = mutableListOf<RRWireframe>()
-
-        // Find updated items by finding the intersection of oldItemIds and newItemIds
-        val sameItems = oldItemIds.intersect(newItemIds)
-
-        for (id in sameItems) {
-            // we have to copy without the childWireframes, otherwise they all would be different
-            // if one of the child is different, but we only wanna compare the parent
-            val oldItem = oldMap[id]?.copy(childWireframes = null) ?: continue
-            val newItem = newMap[id] ?: continue
-            val newItemCopy = newItem.copy(childWireframes = null)
-
-            // If the items are different (any property has a different value), add the new item to the updatedItems list
-            if (oldItem != newItemCopy) {
-                updatedItems.add(newItem)
-            }
-        }
-
-        return Triple(addedItems, removedItems, updatedItems)
-    }
+    // flattenChildren and findAddedAndRemovedItems are now in RRWireframeDiffer
 
     private fun Drawable.toBitmap(
         width: Int,
