@@ -226,10 +226,10 @@ public object RRWireframeDiffer {
             a.y == b.y &&
             a.width == b.width &&
             a.height == b.height &&
-            a.disabled == b.disabled &&
-            a.checked == b.checked &&
-            a.max == b.max &&
-            a.parentId == b.parentId &&
+            (a.disabled === b.disabled || a.disabled == b.disabled) &&
+            (a.checked === b.checked || a.checked == b.checked) &&
+            (a.max === b.max || a.max == b.max) &&
+            (a.parentId === b.parentId || a.parentId == b.parentId) &&
             (a.text === b.text || a.text == b.text) &&
             (a.type === b.type || a.type == b.type) &&
             (a.inputType === b.inputType || a.inputType == b.inputType) &&
