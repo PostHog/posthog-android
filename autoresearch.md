@@ -84,8 +84,9 @@ Since `PostHogReplayIntegration` methods are private and depend on Android views
 - **Content hash on RRWireframe**: Adds overhead for 90% matching nodes. +2.5%.
 
 10. **Same-size fast path in parallelWalk** (80→78µs, ~3%): Skip `minOf` and trailing loops when both lists have same size.
+11. **Reference equality (===) fast path for all nullable fields** (78→62µs, -20%): Use `a.field === b.field || a.field == b.field` for all nullable fields in wireframePropertiesEqual and styleEquals. `null === null` is a pointer comparison (1 instruction) vs `Intrinsics.areEqual(null, null)` (function call + null checks). Most nullable fields are null, so this triggers constantly.
 
-### Total improvement: 265µs → ~78µs (71% faster)
+### Total improvement: 265µs → ~62µs (77% faster)
 
 ### Summary
 The diffing algorithm has been fundamentally redesigned:
