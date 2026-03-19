@@ -251,13 +251,13 @@ public object RRWireframeDiffer {
     ): Boolean {
         if (a === b) return true
         if (a == null || b == null) return false
-        return a.borderWidth == b.borderWidth &&
-            a.borderRadius == b.borderRadius &&
-            a.fontSize == b.fontSize &&
-            a.paddingTop == b.paddingTop &&
-            a.paddingBottom == b.paddingBottom &&
-            a.paddingLeft == b.paddingLeft &&
-            a.paddingRight == b.paddingRight &&
+        return (a.borderWidth === b.borderWidth || a.borderWidth == b.borderWidth) &&
+            (a.borderRadius === b.borderRadius || a.borderRadius == b.borderRadius) &&
+            (a.fontSize === b.fontSize || a.fontSize == b.fontSize) &&
+            (a.paddingTop === b.paddingTop || a.paddingTop == b.paddingTop) &&
+            (a.paddingBottom === b.paddingBottom || a.paddingBottom == b.paddingBottom) &&
+            (a.paddingLeft === b.paddingLeft || a.paddingLeft == b.paddingLeft) &&
+            (a.paddingRight === b.paddingRight || a.paddingRight == b.paddingRight) &&
             (a.color === b.color || a.color == b.color) &&
             (a.backgroundColor === b.backgroundColor || a.backgroundColor == b.backgroundColor) &&
             (a.backgroundImage === b.backgroundImage || a.backgroundImage == b.backgroundImage) &&
