@@ -1342,13 +1342,17 @@ public class PostHogReplayIntegration(
             type = "web_view"
         }
 
-        val children = mutableListOf<RRWireframe>()
+        var children: MutableList<RRWireframe>? = null
         if (view is ViewGroup && view.childCount > 0) {
+            val childList = ArrayList<RRWireframe>(view.childCount)
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
                 viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
-                    children.add(it)
+                    childList.add(it)
                 }
+            }
+            if (childList.isNotEmpty()) {
+                children = childList
             }
         }
 
@@ -1361,7 +1365,7 @@ public class PostHogReplayIntegration(
             text = text,
             type = type,
             style = style,
-            childWireframes = children.ifEmpty { null },
+            childWireframes = children,
             base64 = base64,
             parentId = parentId,
             disabled = !view.isEnabled,
