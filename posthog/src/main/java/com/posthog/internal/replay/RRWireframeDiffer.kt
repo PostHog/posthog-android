@@ -134,23 +134,27 @@ public object RRWireframeDiffer {
         a: RRWireframe,
         b: RRWireframe,
     ): Boolean {
+        // Check cheap primitive fields first, then strings, then expensive object comparisons last.
+        // Short-circuit on the most likely to differ (position, text content).
         return a.id == b.id &&
             a.x == b.x &&
             a.y == b.y &&
             a.width == b.width &&
             a.height == b.height &&
-            a.type == b.type &&
-            a.inputType == b.inputType &&
-            a.text == b.text &&
-            a.label == b.label &&
-            a.value == b.value &&
-            a.base64 == b.base64 &&
-            a.style == b.style &&
             a.disabled == b.disabled &&
             a.checked == b.checked &&
-            a.options == b.options &&
+            a.max == b.max &&
+            a.text == b.text &&
+            a.type == b.type &&
+            a.inputType == b.inputType &&
+            a.label == b.label &&
             a.parentId == b.parentId &&
-            a.max == b.max
+            a.value == b.value &&
+            a.base64 == b.base64 &&
+            // style is the most expensive comparison (data class with 17 fields)
+            // Check reference equality first as an optimization
+            (a.style === b.style || a.style == b.style) &&
+            a.options == b.options
     }
 
     private val HEX_CHARS = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
