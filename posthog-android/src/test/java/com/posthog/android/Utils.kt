@@ -162,7 +162,6 @@ public fun mockGetNetworkInfo(
     networkType: Int,
     isConnected: Boolean = true,
 ) {
-    // For API 23+ (minSdk), the code uses activeNetwork + getNetworkCapabilities
     val network = mock<android.net.Network>()
     whenever(connectivityManager.activeNetwork).thenReturn(if (isConnected) network else null)
 

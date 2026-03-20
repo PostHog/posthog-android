@@ -24,8 +24,8 @@ public sealed interface PostHogInterface {
      */
     public fun identify(
         distinctId: String,
-        userProperties: Map<String, Any>?,
-        userPropertiesSetOnce: Map<String, Any>?,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
     )
 
     /**
@@ -66,7 +66,7 @@ public sealed interface PostHogInterface {
     /**
      * Enables or disables the debug mode
      */
-    public fun debug(enable: Boolean)
+    public fun debug(enable: Boolean = true)
 
     /**
      * Captures events
