@@ -1931,3 +1931,9 @@ public final class com/posthog/surveys/SurveyType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyType;
 }
 
+public final class com/posthog/vendor/uuid/TimeBasedEpochGenerator {
+	public static final field INSTANCE Lcom/posthog/vendor/uuid/TimeBasedEpochGenerator;
+	public final fun generate ()Ljava/util/UUID;
+	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
+}
+

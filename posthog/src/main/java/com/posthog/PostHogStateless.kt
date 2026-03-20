@@ -286,7 +286,7 @@ public open class PostHogStateless protected constructor(
                 event,
                 distinctId,
                 properties = sanitizedProperties,
-                timestamp = timestamp ?: Date(),
+                timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
             )
         var eventChecked: PostHogEvent? = postHogEvent
 

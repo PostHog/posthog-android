@@ -2,13 +2,16 @@
 
 package com.posthog.vendor.uuid
 
+import com.posthog.PostHogInternal
+import com.posthog.internal.PostHogDateProvider
 import java.security.SecureRandom
 import java.util.Random
 import java.util.UUID
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 
-internal object TimeBasedEpochGenerator {
+@PostHogInternal
+public object TimeBasedEpochGenerator {
     private const val ENTROPY_BYTE_LENGTH = 10
 
     private const val TIME_BASED_EPOCH_RAW = 7
@@ -24,6 +27,12 @@ internal object TimeBasedEpochGenerator {
     private val numberGenerator: Random = SecureRandom()
     private val lock: Lock = ReentrantLock()
 
+    private var dateProvider: PostHogDateProvider? = null
+
+    public fun setDateProvider(dateProvider: PostHogDateProvider) {
+        this.dateProvider = dateProvider
+    }
+
     /*
     / **********************************************************************
     / * UUID generation
@@ -33,8 +42,8 @@ internal object TimeBasedEpochGenerator {
     /**
      * @return unix epoch time based UUID
      */
-    fun generate(): UUID {
-        return generate(System.currentTimeMillis())
+    public fun generate(): UUID {
+        return generate(dateProvider?.currentTimeMillis() ?: System.currentTimeMillis())
     }
 
     /**
@@ -42,7 +51,7 @@ internal object TimeBasedEpochGenerator {
      * @return unix epoch time based UUID
      */
     @Throws(IllegalStateException::class)
-    fun generate(rawTimestamp: Long): UUID {
+    private fun generate(rawTimestamp: Long): UUID {
         return construct(rawTimestamp)
     }
 
