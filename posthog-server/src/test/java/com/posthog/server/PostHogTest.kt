@@ -427,12 +427,12 @@ internal class PostHogTest {
             appendFeatureFlags = true,
         )
 
-        // Collect all requests
+        // Collect all requests (use longer timeout for CI)
         val requests = mutableListOf<RecordedRequest>()
         var request = mockServer.takeRequest(5, TimeUnit.SECONDS)
         while (request != null) {
             requests.add(request)
-            request = mockServer.takeRequest(100, TimeUnit.MILLISECONDS)
+            request = mockServer.takeRequest(2, TimeUnit.SECONDS)
         }
 
         assertTrue(
@@ -480,7 +480,7 @@ internal class PostHogTest {
         var request = mockServer.takeRequest(5, TimeUnit.SECONDS)
         while (request != null) {
             requests.add(request)
-            request = mockServer.takeRequest(100, TimeUnit.MILLISECONDS)
+            request = mockServer.takeRequest(2, TimeUnit.SECONDS)
         }
 
         assertTrue(

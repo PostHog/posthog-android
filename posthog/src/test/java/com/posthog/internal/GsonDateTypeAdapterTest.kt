@@ -16,6 +16,7 @@ internal class GsonDateTypeAdapterTest {
     private val config = PostHogConfig(API_KEY)
     private val gsonFakeDateType = object : TypeToken<FakeDate>() {}.type
 
+    @Suppress("DEPRECATION")
     private fun getSut(): Gson {
         return GsonBuilder().apply {
             registerTypeAdapter(Date::class.java, GsonDateTypeAdapter(config))

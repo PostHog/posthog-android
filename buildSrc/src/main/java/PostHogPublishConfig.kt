@@ -9,10 +9,6 @@ import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.dokka.gradle.DokkaTask
 import java.net.URI
 
-object PostHogPublishConfig {
-    val versionNameProperty = "versionName"
-}
-
 fun Project.publishingAndroidConfig() {
     val projectName = name
 

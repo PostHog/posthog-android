@@ -1360,6 +1360,7 @@ public class PostHogReplayIntegration(
         return config.sessionReplayConfig.drawableConverter?.convert(drawable)
     }
 
+    @SuppressLint("NewApi")
     private fun Drawable.toRGBColor(): String? {
         when (this) {
             is ColorDrawable -> {

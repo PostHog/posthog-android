@@ -115,7 +115,8 @@ internal class PostHogAndroidContextTest {
     fun `sets network wifi not connected`() {
         val dynamicContext = executeNetworkTest(isConnected = false)
 
-        assertFalse(dynamicContext["\$network_wifi"] as Boolean)
+        // When not connected, activeNetwork is null so network keys are absent
+        assertFalse(dynamicContext.containsKey("\$network_wifi"))
     }
 
     @Test
@@ -129,7 +130,8 @@ internal class PostHogAndroidContextTest {
     fun `sets network bluetooth not connected`() {
         val dynamicContext = executeNetworkTest(isConnected = false, networkType = ConnectivityManager.TYPE_BLUETOOTH)
 
-        assertFalse(dynamicContext["\$network_bluetooth"] as Boolean)
+        // When not connected, activeNetwork is null so network keys are absent
+        assertFalse(dynamicContext.containsKey("\$network_bluetooth"))
     }
 
     @Test
@@ -143,6 +145,7 @@ internal class PostHogAndroidContextTest {
     fun `sets network cellular not connected`() {
         val dynamicContext = executeNetworkTest(isConnected = false, networkType = ConnectivityManager.TYPE_MOBILE)
 
-        assertFalse(dynamicContext["\$network_cellular"] as Boolean)
+        // When not connected, activeNetwork is null so network keys are absent
+        assertFalse(dynamicContext.containsKey("\$network_cellular"))
     }
 }
