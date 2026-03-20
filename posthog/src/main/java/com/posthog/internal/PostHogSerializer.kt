@@ -42,6 +42,7 @@ import java.util.Date
  * The JSON serializer using Gson
  * @property config the Config
  */
+@Suppress("DEPRECATION")
 @PostHogInternal
 public class PostHogSerializer(private val config: PostHogConfig) {
     public val gson: Gson =

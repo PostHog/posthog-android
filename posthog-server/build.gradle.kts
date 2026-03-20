@@ -34,6 +34,8 @@ buildConfig {
 
 java {
     withSourcesJar()
+    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
 }
 
 val dokkaJavadocJar by tasks.register<Jar>("dokkaJavadocJar") {
@@ -71,7 +73,6 @@ tasks.withType<KotlinCompile>().configureEach {
 
 kotlin {
     explicitApi()
-    jvmToolchain(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion.toInt())
 }
 
 configure<SourceSetContainer> {

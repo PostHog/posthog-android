@@ -4,8 +4,8 @@ plugins {
 }
 
 java {
-    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
-    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 application {

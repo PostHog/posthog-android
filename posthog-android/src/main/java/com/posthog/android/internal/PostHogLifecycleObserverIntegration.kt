@@ -52,8 +52,8 @@ internal class PostHogLifecycleObserverIntegration(
 
             if (!fromBackground) {
                 getPackageInfo(context, config)?.let { packageInfo ->
-                    props["version"] = packageInfo.versionName
-                    props["build"] = packageInfo.versionCodeCompat()
+                    packageInfo.versionName?.let { props["version"] = it }
+                    packageInfo.versionCodeCompat()?.let { props["build"] = it }
                 }
 
                 fromBackground = true
