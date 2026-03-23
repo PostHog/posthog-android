@@ -1,5 +1,11 @@
 ## Next
 
+## 2.4.0
+
+### Minor Changes
+
+- ecb0551: - chore: Upgrade to Kotlin 2.1.10, AGP 8.9.1, compileSdk 36, minSdk 23
+
 ## 2.3.3
 
 ### Patch Changes
