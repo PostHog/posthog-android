@@ -32,9 +32,10 @@ internal fun TaskProvider<out Task>.hookWithMinifyTasks(
                 dependsOn(minify)
             }
             generateMapIdTask?.configure {
-                val r8MappingFiles = minify.map { r8Task ->
-                    r8Task.outputs.files.filter { it.name == "mapping.txt" }
-                }
+                val r8MappingFiles =
+                    minify.map { r8Task ->
+                        r8Task.outputs.files.filter { it.name == "mapping.txt" }
+                    }
                 this.proguardMappingFiles.setFrom(r8MappingFiles)
             }
         }
