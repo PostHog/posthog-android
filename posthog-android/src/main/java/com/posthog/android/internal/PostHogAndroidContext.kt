@@ -3,9 +3,6 @@ package com.posthog.android.internal
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.net.ConnectivityManager.TYPE_BLUETOOTH
-import android.net.ConnectivityManager.TYPE_MOBILE
-import android.net.ConnectivityManager.TYPE_WIFI
 import android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
 import android.net.NetworkCapabilities.TRANSPORT_CELLULAR
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
@@ -83,25 +80,13 @@ internal class PostHogAndroidContext(
         // TODO: use ConnectivityManager.NetworkCallback instead
         context.connectivityManager()?.let { connectivityManager ->
             if (context.hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    connectivityManager.activeNetwork?.let {
-                        val networkCapabilities = connectivityManager.getNetworkCapabilities(it)
+                connectivityManager.activeNetwork?.let {
+                    val networkCapabilities = connectivityManager.getNetworkCapabilities(it)
 
-                        networkCapabilities?.let { capabilities ->
-                            dynamicContext["\$network_wifi"] = capabilities.hasTransport(TRANSPORT_WIFI)
-                            dynamicContext["\$network_bluetooth"] = capabilities.hasTransport(TRANSPORT_BLUETOOTH)
-                            dynamicContext["\$network_cellular"] = capabilities.hasTransport(TRANSPORT_CELLULAR)
-                        }
-                    }
-                } else {
-                    connectivityManager.getNetworkInfo(TYPE_WIFI)?.let {
-                        dynamicContext["\$network_wifi"] = it.isConnected
-                    }
-                    connectivityManager.getNetworkInfo(TYPE_BLUETOOTH)?.let {
-                        dynamicContext["\$network_bluetooth"] = it.isConnected
-                    }
-                    connectivityManager.getNetworkInfo(TYPE_MOBILE)?.let {
-                        dynamicContext["\$network_cellular"] = it.isConnected
+                    networkCapabilities?.let { capabilities ->
+                        dynamicContext["\$network_wifi"] = capabilities.hasTransport(TRANSPORT_WIFI)
+                        dynamicContext["\$network_bluetooth"] = capabilities.hasTransport(TRANSPORT_BLUETOOTH)
+                        dynamicContext["\$network_cellular"] = capabilities.hasTransport(TRANSPORT_CELLULAR)
                     }
                 }
             }

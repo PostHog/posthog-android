@@ -24,8 +24,8 @@ public sealed interface PostHogInterface {
      */
     public fun identify(
         distinctId: String,
-        userProperties: Map<String, Any>? = null,
-        userPropertiesSetOnce: Map<String, Any>? = null,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
     )
 
     /**
@@ -49,7 +49,7 @@ public sealed interface PostHogInterface {
      */
     public fun identify(
         distinctId: String,
-        userProperties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>?,
     ) {
         identify(
             distinctId,
@@ -66,7 +66,7 @@ public sealed interface PostHogInterface {
     /**
      * Enables or disables the debug mode
      */
-    public fun debug(enable: Boolean = true)
+    public fun debug(enable: Boolean)
 
     /**
      * Captures events

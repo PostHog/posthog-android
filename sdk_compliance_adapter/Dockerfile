@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 gradle:8.5-jdk17 AS builder
+FROM --platform=linux/amd64 gradle:8.12-jdk17 AS builder
 
 WORKDIR /app
 

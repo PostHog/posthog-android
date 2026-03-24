@@ -15,6 +15,7 @@ public final class com/posthog/PersonProfiles : java/lang/Enum {
 	public static final field ALWAYS Lcom/posthog/PersonProfiles;
 	public static final field IDENTIFIED_ONLY Lcom/posthog/PersonProfiles;
 	public static final field NEVER Lcom/posthog/PersonProfiles;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PersonProfiles;
 	public static fun values ()[Lcom/posthog/PersonProfiles;
 }
@@ -194,6 +195,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setProxy (Ljava/net/Proxy;)V
 	public final fun setReleaseIdentifier (Ljava/lang/String;)V
 	public final fun setRemoteConfig (Z)V
+	public final fun setRemoteConfigHolder (Lcom/posthog/internal/PostHogRemoteConfig;)V
 	public final fun setReplayStoragePrefix (Ljava/lang/String;)V
 	public final fun setReuseAnonymousId (Z)V
 	public final fun setSampleRateProvider (Lkotlin/jvm/functions/Function0;)V
@@ -275,6 +277,7 @@ public final class com/posthog/PostHogEventName : java/lang/Enum {
 	public static final field SCREEN Lcom/posthog/PostHogEventName;
 	public static final field SET Lcom/posthog/PostHogEventName;
 	public static final field SNAPSHOT Lcom/posthog/PostHogEventName;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getEvent ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PostHogEventName;
 	public static fun values ()[Lcom/posthog/PostHogEventName;
@@ -612,6 +615,7 @@ public final class com/posthog/internal/LocalEvaluationResponse {
 public final class com/posthog/internal/LogicalOperator : java/lang/Enum {
 	public static final field AND Lcom/posthog/internal/LogicalOperator;
 	public static final field OR Lcom/posthog/internal/LogicalOperator;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/LogicalOperator;
 	public static fun values ()[Lcom/posthog/internal/LogicalOperator;
 }
@@ -641,6 +645,7 @@ public final class com/posthog/internal/PostHogApi {
 public final class com/posthog/internal/PostHogApiEndpoint : java/lang/Enum {
 	public static final field BATCH Lcom/posthog/internal/PostHogApiEndpoint;
 	public static final field SNAPSHOT Lcom/posthog/internal/PostHogApiEndpoint;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PostHogApiEndpoint;
 	public static fun values ()[Lcom/posthog/internal/PostHogApiEndpoint;
 }
@@ -941,6 +946,7 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field SEMVER_TILDE Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_WILDCARD Lcom/posthog/internal/PropertyOperator;
 	public static final field UNKNOWN Lcom/posthog/internal/PropertyOperator;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PropertyOperator;
 	public static fun values ()[Lcom/posthog/internal/PropertyOperator;
 }
@@ -955,6 +961,7 @@ public final class com/posthog/internal/PropertyType : java/lang/Enum {
 	public static final field Companion Lcom/posthog/internal/PropertyType$Companion;
 	public static final field FLAG Lcom/posthog/internal/PropertyType;
 	public static final field PERSON Lcom/posthog/internal/PropertyType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PropertyType;
 	public static fun values ()[Lcom/posthog/internal/PropertyType;
 }
@@ -1047,6 +1054,7 @@ public final class com/posthog/internal/replay/RREventType : java/lang/Enum {
 	public static final field Load Lcom/posthog/internal/replay/RREventType;
 	public static final field Meta Lcom/posthog/internal/replay/RREventType;
 	public static final field Plugin Lcom/posthog/internal/replay/RREventType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()I
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RREventType;
 	public static fun values ()[Lcom/posthog/internal/replay/RREventType;
@@ -1111,6 +1119,7 @@ public final class com/posthog/internal/replay/RRIncrementalSource : java/lang/E
 	public static final field StyleSheetRule Lcom/posthog/internal/replay/RRIncrementalSource;
 	public static final field TouchMove Lcom/posthog/internal/replay/RRIncrementalSource;
 	public static final field ViewportResize Lcom/posthog/internal/replay/RRIncrementalSource;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()I
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RRIncrementalSource;
 	public static fun values ()[Lcom/posthog/internal/replay/RRIncrementalSource;
@@ -1141,6 +1150,7 @@ public final class com/posthog/internal/replay/RRMouseInteraction : java/lang/En
 	public static final field TouchEnd Lcom/posthog/internal/replay/RRMouseInteraction;
 	public static final field TouchMoveDeparted Lcom/posthog/internal/replay/RRMouseInteraction;
 	public static final field TouchStart Lcom/posthog/internal/replay/RRMouseInteraction;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()I
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/replay/RRMouseInteraction;
 	public static fun values ()[Lcom/posthog/internal/replay/RRMouseInteraction;
@@ -1449,6 +1459,7 @@ public class com/posthog/surveys/PostHogDisplaySurveyQuestion {
 public final class com/posthog/surveys/PostHogDisplaySurveyRatingType : java/lang/Enum {
 	public static final field EMOJI Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;
 	public static final field NUMBER Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()I
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;
 	public static fun values ()[Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;
@@ -1457,6 +1468,7 @@ public final class com/posthog/surveys/PostHogDisplaySurveyRatingType : java/lan
 public final class com/posthog/surveys/PostHogDisplaySurveyTextContentType : java/lang/Enum {
 	public static final field HTML Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;
 	public static final field TEXT Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()I
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;
 	public static fun values ()[Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;
@@ -1681,6 +1693,7 @@ public final class com/posthog/surveys/SurveyAppearancePosition : java/lang/Enum
 	public static final field Companion Lcom/posthog/surveys/SurveyAppearancePosition$Companion;
 	public static final field LEFT Lcom/posthog/surveys/SurveyAppearancePosition;
 	public static final field RIGHT Lcom/posthog/surveys/SurveyAppearancePosition;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyAppearancePosition;
 	public static fun values ()[Lcom/posthog/surveys/SurveyAppearancePosition;
@@ -1695,6 +1708,7 @@ public final class com/posthog/surveys/SurveyAppearanceWidgetType : java/lang/En
 	public static final field Companion Lcom/posthog/surveys/SurveyAppearanceWidgetType$Companion;
 	public static final field SELECTOR Lcom/posthog/surveys/SurveyAppearanceWidgetType;
 	public static final field TAB Lcom/posthog/surveys/SurveyAppearanceWidgetType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyAppearanceWidgetType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyAppearanceWidgetType;
@@ -1777,6 +1791,7 @@ public final class com/posthog/surveys/SurveyMatchType : java/lang/Enum {
 	public static final field NOT_I_CONTAINS Lcom/posthog/surveys/SurveyMatchType;
 	public static final field NOT_REGEX Lcom/posthog/surveys/SurveyMatchType;
 	public static final field REGEX Lcom/posthog/surveys/SurveyMatchType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyMatchType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyMatchType;
@@ -1831,6 +1846,7 @@ public final class com/posthog/surveys/SurveyQuestionBranchingType : java/lang/E
 	public static final field NEXT_QUESTION Lcom/posthog/surveys/SurveyQuestionBranchingType;
 	public static final field RESPONSE_BASED Lcom/posthog/surveys/SurveyQuestionBranchingType;
 	public static final field SPECIFIC_QUESTION Lcom/posthog/surveys/SurveyQuestionBranchingType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyQuestionBranchingType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyQuestionBranchingType;
@@ -1847,6 +1863,7 @@ public final class com/posthog/surveys/SurveyQuestionType : java/lang/Enum {
 	public static final field OPEN Lcom/posthog/surveys/SurveyQuestionType;
 	public static final field RATING Lcom/posthog/surveys/SurveyQuestionType;
 	public static final field SINGLE_CHOICE Lcom/posthog/surveys/SurveyQuestionType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyQuestionType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyQuestionType;
@@ -1860,6 +1877,7 @@ public final class com/posthog/surveys/SurveyRatingDisplayType : java/lang/Enum 
 	public static final field Companion Lcom/posthog/surveys/SurveyRatingDisplayType$Companion;
 	public static final field EMOJI Lcom/posthog/surveys/SurveyRatingDisplayType;
 	public static final field NUMBER Lcom/posthog/surveys/SurveyRatingDisplayType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyRatingDisplayType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyRatingDisplayType;
@@ -1874,6 +1892,7 @@ public final class com/posthog/surveys/SurveySchedule : java/lang/Enum {
 	public static final field Companion Lcom/posthog/surveys/SurveySchedule$Companion;
 	public static final field ONCE Lcom/posthog/surveys/SurveySchedule;
 	public static final field RECURRING Lcom/posthog/surveys/SurveySchedule;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveySchedule;
 	public static fun values ()[Lcom/posthog/surveys/SurveySchedule;
@@ -1887,6 +1906,7 @@ public final class com/posthog/surveys/SurveyTextContentType : java/lang/Enum {
 	public static final field Companion Lcom/posthog/surveys/SurveyTextContentType$Companion;
 	public static final field HTML Lcom/posthog/surveys/SurveyTextContentType;
 	public static final field TEXT Lcom/posthog/surveys/SurveyTextContentType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyTextContentType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyTextContentType;
@@ -1901,6 +1921,7 @@ public final class com/posthog/surveys/SurveyType : java/lang/Enum {
 	public static final field Companion Lcom/posthog/surveys/SurveyType$Companion;
 	public static final field POPOVER Lcom/posthog/surveys/SurveyType;
 	public static final field WIDGET Lcom/posthog/surveys/SurveyType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getValue ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/surveys/SurveyType;
 	public static fun values ()[Lcom/posthog/surveys/SurveyType;
@@ -1908,5 +1929,11 @@ public final class com/posthog/surveys/SurveyType : java/lang/Enum {
 
 public final class com/posthog/surveys/SurveyType$Companion {
 	public final fun fromValue (Ljava/lang/String;)Lcom/posthog/surveys/SurveyType;
+}
+
+public final class com/posthog/vendor/uuid/TimeBasedEpochGenerator {
+	public static final field INSTANCE Lcom/posthog/vendor/uuid/TimeBasedEpochGenerator;
+	public final fun generate ()Ljava/util/UUID;
+	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 }
 

@@ -17,15 +17,27 @@ import org.gradle.api.tasks.TaskProvider
 internal fun TaskProvider<out Task>.hookWithMinifyTasks(
     project: Project,
     variantName: String,
+    generateMapIdTask: TaskProvider<PostHogGenerateMapIdTask>? = null,
 ) {
     // we need to wait for project evaluation to have all tasks available, otherwise the new
     // AndroidComponentsExtension is configured too early to look up for the tasks
     project.afterEvaluate {
         val minifyTask = getMinifyTask(project, variantName)
 
-        // we just hack ourselves into the Proguard/R8/DexGuard task's doLast.
-        minifyTask?.configure {
-            finalizedBy(this@hookWithMinifyTasks)
+        minifyTask?.let { minify ->
+            minify.configure {
+                finalizedBy(this@hookWithMinifyTasks)
+            }
+            this@hookWithMinifyTasks.configure {
+                dependsOn(minify)
+            }
+            generateMapIdTask?.configure {
+                val mappingFiles =
+                    minify.map { minifyTask ->
+                        minifyTask.outputs.files.filter { it.name == "mapping.txt" }
+                    }
+                this.proguardMappingFiles.setFrom(mappingFiles)
+            }
         }
     }
 }

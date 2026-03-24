@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     kotlin("android")
+    id("org.jetbrains.kotlin.plugin.compose")
     // so we don't upload mappings from our release builds on CI
     if (!PosthogBuildConfig.isCI()) {
         id("com.posthog.android")
@@ -45,9 +46,6 @@ android {
         compose = true
         buildConfig = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = PosthogBuildConfig.Kotlin.COMPILER_EXTENSION_VERSION
-    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -71,15 +69,14 @@ android {
 }
 
 kotlin {
-    val javaVersion = JavaLanguageVersion.of(PosthogBuildConfig.Build.JAVA_VERSION.majorVersion).asInt()
-    jvmToolchain(javaVersion)
+    jvmToolchain(PosthogBuildConfig.Build.JDK_VERSION)
 }
 
 dependencies {
     implementation(project(mapOf("path" to ":posthog-android")))
 
-    implementation("androidx.activity:activity-compose:1.7.2")
-    implementation(platform("androidx.compose:compose-bom:2023.03.00"))
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
