@@ -96,7 +96,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 mappingFiles = variant.mappingFileProvider(project),
             )
 
-        generateMapIdTask.hookWithMinifyTasks(project, variant.name)
+        generateMapIdTask.hookWithMinifyTasks(project, variant.name, generateMapIdTask)
 
         uploadMapIdTask.hookWithAssembleTasks(project, variant)
 
