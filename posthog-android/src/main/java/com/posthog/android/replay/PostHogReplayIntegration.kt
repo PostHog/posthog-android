@@ -1591,7 +1591,9 @@ public class PostHogReplayIntegration(
         // Check if we should wait for event triggers before starting
         if (shouldWaitForEventTriggers()) {
             val triggers = config.remoteConfigHolder?.getEventTriggers() ?: emptyList()
-            config.logger.log("[Session Replay] Event triggers configured. Integration will not start until any of these events are captured: $triggers")
+            config.logger.log(
+                "[Session Replay] Event triggers configured. Integration will not start until any of these events are captured: $triggers",
+            )
             return
         }
 

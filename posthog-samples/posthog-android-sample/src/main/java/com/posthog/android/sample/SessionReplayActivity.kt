@@ -46,22 +46,26 @@ class SessionReplayActivity : ComponentActivity() {
     }
 }
 
+@Suppress("ktlint:standard:function-naming")
 @Composable
 fun SessionReplayScreen() {
     var refreshKey by remember { mutableStateOf(0) }
 
-    val statusText = remember(refreshKey) {
-        if (PostHog.isSessionReplayActive()) "🟢 Recording" else "🔴 Not Recording"
-    }
-    val sessionId = remember(refreshKey) {
-        PostHog.getSessionId() ?: "N/A"
-    }
+    val statusText =
+        remember(refreshKey) {
+            if (PostHog.isSessionReplayActive()) "🟢 Recording" else "🔴 Not Recording"
+        }
+    val sessionId =
+        remember(refreshKey) {
+            PostHog.getSessionId() ?: "N/A"
+        }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
