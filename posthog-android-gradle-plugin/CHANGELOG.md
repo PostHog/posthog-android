@@ -1,5 +1,11 @@
 ## Next
 
+## 1.0.4
+
+### Patch Changes
+
+- a5c3a78: fix duplicate map ids
+
 ## 1.0.3
 
 ### Patch Changes
