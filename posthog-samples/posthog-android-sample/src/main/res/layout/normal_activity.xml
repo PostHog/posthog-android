@@ -41,6 +41,13 @@
         android:id="@+id/button"
         />
 
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Session Replay"
+        android:id="@+id/sessionReplayButton"
+        />
+
     <!--            &lt;!&ndash;    <View&ndash;&gt;-->
     <!--            &lt;!&ndash;        android:layout_width="match_parent"&ndash;&gt;-->
     <!--            &lt;!&ndash;        android:layout_height="5dp"&ndash;&gt;-->

@@ -104,6 +104,14 @@ public class PostHogRemoteConfig(
     @Volatile
     private var sessionRecordingSampleRate: Double? = null
 
+    /**
+     * Event triggers for session recording.
+     * When configured, session recording only starts after one of these events is captured.
+     * null or empty means no event triggers (record immediately if other conditions are met).
+     */
+    @Volatile
+    private var sessionRecordingEventTriggers: List<String>? = null
+
     init {
         preloadSessionRecordingConfig()
         preloadSurveys()
@@ -351,6 +359,16 @@ public class PostHogRemoteConfig(
         return value
     }
 
+    /**
+     * Parses event triggers from the raw value which come as a List<String> (from the API or cache).
+     * Returns null if the value is absent or empty.
+     */
+    private fun parseEventTriggers(raw: Any?): List<String>? {
+        @Suppress("UNCHECKED_CAST")
+        val triggers = (raw as? List<String>) ?: return null
+        return triggers.takeIf { it.isNotEmpty() }
+    }
+
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
             is Boolean -> {
@@ -380,6 +398,8 @@ public class PostHogRemoteConfig(
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
                     sessionRecordingSampleRate = parseSampleRate(it["sampleRate"])
+
+                    sessionRecordingEventTriggers = parseEventTriggers(it["eventTriggers"])
 
                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
@@ -717,6 +737,8 @@ public class PostHogRemoteConfig(
                     consoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
 
                     sessionRecordingSampleRate = parseSampleRate(sessionRecording["sampleRate"])
+
+                    sessionRecordingEventTriggers = parseEventTriggers(sessionRecording["eventTriggers"])
                 }
             }
         }
@@ -919,6 +941,12 @@ public class PostHogRemoteConfig(
      * Returns the current session recording sample rate, or null if not set.
      */
     public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
+
+    /**
+     * Returns the current event triggers for session recording, or null if not configured.
+     * When event triggers are configured, session recording only starts after one of these events is captured.
+     */
+    public fun getEventTriggers(): List<String>? = sessionRecordingEventTriggers
 
     override fun getRequestId(
         distinctId: String?,

@@ -156,6 +156,12 @@ public class PostHogReplayIntegration(
     @Volatile
     private var isSessionReplayActive: Boolean = false
 
+    // Event triggers for session recording
+    private val eventTriggersLock = Any()
+
+    @Volatile
+    private var triggerActivatedSessionId: String? = null
+
     // flutter captures snapshots, so we don't need to capture them here
     private val isNativeSdk: Boolean
         get() = (config.sdkName != "posthog-flutter")
@@ -1585,6 +1591,15 @@ public class PostHogReplayIntegration(
     }
 
     override fun start(resumeCurrent: Boolean) {
+        // Check if we should wait for event triggers before starting
+        if (shouldWaitForEventTriggers()) {
+            val triggers = config.remoteConfigHolder?.getEventTriggers() ?: emptyList()
+            config.logger.log(
+                "[Session Replay] Event triggers configured. Integration will not start until any of these events are captured: $triggers",
+            )
+            return
+        }
+
         if (!resumeCurrent) {
             clearSnapshotStates()
         }
@@ -1606,6 +1621,83 @@ public class PostHogReplayIntegration(
 
     override fun isActive(): Boolean {
         return isSessionReplayActive
+    }
+
+    /**
+     * Called when an event is captured. Checks if the event matches any configured triggers
+     * and starts session recording if so.
+     */
+    override fun onEvent(
+        event: String,
+        properties: Map<String, Any>?,
+    ) {
+        val postHog = this.postHog ?: return
+
+        val currentSessionId = postHog.getSessionId()?.toString() ?: return
+
+        val triggers = config.remoteConfigHolder?.getEventTriggers()
+
+        // No triggers configured, nothing to do
+        if (triggers.isNullOrEmpty()) {
+            return
+        }
+
+        // Check if this session has already been activated
+        val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
+        if (activatedSession == currentSessionId) {
+            return
+        }
+
+        // Check if the event matches any trigger
+        if (triggers.contains(event)) {
+            synchronized(eventTriggersLock) {
+                triggerActivatedSessionId = currentSessionId
+            }
+            config.logger.log("[Session Replay] Event trigger matched: $event. Starting replay for session $currentSessionId.")
+            // Start the integration now that a trigger has matched
+            start(resumeCurrent = true)
+        }
+    }
+
+    /**
+     * Called when the session ID changes. Stops recording if event triggers are configured
+     * and the new session hasn't been activated yet.
+     */
+    override fun onSessionIdChanged() {
+        val postHog = this.postHog ?: return
+
+        val currentSessionId = postHog.getSessionId()?.toString()
+
+        val triggers = config.remoteConfigHolder?.getEventTriggers()
+        val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
+
+        // If triggers are configured and this session hasn't been activated, stop the integration
+        if (!triggers.isNullOrEmpty() && activatedSession != currentSessionId) {
+            if (isSessionReplayActive) {
+                config.logger.log("[Session Replay] Session changed. Stopping until trigger is matched.")
+                stop()
+            }
+        }
+    }
+
+    /**
+     * Returns true if event triggers are configured and the current session has not been activated yet.
+     */
+    private fun shouldWaitForEventTriggers(): Boolean {
+        val postHog = this.postHog ?: return false
+
+        val currentSessionId = postHog.getSessionId()?.toString() ?: return false
+
+        val triggers = config.remoteConfigHolder?.getEventTriggers()
+
+        // No triggers configured, don't wait
+        if (triggers.isNullOrEmpty()) {
+            return false
+        }
+
+        // Check if this session has been activated
+        val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
+        return activatedSession != currentSessionId
     }
 
     internal companion object {

@@ -182,7 +182,11 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Starts session replay.
-     * This method will be NoOp if session replay is disabled in your project settings
+     * This method will be NoOp if session replay is disabled in your project settings.
+     *
+     * Note: This method respects ingestion controls configured in your project settings.
+     * If sampling is configured and the session is not sampled, recording will not start.
+     * If event triggers are configured, recording will not start until a matching event is captured.
      *
      * Android only.
      *
