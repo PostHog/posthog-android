@@ -69,6 +69,7 @@ import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.replay.RRCustomEvent
+import com.posthog.internal.replay.RRWireframeDiffer
 import com.posthog.internal.replay.RREvent
 import com.posthog.internal.replay.RRFullSnapshotEvent
 import com.posthog.internal.replay.RRIncrementalMouseInteractionData
@@ -152,6 +153,10 @@ public class PostHogReplayIntegration(
     // Only accessed from the PixelCopy callback thread (or executor), so no synchronization needed.
     private val reusableRect = Rect()
     private val reusablePoint = Point()
+
+    // Reusable coordinates array for getLocationOnScreen to avoid per-view IntArray(2) allocation.
+    // Only accessed from the executor thread.
+    private val reusableCoordinates = IntArray(2)
 
     @Volatile
     private var isSessionReplayActive: Boolean = false
@@ -311,7 +316,7 @@ public class PostHogReplayIntegration(
         motionEvent: MotionEvent,
         type: RRMouseInteraction,
     ) {
-        val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
+        val mouseInteractions = ArrayList<RRIncrementalMouseInteractionEvent>(motionEvent.pointerCount)
         for (index in 0 until motionEvent.pointerCount) {
             try {
                 // if the id is 0, BE transformer will set it to the virtual bodyId
@@ -466,7 +471,8 @@ public class PostHogReplayIntegration(
             }
         }
 
-        val events = mutableListOf<RREvent>()
+        // Typically 1-3 events per snapshot (meta + full/incremental + optional keyboard)
+        val events = ArrayList<RREvent>(3)
 
         if (!status.sentMetaEvent) {
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
@@ -496,38 +502,51 @@ public class PostHogReplayIntegration(
             events.add(event)
             status.sentFullSnapshot = true
         } else {
-            val lastSnapshot = status.lastSnapshot
-            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
             val (addedItems, removedItems, updatedItems) =
-                findAddedAndRemovedItems(
-                    lastSnapshots.flattenChildren(),
-                    listOf(wireframe).flattenChildren(),
+                RRWireframeDiffer.diffTrees(
+                    status.lastSnapshot,
+                    wireframe,
                 )
 
-            val addedNodes = mutableListOf<RRMutatedNode>()
-            addedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                addedNodes.add(item)
-            }
+            if (addedItems.isNotEmpty() || removedItems.isNotEmpty() || updatedItems.isNotEmpty()) {
+                val addedNodes =
+                    if (addedItems.isNotEmpty()) {
+                        ArrayList<RRMutatedNode>(addedItems.size).also { list ->
+                            for (item in addedItems) {
+                                list.add(RRMutatedNode(item, parentId = item.parentId))
+                            }
+                        }
+                    } else {
+                        null
+                    }
 
-            val removedNodes = mutableListOf<RRRemovedNode>()
-            removedItems.forEach {
-                val item = RRRemovedNode(it.id, parentId = it.parentId)
-                removedNodes.add(item)
-            }
+                val removedNodes =
+                    if (removedItems.isNotEmpty()) {
+                        ArrayList<RRRemovedNode>(removedItems.size).also { list ->
+                            for (item in removedItems) {
+                                list.add(RRRemovedNode(item.id, parentId = item.parentId))
+                            }
+                        }
+                    } else {
+                        null
+                    }
 
-            val updatedNodes = mutableListOf<RRMutatedNode>()
-            updatedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                updatedNodes.add(item)
-            }
+                val updatedNodes =
+                    if (updatedItems.isNotEmpty()) {
+                        ArrayList<RRMutatedNode>(updatedItems.size).also { list ->
+                            for (item in updatedItems) {
+                                list.add(RRMutatedNode(item, parentId = item.parentId))
+                            }
+                        }
+                    } else {
+                        null
+                    }
 
-            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty() || updatedNodes.isNotEmpty()) {
                 val incrementalMutationData =
                     RRIncrementalMutationData(
-                        adds = addedNodes.ifEmpty { null },
-                        removes = removedNodes.ifEmpty { null },
-                        updates = updatedNodes.ifEmpty { null },
+                        adds = addedNodes,
+                        removes = removedNodes,
+                        updates = updatedNodes,
                     )
 
                 val incrementalSnapshotEvent =
@@ -929,7 +948,7 @@ public class PostHogReplayIntegration(
 
         val viewId = System.identityHashCode(view)
 
-        val coordinates = IntArray(2)
+        val coordinates = reusableCoordinates
         if (view.isViewStateStableForMatrixOperations()) {
             view.getLocationOnScreen(coordinates)
         } else {
@@ -1072,7 +1091,7 @@ public class PostHogReplayIntegration(
 
         val viewId = System.identityHashCode(view)
 
-        val coordinates = IntArray(2)
+        val coordinates = reusableCoordinates
         if (view.isViewStateStableForMatrixOperations()) {
             view.getLocationOnScreen(coordinates)
         } else {
@@ -1327,13 +1346,17 @@ public class PostHogReplayIntegration(
             type = "web_view"
         }
 
-        val children = mutableListOf<RRWireframe>()
+        var children: MutableList<RRWireframe>? = null
         if (view is ViewGroup && view.childCount > 0) {
+            val childList = ArrayList<RRWireframe>(view.childCount)
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
                 viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
-                    children.add(it)
+                    childList.add(it)
                 }
+            }
+            if (childList.isNotEmpty()) {
+                children = childList
             }
         }
 
@@ -1346,7 +1369,7 @@ public class PostHogReplayIntegration(
             text = text,
             type = type,
             style = style,
-            childWireframes = children.ifEmpty { null },
+            childWireframes = children,
             base64 = base64,
             parentId = parentId,
             disabled = !view.isEnabled,
@@ -1385,17 +1408,8 @@ public class PostHogReplayIntegration(
             is GradientDrawable -> {
                 colors?.let { rgcColors ->
                     if (rgcColors.isNotEmpty()) {
-                        // Get the first color from the array
-                        val color = rgcColors[0]
-
-                        // Extract RGB values
-                        val red = Color.red(color)
-                        val green = Color.green(color)
-                        val blue = Color.blue(color)
-
-                        // Construct the RGB color
-                        val rgb = Color.rgb(red, green, blue)
-                        return rgb.toRGBColor()
+                        // toRGBColor already masks to 0xFFFFFF, so no need to decompose/recompose
+                        return rgcColors[0].toRGBColor()
                     }
                 }
                 color?.let {
@@ -1468,62 +1482,10 @@ public class PostHogReplayIntegration(
 
     private fun Int.toRGBColor(): String {
         // TODO: missing alpha
-        return String.format("#%06X", (0xFFFFFF and this))
+        return RRWireframeDiffer.toRGBColor(this)
     }
 
-    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
-        val result = mutableListOf<RRWireframe>()
-
-        for (item in this) {
-            result.add(item)
-
-            item.childWireframes?.let {
-                result.addAll(it.flattenChildren())
-            }
-        }
-
-        return result
-    }
-
-    private fun findAddedAndRemovedItems(
-        oldItems: List<RRWireframe>,
-        newItems: List<RRWireframe>,
-    ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        val oldMap = oldItems.associateBy { it.id }
-        val newMap = newItems.associateBy { it.id }
-
-        // Create HashSet to track unique IDs
-        val oldItemIds = HashSet(oldItems.map { it.id })
-        val newItemIds = HashSet(newItems.map { it.id })
-
-        // Find added items by subtracting oldItemIds from newItemIds
-        val addedIds = newItemIds - oldItemIds
-        val addedItems = newItems.filter { it.id in addedIds }
-
-        // Find removed items by subtracting newItemIds from oldItemIds
-        val removedIds = oldItemIds - newItemIds
-        val removedItems = oldItems.filter { it.id in removedIds }
-
-        val updatedItems = mutableListOf<RRWireframe>()
-
-        // Find updated items by finding the intersection of oldItemIds and newItemIds
-        val sameItems = oldItemIds.intersect(newItemIds)
-
-        for (id in sameItems) {
-            // we have to copy without the childWireframes, otherwise they all would be different
-            // if one of the child is different, but we only wanna compare the parent
-            val oldItem = oldMap[id]?.copy(childWireframes = null) ?: continue
-            val newItem = newMap[id] ?: continue
-            val newItemCopy = newItem.copy(childWireframes = null)
-
-            // If the items are different (any property has a different value), add the new item to the updatedItems list
-            if (oldItem != newItemCopy) {
-                updatedItems.add(newItem)
-            }
-        }
-
-        return Triple(addedItems, removedItems, updatedItems)
-    }
+    // flattenChildren and findAddedAndRemovedItems are now in RRWireframeDiffer
 
     private fun Drawable.toBitmap(
         width: Int,
