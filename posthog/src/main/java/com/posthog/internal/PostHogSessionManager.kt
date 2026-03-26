@@ -16,6 +16,14 @@ public object PostHogSessionManager {
 
     private var sessionId = sessionIdNone
 
+    public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
+
+    /**
+     * Timestamp (in milliseconds) when the current session was started.
+     * Reset to 0 when the session ends.
+     */
+    private var sessionStartedAt: Long = 0L
+
     @Volatile
     public var isReactNative: Boolean = false
 
@@ -28,6 +36,7 @@ public object PostHogSessionManager {
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
                 sessionId = TimeBasedEpochGenerator.generate()
+                sessionStartedAt = dateProvider.currentTimeMillis()
             }
         }
     }
@@ -40,6 +49,33 @@ public object PostHogSessionManager {
 
         synchronized(sessionLock) {
             sessionId = sessionIdNone
+            sessionStartedAt = 0L
+        }
+    }
+
+    /**
+     * Atomically ends the current session and starts a new one.
+     * This is used when the session exceeds the maximum allowed duration (e.g. 24 hours).
+     */
+    public fun rotateSession() {
+        if (isReactNative) {
+            // RN manages its own session
+            return
+        }
+
+        synchronized(sessionLock) {
+            sessionId = TimeBasedEpochGenerator.generate()
+            sessionStartedAt = dateProvider.currentTimeMillis()
+        }
+    }
+
+    /**
+     * Returns the timestamp (in milliseconds) when the current session was started,
+     * or 0 if no session is active.
+     */
+    public fun getSessionStartedAt(): Long {
+        synchronized(sessionLock) {
+            return sessionStartedAt
         }
     }
 
