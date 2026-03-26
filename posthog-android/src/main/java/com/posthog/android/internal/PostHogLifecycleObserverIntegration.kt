@@ -75,7 +75,7 @@ internal class PostHogLifecycleObserverIntegration(
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
             postHog?.startSession()
-        } else if (isSessionExceedingMaxDuration(currentTimeMillis)) {
+        } else if (!PostHogSessionManager.isReactNative && isSessionExceedingMaxDuration(currentTimeMillis)) {
             // Session has been active for longer than 24 hours, rotate to a new session
             PostHogSessionManager.rotateSession()
         }
