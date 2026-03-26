@@ -43,6 +43,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
     @AfterTest
     fun `tear down`() {
+        PostHogSessionManager.isReactNative = false
         PostHogSessionManager.dateProvider = PostHogDeviceDateProvider()
         PostHogSessionManager.endSession()
     }
@@ -241,6 +242,43 @@ internal class PostHogLifecycleObserverIntegrationTest {
         // Session should NOT have been rotated
         val secondSessionId = PostHogSessionManager.getActiveSessionId()
         assertEquals(firstSessionId, secondSessionId)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStart does not rotate session when React Native even if session exceeds 24 hours`() {
+        PostHogSessionManager.isReactNative = true
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.dateProvider = fakeDateProvider
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        // RN sets its own session id
+        val sessionId = java.util.UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+
+        // First onStart
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        // Advance past 24 hours
+        val twentyFourHoursMs = 1000L * 60 * 60 * 24
+        val oneMinuteMs = 1000L * 60
+        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
+
+        sut.onStop(ProcessLifecycleOwner.get())
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        // Session should NOT have been rotated since RN manages its own session
+        assertEquals(sessionId, PostHogSessionManager.getActiveSessionId())
 
         sut.uninstall()
     }
