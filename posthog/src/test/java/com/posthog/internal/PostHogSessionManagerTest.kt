@@ -66,9 +66,71 @@ internal class PostHogSessionManagerTest {
         assertNotEquals(firstSessionId, secondSessionId)
     }
 
+    @Test
+    internal fun `startSession sets sessionStartedAt`() {
+        PostHogSessionManager.startSession()
+
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+        assertTrue(startedAt > 0L)
+    }
+
+    @Test
+    internal fun `endSession resets sessionStartedAt to zero`() {
+        PostHogSessionManager.startSession()
+        assertTrue(PostHogSessionManager.getSessionStartedAt() > 0L)
+
+        PostHogSessionManager.endSession()
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `getSessionStartedAt returns zero when no session is active`() {
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `rotateSession creates a new session with a new id`() {
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
+
+        PostHogSessionManager.rotateSession()
+        val secondSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(secondSessionId)
+
+        assertNotEquals(firstSessionId, secondSessionId)
+        assertTrue(PostHogSessionManager.isSessionActive())
+    }
+
+    @Test
+    internal fun `rotateSession updates sessionStartedAt`() {
+        PostHogSessionManager.startSession()
+        val firstStartedAt = PostHogSessionManager.getSessionStartedAt()
+        assertTrue(firstStartedAt > 0L)
+
+        // Small delay to ensure different timestamp
+        Thread.sleep(10)
+
+        PostHogSessionManager.rotateSession()
+        val secondStartedAt = PostHogSessionManager.getSessionStartedAt()
+        assertTrue(secondStartedAt >= firstStartedAt)
+    }
+
+    @Test
+    internal fun `when React Native, rotateSession does not rotate session`() {
+        PostHogSessionManager.isReactNative = true
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+
+        PostHogSessionManager.rotateSession()
+
+        assertEquals(sessionId, PostHogSessionManager.getActiveSessionId())
+    }
+
     @AfterTest
     internal fun cleanup() {
         PostHogSessionManager.isReactNative = false
+        PostHogSessionManager.dateProvider = PostHogDeviceDateProvider()
         PostHogSessionManager.endSession()
     }
 }

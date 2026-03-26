@@ -8,6 +8,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogSessionManager
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicLong
@@ -29,6 +30,7 @@ internal class PostHogLifecycleObserverIntegration(
     private var timerTask: TimerTask? = null
     private val lastUpdatedSession = AtomicLong(0L)
     private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
+    private val sessionMaxDuration = (1000 * 60 * 60 * 24).toLong() // 24 hours
 
     private var postHog: PostHogInterface? = null
 
@@ -73,8 +75,17 @@ internal class PostHogLifecycleObserverIntegration(
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
             postHog?.startSession()
+        } else if (isSessionExceedingMaxDuration(currentTimeMillis)) {
+            // Session has been active for longer than 24 hours, rotate to a new session
+            PostHogSessionManager.rotateSession()
         }
         this.lastUpdatedSession.set(currentTimeMillis)
+    }
+
+    private fun isSessionExceedingMaxDuration(currentTimeMillis: Long): Boolean {
+        val sessionStartedAt = PostHogSessionManager.getSessionStartedAt()
+        return sessionStartedAt > 0L &&
+            (sessionStartedAt + sessionMaxDuration) <= currentTimeMillis
     }
 
     private fun cancelTask() {
