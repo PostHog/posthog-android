@@ -40,7 +40,7 @@ internal class NextDrawListener(
             onDrawThrottlerCallback: () -> Unit,
         ): NextDrawListener {
             val nextDrawListener =
-                NextDrawListener(this, mainHandler, dateProvider, throttleDelayMs, onDrawThrottlerCallback, onDrawCallback)
+                NextDrawListener(this, mainHandler, dateProvider, throttleDelayMs, onDrawCallback, onDrawThrottlerCallback)
             nextDrawListener.safelyRegisterForNextDraw()
             return nextDrawListener
         }
