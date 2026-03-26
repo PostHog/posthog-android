@@ -1,6 +1,6 @@
 ---
-'posthog': patch
-'posthog-android': patch
+'posthog': minor
+'posthog-android': minor
 ---
 
-Use PostHogDateProvider instead of System.currentTimeMillis() in PostHogSessionManager for testability
+Enforce 24-hour maximum session duration with automatic session rotation
