@@ -79,6 +79,18 @@ public object PostHogSessionManager {
         }
     }
 
+    /**
+     * Returns true if the current session has been active for longer than 24 hours.
+     */
+    public fun isSessionExceedingMaxDuration(currentTimeMillis: Long): Boolean {
+        synchronized(sessionLock) {
+            return sessionStartedAt > 0L &&
+                (sessionStartedAt + SESSION_MAX_DURATION) <= currentTimeMillis
+        }
+    }
+
+    private val SESSION_MAX_DURATION = (1000L * 60 * 60 * 24) // 24 hours
+
     public fun getActiveSessionId(): UUID? {
         var tempSessionId: UUID?
         synchronized(sessionLock) {

@@ -30,7 +30,6 @@ internal class PostHogLifecycleObserverIntegration(
     private var timerTask: TimerTask? = null
     private val lastUpdatedSession = AtomicLong(0L)
     private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
-    private val sessionMaxDuration = (1000 * 60 * 60 * 24).toLong() // 24 hours
 
     private var postHog: PostHogInterface? = null
 
@@ -75,17 +74,19 @@ internal class PostHogLifecycleObserverIntegration(
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
             postHog?.startSession()
-        } else if (!PostHogSessionManager.isReactNative && isSessionExceedingMaxDuration(currentTimeMillis)) {
+        } else if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
             // Session has been active for longer than 24 hours, rotate to a new session
-            PostHogSessionManager.rotateSession()
+            if (postHog?.isSessionReplayActive() == true) {
+                postHog?.stopSessionReplay()
+
+                // startSessionReplay will rotate the session id internally
+                postHog?.startSessionReplay(resumeCurrent = false)
+            } else {
+                postHog?.endSession()
+                postHog?.startSession()
+            }
         }
         this.lastUpdatedSession.set(currentTimeMillis)
-    }
-
-    private fun isSessionExceedingMaxDuration(currentTimeMillis: Long): Boolean {
-        val sessionStartedAt = PostHogSessionManager.getSessionStartedAt()
-        return sessionStartedAt > 0L &&
-            (sessionStartedAt + sessionMaxDuration) <= currentTimeMillis
     }
 
     private fun cancelTask() {
@@ -115,8 +116,18 @@ internal class PostHogLifecycleObserverIntegration(
         postHog?.flush()
 
         val currentTimeMillis = config.dateProvider.currentTimeMillis()
-        lastUpdatedSession.set(currentTimeMillis)
-        scheduleEndSession()
+
+        // Session has been active for longer than 24 hours, rotate to a new session
+        if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
+            cancelTask()
+            postHog?.endSession()
+            postHog?.stopSessionReplay()
+            // Reset so the next onStart knows to create a fresh session
+            lastUpdatedSession.set(0L)
+        } else {
+            lastUpdatedSession.set(currentTimeMillis)
+            scheduleEndSession()
+        }
     }
 
     private fun add() {
