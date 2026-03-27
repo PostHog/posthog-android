@@ -880,12 +880,10 @@ public final class com/posthog/internal/PostHogSessionManager {
 	public static final field INSTANCE Lcom/posthog/internal/PostHogSessionManager;
 	public final fun endSession ()V
 	public final fun getActiveSessionId ()Ljava/util/UUID;
-	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getSessionStartedAt ()J
 	public final fun isReactNative ()Z
 	public final fun isSessionActive ()Z
 	public final fun isSessionExceedingMaxDuration (J)Z
-	public final fun rotateSession ()V
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setReactNative (Z)V
 	public final fun setSessionId (Ljava/util/UUID;)V
