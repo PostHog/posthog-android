@@ -44,7 +44,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
     @AfterTest
     fun `tear down`() {
         PostHogSessionManager.isReactNative = false
-        PostHogSessionManager.dateProvider = PostHogDeviceDateProvider()
+        PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
         PostHogSessionManager.endSession()
     }
 
@@ -160,7 +160,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
     fun `onStart rotates session when session exceeds 24 hours`() {
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
-        PostHogSessionManager.dateProvider = fakeDateProvider
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 dateProvider = fakeDateProvider
@@ -213,7 +213,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
     fun `onStart does not rotate session when session is under 24 hours`() {
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
-        PostHogSessionManager.dateProvider = fakeDateProvider
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 dateProvider = fakeDateProvider
@@ -251,7 +251,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         PostHogSessionManager.isReactNative = true
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
-        PostHogSessionManager.dateProvider = fakeDateProvider
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 dateProvider = fakeDateProvider
