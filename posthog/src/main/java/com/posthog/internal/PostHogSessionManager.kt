@@ -1,6 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.PostHogInternal
+import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.UUID
 
@@ -16,7 +17,11 @@ public object PostHogSessionManager {
 
     private var sessionId = sessionIdNone
 
-    public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
+    private var dateProvider: PostHogDateProvider? = null
+
+    public fun setDateProvider(dateProvider: PostHogDateProvider) {
+        this.dateProvider = dateProvider
+    }
 
     /**
      * Timestamp (in milliseconds) when the current session was started.
@@ -36,7 +41,7 @@ public object PostHogSessionManager {
         synchronized(sessionLock) {
             if (sessionId == sessionIdNone) {
                 sessionId = TimeBasedEpochGenerator.generate()
-                sessionStartedAt = dateProvider.currentTimeMillis()
+                sessionStartedAt = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
             }
         }
     }
@@ -54,25 +59,10 @@ public object PostHogSessionManager {
     }
 
     /**
-     * Atomically ends the current session and starts a new one.
-     * This is used when the session exceeds the maximum allowed duration (e.g. 24 hours).
-     */
-    public fun rotateSession() {
-        if (isReactNative) {
-            // RN manages its own session
-            return
-        }
-
-        synchronized(sessionLock) {
-            sessionId = TimeBasedEpochGenerator.generate()
-            sessionStartedAt = dateProvider.currentTimeMillis()
-        }
-    }
-
-    /**
      * Returns the timestamp (in milliseconds) when the current session was started,
      * or 0 if no session is active.
      */
+    @PostHogVisibleForTesting
     public fun getSessionStartedAt(): Long {
         synchronized(sessionLock) {
             return sessionStartedAt
@@ -89,7 +79,7 @@ public object PostHogSessionManager {
         }
     }
 
-    private val SESSION_MAX_DURATION = (1000L * 60 * 60 * 24) // 24 hours
+    private const val SESSION_MAX_DURATION = (1000L * 60 * 60 * 24) // 24 hours
 
     public fun getActiveSessionId(): UUID? {
         var tempSessionId: UUID?
