@@ -114,7 +114,7 @@ internal class PostHogSessionManagerTest {
     @AfterTest
     internal fun cleanup() {
         PostHogSessionManager.isReactNative = false
-        PostHogSessionManager.dateProvider = PostHogDeviceDateProvider()
+        PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
         PostHogSessionManager.endSession()
     }
 }
