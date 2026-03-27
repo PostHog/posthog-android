@@ -1,7 +1,5 @@
 package com.posthog.android.replay.internal
 
-import android.annotation.SuppressLint
-import android.os.Build
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.PostHogVisibleForTesting
@@ -30,7 +28,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
-        if (integrationInstalled || !isSupported()) {
+        if (integrationInstalled) {
             return
         }
         val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
@@ -93,11 +91,6 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                 }
             }
         logcatThread?.start()
-    }
-
-    @SuppressLint("AnnotateVersionCheck")
-    private fun isSupported(): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
     }
 
     override fun onRemoteConfig() {

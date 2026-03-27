@@ -21,7 +21,8 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.4.14")
 
     // OkHttp (for interceptor)
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
+    implementation("com.squareup.okhttp3:okhttp")
 }
 
 application {
@@ -30,13 +31,13 @@ application {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
     }
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
+    targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
 }
 
 // Disable API validation for test adapter

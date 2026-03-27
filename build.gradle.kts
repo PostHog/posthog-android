@@ -25,7 +25,7 @@ spotless {
     lineEndings = LineEnding.UNIX
     kotlin {
         target("**/*.kt")
-        targetExclude("**/bin/**")
+        targetExclude("**/bin/**", "**/node_modules/**", "**/build/**")
 
         ktlint()
     }

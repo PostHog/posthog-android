@@ -437,6 +437,9 @@ public class PostHogReplayIntegration(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
     ) {
+        // Early bail if stopped and this is processing previous generateSnapshot() from executor.submit
+        if (!isActive()) return
+
         val view = viewRef.get() ?: return
         val status = decorViews[view] ?: return
         val window = windowRef.get() ?: return
@@ -1360,6 +1363,7 @@ public class PostHogReplayIntegration(
         return config.sessionReplayConfig.drawableConverter?.convert(drawable)
     }
 
+    @SuppressLint("NewApi")
     private fun Drawable.toRGBColor(): String? {
         when (this) {
             is ColorDrawable -> {

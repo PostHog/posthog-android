@@ -1,5 +1,12 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URI
+import java.util.Properties
+
+// shared versions — loaded from root gradle.properties (single source of truth)
+val versions =
+    Properties().apply {
+        file("../gradle.properties").inputStream().use { load(it) }
+    }
 
 val postHogGroupId = "com.posthog"
 group = postHogGroupId
@@ -49,7 +56,7 @@ plugins {
     `maven-publish`
     signing
     id("org.jetbrains.dokka")
-    id("io.github.gradle-nexus.publish-plugin") version "1.3.0"
+    id("io.github.gradle-nexus.publish-plugin")
 }
 
 java {
@@ -57,7 +64,7 @@ java {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain((versions["jdkVersion"] as String).toInt())
 }
 
 val dokkaJavadocJar by tasks.register<Jar>("dokkaJavadocJar") {
@@ -74,17 +81,17 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
 
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-        languageVersion = "1.6"
+        jvmTarget = JavaVersion.toVersion(versions["jdkVersion"] as String).toString()
+        languageVersion = versions["kotlinCompatibility"] as String
         allWarningsAsErrors = true
-        apiVersion = "1.6"
+        apiVersion = versions["kotlinCompatibility"] as String
         freeCompilerArgs += "-Xexplicit-api=strict"
     }
 }
 
 kotlin {
     explicitApi()
-    jvmToolchain(JavaVersion.VERSION_17.majorVersion.toInt())
+    jvmToolchain((versions["jdkVersion"] as String).toInt())
 }
 
 configure<SourceSetContainer> {
@@ -174,5 +181,5 @@ dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
 }

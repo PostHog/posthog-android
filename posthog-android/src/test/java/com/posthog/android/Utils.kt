@@ -162,9 +162,22 @@ public fun mockGetNetworkInfo(
     networkType: Int,
     isConnected: Boolean = true,
 ) {
-    val ni = mock<NetworkInfo>()
-    whenever(connectivityManager.getNetworkInfo(networkType)).thenReturn(ni)
-    whenever(ni.isConnected).thenReturn(isConnected)
+    val network = mock<android.net.Network>()
+    whenever(connectivityManager.activeNetwork).thenReturn(if (isConnected) network else null)
+
+    if (isConnected) {
+        val capabilities = mock<android.net.NetworkCapabilities>()
+        whenever(connectivityManager.getNetworkCapabilities(network)).thenReturn(capabilities)
+
+        val transport =
+            when (networkType) {
+                ConnectivityManager.TYPE_WIFI -> android.net.NetworkCapabilities.TRANSPORT_WIFI
+                ConnectivityManager.TYPE_BLUETOOTH -> android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
+                ConnectivityManager.TYPE_MOBILE -> android.net.NetworkCapabilities.TRANSPORT_CELLULAR
+                else -> -1
+            }
+        whenever(capabilities.hasTransport(transport)).thenReturn(true)
+    }
 }
 
 public fun createPostHogFake(): PostHogFake {

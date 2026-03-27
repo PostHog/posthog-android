@@ -54,13 +54,13 @@ internal class PostHogAppInstallIntegration(
                     previousVersion?.let {
                         props["previous_version"] = it
                     }
-                    props["previous_build"] = previousBuild
+                    previousBuild?.let { props["previous_build"] = it }
                 }
-                props["version"] = versionName
-                props["build"] = versionCode
+                versionName?.let { props["version"] = it }
+                versionCode?.let { props["build"] = it }
 
-                preferences.setValue(VERSION, versionName)
-                preferences.setValue(BUILD, versionCode)
+                versionName?.let { preferences.setValue(VERSION, it) }
+                versionCode?.let { preferences.setValue(BUILD, it) }
 
                 postHog.capture(event, properties = props)
             }

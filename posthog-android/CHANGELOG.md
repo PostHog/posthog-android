@@ -1,5 +1,21 @@
 ## Next
 
+## 3.39.1
+
+### Patch Changes
+
+- d9b7bd4: fix: session replay callback parameters were swapped, causing throttling to not work correctly and stopSessionRecording() to appear broken
+
+## 3.39.0
+
+### Minor Changes
+
+- ecb0551: - chore: Upgrade to Kotlin 2.1.10, AGP 8.9.1, compileSdk 36, minSdk 23
+
+### Patch Changes
+
+- bc83376: fix: route all timestamps through PostHogDateProvider
+
 ## 3.38.2
 
 ### Patch Changes
