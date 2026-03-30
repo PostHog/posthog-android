@@ -1049,12 +1049,6 @@ public class PostHogReplayIntegration(
                 config.logger.log("Session Replay findMaskableWidgets failed: $e.")
                 rectsSuccess = false
             } finally {
-                // Reset isOnDrawnCalled on the main thread right after collecting rects.
-                // Since we're on the main thread, no onDraw can fire between this reset
-                // and the end of this post. Any subsequent onDraw (after we return) will
-                // set isOnDrawnCalled = true, which we check after PixelCopy to detect
-                // screen changes between rect collection and pixel capture.
-                isOnDrawnCalled = false
                 rectsLatch.countDown()
             }
         }
@@ -1079,6 +1073,10 @@ public class PostHogReplayIntegration(
         var callbackCompleted = false
 
         try {
+            // Reset right before capture to keep the detection window tight (~1 vsync).
+            // Only draws that happen during the actual PixelCopy capture will be detected.
+            isOnDrawnCalled = false
+
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
                     if (copyResult != PixelCopy.SUCCESS) {
