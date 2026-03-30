@@ -982,13 +982,13 @@ public class PostHogReplayIntegration(
                                         return@request
                                     }
 
-                                maskableWidgets.forEach {
+                                for (rect in maskableWidgets) {
                                     if (isOnDrawnCalled) {
                                         config.logger.log("Session Replay screenshot discarded due to screen changes.")
                                         success = false
-                                        return@forEach
+                                        break
                                     }
-                                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                                    canvas.drawRoundRect(RectF(rect), 10f, 10f, paint)
                                 }
                             } else {
                                 config.logger.log("Session Replay screenshot discarded due to screen changes.")
@@ -1021,9 +1021,9 @@ public class PostHogReplayIntegration(
 
         try {
             // await for 1s max
-            latch.await(1000, TimeUnit.MILLISECONDS)
+            val completed = latch.await(1000, TimeUnit.MILLISECONDS)
 
-            if (success) {
+            if (completed && success) {
                 base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
