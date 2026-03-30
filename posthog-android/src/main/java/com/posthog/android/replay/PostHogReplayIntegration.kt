@@ -777,16 +777,21 @@ public class PostHogReplayIntegration(
         return this.isTextInputSensitive(ancestorUnmasked) || passwordInputTypes.contains(inputType - 1)
     }
 
+    /**
+     * Traverses the view tree and collects rects of views that need masking.
+     * Must be called on the main thread to ensure thread-safe access to View properties
+     * and a stable view tree (no concurrent modifications).
+     */
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
         visitedViews: MutableSet<Int> = mutableSetOf(),
-    ): Boolean {
+    ) {
         val viewId = System.identityHashCode(view)
 
         // Check for cycles to prevent stack overflow
         if (viewId in visitedViews) {
-            return true
+            return
         }
         visitedViews.add(viewId)
 
@@ -863,11 +868,6 @@ public class PostHogReplayIntegration(
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
-                if (isOnDrawnCalled) {
-                    config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                    return false
-                }
-
                 val viewChild = view.getChildAt(i) ?: continue
 
                 // Use lenient visibility for masking: don't skip views just because they're
@@ -876,14 +876,9 @@ public class PostHogReplayIntegration(
                     continue
                 }
 
-                if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
-                    // do not continue if the screen has changed
-                    return false
-                }
+                findMaskableWidgets(viewChild, maskableWidgets, visitedViews)
             }
         }
-
-        return true
     }
 
     /**
@@ -1042,9 +1037,7 @@ public class PostHogReplayIntegration(
 
         mainHandler.handler.post {
             try {
-                if (!findMaskableWidgets(view, maskableWidgets)) {
-                    rectsSuccess = false
-                }
+                findMaskableWidgets(view, maskableWidgets)
             } catch (e: Throwable) {
                 config.logger.log("Session Replay findMaskableWidgets failed: $e.")
                 rectsSuccess = false
