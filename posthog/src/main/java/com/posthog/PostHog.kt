@@ -61,6 +61,7 @@ public class PostHog private constructor(
     private val cachedPersonPropertiesLock = Any()
 
     private var replayQueue: PostHogQueueInterface? = null
+    private var api: PostHogApi? = null
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -163,6 +164,7 @@ public class PostHog private constructor(
                     )
 
                 this.config = config
+                this.api = api
                 this.queue = queue
                 this.replayQueue = replayQueue
 
@@ -294,6 +296,7 @@ public class PostHog private constructor(
 
                 queue?.stop()
                 replayQueue?.stop()
+                api = null
 
                 featureFlagsCalled.clear()
 
@@ -1307,6 +1310,48 @@ public class PostHog private constructor(
         return PostHogSessionManager.isSessionActive()
     }
 
+    override fun registerPushNotificationToken(
+        token: String,
+        appId: String,
+        platform: String,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        if (config?.optOut == true) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+        if (token.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, token is blank.")
+            return
+        }
+        if (appId.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, appId is blank.")
+            return
+        }
+
+        val currentDistinctId = distinctId
+        if (currentDistinctId.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, distinctId is invalid.")
+            return
+        }
+
+        queueExecutor.execute {
+            try {
+                api?.pushSubscription(
+                    distinctId = currentDistinctId,
+                    token = token,
+                    platform = platform,
+                    appId = appId,
+                )
+                config?.logger?.log("Push notification token registered successfully.")
+            } catch (e: Throwable) {
+                config?.logger?.log("Failed to register push notification token: $e.")
+            }
+        }
+    }
+
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")
         return super<PostHogStateless>.config as? T
@@ -1661,6 +1706,14 @@ public class PostHog private constructor(
 
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
+        }
+
+        override fun registerPushNotificationToken(
+            token: String,
+            appId: String,
+            platform: String,
+        ) {
+            shared.registerPushNotificationToken(token, appId, platform)
         }
     }
 }
