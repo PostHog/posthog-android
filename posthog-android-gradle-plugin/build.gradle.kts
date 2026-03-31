@@ -10,6 +10,10 @@ val versions =
 
 val postHogGroupId = "com.posthog"
 group = postHogGroupId
+
+dependencyLocking {
+    lockAllConfigurations()
+}
 version = properties["androidPluginVersion"].toString()
 
 // Extension function for common POM configuration
