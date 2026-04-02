@@ -1,5 +1,11 @@
 ## Next
 
+## 3.39.2
+
+### Patch Changes
+
+- 19d363d: fix: exclude API-type surveys from auto-display
+
 ## 3.39.1
 
 ### Patch Changes
