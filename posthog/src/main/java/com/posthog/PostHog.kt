@@ -1311,7 +1311,7 @@ public class PostHog private constructor(
     }
 
     override fun registerPushNotificationToken(
-        token: String,
+        deviceToken: String,
         appId: String,
         platform: String,
     ) {
@@ -1322,8 +1322,8 @@ public class PostHog private constructor(
             config?.logger?.log("PostHog is in OptOut state.")
             return
         }
-        if (token.isBlank()) {
-            config?.logger?.log("registerPushNotificationToken call not allowed, token is blank.")
+        if (deviceToken.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, deviceToken is blank.")
             return
         }
         if (appId.isBlank()) {
@@ -1341,7 +1341,7 @@ public class PostHog private constructor(
             try {
                 api?.pushSubscription(
                     distinctId = currentDistinctId,
-                    token = token,
+                    deviceToken = deviceToken,
                     platform = platform,
                     appId = appId,
                 )
@@ -1709,11 +1709,11 @@ public class PostHog private constructor(
         }
 
         override fun registerPushNotificationToken(
-            token: String,
+            deviceToken: String,
             appId: String,
             platform: String,
         ) {
-            shared.registerPushNotificationToken(token, appId, platform)
+            shared.registerPushNotificationToken(deviceToken, appId, platform)
         }
     }
 }

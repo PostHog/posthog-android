@@ -278,7 +278,7 @@ public class PostHogApi(
     @Throws(PostHogApiError::class, IOException::class)
     public fun pushSubscription(
         distinctId: String,
-        token: String,
+        deviceToken: String,
         platform: String,
         appId: String,
     ) {
@@ -286,7 +286,7 @@ public class PostHogApi(
             PostHogPushSubscriptionRequest(
                 apiKey = config.apiKey,
                 distinctId = distinctId,
-                token = token,
+                deviceToken = deviceToken,
                 platform = platform,
                 appId = appId,
             )

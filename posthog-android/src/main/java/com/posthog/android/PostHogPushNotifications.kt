@@ -97,16 +97,16 @@ public object PostHogPushNotifications {
      * Registers a push notification token directly with PostHog without requesting permission.
      * Use this if you already have the FCM token (e.g. from FirebaseMessagingService.onNewToken).
      *
-     * @param token the FCM device token
+     * @param deviceToken the FCM device token
      * @param firebaseProjectId the Firebase project ID (used as appId for the push subscription)
      */
     @JvmStatic
     public fun registerToken(
-        token: String,
+        deviceToken: String,
         firebaseProjectId: String,
     ) {
         PostHog.registerPushNotificationToken(
-            token = token,
+            deviceToken = deviceToken,
             appId = firebaseProjectId,
             platform = "android",
         )
@@ -150,7 +150,7 @@ public object PostHogPushNotifications {
                     val token = args?.firstOrNull() as? String
                     if (!token.isNullOrBlank() && projectId.isNotBlank()) {
                         PostHog.registerPushNotificationToken(
-                            token = token,
+                            deviceToken = deviceToken,
                             appId = projectId,
                             platform = "android",
                         )
