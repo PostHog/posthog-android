@@ -1635,7 +1635,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `getEventTriggers returns list when configured`() {
+    fun `getEventTriggers returns set when configured`() {
         val triggers = listOf("checkout_started", "payment_completed")
         val cachedConfig = mapOf("eventTriggers" to triggers)
         preferences.setValue(SESSION_REPLAY, cachedConfig)
@@ -1650,7 +1650,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertEquals(triggers, sut.getEventTriggers())
+        assertEquals(triggers.toSet(), sut.getEventTriggers())
 
         sut.clear()
         http.shutdown()
@@ -1673,7 +1673,7 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(listOf("checkout_started", "payment_completed"), sut.getEventTriggers())
+        assertEquals(setOf("checkout_started", "payment_completed"), sut.getEventTriggers())
 
         sut.clear()
         http.shutdown()
@@ -1695,7 +1695,7 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
-        assertEquals(triggers, sut.getEventTriggers())
+        assertEquals(triggers.toSet(), sut.getEventTriggers())
 
         sut.clear()
         http.shutdown()

@@ -110,7 +110,7 @@ public class PostHogRemoteConfig(
      * null or empty means no event triggers (record immediately if other conditions are met).
      */
     @Volatile
-    private var sessionRecordingEventTriggers: List<String>? = null
+    private var sessionRecordingEventTriggers: Set<String>? = null
 
     init {
         preloadSessionRecordingConfig()
@@ -363,10 +363,10 @@ public class PostHogRemoteConfig(
      * Parses event triggers from the raw value which come as a List<String> (from the API or cache).
      * Returns null if the value is absent or empty.
      */
-    private fun parseEventTriggers(raw: Any?): List<String>? {
+    private fun parseEventTriggers(raw: Any?): Set<String>? {
         @Suppress("UNCHECKED_CAST")
         val triggers = (raw as? List<String>) ?: return null
-        return triggers.takeIf { it.isNotEmpty() }
+        return triggers.takeIf { it.isNotEmpty() }?.toSet()
     }
 
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
@@ -946,7 +946,7 @@ public class PostHogRemoteConfig(
      * Returns the current event triggers for session recording, or null if not configured.
      * When event triggers are configured, session recording only starts after one of these events is captured.
      */
-    public fun getEventTriggers(): List<String>? = sessionRecordingEventTriggers
+    public fun getEventTriggers(): Set<String>? = sessionRecordingEventTriggers
 
     override fun getRequestId(
         distinctId: String?,
