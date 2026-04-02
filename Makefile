@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine updateLocks
 
 clean:
 	./gradlew clean
@@ -64,3 +64,7 @@ testJava:
 generateLintBaseLine:
 	rm -f posthog-android/lint-baseline.xml
 	./gradlew lintDebug -Dlint.baselines.continue=true
+
+# Regenerate gradle.lockfile for all projects after dependency changes
+updateLocks:
+	./gradlew build --write-locks

@@ -27,6 +27,7 @@ import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyPropertyFilter
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
+import com.posthog.surveys.SurveyType
 import java.util.Date
 
 public class PostHogSurveysIntegration(
@@ -583,13 +584,26 @@ public class PostHogSurveysIntegration(
         // Use cached surveys pushed from remote config
         val activeSurveys = getActiveMatchingSurveys()
 
-        // Find the first survey that can be rendered
-        val surveyToShow = activeSurveys.firstOrNull()
+        // Find the first survey that can be rendered (API-type surveys are excluded
+        // from auto-display — they should only be triggered programmatically)
+        val surveyToShow = activeSurveys.firstOrNull(::canAutoDisplaySurvey)
 
         if (surveyToShow != null) {
             // Use the existing showSurvey method which handles all the logic
             showSurvey(surveyToShow)
         }
+    }
+
+    /**
+     * Returns whether a survey can be auto-displayed to the user.
+     * Only popover and widget surveys are eligible for auto-display.
+     * API-type surveys must be triggered programmatically and are excluded.
+     *
+     * This mirrors the web SDK's `callSurveysAndEvaluateDisplayLogic` which filters
+     * `getActiveMatchingSurveys` results to only popover and widget types for auto-display.
+     */
+    private fun canAutoDisplaySurvey(survey: Survey): Boolean {
+        return survey.type == SurveyType.POPOVER || survey.type == SurveyType.WIDGET
     }
 
     /**

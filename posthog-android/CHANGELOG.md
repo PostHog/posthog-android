@@ -1,5 +1,17 @@
 ## Next
 
+## 3.39.2
+
+### Patch Changes
+
+- 19d363d: fix: exclude API-type surveys from auto-display
+
+## 3.39.1
+
+### Patch Changes
+
+- d9b7bd4: fix: session replay callback parameters were swapped, causing throttling to not work correctly and stopSessionRecording() to appear broken
+
 ## 3.39.0
 
 ### Minor Changes
