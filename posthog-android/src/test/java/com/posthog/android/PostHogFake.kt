@@ -80,6 +80,10 @@ public class PostHogFake : PostHogInterface {
         return null
     }
 
+    override fun getAllFeatureFlagDetails(): List<FeatureFlagResult?> {
+        return emptyList()
+    }
+
     override fun flush() {
         flushes++
     }

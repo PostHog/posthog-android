@@ -520,6 +520,31 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `getAllFeatureFlagDetails returns list of feature flags if enabled`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val flags = sut.getAllFeatureFlagDetails()
+
+        assertTrue(flags.isNotEmpty())
+
+        sut.close()
+    }
+
+    @Test
     fun `getFeatureFlagResult returns the result after reloaded`() {
         val http =
             mockHttp(
