@@ -68,7 +68,7 @@ public interface PostHogInterface : PostHogCoreInterface {
         sendFeatureFlagEvent: Boolean? = null,
     ): Any?
 
-    public fun getAllFeatureFlagDetails(): List<FeatureFlagResult?>
+    public fun getAllFeatureFlags(): List<FeatureFlagResult>
 
     /**
      * Returns the feature flag payload

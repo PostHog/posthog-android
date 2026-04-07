@@ -24,6 +24,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -537,9 +538,16 @@ internal class PostHogTest {
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
-        val flags = sut.getAllFeatureFlagDetails()
+        val flags = sut.getAllFeatureFlags()
 
-        assertTrue(flags.isNotEmpty())
+        val result = flags.first()
+
+        assertIs<FeatureFlagResult>(result)
+        assertEquals("4535-funnel-bar-viz", result.key)
+        assertTrue(result.enabled)
+        assertNull(result.variant)
+        assertTrue(result.payload as Boolean)
+        assertTrue(result.value as Boolean)
 
         sut.close()
     }
