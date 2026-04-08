@@ -1647,7 +1647,6 @@ public class PostHogReplayIntegration(
         val minimumDurationMs: Long? = synchronized(bufferingLock) { cachedMinimumDurationMs }
         if (minimumDurationMs == null || minimumDurationMs <= 0) {
             // No minimum duration configured: should not be buffering, migrate immediately.
-            // Flip buffering first so concurrent snapshot producers route straight to replay queue.
             synchronized(bufferingLock) { hasPassedMinimumDuration = true }
             replayQueue.migrateBufferToQueue()
             return
@@ -1663,8 +1662,7 @@ public class PostHogReplayIntegration(
             config.logger.log(
                 "[Session Replay] Minimum duration met. Migrating ${replayQueue.bufferDepth} buffered events to replay queue.",
             )
-            // Flip buffering before migration so concurrently captured snapshots
-            // go directly to replay queue instead of entering the soon-to-be-drained buffer.
+            // Flip state before migration so new snapshots don't keep entering the buffer during long-running migrations.
             synchronized(bufferingLock) { hasPassedMinimumDuration = true }
             replayQueue.migrateBufferToQueue()
         }
