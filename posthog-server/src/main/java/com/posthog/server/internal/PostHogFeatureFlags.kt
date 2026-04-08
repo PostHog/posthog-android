@@ -293,7 +293,14 @@ internal class PostHogFeatureFlags(
         }
 
         return try {
-            val response = api.flags(distinctId, anonymousId = null, groups = groups, personProperties = personProperties, groupProperties = groupProperties)
+            val response =
+                api.flags(
+                    distinctId,
+                    anonymousId = null,
+                    groups = groups,
+                    personProperties = personProperties,
+                    groupProperties = groupProperties,
+                )
             val flags = response?.flags
             cache.put(
                 cacheKey,
