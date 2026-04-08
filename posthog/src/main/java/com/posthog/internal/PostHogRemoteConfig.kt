@@ -365,7 +365,7 @@ public class PostHogRemoteConfig(
      */
     private fun parseEventTriggers(eventTriggers: Any?): Set<String>? {
         @Suppress("UNCHECKED_CAST")
-        val triggers = (raw as? List<String>) ?: return null
+        val triggers = (eventTriggers as? List<String>) ?: return null
         return triggers.takeIf { it.isNotEmpty() }?.toSet()
     }
 
