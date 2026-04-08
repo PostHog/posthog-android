@@ -1,5 +1,11 @@
 ## Next
 
+## 3.40.1
+
+### Patch Changes
+
+- a22edb0: fix: failing posthog-core release
+
 ## 3.40.0
 
 ### Minor Changes

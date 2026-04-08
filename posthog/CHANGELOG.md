@@ -1,5 +1,11 @@
 ## Next
 
+## 6.10.1
+
+### Patch Changes
+
+- a22edb0: fix: failing posthog-core release
+
 ## 6.10.0
 
 ### Minor Changes
