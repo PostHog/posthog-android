@@ -105,11 +105,4 @@ public class PostHogReplayQueue internal constructor(
         bufferQueue.clear()
         config.logger.log("Replay buffer cleared")
     }
-
-    /**
-     * Prunes buffer items older than the given duration from the newest item.
-     */
-    internal fun pruneBuffer(olderThanMs: Long) {
-        bufferQueue.pruneOlderThan(olderThanMs)
-    }
 }

@@ -30,10 +30,10 @@ internal class PostHogReplayBufferQueue(
     val bufferDurationMs: Long?
         get() =
             synchronized(itemsLock) {
-                val oldest = items.firstOrNull() ?: return null
-                val newest = items.lastOrNull() ?: return null
-                val oldestTs = timestampFromUUIDv7(oldest) ?: return null
-                val newestTs = timestampFromUUIDv7(newest) ?: return null
+                val oldest = items.firstOrNull() ?: return@synchronized null
+                val newest = items.lastOrNull() ?: return@synchronized null
+                val oldestTs = timestampFromUUIDv7(oldest) ?: return@synchronized null
+                val newestTs = timestampFromUUIDv7(newest) ?: return@synchronized null
                 maxOf(newestTs - oldestTs, 0)
             }
 
@@ -78,33 +78,6 @@ internal class PostHogReplayBufferQueue(
             synchronized(itemsLock) { items.add(filename) }
         } catch (e: Throwable) {
             config.logger.log("Could not write replay buffer file: $e")
-        }
-    }
-
-    /**
-     * Removes items older than `newestTimestamp - durationMs`.
-     * This keeps approximately [durationMs] worth of snapshots in the buffer.
-     */
-    fun pruneOlderThan(durationMs: Long) {
-        val newestTs: Long =
-            synchronized(itemsLock) {
-                val newest = items.lastOrNull() ?: return
-                timestampFromUUIDv7(newest) ?: return
-            }
-        val cutoff = newestTs - durationMs
-
-        // Items are sorted oldest → newest already
-        synchronized(itemsLock) {
-            while (items.isNotEmpty()) {
-                val first = items.first()
-                val ts = timestampFromUUIDv7(first) ?: break
-                if (ts < cutoff) {
-                    items.removeAt(0)
-                    deleteFileSafely(File(bufferDir, first))
-                } else {
-                    break
-                }
-            }
         }
     }
 

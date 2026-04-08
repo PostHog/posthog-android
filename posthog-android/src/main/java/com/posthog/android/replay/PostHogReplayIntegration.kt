@@ -1655,9 +1655,9 @@ public class PostHogReplayIntegration(
         // Check buffer content duration (oldest to newest snapshot)
         val bufferDurationMs = replayQueue.bufferDurationMs ?: 0
 
-        // Prune old snapshots beyond minimum duration window
-        replayQueue.pruneBuffer(olderThanMs = minimumDurationMs)
-
+        // Keep buffered snapshots intact until threshold is reached.
+        // Session replay payloads may include metadata snapshots required by the player,
+        // so buffering follows an all-or-nothing migration strategy.
         if (bufferDurationMs >= minimumDurationMs) {
             config.logger.log(
                 "[Session Replay] Minimum duration met. Migrating ${replayQueue.bufferDepth} buffered events to replay queue.",
