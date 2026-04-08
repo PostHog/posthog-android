@@ -363,7 +363,7 @@ public class PostHogRemoteConfig(
      * Parses event triggers from the raw value which come as a List<String> (from the API or cache).
      * Returns null if the value is absent or empty.
      */
-    private fun parseEventTriggers(raw: Any?): Set<String>? {
+    private fun parseEventTriggers(eventTriggers: Any?): Set<String>? {
         @Suppress("UNCHECKED_CAST")
         val triggers = (raw as? List<String>) ?: return null
         return triggers.takeIf { it.isNotEmpty() }?.toSet()
