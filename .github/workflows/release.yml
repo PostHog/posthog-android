@@ -197,7 +197,7 @@ jobs:
             GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
             GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         strategy:
-            fail-fast: true
+            fail-fast: false
             # Order matters: posthog (core) must be released before posthog-android and posthog-server
             # since they are transitive dependencies. We use max-parallel: 1 to enforce sequential execution.
             max-parallel: 1
