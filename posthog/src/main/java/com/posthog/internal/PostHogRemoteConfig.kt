@@ -5,6 +5,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
+import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
@@ -529,10 +530,13 @@ public class PostHogRemoteConfig(
         }
 
         try {
+            val deviceId = config.cachePreferences?.getValue(DEVICE_ID) as? String
+
             val response =
                 api.flags(
                     distinctId,
                     anonymousId = anonymousId,
+                    deviceId = deviceId,
                     groups = groups,
                     personProperties = getPersonPropertiesForFlags(),
                     groupProperties = getGroupPropertiesForFlags(),

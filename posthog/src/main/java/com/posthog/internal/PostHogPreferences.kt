@@ -46,6 +46,7 @@ public interface PostHogPreferences {
         public const val LAST_SEEN_SURVEY_DATE: String = "lastSeenSurveyDate"
         public const val VERSION: String = "version"
         public const val BUILD: String = "build"
+        public const val DEVICE_ID: String = "deviceId"
         public const val STRINGIFIED_KEYS: String = "stringifiedKeys"
 
         public val ALL_INTERNAL_KEYS: Set<String> =
@@ -64,6 +65,7 @@ public interface PostHogPreferences {
                 LAST_SEEN_SURVEY_DATE,
                 VERSION,
                 BUILD,
+                DEVICE_ID,
                 STRINGIFIED_KEYS,
                 FEATURE_FLAG_REQUEST_ID,
                 FEATURE_FLAG_EVALUATED_AT,
