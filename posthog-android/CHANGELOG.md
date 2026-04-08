@@ -1,5 +1,11 @@
 ## Next
 
+## 3.40.0
+
+### Minor Changes
+
+- f3edb25: feat: add support for session replay event triggers
+
 ## 3.39.2
 
 ### Patch Changes
