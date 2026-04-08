@@ -1136,7 +1136,7 @@ public class PostHog private constructor(
         return flagValue
     }
 
-    public override fun getAllFeatureFlags(): List<FeatureFlagResult> {
+    public override fun getAllFeatureFlags(): List<FeatureFlagResult>? {
         if (!isEnabled()) return emptyList()
         val flags = remoteConfig?.getFeatureFlags()
         val results =
@@ -1144,7 +1144,7 @@ public class PostHog private constructor(
                 val featureFlagResult = remoteConfig?.getFeatureFlagResult(item.key)
                 featureFlagResult
             }
-        return results ?: emptyList()
+        return results
     }
 
     public override fun getFeatureFlagPayload(
@@ -1531,7 +1531,7 @@ public class PostHog private constructor(
             sendFeatureFlagEvent: Boolean?,
         ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, sendFeatureFlagEvent)
 
-        override fun getAllFeatureFlags(): List<FeatureFlagResult> {
+        override fun getAllFeatureFlags(): List<FeatureFlagResult>? {
             return shared.getAllFeatureFlags()
         }
 

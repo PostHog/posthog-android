@@ -521,7 +521,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `getAllFeatureFlagDetails returns list of feature flags if enabled`() {
+    fun `getAllFeatureFlags returns list of feature flags if enabled`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
         val http =
@@ -540,8 +540,9 @@ internal class PostHogTest {
 
         val flags = sut.getAllFeatureFlags()
 
-        val result = flags.first()
+        val result = flags?.first()
 
+        assertNotNull(result)
         assertIs<FeatureFlagResult>(result)
         assertEquals("4535-funnel-bar-viz", result.key)
         assertTrue(result.enabled)
