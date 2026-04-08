@@ -99,7 +99,7 @@ public class PostHogReplayIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
-) : PostHogIntegration, PostHogSessionReplayHandler {
+) : PostHogIntegration, PostHogSessionReplayHandler, PostHogReplayBufferDelegate {
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
     private val passwordInputTypes =
@@ -161,6 +161,14 @@ public class PostHogReplayIntegration(
         get() = (config.sdkName != "posthog-flutter")
 
     private var postHog: PostHogInterface? = null
+    private var replayQueue: PostHogReplayQueue? = null
+
+    // Minimum duration buffering state
+    private val bufferingLock = Any()
+
+    @Volatile
+    private var hasPassedMinimumDuration: Boolean = false
+    private var cachedMinimumDurationMs: Long? = null
 
     @Volatile
     private var isOnDrawnCalled: Boolean = false
@@ -383,6 +391,13 @@ public class PostHogReplayIntegration(
         integrationInstalled = true
         this.postHog = postHog
 
+        // Wire up as buffer delegate for the replay queue
+        replayQueue = config.replayQueueHolder
+        replayQueue?.bufferDelegate = this
+
+        // Load cached minimum duration from remote config (if available)
+        updateCachedMinimumDuration()
+
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
         Curtains.rootViews.forEach { view ->
@@ -400,6 +415,11 @@ public class PostHogReplayIntegration(
         try {
             integrationInstalled = false
             this.postHog = null
+
+            // Clear buffer delegate
+            replayQueue?.bufferDelegate = null
+            replayQueue = null
+
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
             decorViews.entries.forEach {
@@ -1587,6 +1607,8 @@ public class PostHogReplayIntegration(
     override fun start(resumeCurrent: Boolean) {
         if (!resumeCurrent) {
             clearSnapshotStates()
+            // Reset minimum duration buffering state for the new session
+            resetBufferingState()
         }
 
         isSessionReplayActive = true
@@ -1606,6 +1628,70 @@ public class PostHogReplayIntegration(
 
     override fun isActive(): Boolean {
         return isSessionReplayActive
+    }
+
+    // MARK: - PostHogReplayBufferDelegate
+
+    override val isBuffering: Boolean
+        get() {
+            synchronized(bufferingLock) {
+                val minimumDuration = cachedMinimumDurationMs
+                if (minimumDuration == null || minimumDuration <= 0) {
+                    return false
+                }
+                return !hasPassedMinimumDuration
+            }
+        }
+
+    override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
+        val minimumDurationMs: Long? = synchronized(bufferingLock) { cachedMinimumDurationMs }
+        if (minimumDurationMs == null || minimumDurationMs <= 0) {
+            // No minimum duration configured: should not be buffering, migrate immediately
+            replayQueue.migrateBufferToQueue()
+            synchronized(bufferingLock) { hasPassedMinimumDuration = true }
+            return
+        }
+
+        // Check buffer content duration (oldest to newest snapshot)
+        val bufferDurationMs = replayQueue.bufferDurationMs ?: 0
+
+        // Prune old snapshots beyond minimum duration window
+        replayQueue.pruneBuffer(olderThanMs = minimumDurationMs)
+
+        if (bufferDurationMs >= minimumDurationMs) {
+            config.logger.log(
+                "[Session Replay] Minimum duration met. Migrating ${replayQueue.bufferDepth} buffered events to replay queue.",
+            )
+            replayQueue.migrateBufferToQueue()
+            synchronized(bufferingLock) { hasPassedMinimumDuration = true }
+        }
+    }
+
+    // MARK: - Remote Config
+
+    override fun onRemoteConfig() {
+        updateCachedMinimumDuration()
+    }
+
+    private fun updateCachedMinimumDuration() {
+        val minimumDuration = config.remoteConfigHolder?.getRecordingMinimumDurationMs()
+        synchronized(bufferingLock) {
+            cachedMinimumDurationMs = minimumDuration
+        }
+    }
+
+    // MARK: - Buffering State
+
+    /**
+     * Resets buffering state for a new session — clears the buffer and marks
+     * as not yet passed minimum duration.
+     */
+    private fun resetBufferingState() {
+        synchronized(bufferingLock) {
+            hasPassedMinimumDuration = false
+        }
+        // Clear any buffered events from previous session
+        replayQueue?.clearBuffer()
     }
 
     internal companion object {

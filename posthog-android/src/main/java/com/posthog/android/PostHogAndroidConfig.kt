@@ -1,7 +1,10 @@
 package com.posthog.android
 
 import com.posthog.PostHogConfig
+import com.posthog.android.replay.PostHogReplayQueue
 import com.posthog.android.replay.PostHogSessionReplayConfig
+import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogQueue
 
 /**
  * The SDK Config
@@ -19,4 +22,19 @@ public open class PostHogAndroidConfig
         public var captureDeepLinks: Boolean = true,
         public var captureScreenViews: Boolean = true,
         public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
-    ) : PostHogConfig(apiKey = apiKey, host = host)
+    ) : PostHogConfig(
+            apiKey = apiKey,
+            host = host,
+            queueProvider = { config, api, endpoint, storagePrefix, executor ->
+                val defaultQueue = PostHogQueue(config, api, endpoint, storagePrefix, executor)
+                if (endpoint == PostHogApiEndpoint.SNAPSHOT) {
+                    val replayQueue = PostHogReplayQueue(config, defaultQueue, storagePrefix)
+                    (config as? PostHogAndroidConfig)?.replayQueueHolder = replayQueue
+                    replayQueue
+                } else {
+                    defaultQueue
+                }
+            },
+        ) {
+        internal var replayQueueHolder: PostHogReplayQueue? = null
+    }
