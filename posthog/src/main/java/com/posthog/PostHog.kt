@@ -535,6 +535,8 @@ public class PostHog private constructor(
                 )
                 // Notify surveys integration about the event
                 surveysHandler?.onEvent(event, mergedProperties)
+                // Notify session replay handler about the event for event triggers
+                sessionReplayHandler?.onEvent(event, mergedProperties)
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
@@ -1300,6 +1302,8 @@ public class PostHog private constructor(
         }
 
         PostHogSessionManager.startSession()
+        // Notify session replay handler about session change for event triggers
+        sessionReplayHandler?.onSessionIdChanged()
     }
 
     override fun endSession() {
