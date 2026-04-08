@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.PostHogInternal
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
@@ -24,7 +25,8 @@ private val RETRYABLE_STATUS_CODES = setOf(429, 500, 502, 503, 504)
  * @property api the API
  * @property executor the Executor
  */
-internal class PostHogQueue(
+@PostHogInternal
+public class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val endpoint: PostHogApiEndpoint,
@@ -454,7 +456,7 @@ internal class PostHogQueue(
         }
     }
 
-    val dequeList: List<File>
+    public val dequeList: List<File>
         @PostHogVisibleForTesting
         get() {
             val tempFiles: List<File>
