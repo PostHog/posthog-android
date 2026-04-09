@@ -7,11 +7,8 @@ import com.posthog.internal.PostHogQueueInterface
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 internal class PostHogReplayQueueTest {
     @get:Rule
@@ -55,6 +52,10 @@ internal class PostHogReplayQueueTest {
         }
     }
 
+    private fun createFakeQueue(): FakeQueue {
+        return FakeQueue()
+    }
+
     private fun createReplayQueue(
         fakeInnerQueue: FakeQueue,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
@@ -74,7 +75,7 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `add routes to buffer when delegate isBuffering is true`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
         val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
         queue.bufferDelegate = delegate
@@ -89,7 +90,7 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `add routes to inner queue when delegate isBuffering is false`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
         val delegate = MockReplayBufferDelegate().apply { isBuffering = false }
         queue.bufferDelegate = delegate
@@ -104,7 +105,7 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `flush is suppressed when buffering`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
         val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
         queue.bufferDelegate = delegate
@@ -118,7 +119,7 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `flush delegates to inner queue when not buffering`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
         val delegate = MockReplayBufferDelegate().apply { isBuffering = false }
         queue.bufferDelegate = delegate
@@ -129,8 +130,8 @@ internal class PostHogReplayQueueTest {
     }
 
     @Test
-    fun `migrateBufferToQueue moves buffered events to inner queue`() {
-        val fakeInnerQueue = FakeQueue()
+    fun `migrateBufferToQueue noops when inner queue is not PostHogQueue`() {
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
         val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
         queue.bufferDelegate = delegate
@@ -144,14 +145,13 @@ internal class PostHogReplayQueueTest {
 
         queue.migrateBufferToQueue()
 
-        assertEquals(0, queue.bufferDepth)
-        assertEquals(3, fakeInnerQueue.events.size)
-        assertEquals(listOf("snapshot_1", "snapshot_2", "snapshot_3"), fakeInnerQueue.events.map { it.event })
+        assertEquals(3, queue.bufferDepth)
+        assertEquals(0, fakeInnerQueue.events.size)
     }
 
     @Test
     fun `migrateBufferToQueue handles empty buffer gracefully`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
 
         queue.migrateBufferToQueue()
@@ -162,7 +162,7 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `clearBuffer discards all buffered events`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
         val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
         queue.bufferDelegate = delegate
@@ -179,7 +179,7 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `clear removes both buffer and inner queue events`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
 
         val delegate = MockReplayBufferDelegate().apply { isBuffering = false }
@@ -199,7 +199,7 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `start and stop delegate to inner queue`() {
-        val fakeInnerQueue = FakeQueue()
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
 
         queue.start()
@@ -210,8 +210,8 @@ internal class PostHogReplayQueueTest {
     }
 
     @Test
-    fun `events go directly to inner queue after migration when buffering disabled`() {
-        val fakeInnerQueue = FakeQueue()
+    fun `events go directly to inner queue after buffering disabled even if migration noops`() {
+        val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
         val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
         queue.bufferDelegate = delegate
@@ -225,41 +225,15 @@ internal class PostHogReplayQueueTest {
 
         queue.add(createTestEvent("direct_1"))
 
-        assertEquals(0, queue.bufferDepth)
-        assertEquals(3, fakeInnerQueue.events.size)
-        assertTrue(fakeInnerQueue.events.map { it.event }.containsAll(listOf("buffered_1", "buffered_2", "direct_1")))
+        assertEquals(2, queue.bufferDepth)
+        assertEquals(1, fakeInnerQueue.events.size)
+        assertEquals("direct_1", fakeInnerQueue.events.first().event)
     }
 
     @Test
-    fun `concurrent snapshot goes direct when delegate flips buffering before migration`() {
-        val migrationStarted = CountDownLatch(1)
-        val allowMigrationToContinue = CountDownLatch(1)
-
-        val innerQueue =
-            object : PostHogQueueInterface {
-                val events = mutableListOf<PostHogEvent>()
-
-                override fun add(event: PostHogEvent) {
-                    synchronized(events) { events.add(event) }
-                    if (event.event == "buffered_1") {
-                        migrationStarted.countDown()
-                        allowMigrationToContinue.await(2, TimeUnit.SECONDS)
-                    }
-                }
-
-                override fun flush() {}
-
-                override fun start() {}
-
-                override fun stop() {}
-
-                override fun clear() {
-                    synchronized(events) { events.clear() }
-                }
-            }
-
-        val config = PostHogConfig(API_KEY, "http://localhost:9001")
-        val queue = PostHogReplayQueue(config, innerQueue, tmpDir.newFolder().absolutePath)
+    fun `delegate can disable buffering even if migration noops`() {
+        val innerQueue = createFakeQueue()
+        val queue = createReplayQueue(innerQueue)
 
         val delegate =
             object : PostHogReplayBufferDelegate {
@@ -275,23 +249,11 @@ internal class PostHogReplayQueueTest {
         queue.bufferDelegate = delegate
 
         queue.add(createTestEvent("buffered_1"))
+        queue.add(createTestEvent("buffered_2"))
+        queue.add(createTestEvent("direct_after_disable"))
 
-        val migrationThread =
-            Thread {
-                queue.add(createTestEvent("buffered_2"))
-            }.apply { start() }
-
-        assertTrue(migrationStarted.await(2, TimeUnit.SECONDS))
-
-        queue.add(createTestEvent("concurrent_direct"))
-
-        allowMigrationToContinue.countDown()
-        migrationThread.join(2000)
-
-        assertEquals(0, queue.bufferDepth)
-        synchronized(innerQueue.events) {
-            assertEquals(3, innerQueue.events.size)
-            assertTrue(innerQueue.events.map { it.event }.containsAll(listOf("buffered_1", "buffered_2", "concurrent_direct")))
-        }
+        assertEquals(2, queue.bufferDepth)
+        assertEquals(1, innerQueue.events.size)
+        assertEquals("direct_after_disable", innerQueue.events.first().event)
     }
 }

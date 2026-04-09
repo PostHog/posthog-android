@@ -121,40 +121,20 @@ internal class PostHogReplayBufferQueueTest {
     }
 
     @Test
-    fun `migrateAllTo moves all items to target queue`() {
+    fun `migrateAllTo noops when target queue is not PostHogQueue`() {
         val queue = createQueue()
         val targetQueue = FakeQueue()
 
         queue.add(createEvent("item1"))
-        queue.add(createEvent("item2"))
-        queue.add(createEvent("item3"))
-
         val migrated = queue.migrateAllTo(targetQueue)
 
-        assertEquals(0, queue.depth)
-        assertEquals(3, migrated)
-        assertEquals(3, targetQueue.events.size)
+        assertEquals(0, migrated)
+        assertEquals(1, queue.depth)
+        assertEquals(0, targetQueue.events.size)
     }
 
     @Test
-    fun `migrateAllTo preserves event data`() {
-        val queue = createQueue()
-        val targetQueue = FakeQueue()
-
-        val names = listOf("first", "second", "third")
-        names.forEach {
-            queue.add(createEvent(it))
-            Thread.sleep(20)
-        }
-
-        queue.migrateAllTo(targetQueue)
-
-        assertEquals(3, targetQueue.events.size)
-        assertEquals(names, targetQueue.events.map { it.event })
-    }
-
-    @Test
-    fun `migrateAllTo handles empty buffer gracefully`() {
+    fun `migrateAllTo noops for non PostHogQueue target when empty`() {
         val queue = createQueue()
         val targetQueue = FakeQueue()
 

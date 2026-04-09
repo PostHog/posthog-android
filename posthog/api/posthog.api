@@ -817,6 +817,18 @@ public final class com/posthog/internal/PostHogPrintLogger : com/posthog/interna
 	public fun log (Ljava/lang/String;)V
 }
 
+public final class com/posthog/internal/PostHogQueue : com/posthog/internal/PostHogQueueInterface {
+	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Lcom/posthog/internal/PostHogApiEndpoint;Ljava/lang/String;Ljava/util/concurrent/ExecutorService;)V
+	public fun add (Lcom/posthog/PostHogEvent;)V
+	public fun clear ()V
+	public fun flush ()V
+	public final fun getDequeList ()Ljava/util/List;
+	public final fun getQueueDirectory ()Ljava/io/File;
+	public final fun reloadFromDisk ()V
+	public fun start ()V
+	public fun stop ()V
+}
+
 public abstract interface class com/posthog/internal/PostHogQueueInterface {
 	public abstract fun add (Lcom/posthog/PostHogEvent;)V
 	public abstract fun clear ()V
@@ -838,6 +850,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/FeatureFlagResult;
 	public fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public final fun getFlagDetails (Ljava/lang/String;)Lcom/posthog/internal/FeatureFlag;
+	public final fun getRecordingMinimumDurationMs ()Ljava/lang/Long;
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
 	public final fun getSurveys ()Ljava/util/List;

@@ -2,6 +2,7 @@ package com.posthog.android.replay
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
@@ -82,12 +83,25 @@ internal class PostHogReplayBufferQueue(
     }
 
     /**
-     * Migrates all buffered items to the target queue by deserializing each buffered
-     * event and re-adding it to the target queue.
+     * Migrates all buffered items to the target queue.
+     *
+     * Migration is supported for [PostHogQueue] targets by moving files on disk
+     * and reloading the target queue from disk.
      *
      * Returns the number of events successfully migrated.
      */
     fun migrateAllTo(targetQueue: PostHogQueueInterface): Int {
+        if (targetQueue !is PostHogQueue) {
+            config.logger.log("Replay buffer migration skipped: target queue is not PostHogQueue")
+            return 0
+        }
+
+        val targetDir = targetQueue.queueDirectory
+        if (targetDir == null) {
+            config.logger.log("Replay queue has no disk directory configured. Skipping buffer migration.")
+            return 0
+        }
+
         val itemsToMigrate: List<String> =
             synchronized(itemsLock) {
                 val copy = items.toList()
@@ -95,25 +109,36 @@ internal class PostHogReplayBufferQueue(
                 copy
             }
 
+        try {
+            targetDir.mkdirs()
+        } catch (e: Throwable) {
+            config.logger.log("Error creating replay target queue directory: $e")
+        }
+
         var migratedCount = 0
         for (item in itemsToMigrate) {
             val sourceFile = File(bufferDir, item)
+            if (!sourceFile.exists()) {
+                continue
+            }
+            val targetFile = File(targetDir, item)
             try {
-                val input = config.encryption?.decrypt(sourceFile.inputStream()) ?: sourceFile.inputStream()
-                input.use {
-                    val event = config.serializer.deserialize<PostHogEvent?>(it.reader().buffered())
-                    if (event != null) {
-                        targetQueue.add(event)
-                        migratedCount++
-                    }
+                if (targetFile.exists()) {
+                    sourceFile.delete()
+                    continue
+                }
+
+                if (sourceFile.renameTo(targetFile)) {
+                    migratedCount++
+                } else {
+                    config.logger.log("Failed to move replay buffer item $item")
                 }
             } catch (e: Throwable) {
                 config.logger.log("Failed to migrate replay buffer item $item: $e")
-            } finally {
-                deleteFileSafely(sourceFile)
             }
         }
 
+        targetQueue.reloadFromDisk()
         return migratedCount
     }
 
@@ -122,14 +147,6 @@ internal class PostHogReplayBufferQueue(
      */
     fun clear() {
         setup()
-    }
-
-    private fun deleteFileSafely(file: File) {
-        try {
-            file.delete()
-        } catch (e: Throwable) {
-            config.logger.log("Error deleting replay buffer file ${file.name}: $e")
-        }
     }
 
     companion object {

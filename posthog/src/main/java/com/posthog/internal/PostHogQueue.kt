@@ -56,6 +56,9 @@ public class PostHogQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
+    public val queueDirectory: File?
+        get() = storagePrefix?.let { File(it, config.apiKey) }
+
     private fun addEventSync(event: PostHogEvent): Boolean {
         storagePrefix?.let {
             val dir = File(it, config.apiKey)
@@ -409,31 +412,53 @@ public class PostHogQueue(
      * with any new events added after SDK start.
      */
     private fun loadCachedEvents() {
-        storagePrefix?.let {
-            val dir = File(it, config.apiKey)
+        val files = loadQueueFilesFromDisk()
+        if (files.isEmpty()) return
 
-            if (!dir.existsSafely(config)) {
-                return
-            }
+        synchronized(dequeLock) {
+            // prepend cached files before any events already in the deque
+            // so that older events are sent first
+            val existingFiles = deque.toList()
+            deque.clear()
+            deque.addAll(files)
+            deque.addAll(existingFiles)
+        }
+        config.logger.log("Loaded ${files.size} cached events from disk for $endpoint.")
+    }
 
-            val files = (dir.listFiles() ?: emptyArray()).toMutableList()
+    private fun loadQueueFilesFromDisk(): List<File> {
+        val dir = queueDirectory ?: return emptyList()
 
-            if (files.isEmpty()) return
+        if (!dir.existsSafely(config)) {
+            return emptyList()
+        }
 
-            // sort by last modified date ascending so events are sent in order
-            files.sortBy { file -> file.lastModified() }
+        val files = (dir.listFiles() ?: emptyArray()).toMutableList()
+        if (files.isEmpty()) {
+            return emptyList()
+        }
 
-            if (files.isNotEmpty()) {
-                synchronized(dequeLock) {
-                    // prepend cached files before any events already in the deque
-                    // so that older events are sent first
-                    val existingFiles = deque.toList()
-                    deque.clear()
-                    deque.addAll(files)
-                    deque.addAll(existingFiles)
-                }
-                config.logger.log("Loaded ${files.size} cached events from disk for $endpoint.")
-            }
+        // sort by last modified date ascending so events are sent in order
+        files.sortBy { file -> file.lastModified() }
+        return files
+    }
+
+    private fun reloadFromDiskSync() {
+        val files = loadQueueFilesFromDisk()
+        synchronized(dequeLock) {
+            deque.clear()
+            deque.addAll(files)
+        }
+        cachedEventsLoaded = true
+    }
+
+    /**
+     * Rebuilds the in-memory deque from disk, sorted by file last-modified time.
+     */
+    @PostHogInternal
+    public fun reloadFromDisk() {
+        executor.submitSyncSafely {
+            reloadFromDiskSync()
         }
     }
 
