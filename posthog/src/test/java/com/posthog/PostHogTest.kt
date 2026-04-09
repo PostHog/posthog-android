@@ -24,6 +24,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -515,6 +516,39 @@ internal class PostHogTest {
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz") as Boolean)
+
+        sut.close()
+    }
+
+    @Test
+    fun `getAllFeatureFlags returns list of feature flags if enabled`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val flags = sut.getAllFeatureFlags()
+
+        val result = flags?.first()
+
+        assertNotNull(result)
+        assertIs<FeatureFlagResult>(result)
+        assertEquals("4535-funnel-bar-viz", result.key)
+        assertTrue(result.enabled)
+        assertNull(result.variant)
+        assertTrue(result.payload as Boolean)
+        assertTrue(result.value as Boolean)
 
         sut.close()
     }
