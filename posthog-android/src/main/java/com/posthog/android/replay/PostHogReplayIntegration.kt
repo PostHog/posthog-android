@@ -66,6 +66,7 @@ import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.replay.RRCustomEvent
@@ -671,7 +672,7 @@ public class PostHogReplayIntegration(
     private fun View.isViewStateStableForMatrixOperations(): Boolean {
         return try {
             isAttachedToWindow &&
-                isLaidOut &&
+                (isLaidOut || PostHogSessionManager.isReactNative) &&
                 // Check if view has valid dimensions
                 width > 0 && height > 0 &&
                 // Check if view is not in layout transition (API 18+)
