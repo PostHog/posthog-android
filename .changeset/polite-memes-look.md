@@ -1,0 +1,5 @@
+---
+"posthog": minor
+---
+
+add getAllFeatureFlags
