@@ -195,7 +195,7 @@ internal class PostHogApiTest {
 
         assertNotNull(response)
         assertEquals(port, request.requestUrl?.port)
-//        assertEquals(hostname, request.requestUrl?.host)
+        assertEquals(hostname, request.requestUrl?.host)
         server.shutdown()
     }
 

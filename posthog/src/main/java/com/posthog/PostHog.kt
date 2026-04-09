@@ -1139,7 +1139,7 @@ public class PostHog private constructor(
     }
 
     public override fun getAllFeatureFlags(): List<FeatureFlagResult>? {
-        if (!isEnabled()) return emptyList()
+        if (!isEnabled()) return null
         val flags = remoteConfig?.getFeatureFlags()
         val results =
             flags?.mapNotNull { item ->
