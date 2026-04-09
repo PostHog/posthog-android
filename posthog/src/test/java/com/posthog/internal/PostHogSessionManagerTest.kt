@@ -66,9 +66,55 @@ internal class PostHogSessionManagerTest {
         assertNotEquals(firstSessionId, secondSessionId)
     }
 
+    @Test
+    internal fun `startSession sets sessionStartedAt`() {
+        PostHogSessionManager.startSession()
+
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+        assertTrue(startedAt > 0L)
+    }
+
+    @Test
+    internal fun `endSession resets sessionStartedAt to zero`() {
+        PostHogSessionManager.startSession()
+        assertTrue(PostHogSessionManager.getSessionStartedAt() > 0L)
+
+        PostHogSessionManager.endSession()
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `getSessionStartedAt returns zero when no session is active`() {
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `isSessionExceedingMaxDuration returns true after 24 hours`() {
+        PostHogSessionManager.startSession()
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+
+        val twentyFourHoursAndOneMinute = startedAt + (1000L * 60 * 60 * 24) + (1000L * 60)
+        assertTrue(PostHogSessionManager.isSessionExceedingMaxDuration(twentyFourHoursAndOneMinute))
+    }
+
+    @Test
+    internal fun `isSessionExceedingMaxDuration returns false before 24 hours`() {
+        PostHogSessionManager.startSession()
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+
+        val twentyThreeHours = startedAt + (1000L * 60 * 60 * 23)
+        assertFalse(PostHogSessionManager.isSessionExceedingMaxDuration(twentyThreeHours))
+    }
+
+    @Test
+    internal fun `isSessionExceedingMaxDuration returns false when no session is active`() {
+        assertFalse(PostHogSessionManager.isSessionExceedingMaxDuration(System.currentTimeMillis()))
+    }
+
     @AfterTest
     internal fun cleanup() {
         PostHogSessionManager.isReactNative = false
+        PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
         PostHogSessionManager.endSession()
     }
 }

@@ -107,8 +107,10 @@ public class PostHogAndroid private constructor() {
                     val dateProvider = PostHogAndroidDateProvider()
                     config.dateProvider = dateProvider
                     TimeBasedEpochGenerator.setDateProvider(dateProvider)
+                    PostHogSessionManager.setDateProvider(dateProvider)
                 } else {
                     TimeBasedEpochGenerator.setDateProvider(config.dateProvider)
+                    PostHogSessionManager.setDateProvider(config.dateProvider)
                 }
             }
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
