@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URI
 import java.util.Properties
@@ -86,9 +88,9 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions {
         jvmTarget.set(
-            org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(JavaVersion.toVersion(versions["jdkVersion"] as String).toString()),
+            JvmTarget.fromTarget(JavaVersion.toVersion(versions["jdkVersion"] as String).toString()),
         )
-        val compatVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.fromVersion(versions["kotlinCompatibility"] as String)
+        val compatVersion = KotlinVersion.fromVersion(versions["kotlinCompatibility"] as String)
         languageVersion.set(compatVersion)
         allWarningsAsErrors.set(true)
         apiVersion.set(compatVersion)

@@ -1,5 +1,8 @@
 @file:Suppress("ktlint:standard:max-line-length")
 
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+
 version = properties["androidVersion"].toString()
 
 plugins {
@@ -79,10 +82,8 @@ kotlin {
     compilerOptions.postHogConfig()
 }
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    if (name.contains("Test")) {
-        compilerOptions.postHogConfig(false)
-    }
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions.postHogConfig(false)
 }
 
 dependencies {
