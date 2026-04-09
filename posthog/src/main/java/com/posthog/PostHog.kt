@@ -54,6 +54,7 @@ public class PostHog private constructor(
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface, PostHogStateless() {
     private val anonymousLock = Any()
+    private val deviceIdLock = Any()
     private val identifiedLock = Any()
     private val groupsLock = Any()
     private val personProcessingLock: Any = Any()
@@ -176,11 +177,10 @@ public class PostHog private constructor(
 
                 legacyPreferences(config, config.serializer)
 
-                // Initialize device_id if not already set. This provides a stable identifier
-                // for device-level feature flag bucketing that survives identify() and reset().
-                // We seed it from the anonymous ID at init time; once set, it never changes
-                // unless the app is reinstalled or local storage is cleared.
-                initDeviceId()
+                // Initialize device_id if not already set. getDeviceId() handles lazy init
+                // by seeding from the anonymous ID, providing a stable identifier for
+                // device-level feature flag bucketing that survives identify() and reset().
+                getDeviceId()
 
                 super.enabled = true
 
@@ -340,16 +340,6 @@ public class PostHog private constructor(
         set(value) {
             getPreferences().setValue(DISTINCT_ID, value)
         }
-
-    private fun initDeviceId() {
-        val existing = getPreferences().getValue(DEVICE_ID) as? String
-        if (existing.isNullOrBlank()) {
-            val anonId = anonymousId
-            if (anonId.isNotBlank()) {
-                getPreferences().setValue(DEVICE_ID, anonId)
-            }
-        }
-    }
 
     private var isIdentified: Boolean = false
         get() {
@@ -1305,17 +1295,19 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return ""
         }
-        val deviceId = getPreferences().getValue(DEVICE_ID) as? String
-        if (deviceId.isNullOrBlank()) {
-            // Lazy init for upgrades: existing installs won't have a device_id yet
-            val anonId = anonymousId
-            if (anonId.isNotBlank()) {
-                getPreferences().setValue(DEVICE_ID, anonId)
-                return anonId
+        synchronized(deviceIdLock) {
+            val deviceId = getPreferences().getValue(DEVICE_ID) as? String
+            if (deviceId.isNullOrBlank()) {
+                // Lazy init for upgrades: existing installs won't have a device_id yet
+                val anonId = anonymousId
+                if (anonId.isNotBlank()) {
+                    getPreferences().setValue(DEVICE_ID, anonId)
+                    return anonId
+                }
+                return ""
             }
-            return ""
+            return deviceId
         }
-        return deviceId
     }
 
     override fun startSession() {
