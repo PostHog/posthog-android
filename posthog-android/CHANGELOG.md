@@ -1,5 +1,11 @@
 ## Next
 
+## 3.40.2
+
+### Patch Changes
+
+- 2c3101a: Ignore `isLaidOut` checks for React Native session replay.
+
 ## 3.40.1
 
 ### Patch Changes
