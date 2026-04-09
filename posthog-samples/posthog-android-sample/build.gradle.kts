@@ -40,8 +40,6 @@ android {
         targetCompatibility = PosthogBuildConfig.Build.JAVA_VERSION
     }
 
-    kotlinOptions.postHogConfig(false)
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -70,6 +68,7 @@ android {
 
 kotlin {
     jvmToolchain(PosthogBuildConfig.Build.JDK_VERSION)
+    compilerOptions.postHogConfig(false)
 }
 
 dependencies {
