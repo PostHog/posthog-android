@@ -12,6 +12,8 @@
 
 - f3edb25: feat: add support for session replay event triggers
 
+> ⚠️ Warning: com.posthog:posthog:6.10.0 failed to publish to Maven Central which broke this release. Please skip to 3.40.1.
+
 ## 3.39.2
 
 ### Patch Changes
