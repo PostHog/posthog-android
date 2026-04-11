@@ -288,6 +288,21 @@ public interface PostHogInterface : PostHogCoreInterface {
         flagVariant: String? = null,
     )
 
+    /**
+     * Registers a push notification device token with PostHog.
+     * This sends the token to the PostHog push subscriptions API so that
+     * push notifications can be delivered to this device.
+     *
+     * @param deviceToken the device push token (e.g. FCM registration token)
+     * @param appId the app identifier - Firebase project_id for Android, APNS bundle_id for iOS
+     * @param platform the platform, defaults to "android"
+     */
+    public fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        platform: String = "android",
+    )
+
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
 }
