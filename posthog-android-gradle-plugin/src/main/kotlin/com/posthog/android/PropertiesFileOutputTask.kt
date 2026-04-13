@@ -8,6 +8,7 @@ import org.gradle.api.tasks.Internal
 import org.gradle.work.DisableCachingByDefault
 
 @DisableCachingByDefault(because = "abstract task, should not be used directly")
-internal abstract class PropertiesFileOutputTask : DirectoryOutputTask() {
-    @get:Internal abstract val outputFile: Provider<RegularFile>
+public abstract class PropertiesFileOutputTask : DirectoryOutputTask() {
+    @get:Internal
+    public abstract val outputFile: Provider<RegularFile>
 }
