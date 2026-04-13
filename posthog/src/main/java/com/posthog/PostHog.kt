@@ -177,12 +177,12 @@ public class PostHog private constructor(
 
                 legacyPreferences(config, config.serializer)
 
+                super.enabled = true
+
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
                 // by seeding from the anonymous ID, providing a stable identifier for
                 // device-level feature flag bucketing that survives identify() and reset().
                 getDeviceId()
-
-                super.enabled = true
 
                 queue.start()
 
