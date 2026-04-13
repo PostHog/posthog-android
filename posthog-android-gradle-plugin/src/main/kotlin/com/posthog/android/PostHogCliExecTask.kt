@@ -11,7 +11,6 @@ import org.gradle.work.DisableCachingByDefault
 
 @DisableCachingByDefault(because = "abstract task, should not be used directly")
 public abstract class PostHogCliExecTask : Exec() {
-
     @get:Input
     public abstract val postHogExecutable: Property<String>
 
@@ -34,9 +33,10 @@ public abstract class PostHogCliExecTask : Exec() {
     override fun exec() {
         executable = postHogExecutable.get()
 
-        val args = computeCommandLineArgs().also {
-            logger.info("cli args: $it")
-        }
+        val args =
+            computeCommandLineArgs().also {
+                logger.info("cli args: $it")
+            }
         args(args)
 
         // Setup environment variables for authentication etc
