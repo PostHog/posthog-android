@@ -1,5 +1,11 @@
 ## Next
 
+## 3.41.0
+
+### Minor Changes
+
+- 6fbdcd5: feat: add device bucketing support for stable feature flag assignment across identity changes
+
 ## 3.40.2
 
 ### Patch Changes
