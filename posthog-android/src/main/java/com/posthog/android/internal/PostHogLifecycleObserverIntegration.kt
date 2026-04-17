@@ -8,6 +8,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogSessionManager
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicLong
@@ -73,6 +74,17 @@ internal class PostHogLifecycleObserverIntegration(
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
             postHog?.startSession()
+        } else if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
+            // Session has been active for longer than 24 hours, rotate to a new session
+            if (postHog?.isSessionReplayActive() == true) {
+                postHog?.stopSessionReplay()
+
+                // startSessionReplay will rotate the session id internally
+                postHog?.startSessionReplay(resumeCurrent = false)
+            } else {
+                postHog?.endSession()
+                postHog?.startSession()
+            }
         }
         this.lastUpdatedSession.set(currentTimeMillis)
     }
@@ -104,8 +116,18 @@ internal class PostHogLifecycleObserverIntegration(
         postHog?.flush()
 
         val currentTimeMillis = config.dateProvider.currentTimeMillis()
-        lastUpdatedSession.set(currentTimeMillis)
-        scheduleEndSession()
+
+        // Session has been active for longer than 24 hours, rotate to a new session
+        if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
+            cancelTask()
+            postHog?.endSession()
+            postHog?.stopSessionReplay()
+            // Reset so the next onStart knows to create a fresh session
+            lastUpdatedSession.set(0L)
+        } else {
+            lastUpdatedSession.set(currentTimeMillis)
+            scheduleEndSession()
+        }
     }
 
     private fun add() {
