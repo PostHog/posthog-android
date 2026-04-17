@@ -68,6 +68,8 @@ object PosthogBuildConfig {
         val CURTAINS = "1.2.5"
         val ANDROIDX_CORE = "1.5.0"
         val ANDROIDX_COMPOSE = "1.0.0"
+        val ANDROIDX_ACTIVITY = "1.7.2"
+        val FIREBASE_MESSAGING = "24.1.0"
 
         // tests
         val ANDROIDX_JUNIT = "1.2.1"

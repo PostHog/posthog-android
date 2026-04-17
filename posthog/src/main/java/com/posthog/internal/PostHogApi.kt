@@ -277,6 +277,41 @@ public class PostHogApi(
         }
     }
 
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun pushSubscription(
+        distinctId: String,
+        deviceToken: String,
+        platform: String,
+        appId: String,
+    ) {
+        val request =
+            PostHogPushSubscriptionRequest(
+                apiKey = config.apiKey,
+                distinctId = distinctId,
+                deviceToken = deviceToken,
+                platform = platform,
+                appId = appId,
+            )
+
+        val url = "$theHost/api/push_subscriptions/"
+        logRequest(request, url)
+
+        val httpRequest =
+            makeRequest(url) {
+                config.serializer.serialize(request, it.bufferedWriter())
+            }
+
+        logRequestHeaders(httpRequest)
+
+        client.newCall(httpRequest).execute().use {
+            val response = logResponse(it)
+
+            if (!response.isSuccessful) {
+                throw PostHogApiError(response.code, response.message, response.body)
+            }
+        }
+    }
+
     private fun logResponse(response: Response): Response {
         if (config.debug) {
             try {
