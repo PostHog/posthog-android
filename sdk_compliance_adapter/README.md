@@ -2,25 +2,9 @@
 
 This compliance adapter wraps the PostHog Android SDK and exposes a standardized HTTP API for automated compliance testing using the [PostHog SDK Test Harness](https://github.com/PostHog/posthog-sdk-test-harness).
 
-## Quick Start
+## Contributing
 
-### Running Tests in CI (Recommended)
-
-Tests run automatically in GitHub Actions on:
-- Push to `main`/`master` branch
-- Pull requests
-- Manual trigger via `workflow_dispatch`
-
-See `.github/workflows/sdk-compliance-tests.yml`
-
-### Running Tests Locally
-
-**Note:** Requires x86_64 architecture due to Java 8 dependency. On Apple Silicon, Docker will use emulation (slower but works).
-
-```bash
-cd sdk_compliance_adapter
-docker-compose up --build --abort-on-container-exit
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local build and compliance test instructions.
 
 ## Architecture
 
