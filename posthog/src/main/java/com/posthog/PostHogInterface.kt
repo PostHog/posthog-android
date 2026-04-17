@@ -69,6 +69,12 @@ public interface PostHogInterface : PostHogCoreInterface {
     ): Any?
 
     /**
+     * Returns list of all feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     */
+    public fun getAllFeatureFlags(): List<FeatureFlagResult>?
+
+    /**
      * Returns the feature flag payload
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
