@@ -171,6 +171,10 @@ public class PostHogFake : PostHogInterface {
         return ""
     }
 
+    override fun getDeviceId(): String {
+        return ""
+    }
+
     override fun debug(enable: Boolean) {
     }
 

@@ -161,6 +161,15 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun distinctId(): String
 
     /**
+     * Returns the stable device identifier used for device-level feature flag bucketing.
+     * This ID persists across [identify] and [reset] calls, only changing on a fresh
+     * app install, manual cache clearing, or OS-initiated storage cleanup.
+     *
+     * @return The device ID, or an empty string if not yet initialized
+     */
+    public fun getDeviceId(): String
+
+    /**
      * Starts a session
      * The SDK will automatically start a session when you call [setup]
      * On Android, the SDK will automatically start a session when the app is in the foreground

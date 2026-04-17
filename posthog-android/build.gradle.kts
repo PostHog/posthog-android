@@ -1,6 +1,7 @@
 @file:Suppress("ktlint:standard:max-line-length")
 
-import org.jetbrains.kotlin.config.KotlinCompilerVersion
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 
 version = properties["androidVersion"].toString()
 
@@ -52,8 +53,6 @@ android {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
         }
-
-        kotlinOptions.postHogConfig(false)
     }
 
     lint {
@@ -73,7 +72,6 @@ android {
         it.enable = !PosthogBuildConfig.shouldSkipDebugVariant(it.name)
     }
 
-    kotlinOptions.postHogConfig()
     buildFeatures {
         buildConfig = true
     }
@@ -81,12 +79,17 @@ android {
 
 kotlin {
     jvmToolchain(PosthogBuildConfig.Build.JDK_VERSION)
+    compilerOptions.postHogConfig()
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions.postHogConfig(false)
 }
 
 dependencies {
     // runtime
     api(project(mapOf("path" to ":posthog")))
-    implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
+    implementation(kotlin("stdlib-jdk8", PosthogBuildConfig.Kotlin.KOTLIN))
     implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")

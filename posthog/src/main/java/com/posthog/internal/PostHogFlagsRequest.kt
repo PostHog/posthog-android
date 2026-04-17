@@ -9,6 +9,7 @@ internal class PostHogFlagsRequest(
     apiKey: String,
     distinctId: String,
     anonymousId: String? = null,
+    deviceId: String? = null,
     groups: Map<String, String>? = null,
     personProperties: Map<String, Any?>? = null,
     groupProperties: Map<String, Map<String, Any?>>? = null,
@@ -20,6 +21,9 @@ internal class PostHogFlagsRequest(
         this["timezone"] = TimeZone.getDefault().id
         if (!anonymousId.isNullOrBlank()) {
             this["\$anon_distinct_id"] = anonymousId
+        }
+        if (!deviceId.isNullOrBlank()) {
+            this["\$device_id"] = deviceId
         }
         if (groups?.isNotEmpty() == true) {
             this["groups"] = groups

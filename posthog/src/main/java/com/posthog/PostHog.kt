@@ -10,6 +10,7 @@ import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
+import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
@@ -53,6 +54,7 @@ public class PostHog private constructor(
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface, PostHogStateless() {
     private val anonymousLock = Any()
+    private val deviceIdLock = Any()
     private val identifiedLock = Any()
     private val groupsLock = Any()
     private val personProcessingLock: Any = Any()
@@ -176,6 +178,11 @@ public class PostHog private constructor(
                 legacyPreferences(config, config.serializer)
 
                 super.enabled = true
+
+                // Initialize device_id if not already set. getDeviceId() handles lazy init
+                // by seeding from the anonymous ID, providing a stable identifier for
+                // device-level feature flag bucketing that survives identify() and reset().
+                getDeviceId()
 
                 queue.start()
 
@@ -1237,9 +1244,10 @@ public class PostHog private constructor(
             return
         }
 
-        // only remove properties, preserve BUILD and VERSION keys in order to fix over-sending
-        // of 'Application Installed' events and under-sending of 'Application Updated' events
-        val except = mutableListOf(VERSION, BUILD)
+        // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
+        // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
+        // stable feature flag bucketing across identity changes.
+        val except = mutableListOf(VERSION, BUILD, DEVICE_ID)
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
         if (config?.reuseAnonymousId == true) {
@@ -1294,6 +1302,25 @@ public class PostHog private constructor(
             return ""
         }
         return distinctId
+    }
+
+    override fun getDeviceId(): String {
+        if (!isEnabled()) {
+            return ""
+        }
+        synchronized(deviceIdLock) {
+            val deviceId = getPreferences().getValue(DEVICE_ID) as? String
+            if (deviceId.isNullOrBlank()) {
+                // Lazy init for upgrades: existing installs won't have a device_id yet
+                val anonId = anonymousId
+                if (anonId.isNotBlank()) {
+                    getPreferences().setValue(DEVICE_ID, anonId)
+                    return anonId
+                }
+                return ""
+            }
+            return deviceId
+        }
     }
 
     override fun startSession() {
@@ -1645,6 +1672,8 @@ public class PostHog private constructor(
         }
 
         override fun distinctId(): String = shared.distinctId()
+
+        override fun getDeviceId(): String = shared.getDeviceId()
 
         override fun debug(enable: Boolean) {
             shared.debug(enable)

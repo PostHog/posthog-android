@@ -1,11 +1,19 @@
 import org.gradle.api.JavaVersion
 
 object PosthogBuildConfig {
-    // shared versions — loaded from gradle.properties (single source of truth)
+    // shared versions — loaded from the repository gradle.properties (single source of truth)
     private val versions =
         java.util.Properties().apply {
-            java.io.File("gradle.properties").inputStream().use { load(it) }
+            findGradlePropertiesFile().inputStream().use { load(it) }
         }
+
+    private fun findGradlePropertiesFile(): java.io.File {
+        val start = java.io.File(System.getProperty("user.dir")).absoluteFile
+        return generateSequence(start) { it.parentFile }
+            .map { java.io.File(it, "gradle.properties") }
+            .firstOrNull { it.isFile }
+            ?: error("Could not find gradle.properties starting from ${start.absolutePath}")
+    }
 
     fun shouldSkipDebugVariant(name: String): Boolean {
         return isCI() && name == "debug"

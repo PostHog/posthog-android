@@ -14,7 +14,7 @@ import org.gradle.api.tasks.TaskProvider
 import org.gradle.work.DisableCachingByDefault
 
 @DisableCachingByDefault(because = "Uploads should not be cached")
-internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
+public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
     init {
         description = "Uploads the proguard mappings file to PostHog"
 
@@ -30,11 +30,11 @@ internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask()
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val mapIdFile: RegularFileProperty
+    public abstract val mapIdFile: RegularFileProperty
 
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract var mappingsFiles: Provider<FileCollection>
+    public abstract var mappingsFiles: Provider<FileCollection>
 
     override fun exec() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
@@ -67,7 +67,7 @@ internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask()
         args.add(uuid)
     }
 
-    companion object {
+    internal companion object {
         fun register(
             project: Project,
             generateMapIdTask: Provider<PostHogGenerateMapIdTask>,

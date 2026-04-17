@@ -34,6 +34,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun flush ()V
 	public fun getAllFeatureFlags ()Ljava/util/List;
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
+	public fun getDeviceId ()Ljava/lang/String;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
@@ -75,6 +76,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun flush ()V
 	public fun getAllFeatureFlags ()Ljava/util/List;
 	public fun getConfig ()Lcom/posthog/PostHogConfig;
+	public fun getDeviceId ()Ljava/lang/String;
 	public fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
 	public fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
@@ -314,6 +316,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun endSession ()V
 	public abstract fun getAllFeatureFlags ()Ljava/util/List;
 	public abstract fun getConfig ()Lcom/posthog/PostHogConfig;
+	public abstract fun getDeviceId ()Ljava/lang/String;
 	public abstract fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagPayload (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/Boolean;)Lcom/posthog/FeatureFlagResult;
@@ -637,8 +640,8 @@ public final class com/posthog/internal/MultiVariateConfig {
 public final class com/posthog/internal/PostHogApi {
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public final fun batch (Ljava/util/List;)V
-	public final fun flags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/internal/PostHogFlagsResponse;
-	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
+	public final fun flags (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/internal/PostHogFlagsResponse;
+	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public final fun localEvaluation (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
 	public static synthetic fun localEvaluation$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/LocalEvaluationApiResponse;
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
@@ -784,6 +787,7 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field ANONYMOUS_ID Ljava/lang/String;
 	public static final field BUILD Ljava/lang/String;
 	public static final field Companion Lcom/posthog/internal/PostHogPreferences$Companion;
+	public static final field DEVICE_ID Ljava/lang/String;
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
@@ -800,6 +804,7 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 public final class com/posthog/internal/PostHogPreferences$Companion {
 	public static final field ANONYMOUS_ID Ljava/lang/String;
 	public static final field BUILD Ljava/lang/String;
+	public static final field DEVICE_ID Ljava/lang/String;
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
