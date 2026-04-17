@@ -49,7 +49,7 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
 
     @get:Input
     @get:Optional
-    public abstract val build: Property<String>
+    public abstract val build: Property<Int?>
 
     override fun exec() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
@@ -88,9 +88,9 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             args.add("--release-version")
             args.add(it)
         }
-        build.orNull?.takeIf { it.isNotEmpty() }?.let {
+        build.orNull?.takeIf { it > 0 }?.let {
             args.add("--build")
-            args.add(it)
+            args.add(it.toString())
         }
     }
 
@@ -102,7 +102,7 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             taskSuffix: String = "",
             releaseName: Provider<String>? = null,
             releaseVersion: Provider<String>? = null,
-            build: Provider<String>? = null,
+            build: Provider<Int?>? = null,
         ): TaskProvider<PostHogUploadProguardMappingsTask> {
             val uploadPostHogProguardMappingsTask =
                 project.tasks.register(
