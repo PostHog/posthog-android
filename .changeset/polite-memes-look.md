@@ -1,5 +1,6 @@
 ---
 "posthog": minor
+"posthog-android": minor
 ---
 
-add getAllFeatureFlags
+add getAllFeatureFlags support
