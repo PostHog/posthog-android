@@ -1,5 +1,11 @@
 ## Next
 
+## 6.12.0
+
+### Minor Changes
+
+- 3a0b654: add getAllFeatureFlags support
+
 ## 6.11.0
 
 ### Minor Changes

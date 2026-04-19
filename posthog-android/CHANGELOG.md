@@ -1,5 +1,12 @@
 ## Next
 
+## 3.42.0
+
+### Minor Changes
+
+- 8b447c1: Attach release info (`applicationId`, `versionName`, `versionCode`) to proguard mapping uploads via the new posthog-cli `--release-name`, `--release-version`, and `--build` flags.
+- 3a0b654: add getAllFeatureFlags support
+
 ## 3.41.0
 
 ### Minor Changes
