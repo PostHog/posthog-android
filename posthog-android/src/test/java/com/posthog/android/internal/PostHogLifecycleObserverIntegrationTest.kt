@@ -210,6 +210,81 @@ internal class PostHogLifecycleObserverIntegrationTest {
     }
 
     @Test
+    fun `onStart restarts session replay after 24h rotation in background when replay was active`() {
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = true
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        // Advance past 24h and background the app - triggers rotation in onStop
+        val twentyFourHoursMs = 1000L * 60 * 60 * 24
+        val oneMinuteMs = 1000L * 60
+        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
+        sut.onStop(ProcessLifecycleOwner.get())
+
+        // After rotation in onStop: session ended, replay stopped
+        assertEquals(1, fake.stopSessionReplayCalls)
+        assertEquals(false, fake.sessionReplayActive)
+
+        // User returns; a new session is created and replay should resume
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val secondSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(secondSessionId)
+        assertNotEquals(firstSessionId, secondSessionId)
+        assertEquals(1, fake.startSessionReplayCalls)
+        assertEquals(true, fake.sessionReplayActive)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStart does not restart session replay after 24h rotation when replay was inactive`() {
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        // replay was never active
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val twentyFourHoursMs = 1000L * 60 * 60 * 24
+        val oneMinuteMs = 1000L * 60
+        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
+        sut.onStop(ProcessLifecycleOwner.get())
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        assertEquals(0, fake.startSessionReplayCalls)
+        assertEquals(false, fake.sessionReplayActive)
+
+        sut.uninstall()
+    }
+
+    @Test
     fun `onStart does not rotate session when session is under 24 hours`() {
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)

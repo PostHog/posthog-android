@@ -11,6 +11,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogSessionManager
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -29,6 +30,7 @@ internal class PostHogLifecycleObserverIntegration(
     private var timer = Timer(true)
     private var timerTask: TimerTask? = null
     private val lastUpdatedSession = AtomicLong(0L)
+    private val replayActiveBeforeRotation = AtomicBoolean(false)
     private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
 
     private var postHog: PostHogInterface? = null
@@ -74,6 +76,11 @@ internal class PostHogLifecycleObserverIntegration(
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
             postHog?.startSession()
+            // If the previous session was ended via 24h rotation in onStop,
+            // restart replay so it continues under the new session
+            if (replayActiveBeforeRotation.compareAndSet(true, false)) {
+                postHog?.startSessionReplay(resumeCurrent = true)
+            }
         } else if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
             // Session has been active for longer than 24 hours, rotate to a new session
             if (postHog?.isSessionReplayActive() == true) {
@@ -120,8 +127,10 @@ internal class PostHogLifecycleObserverIntegration(
         // Session has been active for longer than 24 hours, rotate to a new session
         if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
             cancelTask()
+            val wasReplayActive = postHog?.isSessionReplayActive() == true
             postHog?.endSession()
             postHog?.stopSessionReplay()
+            replayActiveBeforeRotation.set(wasReplayActive)
             // Reset so the next onStart knows to create a fresh session
             lastUpdatedSession.set(0L)
         } else {
