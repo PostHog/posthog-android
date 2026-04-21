@@ -15,7 +15,7 @@ import org.gradle.work.DisableCachingByDefault
 import java.util.UUID
 
 @DisableCachingByDefault
-internal abstract class PostHogGenerateMapIdTask : PropertiesFileOutputTask() {
+public abstract class PostHogGenerateMapIdTask : PropertiesFileOutputTask() {
     init {
         description =
             "Generates a unique build ID to be used when uploading the PostHog mapping file"
@@ -25,10 +25,11 @@ internal abstract class PostHogGenerateMapIdTask : PropertiesFileOutputTask() {
     override val outputFile: Provider<RegularFile>
         get() = output.file(POSTHOG_MAP_ID_OUTPUT)
 
-    @get:Internal abstract val proguardMappingFiles: ConfigurableFileCollection
+    @get:Internal
+    public abstract val proguardMappingFiles: ConfigurableFileCollection
 
     @TaskAction
-    fun generateProperties() {
+    protected fun generateProperties() {
         val outputDir = output.get().asFile
         outputDir.mkdirs()
 
@@ -42,9 +43,9 @@ internal abstract class PostHogGenerateMapIdTask : PropertiesFileOutputTask() {
         logger.info("PostHogGenerateMapIdTask - outputFile: $outputFile, uuid: $uuid")
     }
 
-    companion object {
-        internal const val STATIC_HASH = "<hash>"
-        internal const val POSTHOG_MAP_ID_OUTPUT = "posthog-proguard-map-id.properties"
+    internal companion object {
+        const val STATIC_HASH = "<hash>"
+        const val POSTHOG_MAP_ID_OUTPUT = "posthog-proguard-map-id.properties"
         const val POSTHOG_PROGUARD_MAPPING_MAP_ID_PROPERTY = "io.posthog.proguard.mapid"
 
         fun register(

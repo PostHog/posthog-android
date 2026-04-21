@@ -16,6 +16,21 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `trims whitespace-sensitive config values`() {
+        val config = PostHogConfig(" \n$API_KEY\t ", " \nhttps://eu.i.posthog.com/\t ")
+
+        assertEquals(API_KEY, config.apiKey)
+        assertEquals("https://eu.i.posthog.com/", config.host)
+    }
+
+    @Test
+    fun `defaults a blank host after trimming whitespace`() {
+        val config = PostHogConfig(API_KEY, " \n\t ")
+
+        assertEquals(PostHogConfig.DEFAULT_HOST, config.host)
+    }
+
+    @Test
     fun `debug is disabled by default`() {
         assertFalse(config.debug)
     }

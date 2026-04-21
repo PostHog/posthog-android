@@ -8,6 +8,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.work.DisableCachingByDefault
 
 @DisableCachingByDefault(because = "abstract task, should not be used directly")
-internal abstract class DirectoryOutputTask : DefaultTask() {
-    @get:OutputDirectory abstract val output: DirectoryProperty
+public abstract class DirectoryOutputTask : DefaultTask() {
+    @get:OutputDirectory
+    public abstract val output: DirectoryProperty
 }

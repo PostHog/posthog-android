@@ -134,6 +134,7 @@ public class PostHogApi(
     public fun flags(
         distinctId: String,
         anonymousId: String? = null,
+        deviceId: String? = null,
         groups: Map<String, String>? = null,
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
@@ -143,6 +144,7 @@ public class PostHogApi(
                 config.apiKey,
                 distinctId,
                 anonymousId = anonymousId,
+                deviceId = deviceId,
                 groups,
                 personProperties,
                 groupProperties,

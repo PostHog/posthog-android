@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URI
 import java.util.Properties
@@ -84,12 +86,15 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions {
-        jvmTarget = JavaVersion.toVersion(versions["jdkVersion"] as String).toString()
-        languageVersion = versions["kotlinCompatibility"] as String
-        allWarningsAsErrors = true
-        apiVersion = versions["kotlinCompatibility"] as String
-        freeCompilerArgs += "-Xexplicit-api=strict"
+    compilerOptions {
+        jvmTarget.set(
+            JvmTarget.fromTarget(JavaVersion.toVersion(versions["jdkVersion"] as String).toString()),
+        )
+        val compatVersion = KotlinVersion.fromVersion(versions["kotlinCompatibility"] as String)
+        languageVersion.set(compatVersion)
+        allWarningsAsErrors.set(true)
+        apiVersion.set(compatVersion)
+        freeCompilerArgs.add("-Xexplicit-api=strict")
     }
 }
 

@@ -109,12 +109,16 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
         variant: ApplicationVariant,
         mappingFiles: Provider<FileCollection>,
     ): TaskProvider<PostHogUploadProguardMappingsTask> {
+        val primaryOutput = variant.outputs.firstOrNull()
         val uploadMapIdTask =
             PostHogUploadProguardMappingsTask.register(
                 project = project,
                 generateMapIdTask = generateMapIdTask,
                 mappingFiles = mappingFiles,
                 taskSuffix = variant.name.capitalizeUS(),
+                releaseName = variant.applicationId,
+                releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
+                build = primaryOutput?.versionCode,
             )
         return uploadMapIdTask
     }
