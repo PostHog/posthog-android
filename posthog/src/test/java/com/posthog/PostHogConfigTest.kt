@@ -81,6 +81,11 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `addTracingHeaders is not set by default`() {
+        assertNull(config.addTracingHeaders)
+    }
+
+    @Test
     fun `onFeatureFlags is not set by default`() {
         assertNull(config.onFeatureFlags)
     }

@@ -286,6 +286,22 @@ public open class PostHogConfig(
     public var releaseIdentifier: String? = null,
 ) {
     /**
+     * When set, PostHog injects tracing headers into OkHttp requests whose destination hostname
+     * exactly matches one of the configured hostnames.
+     *
+     * Injected headers:
+     * - `X-POSTHOG-DISTINCT-ID`
+     * - `X-POSTHOG-SESSION-ID`
+     *
+     * Notes:
+     * - Requires installing [PostHogOkHttpInterceptor] on each [OkHttpClient] that should send tracing headers
+     * - Hostname matching is exact and does not include ports or subdomain wildcards
+     * - The Android SDK does not send `X-POSTHOG-WINDOW-ID` because mobile apps do not have a per-window/tab concept
+     * - Existing values for these headers will be overwritten when PostHog provides a value
+     */
+    public var addTracingHeaders: List<String>? = null
+
+    /**
      * Optional custom OkHttpClient for HTTP requests.
      *
      * When set, the SDK will use this client instead of creating its own.
