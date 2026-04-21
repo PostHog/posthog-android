@@ -47,6 +47,7 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        PostHogSessionManager.setAppInBackground(false)
         startSession()
 
         if (config.captureApplicationLifecycleEvents) {
@@ -117,15 +118,20 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     override fun onStop(owner: LifecycleOwner) {
+        val currentTimeMillis = config.dateProvider.currentTimeMillis()
+        // Snapshot before flipping the bg flag: once we set it, the next getActiveSessionId
+        // (e.g., while capturing "Application Backgrounded") may clear an expired session,
+        // zeroing sessionStartedAt so the 24h check below would miss it.
+        val wasExpired = PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)
+
+        PostHogSessionManager.setAppInBackground(true)
         if (config.captureApplicationLifecycleEvents) {
             postHog?.capture("Application Backgrounded")
         }
         postHog?.flush()
 
-        val currentTimeMillis = config.dateProvider.currentTimeMillis()
-
         // Session has been active for longer than 24 hours, rotate to a new session
-        if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
+        if (wasExpired) {
             cancelTask()
             val wasReplayActive = postHog?.isSessionReplayActive() == true
             postHog?.endSession()

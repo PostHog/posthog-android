@@ -32,6 +32,28 @@ public object PostHogSessionManager {
     @Volatile
     public var isReactNative: Boolean = false
 
+    @Volatile
+    private var isAppInBackground: Boolean = false
+
+    @Volatile
+    private var onSessionIdChangedListener: (() -> Unit)? = null
+
+    /**
+     * Update the foreground/background state. Set from lifecycle callbacks to control
+     * whether an expired session rotates (foreground) or is cleared (background) on read.
+     */
+    public fun setAppInBackground(inBackground: Boolean) {
+        isAppInBackground = inBackground
+    }
+
+    /**
+     * Registered by PostHog.setup; invoked after getActiveSessionId rotates the session
+     * silently, so the session replay handler can react to the change.
+     */
+    public fun setOnSessionIdChangedListener(listener: (() -> Unit)?) {
+        onSessionIdChangedListener = listener
+    }
+
     public fun startSession() {
         if (isReactNative) {
             // RN manages its own session
@@ -82,9 +104,32 @@ public object PostHogSessionManager {
     private const val SESSION_MAX_DURATION = (1000L * 60 * 60 * 24) // 24 hours
 
     public fun getActiveSessionId(): UUID? {
+        var sessionChanged = false
         var tempSessionId: UUID?
         synchronized(sessionLock) {
-            tempSessionId = if (sessionId != sessionIdNone) sessionId else null
+            if (sessionId == sessionIdNone || isReactNative) {
+                tempSessionId = if (sessionId != sessionIdNone) sessionId else null
+            } else {
+                val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+                val expired = sessionStartedAt > 0L && (sessionStartedAt + SESSION_MAX_DURATION) <= now
+                if (expired) {
+                    sessionChanged = true
+                    if (isAppInBackground) {
+                        sessionId = sessionIdNone
+                        sessionStartedAt = 0L
+                        tempSessionId = null
+                    } else {
+                        sessionId = TimeBasedEpochGenerator.generate()
+                        sessionStartedAt = now
+                        tempSessionId = sessionId
+                    }
+                } else {
+                    tempSessionId = sessionId
+                }
+            }
+        }
+        if (sessionChanged) {
+            onSessionIdChangedListener?.also { it.invoke() }
         }
         return tempSessionId
     }

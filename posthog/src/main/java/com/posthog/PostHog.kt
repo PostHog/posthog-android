@@ -190,6 +190,10 @@ public class PostHog private constructor(
 
                 queue.start()
 
+                PostHogSessionManager.setOnSessionIdChangedListener {
+                    sessionReplayHandler?.onSessionIdChanged()
+                }
+
                 startSession()
 
                 config.integrations.forEach {
