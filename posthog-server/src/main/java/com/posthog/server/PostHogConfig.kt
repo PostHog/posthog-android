@@ -18,14 +18,14 @@ public open class PostHogConfig constructor(
     /**
      * The PostHog API Key
      */
-    public val apiKey: String,
+    apiKey: String,
     /**
      * The PostHog Host
      * Defaults to https://us.i.posthog.com
      * EU Host: https://eu.i.posthog.com
      *
      */
-    public val host: String = DEFAULT_HOST,
+    host: String = DEFAULT_HOST,
     /**
      * Logs the debug logs to the [logger] if enabled
      * Defaults to false
@@ -124,7 +124,7 @@ public open class PostHogConfig constructor(
      * Required when localEvaluation is true.
      * Defaults to null
      */
-    public var personalApiKey: String? = null,
+    personalApiKey: String? = null,
     /**
      * Interval in seconds for polling feature flag definitions for local evaluation
      * Defaults to 30 seconds
@@ -138,6 +138,25 @@ public open class PostHogConfig constructor(
      */
     public var evaluationContexts: List<String>? = null,
 ) {
+    /**
+     * The PostHog API Key
+     */
+    public val apiKey: String = apiKey.trim()
+
+    /**
+     * The PostHog Host
+     * Defaults to https://us.i.posthog.com
+     * EU Host: https://eu.i.posthog.com
+     */
+    public val host: String = host.trim().ifBlank { DEFAULT_HOST }
+
+    /**
+     * Personal API key for local evaluation
+     * Required when localEvaluation is true.
+     * Defaults to null
+     */
+    public var personalApiKey: String? = personalApiKey?.trim()?.ifBlank { null }
+
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
 
@@ -290,9 +309,9 @@ public open class PostHogConfig constructor(
 
         public fun personalApiKey(personalApiKey: String?): Builder =
             apply {
-                this.personalApiKey = personalApiKey
+                this.personalApiKey = personalApiKey?.trim()?.ifBlank { null }
                 if (localEvaluation == null) {
-                    this.localEvaluation = personalApiKey != null
+                    this.localEvaluation = this.personalApiKey != null
                 }
             }
 

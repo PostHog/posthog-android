@@ -315,12 +315,6 @@ public open class PostHogConfig(
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
 
-    init {
-        if (this.apiKey.isEmpty()) {
-            logger.log("apiKey is empty after trimming whitespace; check your project API key")
-        }
-    }
-
     @PostHogInternal
     public val serializer: PostHogSerializer by lazy {
         PostHogSerializer(this)
