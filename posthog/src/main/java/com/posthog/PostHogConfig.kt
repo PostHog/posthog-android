@@ -31,14 +31,14 @@ public open class PostHogConfig(
     /**
      * The PostHog API Key
      */
-    public val apiKey: String,
+    apiKey: String,
     /**
      * The PostHog Host
      * Defaults to https://us.i.posthog.com
      * EU Host: https://eu.i.posthog.com
      *
      */
-    public val host: String = DEFAULT_HOST,
+    host: String = DEFAULT_HOST,
     /**
      * Logs the debug logs to the [logger] if enabled
      * Defaults to false
@@ -299,6 +299,18 @@ public open class PostHogConfig(
      */
     @PostHogInternal
     public var httpClient: OkHttpClient? = null
+
+    /**
+     * The PostHog API Key
+     */
+    public val apiKey: String = apiKey.trim()
+
+    /**
+     * The PostHog Host
+     * Defaults to https://us.i.posthog.com
+     * EU Host: https://eu.i.posthog.com
+     */
+    public val host: String = host.trim().ifBlank { DEFAULT_HOST }
 
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
