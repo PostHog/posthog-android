@@ -1,5 +1,11 @@
 ## Next
 
+## 3.42.1
+
+### Patch Changes
+
+- 840025b: Trim surrounding whitespace from API keys, personal API keys, and host config before using them.
+
 ## 3.42.0
 
 ### Minor Changes
