@@ -18,6 +18,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogPushSubscriptionManager
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSendCachedEventsIntegration
@@ -64,6 +65,7 @@ public class PostHog private constructor(
 
     private var replayQueue: PostHogQueueInterface? = null
     private var api: PostHogApi? = null
+    private var pushSubscriptionManager: PostHogPushSubscriptionManager? = null
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -173,6 +175,7 @@ public class PostHog private constructor(
                 this.api = api
                 this.queue = queue
                 this.replayQueue = replayQueue
+                this.pushSubscriptionManager = PostHogPushSubscriptionManager(config, api, queueExecutor)
 
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
@@ -191,6 +194,8 @@ public class PostHog private constructor(
                 getDeviceId()
 
                 queue.start()
+
+                pushSubscriptionManager?.retryPending()
 
                 startSession()
 
@@ -308,6 +313,7 @@ public class PostHog private constructor(
                 queue?.stop()
                 replayQueue?.stop()
                 api = null
+                pushSubscriptionManager = null
 
                 featureFlagsCalled.clear()
 
@@ -1383,19 +1389,12 @@ public class PostHog private constructor(
             return
         }
 
-        queueExecutor.execute {
-            try {
-                api?.pushSubscription(
-                    distinctId = currentDistinctId,
-                    deviceToken = deviceToken,
-                    platform = platform,
-                    appId = appId,
-                )
-                config?.logger?.log("Push notification token registered successfully.")
-            } catch (e: Throwable) {
-                config?.logger?.log("Failed to register push notification token: $e.")
-            }
-        }
+        pushSubscriptionManager?.register(
+            distinctId = currentDistinctId,
+            deviceToken = deviceToken,
+            appId = appId,
+            platform = platform,
+        )
     }
 
     override fun <T : PostHogConfig> getConfig(): T? {

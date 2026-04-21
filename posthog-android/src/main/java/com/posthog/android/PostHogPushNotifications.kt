@@ -150,7 +150,7 @@ public object PostHogPushNotifications {
                     val token = args?.firstOrNull() as? String
                     if (!token.isNullOrBlank() && projectId.isNotBlank()) {
                         PostHog.registerPushNotificationToken(
-                            deviceToken = deviceToken,
+                            deviceToken = token,
                             appId = projectId,
                             platform = "android",
                         )
