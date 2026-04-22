@@ -129,7 +129,7 @@ public object PostHogSessionManager {
             }
         }
         if (sessionChanged) {
-            onSessionIdChangedListener?.also { it.invoke() }
+            onSessionIdChangedListener?.invoke()
         }
         return tempSessionId
     }

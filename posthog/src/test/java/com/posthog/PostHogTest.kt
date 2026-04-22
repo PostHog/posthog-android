@@ -834,6 +834,41 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `capture preserves caller-provided session_id over the session manager`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        sut.startSession()
+        val managerSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(managerSessionId)
+
+        val callerSessionId = TimeBasedEpochGenerator.generate().toString()
+        assertNotEquals(managerSessionId.toString(), callerSessionId)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            properties = mapOf("\$session_id" to callerSessionId),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+        val theEvent = batch.batch.first()
+
+        // Caller-provided id wins on the event
+        assertEquals(callerSessionId, theEvent.properties!!["\$session_id"])
+
+        // Manager state was not rotated by the getter — it's untouched
+        assertEquals(managerSessionId, PostHogSessionManager.getActiveSessionId())
+
+        sut.close()
+    }
+
+    @Test
     fun `capture uses generated distinctId if not given`() {
         val http = mockHttp()
         val url = http.url("/")

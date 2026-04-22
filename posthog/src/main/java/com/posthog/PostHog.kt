@@ -312,6 +312,8 @@ public class PostHog private constructor(
 
                 featureFlagsCalled.clear()
 
+                PostHogSessionManager.setOnSessionIdChangedListener(null)
+
                 endSession()
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
