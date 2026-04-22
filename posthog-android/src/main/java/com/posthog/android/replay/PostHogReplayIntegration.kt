@@ -1681,15 +1681,17 @@ public class PostHogReplayIntegration(
             }
         } else if (isSessionReplayActive) {
             // Session rotated/cleared silently (e.g., 24h max duration via getter).
-            // Without this reset the new session would get only incremental events,
-            // leaving the replay viewer with no baseline to render.
+            // Posting to main: getter can be invoked from any thread that calls capture(),
+            // and start(resumeCurrent = false) iterates a non-thread-safe WeakHashMap.
             if (currentSessionId == null) {
                 config.logger.log("[Session Replay] Session cleared. Stopping recording.")
-                stop()
+                mainHandler.handler.post { stop() }
             } else {
                 config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
-                stop()
-                start(resumeCurrent = false)
+                mainHandler.handler.post {
+                    stop()
+                    start(resumeCurrent = false)
+                }
             }
         }
     }
