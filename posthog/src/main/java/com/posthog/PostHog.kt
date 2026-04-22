@@ -437,8 +437,14 @@ public class PostHog private constructor(
 
         val isSessionReplayActive = isSessionReplayActive()
 
-        PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
-            val tempSessionId = sessionId.toString()
+        // Skip the getter when caller pre-attached an id: getActiveSessionId() can
+        // silently rotate, and the caller's value wins via putAll either way.
+        val propSessionId = properties?.get("\$session_id") as? String
+        val sessionIdString =
+            propSessionId?.takeIf { it.isNotBlank() }
+                ?: PostHogSessionManager.getActiveSessionId()?.toString()
+
+        sessionIdString?.let { tempSessionId ->
             props["\$session_id"] = tempSessionId
             // only Session replay needs $window_id
             if (!appendSharedProps && isSessionReplayActive) {
