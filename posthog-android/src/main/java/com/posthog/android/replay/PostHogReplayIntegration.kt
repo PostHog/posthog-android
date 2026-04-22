@@ -276,6 +276,8 @@ public class PostHogReplayIntegration(
     private val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
             val timestamp = config.dateProvider.currentTimeMillis()
+            // User touch counts as activity (closest equivalent to iOS UIEvent swizzling).
+            PostHogSessionManager.touchSession()
 
             try {
                 val state = dispatch(motionEvent)

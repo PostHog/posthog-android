@@ -906,6 +906,7 @@ public final class com/posthog/internal/PostHogSessionManager {
 	public final fun setReactNative (Z)V
 	public final fun setSessionId (Ljava/util/UUID;)V
 	public final fun startSession ()V
+	public final fun touchSession ()V
 }
 
 public final class com/posthog/internal/PostHogThreadFactory : java/util/concurrent/ThreadFactory {

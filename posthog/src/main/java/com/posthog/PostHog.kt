@@ -488,6 +488,10 @@ public class PostHog private constructor(
                 config?.logger?.log("PostHog is in OptOut state.")
                 return
             }
+            // Mark activity before reading session id. iOS achieves this via UIEvent
+            // swizzling; Android lacks a global equivalent so any capture counts as
+            // activity and may rotate the session if it has gone idle for 30min.
+            PostHogSessionManager.touchSession()
 
             val newDistinctId = distinctId ?: this.distinctId
 

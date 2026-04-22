@@ -29,6 +29,12 @@ public object PostHogSessionManager {
      */
     private var sessionStartedAt: Long = 0L
 
+    /**
+     * Timestamp (in milliseconds) of the last user activity on the current session.
+     * Used to detect 30-minute inactivity rotation. Reset to 0 when the session ends.
+     */
+    private var sessionActivityTimestamp: Long = 0L
+
     @Volatile
     public var isReactNative: Boolean = false
 
@@ -55,28 +61,21 @@ public object PostHogSessionManager {
     }
 
     public fun startSession() {
-        if (isReactNative) {
-            // RN manages its own session
-            return
-        }
-
         synchronized(sessionLock) {
-            if (sessionId == sessionIdNone) {
-                sessionId = TimeBasedEpochGenerator.generate()
-                sessionStartedAt = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
-            }
+            // Re-check inside the lock — RN flag is set once at setup but checking
+            // here keeps state consistent with the lock's invariants.
+            if (isReactNative || sessionId != sessionIdNone) return
+            val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+            sessionId = TimeBasedEpochGenerator.generate()
+            sessionStartedAt = now
+            sessionActivityTimestamp = now
         }
     }
 
     public fun endSession() {
-        if (isReactNative) {
-            // RN manages its own session
-            return
-        }
-
         synchronized(sessionLock) {
-            sessionId = sessionIdNone
-            sessionStartedAt = 0L
+            if (isReactNative) return
+            clearLocked()
         }
     }
 
@@ -96,12 +95,35 @@ public object PostHogSessionManager {
      */
     public fun isSessionExceedingMaxDuration(currentTimeMillis: Long): Boolean {
         synchronized(sessionLock) {
-            return sessionStartedAt > 0L &&
-                (sessionStartedAt + SESSION_MAX_DURATION) <= currentTimeMillis
+            return isMaxExpired(currentTimeMillis)
         }
     }
 
     private const val SESSION_MAX_DURATION = (1000L * 60 * 60 * 24) // 24 hours
+    private const val SESSION_INACTIVITY_DURATION = (1000L * 60 * 30) // 30 minutes
+
+    // Both helpers must be called while holding sessionLock — they read mutable fields
+    // without taking the lock themselves to avoid nested-lock complexity.
+    private fun isIdle(now: Long): Boolean =
+        sessionActivityTimestamp > 0L &&
+            (sessionActivityTimestamp + SESSION_INACTIVITY_DURATION) <= now
+
+    private fun isMaxExpired(now: Long): Boolean =
+        sessionStartedAt > 0L &&
+            (sessionStartedAt + SESSION_MAX_DURATION) <= now
+
+    private fun rotateLocked(now: Long): UUID {
+        sessionId = TimeBasedEpochGenerator.generate()
+        sessionStartedAt = now
+        sessionActivityTimestamp = now
+        return sessionId
+    }
+
+    private fun clearLocked() {
+        sessionId = sessionIdNone
+        sessionStartedAt = 0L
+        sessionActivityTimestamp = 0L
+    }
 
     public fun getActiveSessionId(): UUID? {
         var sessionChanged = false
@@ -111,18 +133,16 @@ public object PostHogSessionManager {
                 tempSessionId = if (sessionId != sessionIdNone) sessionId else null
             } else {
                 val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
-                val expired = sessionStartedAt > 0L && (sessionStartedAt + SESSION_MAX_DURATION) <= now
-                if (expired) {
+                // Check inactivity first, then max-duration (mirror iOS order).
+                if (isIdle(now) || isMaxExpired(now)) {
                     sessionChanged = true
-                    if (isAppInBackground) {
-                        sessionId = sessionIdNone
-                        sessionStartedAt = 0L
-                        tempSessionId = null
-                    } else {
-                        sessionId = TimeBasedEpochGenerator.generate()
-                        sessionStartedAt = now
-                        tempSessionId = sessionId
-                    }
+                    tempSessionId =
+                        if (isAppInBackground) {
+                            clearLocked()
+                            null
+                        } else {
+                            rotateLocked(now)
+                        }
                 } else {
                     tempSessionId = sessionId
                 }
@@ -134,12 +154,39 @@ public object PostHogSessionManager {
         return tempSessionId
     }
 
+    /**
+     * Marks user activity on the current session. Mirrors iOS touchSession():
+     * if the session has gone idle past SESSION_INACTIVITY_DURATION, rotates it;
+     * otherwise just refreshes the activity timestamp.
+     *
+     * Called from lifecycle transitions, replay touch interception, and event capture.
+     * No-op when backgrounded so background events don't keep a dead session alive.
+     */
+    public fun touchSession() {
+        var sessionChanged = false
+        synchronized(sessionLock) {
+            if (isReactNative || isAppInBackground || sessionId == sessionIdNone) return@synchronized
+            val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+            if (isIdle(now)) {
+                rotateLocked(now)
+                sessionChanged = true
+            } else {
+                sessionActivityTimestamp = now
+            }
+        }
+        if (sessionChanged) {
+            onSessionIdChangedListener?.invoke()
+        }
+    }
+
     public fun setSessionId(sessionId: UUID) {
         synchronized(sessionLock) {
+            val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
             this.sessionId = sessionId
             // Stamp the start so an externally-set session participates in the 24h
             // expiry check; without it sessionStartedAt stays 0 and never expires.
-            sessionStartedAt = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+            sessionStartedAt = now
+            sessionActivityTimestamp = now
         }
     }
 

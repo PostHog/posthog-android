@@ -48,6 +48,8 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun onStart(owner: LifecycleOwner) {
         PostHogSessionManager.setAppInBackground(false)
+        // Foregrounding counts as activity (mirror iOS onDidBecomeActive).
+        PostHogSessionManager.touchSession()
         startSession()
 
         if (config.captureApplicationLifecycleEvents) {
@@ -105,6 +107,12 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     private fun scheduleEndSession() {
+        // This timer honors the PostHogInterface.endSession docstring promise:
+        // "On Android, the SDK will automatically end a session when the app is
+        // in the background for at least 30 minutes." The getter's inactivity
+        // check isn't sufficient on its own because isSessionActive() reads the
+        // field directly — without this timer, a backgrounded app that fires no
+        // events would keep reporting an active session forever.
         synchronized(timerLock) {
             cancelTask()
             timerTask =
