@@ -5,6 +5,7 @@ import com.posthog.BuildConfig
 import com.posthog.PostHogConfig
 import com.posthog.generateEvent
 import com.posthog.mockHttp
+import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
@@ -415,6 +416,55 @@ internal class PostHogApiTest {
             logger.messages.any { it.contains("Authorization:") },
             "Should include Authorization header in log",
         )
+    }
+
+    @Test
+    fun `pushSubscription posts request with expected body and path`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.pushSubscription(
+            distinctId = "distinctId",
+            deviceToken = "fcm-token-123",
+            platform = "android",
+            appId = "firebase-project-id",
+        )
+
+        val request = http.takeRequest()
+
+        assertEquals("POST", request.method)
+        assertEquals("/api/push_subscriptions/", request.path)
+        assertEquals("gzip", request.headers["Content-Encoding"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+
+        val body = request.body.unGzip()
+        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(body.reader())
+        assertEquals(API_KEY, parsed["api_key"])
+        assertEquals("distinctId", parsed["distinct_id"])
+        assertEquals("fcm-token-123", parsed["device_token"])
+        assertEquals("android", parsed["platform"])
+        assertEquals("firebase-project-id", parsed["app_id"])
+    }
+
+    @Test
+    fun `pushSubscription throws if not successful`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.pushSubscription(
+                    distinctId = "distinctId",
+                    deviceToken = "fcm-token-123",
+                    platform = "android",
+                    appId = "firebase-project-id",
+                )
+            }
+        assertEquals(400, exc.statusCode)
     }
 
     @Test

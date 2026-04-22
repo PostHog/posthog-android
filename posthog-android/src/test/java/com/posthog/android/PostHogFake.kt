@@ -13,6 +13,10 @@ public class PostHogFake : PostHogInterface {
     public var properties: Map<String, Any>? = null
     public var captures: Int = 0
     public var flushes: Int = 0
+    public var pushDeviceToken: String? = null
+    public var pushAppId: String? = null
+    public var pushPlatform: String? = null
+    public var pushRegistrations: Int = 0
 
     override fun <T : PostHogConfig> setup(config: T) {
     }
@@ -200,6 +204,17 @@ public class PostHogFake : PostHogInterface {
 
     override fun getSessionId(): UUID? {
         return null
+    }
+
+    override fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        platform: String,
+    ) {
+        pushDeviceToken = deviceToken
+        pushAppId = appId
+        pushPlatform = platform
+        pushRegistrations++
     }
 
     override fun <T : PostHogConfig> getConfig(): T? {

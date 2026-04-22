@@ -3222,4 +3222,90 @@ internal class PostHogTest {
 
         sut.close()
     }
+
+    @Test
+    fun `registerPushNotificationToken posts to push_subscriptions endpoint`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken(
+            deviceToken = "fcm-token",
+            appId = "firebase-project",
+            platform = "android",
+        )
+
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/push_subscriptions/", request.path)
+
+        val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        assertEquals("fcm-token", parsed["device_token"])
+        assertEquals("firebase-project", parsed["app_id"])
+        assertEquals("android", parsed["platform"])
+        assertEquals(sut.distinctId(), parsed["distinct_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when deviceToken is blank`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("   ", "firebase-project", "android")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when appId is blank`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("fcm-token", "", "android")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken after close does not crash and sends nothing`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        sut.close()
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+
+        assertEquals(0, http.requestCount)
+    }
 }
