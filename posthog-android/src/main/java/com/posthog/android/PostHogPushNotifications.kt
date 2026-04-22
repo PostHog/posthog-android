@@ -5,15 +5,37 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.posthog.PostHog
 
 /**
+ * Wraps an [ActivityResultLauncher] for the POST_NOTIFICATIONS permission and ties
+ * its result to FCM token registration with PostHog. Created by
+ * [PostHogPushNotifications.registerPermissionLauncher]; safe to invoke [launch] from
+ * any lifecycle state (e.g. button handlers) after the owning activity is created.
+ */
+public class PostHogPushPermissionLauncher internal constructor(
+    private val activity: Activity,
+    private val permissionLauncher: ActivityResultLauncher<String>?,
+) {
+    /**
+     * If permission is already granted (or not required), fetches the FCM token and
+     * registers it with PostHog immediately. Otherwise, prompts the user for
+     * POST_NOTIFICATIONS; on grant, the token is fetched and registered.
+     */
+    public fun launch() {
+        if (PostHogPushNotifications.hasPermission(activity)) {
+            PostHogPushNotifications.fetchAndRegisterFcmToken(activity)
+            return
+        }
+        permissionLauncher?.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+}
+
+/**
  * Utility class for handling push notification registration with PostHog.
- *
- * This class provides methods to request push notification permission and
- * automatically register the device's FCM token with PostHog when permission is granted.
  *
  * Requirements:
  * - Firebase Messaging must be included in the app's dependencies
@@ -21,58 +43,50 @@ import com.posthog.PostHog
  *
  * Usage:
  * ```kotlin
- * // Call from a ComponentActivity (AppCompatActivity, FragmentActivity, etc.)
- * PostHogPushNotifications.requestPermissionAndRegister(activity)
+ * class MyActivity : ComponentActivity() {
+ *     // Must be created before the activity reaches STARTED — a field initializer
+ *     // or onCreate is fine. Do NOT call this from a button handler.
+ *     private val pushLauncher = PostHogPushNotifications.registerPermissionLauncher(this)
+ *
+ *     override fun onCreate(savedInstanceState: Bundle?) {
+ *         super.onCreate(savedInstanceState)
+ *         // Invoke from anywhere — button click, settings toggle, first launch, etc.
+ *         pushLauncher.launch()
+ *     }
+ * }
  * ```
  */
 public object PostHogPushNotifications {
     /**
-     * Requests push notification permission (on Android 13+) and automatically
-     * registers the FCM device token with PostHog when permission is granted.
+     * Registers an Activity Result launcher for the POST_NOTIFICATIONS permission.
+     * Must be called before the activity reaches STARTED (field initializer or onCreate).
+     * The returned [PostHogPushPermissionLauncher] can be invoked from any lifecycle
+     * state to prompt for permission (if needed) and register the FCM token.
      *
-     * On Android 12 and below, notifications are allowed by default, so this method
-     * will directly proceed to register the FCM token.
-     *
-     * @param activity the ComponentActivity to use for the permission request.
-     *   Must be a ComponentActivity (e.g. AppCompatActivity) to use the Activity Result API.
-     * @param onPermissionResult optional callback that receives the permission result.
-     *   `true` if permission was granted (or not needed), `false` if denied.
+     * @param activity the ComponentActivity that owns the launcher
+     * @param onPermissionResult optional callback; receives `true` if permission was
+     *   granted (or not required), `false` if denied
      */
     @JvmStatic
     @JvmOverloads
-    public fun requestPermissionAndRegister(
+    public fun registerPermissionLauncher(
         activity: ComponentActivity,
         onPermissionResult: ((Boolean) -> Unit)? = null,
-    ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val hasPermission =
-                ContextCompat.checkSelfPermission(
-                    activity,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                ) == PackageManager.PERMISSION_GRANTED
-
-            if (hasPermission) {
-                fetchAndRegisterToken(activity)
-                onPermissionResult?.invoke(true)
-                return
-            }
-
-            val launcher =
+    ): PostHogPushPermissionLauncher {
+        val launcher =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 activity.registerForActivityResult(
                     ActivityResultContracts.RequestPermission(),
                 ) { granted ->
                     if (granted) {
-                        fetchAndRegisterToken(activity)
+                        fetchAndRegisterFcmToken(activity)
                     }
                     onPermissionResult?.invoke(granted)
                 }
-
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            // Below Android 13, notification permission is granted at install time
-            fetchAndRegisterToken(activity)
-            onPermissionResult?.invoke(true)
-        }
+            } else {
+                null
+            }
+        return PostHogPushPermissionLauncher(activity, launcher)
     }
 
     /**
@@ -112,7 +126,7 @@ public object PostHogPushNotifications {
         )
     }
 
-    private fun fetchAndRegisterToken(activity: Activity) {
+    internal fun fetchAndRegisterFcmToken(activity: Activity) {
         try {
             val firebaseMessaging =
                 Class.forName("com.google.firebase.messaging.FirebaseMessaging")
@@ -123,7 +137,6 @@ public object PostHogPushNotifications {
             val getToken = firebaseMessaging.getMethod("getToken")
             val task = getToken.invoke(instance)
 
-            // Get Firebase project ID
             val firebaseApp = Class.forName("com.google.firebase.FirebaseApp")
             val getFirebaseInstance = firebaseApp.getMethod("getInstance")
             val appInstance = getFirebaseInstance.invoke(null)
@@ -134,7 +147,6 @@ public object PostHogPushNotifications {
             val getProjectId = firebaseOptions.getMethod("getProjectId")
             val projectId = getProjectId.invoke(options) as? String ?: ""
 
-            // task is a com.google.android.gms.tasks.Task<String>
             val taskClass = Class.forName("com.google.android.gms.tasks.Task")
             val addOnSuccessListenerMethod =
                 taskClass.getMethod(
