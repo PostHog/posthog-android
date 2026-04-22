@@ -47,7 +47,7 @@ internal class PostHogOkHttpInterceptorTest {
     @Test
     fun `host matching cases inject tracing headers as expected`() {
         HOST_MATCHING_CASES.forEach { testCase ->
-            withTracingSut(addTracingHeaders = testCase.configHosts) { postHog ->
+            withTracingSut(tracingHeaders = testCase.configHosts) { postHog ->
                 withServer { server ->
                     server.enqueue(MockResponse().setBody("ok"))
 
@@ -78,7 +78,7 @@ internal class PostHogOkHttpInterceptorTest {
     @Test
     fun `tracing header mutation cases behave as expected`() {
         HEADER_MUTATION_CASES.forEach { testCase ->
-            withTracingSut(addTracingHeaders = testCase.configHosts) { postHog ->
+            withTracingSut(tracingHeaders = testCase.configHosts) { postHog ->
                 if (testCase.endSessionBeforeRequest) {
                     postHog.endSession()
                 }
@@ -183,13 +183,13 @@ internal class PostHogOkHttpInterceptorTest {
 
     @Suppress("DEPRECATION")
     private fun withTracingSut(
-        addTracingHeaders: List<String>?,
+        tracingHeaders: List<String>?,
         block: (PostHogInterface) -> Unit,
     ) {
         val executors = TestExecutors()
         val config =
             PostHogConfig(API_KEY, "http://localhost").apply {
-                this.addTracingHeaders = addTracingHeaders
+                this.tracingHeaders = tracingHeaders
                 this.storagePrefix = tmpDir.newFolder().absolutePath
                 this.replayStoragePrefix = tmpDir.newFolder().absolutePath
                 this.cachePreferences = PostHogMemoryPreferences()

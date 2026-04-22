@@ -124,7 +124,6 @@ public class com/posthog/PostHogConfig {
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
-	public final fun getAddTracingHeaders ()Ljava/util/List;
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getBeforeSendList ()Ljava/util/List;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
@@ -172,9 +171,9 @@ public class com/posthog/PostHogConfig {
 	public final fun getStoragePrefix ()Ljava/lang/String;
 	public final fun getSurveys ()Z
 	public final fun getSurveysConfig ()Lcom/posthog/surveys/PostHogSurveysConfig;
+	public final fun getTracingHeaders ()Ljava/util/List;
 	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
-	public final fun setAddTracingHeaders (Ljava/util/List;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
@@ -214,6 +213,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setStoragePrefix (Ljava/lang/String;)V
 	public final fun setSurveys (Z)V
 	public final fun setSurveysConfig (Lcom/posthog/surveys/PostHogSurveysConfig;)V
+	public final fun setTracingHeaders (Ljava/util/List;)V
 }
 
 public final class com/posthog/PostHogConfig$Companion {

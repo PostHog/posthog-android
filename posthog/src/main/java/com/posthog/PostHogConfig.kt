@@ -299,7 +299,11 @@ public open class PostHogConfig(
      * - The Android SDK does not send `X-POSTHOG-WINDOW-ID` because mobile apps do not have a per-window/tab concept
      * - Existing values for these headers will be overwritten when PostHog provides a value
      */
-    public var addTracingHeaders: List<String>? = null
+    public var tracingHeaders: List<String>? = null
+        get() = field?.toList()
+        set(value) {
+            field = value?.toList()
+        }
 
     /**
      * Optional custom OkHttpClient for HTTP requests.

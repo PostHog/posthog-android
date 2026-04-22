@@ -8,7 +8,7 @@ import okhttp3.Response
 
 /**
  * Interceptor that captures network telemetry for session replay and, when
- * [PostHogConfig.addTracingHeaders] is configured, injects PostHog tracing headers into matching
+ * [PostHogConfig.tracingHeaders] is configured, injects PostHog tracing headers into matching
  * OkHttp requests.
  *
  * Install this interceptor on each [okhttp3.OkHttpClient] whose requests should be captured or
@@ -50,7 +50,7 @@ public class PostHogOkHttpInterceptor(
 
         return addTracingHeadersToRequest(
             request = request,
-            hostnames = config.addTracingHeaders,
+            hostnames = config.tracingHeaders,
             distinctId = currentPostHog.distinctId(),
             sessionId = currentPostHog.getSessionId()?.toString(),
         )

@@ -81,8 +81,18 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `addTracingHeaders is not set by default`() {
-        assertNull(config.addTracingHeaders)
+    fun `tracingHeaders is not set by default`() {
+        assertNull(config.tracingHeaders)
+    }
+
+    @Test
+    fun `tracingHeaders copies assigned lists`() {
+        val tracingHeaders = mutableListOf("api.example.com")
+
+        config.tracingHeaders = tracingHeaders
+        tracingHeaders.add("other.example.com")
+
+        assertEquals(listOf("api.example.com"), config.tracingHeaders)
     }
 
     @Test
