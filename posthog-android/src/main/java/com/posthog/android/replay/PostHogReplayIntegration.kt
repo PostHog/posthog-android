@@ -1662,7 +1662,8 @@ public class PostHogReplayIntegration(
 
     /**
      * Called when the session ID changes. Stops recording if event triggers are configured
-     * and the new session hasn't been activated yet.
+     * and the new session hasn't been activated yet, or re-initializes recording so the
+     * new session gets fresh meta + full wireframe events.
      */
     override fun onSessionIdChanged() {
         val postHog = this.postHog ?: return
@@ -1677,6 +1678,18 @@ public class PostHogReplayIntegration(
             if (isSessionReplayActive) {
                 config.logger.log("[Session Replay] Session changed. Stopping until trigger is matched.")
                 stop()
+            }
+        } else if (isSessionReplayActive) {
+            // Session rotated/cleared silently (e.g., 24h max duration via getter).
+            // Without this reset the new session would get only incremental events,
+            // leaving the replay viewer with no baseline to render.
+            if (currentSessionId == null) {
+                config.logger.log("[Session Replay] Session cleared. Stopping recording.")
+                stop()
+            } else {
+                config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
+                stop()
+                start(resumeCurrent = false)
             }
         }
     }

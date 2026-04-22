@@ -135,9 +135,11 @@ public object PostHogSessionManager {
     }
 
     public fun setSessionId(sessionId: UUID) {
-        // RN can only set its own session id directly
         synchronized(sessionLock) {
             this.sessionId = sessionId
+            // Stamp the start so an externally-set session participates in the 24h
+            // expiry check; without it sessionStartedAt stays 0 and never expires.
+            sessionStartedAt = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
         }
     }
 

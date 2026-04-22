@@ -124,6 +124,17 @@ internal class PostHogSessionManagerTest {
     }
 
     @Test
+    internal fun `setSessionId stamps sessionStartedAt`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.setSessionId(UUID.randomUUID())
+
+        assertEquals(baseTime, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
     internal fun `getActiveSessionId rotates foregrounded session after 24 hours`() {
         val baseTime = 1_000_000_000_000L
         val fakeDate = FakeDateProvider(baseTime)
