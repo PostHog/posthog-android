@@ -61,10 +61,11 @@ internal class PostHogPushSubscriptionManager(
             if (!file.existsSafely(config)) {
                 return@executeSafely
             }
-            val record = readRecord(file) ?: run {
-                file.deleteSafely(config)
-                return@executeSafely
-            }
+            val record =
+                readRecord(file) ?: run {
+                    file.deleteSafely(config)
+                    return@executeSafely
+                }
             retryCount = 0
             cancelTimer()
             attempt(record, file)

@@ -45,9 +45,7 @@ internal class PostHogPushSubscriptionManagerTest {
         return Triple(PostHogPushSubscriptionManager(config, api, executor), config, storagePrefix)
     }
 
-    private fun pendingFile(
-        storagePrefix: String,
-    ): File = File(File(storagePrefix, API_KEY), "push_subscription.pending")
+    private fun pendingFile(storagePrefix: String): File = File(File(storagePrefix, API_KEY), "push_subscription.pending")
 
     private fun flush() {
         executor.submit {}.get()
@@ -230,5 +228,4 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertEquals(0, http.requestCount)
     }
-
 }
