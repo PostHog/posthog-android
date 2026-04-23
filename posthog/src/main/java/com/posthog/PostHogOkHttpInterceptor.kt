@@ -112,6 +112,10 @@ private fun addTracingHeadersToRequest(
     distinctId: String,
     sessionId: String?,
 ): Request {
+    if (sessionId.isNullOrBlank() && distinctId.isBlank()) {
+        return request
+    }
+
     val normalizedHostnames = normalizeTracingHeaderHostnames(hostnames)
     if (normalizedHostnames.isEmpty()) {
         return request
