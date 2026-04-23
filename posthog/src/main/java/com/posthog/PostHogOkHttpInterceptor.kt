@@ -116,7 +116,7 @@ private fun addTracingHeadersToRequest(
         return request
     }
 
-    val normalizedHostnames = normalizeTracingHeaderHostnames(hostnames)
+    val normalizedHostnames = normalizeTracingHeaderHostnames(hostnames) ?: return request
     if (normalizedHostnames.isEmpty()) {
         return request
     }
@@ -139,11 +139,10 @@ private fun addTracingHeadersToRequest(
     return requestBuilder.build()
 }
 
-private fun normalizeTracingHeaderHostnames(hostnames: List<String>?): Set<String> {
+private fun normalizeTracingHeaderHostnames(hostnames: List<String>?): Set<String>? {
     return hostnames
         ?.asSequence()
         ?.map { it.trim().lowercase() }
         ?.filter { it.isNotEmpty() }
         ?.toSet()
-        ?: emptySet()
 }
