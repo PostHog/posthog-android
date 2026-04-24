@@ -48,6 +48,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun optIn ()V
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
+	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -91,6 +92,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun optOut ()V
 	public final fun overrideSharedInstance (Lcom/posthog/PostHogInterface;)V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
+	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -326,6 +328,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun isSessionActive ()Z
 	public abstract fun isSessionReplayActive ()Z
 	public abstract fun register (Ljava/lang/String;Ljava/lang/Object;)V
+	public abstract fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public abstract fun reset ()V
 	public abstract fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -350,6 +353,7 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun getFeatureFlagResult$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/Boolean;ILjava/lang/Object;)Lcom/posthog/FeatureFlagResult;
 	public static synthetic fun group$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZLjava/lang/Boolean;ILjava/lang/Object;)Z
+	public static synthetic fun registerPushNotificationToken$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun reloadFeatureFlags$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZILjava/lang/Object;)V
 	public static synthetic fun resetPersonPropertiesForFlags$default (Lcom/posthog/PostHogInterface;ZILjava/lang/Object;)V
@@ -644,6 +648,7 @@ public final class com/posthog/internal/PostHogApi {
 	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public final fun localEvaluation (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
 	public static synthetic fun localEvaluation$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/LocalEvaluationApiResponse;
+	public final fun pushSubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
 	public final fun snapshot (Ljava/util/List;)V
 }
