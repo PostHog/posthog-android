@@ -285,6 +285,9 @@ public open class PostHogConfig(
      */
     public var releaseIdentifier: String? = null,
 ) {
+    @Volatile
+    private var tracingHeadersList: List<String>? = null
+
     /**
      * When set, PostHog injects tracing headers into OkHttp requests whose destination hostname
      * exactly matches one of the configured hostnames.
@@ -298,11 +301,13 @@ public open class PostHogConfig(
      * - Hostname matching is exact and does not include ports or subdomain wildcards
      * - The Android SDK does not send `X-POSTHOG-WINDOW-ID` because mobile apps do not have a per-window/tab concept
      * - Existing values for these headers will be overwritten when PostHog provides a value
+     * - Reading this property returns a snapshot
      */
-    public var tracingHeaders: List<String>? = null
-        get() = field?.toList()
+    @get:JvmSynthetic
+    public var tracingHeaders: List<String>?
+        get() = tracingHeadersList?.let { ArrayList(it) }
         set(value) {
-            field = value?.toList()
+            tracingHeadersList = value?.let { ArrayList(it) }
         }
 
     /**

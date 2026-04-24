@@ -171,7 +171,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getStoragePrefix ()Ljava/lang/String;
 	public final fun getSurveys ()Z
 	public final fun getSurveysConfig ()Lcom/posthog/surveys/PostHogSurveysConfig;
-	public final fun getTracingHeaders ()Ljava/util/List;
+	public final synthetic fun getTracingHeaders ()Ljava/util/List;
 	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
