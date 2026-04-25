@@ -1,5 +1,11 @@
 ## Next
 
+## 3.43.0
+
+### Minor Changes
+
+- fbb5a25: Add tracing header support for Android OkHttp requests.
+
 ## 3.42.1
 
 ### Patch Changes
