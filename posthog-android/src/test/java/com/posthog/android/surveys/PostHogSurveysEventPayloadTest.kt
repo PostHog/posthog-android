@@ -21,7 +21,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
-internal class PostHogSurveysDismissedEventTest {
+internal class PostHogSurveysEventPayloadTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val serializer = PostHogSerializer(PostHogConfig("test-api-key"))
 
