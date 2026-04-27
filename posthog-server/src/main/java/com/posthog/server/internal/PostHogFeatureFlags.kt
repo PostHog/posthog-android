@@ -53,6 +53,9 @@ internal class PostHogFeatureFlags(
     private var definitionsLoaded = false
 
     @Volatile
+    private var definitionsLoadedAt: Long? = null
+
+    @Volatile
     private var isLoading = false
 
     private val loadLock = Object()
@@ -278,6 +281,8 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+        flagKeys: List<String>? = null,
+        disableGeoip: Boolean = false,
     ): Map<String, FeatureFlag>? {
         val cacheKey =
             FeatureFlagCacheKey(
@@ -297,9 +302,12 @@ internal class PostHogFeatureFlags(
                 api.flags(
                     distinctId,
                     anonymousId = null,
+                    deviceId = null,
                     groups = groups,
                     personProperties = personProperties,
                     groupProperties = groupProperties,
+                    flagKeys = flagKeys,
+                    disableGeoip = disableGeoip,
                 )
             val flags = response?.flags
             cache.put(
@@ -447,6 +455,7 @@ internal class PostHogFeatureFlags(
                 cohorts = apiResponse.cohorts
                 groupTypeMapping = apiResponse.groupTypeMapping
                 definitionsLoaded = true
+                definitionsLoadedAt = System.currentTimeMillis()
             }
 
             config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
@@ -507,7 +516,12 @@ internal class PostHogFeatureFlags(
                     payload = payload,
                     version = flagDef.version,
                 ),
-            reason = null,
+            reason =
+                com.posthog.internal.EvaluationReason(
+                    code = LOCAL_EVALUATION_REASON_CODE,
+                    description = LOCAL_EVALUATION_REASON_DESCRIPTION,
+                    condition_index = null,
+                ),
         )
     }
 
@@ -665,6 +679,109 @@ internal class PostHogFeatureFlags(
      *
      * Multiple errors are joined with commas, e.g., "errors_while_computing_flags,flag_missing"
      */
+    override fun getFeatureFlagDetails(
+        key: String,
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): FeatureFlag? {
+        if (distinctId == null) {
+            return null
+        }
+        val cacheKey =
+            FeatureFlagCacheKey(
+                distinctId = distinctId,
+                groups = groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
+        return cache.getEntry(cacheKey)?.flags?.get(key)
+    }
+
+    /**
+     * Resolve every flag for the given identity in a single pass, returning the rich envelope used
+     * by the [com.posthog.server.PostHogFeatureFlagEvaluations] snapshot. Reuses the existing
+     * cache → local-eval → remote tier and additionally records which keys were resolved locally.
+     */
+    internal fun evaluateFlags(
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        flagKeys: List<String>?,
+        onlyEvaluateLocally: Boolean,
+        disableGeoip: Boolean,
+    ): EvaluateFlagsResult {
+        val cacheKey =
+            FeatureFlagCacheKey(
+                distinctId = distinctId,
+                groups = groups,
+                personProperties = personProperties,
+                groupProperties = groupProperties,
+            )
+        cache.getEntry(cacheKey)?.let { entry ->
+            val flags = entry.flags ?: emptyMap()
+            return EvaluateFlagsResult(
+                flags = flags,
+                locallyEvaluated = flags.mapValues { isLocallyEvaluated(it.value) },
+                requestId = entry.requestId,
+                evaluatedAt = entry.evaluatedAt,
+                definitionsLoadedAt = definitionsLoadedAt,
+            )
+        }
+
+        val localFlags =
+            getFeatureFlagsFromLocalEvaluation(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+                onlyEvaluateLocally,
+            )
+        if (localFlags != null) {
+            return EvaluateFlagsResult(
+                flags = localFlags,
+                locallyEvaluated = localFlags.mapValues { true },
+                requestId = null,
+                evaluatedAt = null,
+                definitionsLoadedAt = definitionsLoadedAt,
+            )
+        }
+
+        if (onlyEvaluateLocally) {
+            return EvaluateFlagsResult(
+                flags = emptyMap(),
+                locallyEvaluated = emptyMap(),
+                requestId = null,
+                evaluatedAt = null,
+                definitionsLoadedAt = definitionsLoadedAt,
+            )
+        }
+
+        val remoteFlags =
+            getFeatureFlagsFromRemote(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+                flagKeys,
+                disableGeoip,
+            ) ?: emptyMap()
+        val entry = cache.getEntry(cacheKey)
+        return EvaluateFlagsResult(
+            flags = remoteFlags,
+            locallyEvaluated = remoteFlags.mapValues { false },
+            requestId = entry?.requestId,
+            evaluatedAt = entry?.evaluatedAt,
+            definitionsLoadedAt = definitionsLoadedAt,
+        )
+    }
+
+    private fun isLocallyEvaluated(flag: FeatureFlag): Boolean {
+        return flag.reason?.code == LOCAL_EVALUATION_REASON_CODE
+    }
+
     override fun getFeatureFlagError(
         key: String,
         distinctId: String?,
@@ -700,5 +817,10 @@ internal class PostHogFeatureFlags(
             !flagMissing -> entry.error
             else -> "${entry.error},${FeatureFlagError.FLAG_MISSING}"
         }
+    }
+
+    internal companion object {
+        internal const val LOCAL_EVALUATION_REASON_CODE: String = "local_evaluation"
+        internal const val LOCAL_EVALUATION_REASON_DESCRIPTION: String = "Evaluated locally"
     }
 }

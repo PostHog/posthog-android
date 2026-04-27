@@ -137,6 +137,13 @@ public open class PostHogConfig constructor(
      * Defaults to null
      */
     public var evaluationContexts: List<String>? = null,
+    /**
+     * Whether the SDK logs warnings emitted by `PostHogFeatureFlagEvaluations` filter helpers
+     * (`onlyAccessed()` with no recorded access, `only([...])` with unknown keys). Set to false
+     * to silence those messages.
+     * Defaults to true.
+     */
+    public var featureFlagsLogWarnings: Boolean = true,
 ) {
     /**
      * The PostHog API Key
@@ -267,6 +274,7 @@ public open class PostHogConfig constructor(
         private var personalApiKey: String? = null
         private var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS
         private var evaluationContexts: List<String>? = null
+        private var featureFlagsLogWarnings: Boolean = true
 
         public fun host(host: String): Builder = apply { this.host = host }
 
@@ -319,6 +327,9 @@ public open class PostHogConfig constructor(
 
         public fun evaluationContexts(evaluationContexts: List<String>?): Builder = apply { this.evaluationContexts = evaluationContexts }
 
+        public fun featureFlagsLogWarnings(featureFlagsLogWarnings: Boolean): Builder =
+            apply { this.featureFlagsLogWarnings = featureFlagsLogWarnings }
+
         @Suppress("DEPRECATION")
         public fun build(): PostHogConfig =
             PostHogConfig(
@@ -342,6 +353,7 @@ public open class PostHogConfig constructor(
                 personalApiKey = personalApiKey,
                 pollIntervalSeconds = pollIntervalSeconds,
                 evaluationContexts = evaluationContexts,
+                featureFlagsLogWarnings = featureFlagsLogWarnings,
             )
     }
 }

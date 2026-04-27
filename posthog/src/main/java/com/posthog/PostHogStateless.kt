@@ -442,28 +442,47 @@ public open class PostHogStateless protected constructor(
         sendFeatureFlagEvent: Boolean? = null,
     ) {
         val effectiveSendFeatureFlagEvent = sendFeatureFlagEvent ?: config?.sendFeatureFlagEvent ?: true
-        if (effectiveSendFeatureFlagEvent) {
-            val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
-            if (isNewlySeen) {
-                val requestId = featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
-                val evaluatedAt = featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
+        if (!effectiveSendFeatureFlagEvent) return
 
-                val props = mutableMapOf<String, Any>()
-                props["\$feature_flag"] = key
-                props["\$feature_flag_response"] = value ?: ""
-                requestId?.let { props["\$feature_flag_request_id"] = it }
-                evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
-                featureFlags?.getFeatureFlagError(
-                    key,
-                    distinctId,
-                    groups,
-                    personProperties,
-                    groupProperties,
-                )?.let { props["\$feature_flag_error"] = it }
-
-                captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props)
-            }
+        val props = mutableMapOf<String, Any>()
+        featureFlags?.getRequestId(distinctId, groups, personProperties, groupProperties)
+            ?.let { props["\$feature_flag_request_id"] = it }
+        featureFlags?.getEvaluatedAt(distinctId, groups, personProperties, groupProperties)
+            ?.let { props["\$feature_flag_evaluated_at"] = it }
+        featureFlags?.getFeatureFlagError(key, distinctId, groups, personProperties, groupProperties)
+            ?.let { props["\$feature_flag_error"] = it }
+        featureFlags?.getFeatureFlagDetails(key, distinctId, groups, personProperties, groupProperties)?.let { details ->
+            props["\$feature_flag_id"] = details.metadata.id
+            props["\$feature_flag_version"] = details.metadata.version
+            details.reason?.description?.let { props["\$feature_flag_reason"] = it }
         }
+
+        captureFeatureFlagCalledEvent(distinctId, key, value, props)
+    }
+
+    /**
+     * Shared dedup-and-capture path for `$feature_flag_called`. Callers pass a pre-built properties
+     * map and are responsible for whatever per-call gate they care about; this helper only enforces
+     * the per-distinct-id dedup and routes through the queue. Both the existing per-flag accessor
+     * (after applying its `sendFeatureFlagEvent` override) and the new feature-flag-evaluations
+     * snapshot (after checking its own config) funnel through here so dedup stays uniform.
+     */
+    @PostHogInternal
+    public fun captureFeatureFlagCalledEvent(
+        distinctId: String,
+        key: String,
+        value: Any?,
+        properties: Map<String, Any>,
+    ) {
+        val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
+        if (!isNewlySeen) return
+
+        val props = mutableMapOf<String, Any>()
+        props.putAll(properties)
+        props["\$feature_flag"] = key
+        props["\$feature_flag_response"] = value ?: ""
+
+        captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props)
     }
 
     public override fun getFeatureFlagStateless(

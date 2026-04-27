@@ -78,6 +78,9 @@ public sealed interface PostHogInterface {
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      * @param timestamp the timestamp for the event
      * @param appendFeatureFlags when true, enriches the event with feature flag properties
+     * @param flags optional pre-resolved snapshot from [evaluateFlags]; when supplied, attaches
+     *   `$feature/<key>` and `$active_feature_flags` from the snapshot without making another
+     *   `/flags` request. Takes precedence over [appendFeatureFlags] when both are set.
      */
     @JvmSynthetic
     public fun capture(
@@ -89,6 +92,7 @@ public sealed interface PostHogInterface {
         groups: Map<String, String>? = null,
         timestamp: Date? = null,
         appendFeatureFlags: Boolean = false,
+        flags: PostHogFeatureFlagEvaluations? = null,
     )
 
     /**
@@ -111,6 +115,7 @@ public sealed interface PostHogInterface {
             options.groups,
             options.timestamp,
             options.appendFeatureFlags,
+            options.flags,
         )
     }
 
@@ -129,6 +134,9 @@ public sealed interface PostHogInterface {
             null,
             null,
             null,
+            null,
+            null,
+            false,
             null,
         )
     }
@@ -479,6 +487,66 @@ public sealed interface PostHogInterface {
         distinctId: String,
         alias: String,
     )
+
+    /**
+     * Evaluate every feature flag for [distinctId] in a single `/flags` round-trip and return a
+     * snapshot. Repeat lookups against the snapshot do not make additional network requests, and
+     * `is_enabled` / `getFlag` accesses still emit deduped `$feature_flag_called` events.
+     *
+     * @param distinctId the distinctId
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @param flagKeys when non-empty, restricts the underlying request to the given keys; this is
+     *   distinct from [PostHogFeatureFlagEvaluations.only] which filters in memory after the call
+     * @param onlyEvaluateLocally when true, do not fall back to a `/flags` request if local
+     *   evaluation cannot resolve every flag
+     * @param disableGeoip when true, send `geoip_disable=true` to the server
+     */
+    @JvmSynthetic
+    public fun evaluateFlags(
+        distinctId: String,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+        flagKeys: List<String>? = null,
+        onlyEvaluateLocally: Boolean = false,
+        disableGeoip: Boolean = false,
+    ): PostHogFeatureFlagEvaluations
+
+    /**
+     * Evaluate every feature flag for [distinctId] using the supplied options object.
+     * Java-friendly overload that mirrors the canonical [evaluateFlags] entry point.
+     */
+    public fun evaluateFlags(
+        distinctId: String,
+        options: PostHogEvaluateFlagsOptions,
+    ): PostHogFeatureFlagEvaluations {
+        return evaluateFlags(
+            distinctId,
+            groups = options.groups,
+            personProperties = options.personProperties,
+            groupProperties = options.groupProperties,
+            flagKeys = options.flagKeys,
+            onlyEvaluateLocally = options.onlyEvaluateLocally,
+            disableGeoip = options.disableGeoip,
+        )
+    }
+
+    /**
+     * Evaluate every feature flag for [distinctId] using default options.
+     */
+    public fun evaluateFlags(distinctId: String): PostHogFeatureFlagEvaluations {
+        return evaluateFlags(
+            distinctId,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+            flagKeys = null,
+            onlyEvaluateLocally = false,
+            disableGeoip = false,
+        )
+    }
 
     /**
      * Reloads feature flag definitions from the server for use with local evaluation.

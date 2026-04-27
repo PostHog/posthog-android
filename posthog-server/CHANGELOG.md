@@ -1,5 +1,7 @@
 ## Next
 
+- feat: Add `evaluateFlags()` API for single-call flag evaluation. Returns a `PostHogFeatureFlagEvaluations` snapshot with `isEnabled`/`getFlag`/`getFlagPayload` accessors plus `onlyAccessed()` and `only(keys)` filters. `capture()` accepts the snapshot via a new `flags` parameter to attach `$feature/<key>` properties without a second `/flags` request. `$feature_flag_called` events now also include `$feature_flag_id`, `$feature_flag_version`, and `$feature_flag_reason` metadata. New `featureFlagsLogWarnings` config option silences filter warnings.
+
 ## 2.4.1
 
 ### Patch Changes
