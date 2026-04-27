@@ -64,20 +64,21 @@ internal class PostHogSurveysDismissedEventTest {
         id: String,
         question: String,
     ): SurveyQuestion {
-        return serializer.gson.fromJson(
-            """
-            {
-              "id": "$id",
-              "type": "open",
-              "question": "$question",
-              "description": null,
-              "descriptionContentType": "text",
-              "optional": false,
-              "buttonText": null,
-              "branching": null
-            }
-            """.trimIndent(),
-            SurveyQuestion::class.java,
+        return checkNotNull(
+            serializer.deserializeList<SurveyQuestion>(
+                listOf(
+                    mapOf(
+                        "id" to id,
+                        "type" to "open",
+                        "question" to question,
+                        "description" to null,
+                        "descriptionContentType" to "text",
+                        "optional" to false,
+                        "buttonText" to null,
+                        "branching" to null,
+                    ),
+                ),
+            )?.firstOrNull(),
         )
     }
 
