@@ -280,7 +280,10 @@ public class PostHogSurveysIntegration(
                 val nextQuestion = getNextQuestion(originalSurvey, questionIndex, response)
 
                 // Store the response for survey completion tracking
-                currentSurveyResponses[getResponseKey(questionIndex)] = response
+                currentSurveyResponses[getLegacyResponseKey(questionIndex)] = response
+                originalSurvey.questions.getOrNull(questionIndex)?.id?.takeIf { it.isNotEmpty() }?.let { questionId ->
+                    currentSurveyResponses[getQuestionIdResponseKey(questionId)] = response
+                }
 
                 // Check if survey is completed (needed on close event)
                 activeSurveyCompleted = nextQuestion.isSurveyCompleted
@@ -297,6 +300,7 @@ public class PostHogSurveysIntegration(
         val onSurveyClosed: OnPostHogSurveyClosed = onSurveyClosed@{ _ ->
             // Get current active survey and completion state
             val currentActiveSurvey = activeSurvey
+            val surveyResponses = currentSurveyResponses.toMap()
 
             // Validate that this survey matches the currently active survey
             if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
@@ -306,7 +310,7 @@ public class PostHogSurveysIntegration(
 
             // Send survey dismissed event if survey was not completed
             if (!activeSurveyCompleted) {
-                sendSurveyDismissedEvent(originalSurvey)
+                sendSurveyDismissedEvent(originalSurvey, surveyResponses)
             }
 
             // Mark survey as seen
@@ -652,26 +656,14 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
     ) {
-        val questionProperties =
-            mutableMapOf<String, Any>(
-                "\$survey_questions" to survey.questions.map { it.question },
-            )
-
-        // Add survey interaction property for "responded"
-        questionProperties["\$set"] =
-            mapOf(
-                getSurveyInteractionProperty(survey, "responded") to true,
-            )
-
-        // Convert responses to simple values
-        val responsesProperties =
-            responses.mapNotNull { (key, response) ->
-                response.toResponseValue()?.let { value ->
-                    key to value
-                }
-            }.toMap()
-
-        val additionalProperties = questionProperties + responsesProperties
+        val additionalProperties =
+            buildSurveyResponseProperties(survey, responses) +
+                mapOf(
+                    "\$set" to
+                        mapOf(
+                            getSurveyInteractionProperty(survey, "responded") to true,
+                        ),
+                )
 
         sendSurveyEvent(
             event = "survey sent",
@@ -683,21 +675,48 @@ public class PostHogSurveysIntegration(
     /**
      * Sends a "survey dismissed" event to PostHog instance
      */
-    private fun sendSurveyDismissedEvent(survey: Survey) {
+    private fun sendSurveyDismissedEvent(
+        survey: Survey,
+        responses: Map<String, PostHogSurveyResponse>,
+    ) {
         val additionalProperties =
-            mapOf(
-                "\$survey_questions" to survey.questions.map { it.question },
-                "\$set" to
-                    mapOf(
-                        getSurveyInteractionProperty(survey, "dismissed") to true,
-                    ),
-            )
+            buildSurveyResponseProperties(survey, responses) +
+                mapOf(
+                    "\$survey_partially_completed" to surveyHasResponses(responses),
+                    "\$set" to
+                        mapOf(
+                            getSurveyInteractionProperty(survey, "dismissed") to true,
+                        ),
+                )
 
         sendSurveyEvent(
             event = "survey dismissed",
             survey = survey,
             additionalProperties = additionalProperties,
         )
+    }
+
+    private fun buildSurveyResponseProperties(
+        survey: Survey,
+        responses: Map<String, PostHogSurveyResponse>,
+    ): Map<String, Any> {
+        val questionProperties =
+            mutableMapOf<String, Any>(
+                "\$survey_questions" to survey.questions.map { it.question },
+            )
+
+        val responsesProperties =
+            responses.mapNotNull { (key, response) ->
+                response.toResponseValue()?.let { value ->
+                    key to value
+                }
+            }.toMap()
+
+        return questionProperties + responsesProperties
+    }
+
+    private fun surveyHasResponses(responses: Map<String, PostHogSurveyResponse>): Boolean {
+        return responses.values.any { it.toResponseValue() != null }
     }
 
     /**
@@ -759,12 +778,20 @@ public class PostHogSurveysIntegration(
      * Generate the property key used to store a response for a given question index.
      * For index 0 returns "$survey_response", otherwise returns "$survey_response_<index>".
      */
-    private fun getResponseKey(index: Int): String {
+    private fun getLegacyResponseKey(index: Int): String {
         return if (index == 0) {
             "\$survey_response"
         } else {
             "\$survey_response_$index"
         }
+    }
+
+    /**
+     * Generate the property key used to store a response for a given question id.
+     * Returns "$survey_response_<questionId>".
+     */
+    private fun getQuestionIdResponseKey(questionId: String): String {
+        return "\$survey_response_$questionId"
     }
 
     // Seen Survey Tracking Methods
