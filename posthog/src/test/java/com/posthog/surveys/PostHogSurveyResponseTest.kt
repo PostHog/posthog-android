@@ -43,6 +43,12 @@ internal class PostHogSurveyResponseTest {
     }
 
     @Test
+    fun `Rating response with null rating returns null`() {
+        val response = PostHogSurveyResponse.Rating(null)
+        assertNull(response.toResponseValue())
+    }
+
+    @Test
     fun `Link response with clicked true returns link clicked`() {
         val response = PostHogSurveyResponse.Link(true)
         assertEquals("link clicked", response.toResponseValue())

@@ -248,11 +248,13 @@ public class PostHogSurveysIntegration(
         val onSurveyShown: OnPostHogSurveyShown = { shownSurvey ->
             // Check if shownSurvey is originalSurvey
             if (shownSurvey.id == originalSurvey.id) {
-                val currentActiveSurvey = activeSurvey
-
-                // If currentActiveSurvey is null, set this originalSurvey as active
-                if (currentActiveSurvey == null) {
-                    setActiveSurvey(originalSurvey)
+                // If no survey is active, set this originalSurvey as active
+                synchronized(activeSurveyLock) {
+                    if (activeSurvey == null) {
+                        activeSurvey = originalSurvey
+                        activeSurveyCompleted = false
+                        currentSurveyResponses.clear()
+                    }
                 }
 
                 // Send survey shown event
@@ -260,24 +262,27 @@ public class PostHogSurveysIntegration(
 
                 // Clear up event-activated surveys if this survey has events
                 if (hasEvents(originalSurvey)) {
-                    eventActivatedSurveys.remove(originalSurvey.id)
+                    synchronized(eventActivationLock) {
+                        eventActivatedSurveys.remove(originalSurvey.id)
+                    }
                 }
             } else {
                 config.logger.log("Received a show event for a non-matching survey: ${shownSurvey.id} vs ${originalSurvey.id}")
             }
         }
 
-        val onSurveyResponse: OnPostHogSurveyResponse = { responseSurvey, questionIndex, response ->
-            // Get current active survey
-            val currentActiveSurvey = activeSurvey
+        val onSurveyResponse: OnPostHogSurveyResponse = onSurveyResponse@{ responseSurvey, questionIndex, response ->
+            // Calculate next question based on current response
+            val nextQuestion = getNextQuestion(originalSurvey, questionIndex, response)
+            var responsesToSend: Map<String, PostHogSurveyResponse>? = null
 
-            // Validate that this survey matches the currently active survey
-            if (currentActiveSurvey == null || responseSurvey.id != currentActiveSurvey.id) {
-                config.logger.log("Received a response event for a non-active survey")
-                null
-            } else {
-                // Calculate next question based on current response
-                val nextQuestion = getNextQuestion(originalSurvey, questionIndex, response)
+            synchronized(activeSurveyLock) {
+                // Validate that this survey matches the currently active survey
+                val currentActiveSurvey = activeSurvey
+                if (currentActiveSurvey == null || responseSurvey.id != currentActiveSurvey.id) {
+                    config.logger.log("Received a response event for a non-active survey")
+                    return@onSurveyResponse null
+                }
 
                 // Store the response for survey completion tracking
                 currentSurveyResponses[getLegacyResponseKey(questionIndex)] = response
@@ -290,34 +295,43 @@ public class PostHogSurveysIntegration(
 
                 // Send completion event if survey is finished
                 if (activeSurveyCompleted) {
-                    sendSurveySentEvent(originalSurvey, currentSurveyResponses)
+                    responsesToSend = currentSurveyResponses.toMap()
                 }
-
-                nextQuestion
             }
+
+            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it) }
+
+            nextQuestion
         }
 
         val onSurveyClosed: OnPostHogSurveyClosed = onSurveyClosed@{ _ ->
-            // Get current active survey and completion state
-            val currentActiveSurvey = activeSurvey
-            val surveyResponses = currentSurveyResponses.toMap()
+            var surveyResponses: Map<String, PostHogSurveyResponse> = emptyMap()
+            var wasSurveyCompleted = false
 
-            // Validate that this survey matches the currently active survey
-            if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
-                config.logger.log("[Surveys] Received a close event for a non-active survey")
-                return@onSurveyClosed
+            synchronized(activeSurveyLock) {
+                // Validate that this survey matches the currently active survey
+                val currentActiveSurvey = activeSurvey
+                if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
+                    config.logger.log("[Surveys] Received a close event for a non-active survey")
+                    return@onSurveyClosed
+                }
+
+                // Get current active survey and completion state
+                surveyResponses = currentSurveyResponses.toMap()
+                wasSurveyCompleted = activeSurveyCompleted
+
+                activeSurvey = null
+                activeSurveyCompleted = false
+                currentSurveyResponses.clear()
             }
 
             // Send survey dismissed event if survey was not completed
-            if (!activeSurveyCompleted) {
+            if (!wasSurveyCompleted) {
                 sendSurveyDismissedEvent(originalSurvey, surveyResponses)
             }
 
             // Mark survey as seen
             setSurveySeen(originalSurvey)
-
-            // Clear active survey
-            clearActiveSurvey()
 
             // Show next survey in queue after a short delay
             Thread {
@@ -608,18 +622,6 @@ public class PostHogSurveysIntegration(
      */
     private fun canAutoDisplaySurvey(survey: Survey): Boolean {
         return survey.type == SurveyType.POPOVER || survey.type == SurveyType.WIDGET
-    }
-
-    /**
-     * Sets the currently active survey.
-     * This prevents multiple surveys from being shown simultaneously.
-     */
-    private fun setActiveSurvey(survey: Survey?) {
-        synchronized(activeSurveyLock) {
-            activeSurvey = survey
-            activeSurveyCompleted = false
-            currentSurveyResponses.clear()
-        }
     }
 
     /**

@@ -229,4 +229,38 @@ internal class PostHogSurveysEventPayloadTest {
         assertNull(properties["\$survey_response_1"])
         assertNull(properties["\$survey_response_question-1"])
     }
+
+    @Test
+    fun `survey dismissed ignores null rating response`() {
+        val delegate = RecordingDelegate()
+        val (integration, postHog) = createIntegration(delegate)
+        val survey = createSurvey(id = "null-rating-survey", name = "Null Rating Survey")
+
+        integration.showSurvey(survey)
+
+        val shownSurvey = assertNotNull(delegate.shownSurvey)
+        assertNotNull(delegate.onSurveyShown).invoke(shownSurvey)
+        assertNotNull(delegate.onSurveyResponse).invoke(shownSurvey, 0, PostHogSurveyResponse.Rating(null))
+        assertNotNull(delegate.onSurveyClosed).invoke(shownSurvey)
+
+        assertEquals("survey dismissed", postHog.event)
+
+        val properties = assertNotNull(postHog.properties)
+        assertEquals(false, properties["\$survey_partially_completed"])
+        assertNull(properties["\$survey_response"])
+        assertNull(properties["\$survey_response_question-1"])
+        assertEquals(
+            listOf(
+                mapOf(
+                    "id" to "question-1",
+                    "question" to "How satisfied are you?",
+                ),
+                mapOf(
+                    "id" to "question-2",
+                    "question" to "Any additional comments?",
+                ),
+            ),
+            properties["\$survey_questions"],
+        )
+    }
 }
