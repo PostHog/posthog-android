@@ -112,6 +112,48 @@ internal class PostHogSurveysDismissedEventTest {
     }
 
     @Test
+    fun `survey sent includes legacy and question id response keys`() {
+        val delegate = RecordingDelegate()
+        val (integration, postHog) = createIntegration(delegate)
+        val survey = createSurvey(id = "sent-survey", name = "Sent Survey")
+
+        integration.showSurvey(survey)
+
+        val shownSurvey = assertNotNull(delegate.shownSurvey)
+        assertNotNull(delegate.onSurveyShown).invoke(shownSurvey)
+        assertNotNull(delegate.onSurveyResponse).invoke(shownSurvey, 0, PostHogSurveyResponse.Text("Great product!"))
+        assertNotNull(delegate.onSurveyResponse).invoke(shownSurvey, 1, PostHogSurveyResponse.Text("Keep it up!"))
+
+        assertEquals("survey sent", postHog.event)
+
+        val properties = assertNotNull(postHog.properties)
+        assertEquals("Sent Survey", properties["\$survey_name"])
+        assertEquals("sent-survey", properties["\$survey_id"])
+        assertEquals("Great product!", properties["\$survey_response"])
+        assertEquals("Keep it up!", properties["\$survey_response_1"])
+        assertEquals("Great product!", properties["\$survey_response_question-1"])
+        assertEquals("Keep it up!", properties["\$survey_response_question-2"])
+        assertEquals(
+            listOf(
+                mapOf(
+                    "id" to "question-1",
+                    "question" to "How satisfied are you?",
+                    "response" to "Great product!",
+                ),
+                mapOf(
+                    "id" to "question-2",
+                    "question" to "Any additional comments?",
+                    "response" to "Keep it up!",
+                ),
+            ),
+            properties["\$survey_questions"],
+        )
+
+        val setProperties = properties["\$set"] as? Map<*, *>
+        assertEquals(true, setProperties?.get("\$survey_responded/sent-survey"))
+    }
+
+    @Test
     fun `survey dismissed includes responses and marks partial completion when there are answers`() {
         val delegate = RecordingDelegate()
         val (integration, postHog) = createIntegration(delegate)
