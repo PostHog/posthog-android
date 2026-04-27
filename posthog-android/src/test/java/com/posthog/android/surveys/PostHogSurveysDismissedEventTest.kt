@@ -133,7 +133,17 @@ internal class PostHogSurveysDismissedEventTest {
         assertEquals("Great product!", properties["\$survey_response"])
         assertEquals("Great product!", properties["\$survey_response_question-1"])
         assertEquals(
-            listOf("How satisfied are you?", "Any additional comments?"),
+            listOf(
+                mapOf(
+                    "id" to "question-1",
+                    "question" to "How satisfied are you?",
+                    "response" to "Great product!",
+                ),
+                mapOf(
+                    "id" to "question-2",
+                    "question" to "Any additional comments?",
+                ),
+            ),
             properties["\$survey_questions"],
         )
 
@@ -159,7 +169,16 @@ internal class PostHogSurveysDismissedEventTest {
         assertEquals(false, properties["\$survey_partially_completed"])
         assertNull(properties["\$survey_response"])
         assertEquals(
-            listOf("How satisfied are you?", "Any additional comments?"),
+            listOf(
+                mapOf(
+                    "id" to "question-1",
+                    "question" to "How satisfied are you?",
+                ),
+                mapOf(
+                    "id" to "question-2",
+                    "question" to "Any additional comments?",
+                ),
+            ),
             properties["\$survey_questions"],
         )
 

@@ -700,11 +700,6 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
     ): Map<String, Any> {
-        val questionProperties =
-            mutableMapOf<String, Any>(
-                "\$survey_questions" to survey.questions.map { it.question },
-            )
-
         val responsesProperties =
             responses.mapNotNull { (key, response) ->
                 response.toResponseValue()?.let { value ->
@@ -712,7 +707,20 @@ public class PostHogSurveysIntegration(
                 }
             }.toMap()
 
-        return questionProperties + responsesProperties
+        val surveyQuestions =
+            survey.questions.mapIndexed { index, question ->
+                mutableMapOf<String, Any>().apply {
+                    question.id?.let { put("id", it) }
+                    question.question?.let { put("question", it) }
+
+                    val responseKey =
+                        question.id?.takeIf { it.isNotEmpty() }?.let(::getQuestionIdResponseKey)
+                            ?: getLegacyResponseKey(index)
+                    responsesProperties[responseKey]?.let { put("response", it) }
+                }
+            }
+
+        return mapOf("\$survey_questions" to surveyQuestions) + responsesProperties
     }
 
     private fun surveyHasResponses(responses: Map<String, PostHogSurveyResponse>): Boolean {
