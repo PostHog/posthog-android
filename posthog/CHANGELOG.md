@@ -1,5 +1,11 @@
 ## Next
 
+## 6.13.1
+
+### Patch Changes
+
+- ed31712: Include survey responses on Android dismissal events, including question id based response keys and partial completion state. Null rating responses are ignored instead of being serialized as "null".
+
 ## 6.13.0
 
 ### Minor Changes
