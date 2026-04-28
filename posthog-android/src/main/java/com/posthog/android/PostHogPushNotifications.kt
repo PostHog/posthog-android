@@ -71,6 +71,7 @@ public object PostHogPushNotifications {
      */
     @JvmStatic
     @JvmOverloads
+    @Suppress("InvalidFragmentVersionForActivityResult")
     public fun registerPermissionLauncher(
         activity: ComponentActivity,
         onPermissionResult: ((Boolean) -> Unit)? = null,
