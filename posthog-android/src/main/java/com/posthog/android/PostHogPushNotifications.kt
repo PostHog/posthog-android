@@ -30,7 +30,9 @@ public class PostHogPushPermissionLauncher internal constructor(
             PostHogPushNotifications.fetchAndRegisterFcmToken(activity)
             return
         }
-        permissionLauncher?.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher?.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 }
 
