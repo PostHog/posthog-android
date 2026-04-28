@@ -173,6 +173,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getStoragePrefix ()Ljava/lang/String;
 	public final fun getSurveys ()Z
 	public final fun getSurveysConfig ()Lcom/posthog/surveys/PostHogSurveysConfig;
+	public final synthetic fun getTracingHeaders ()Ljava/util/List;
 	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
@@ -214,6 +215,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setStoragePrefix (Ljava/lang/String;)V
 	public final fun setSurveys (Z)V
 	public final fun setSurveysConfig (Lcom/posthog/surveys/PostHogSurveysConfig;)V
+	public final fun setTracingHeaders (Ljava/util/List;)V
 }
 
 public final class com/posthog/PostHogConfig$Companion {

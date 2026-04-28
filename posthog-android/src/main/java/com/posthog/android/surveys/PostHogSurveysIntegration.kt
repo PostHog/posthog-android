@@ -248,11 +248,13 @@ public class PostHogSurveysIntegration(
         val onSurveyShown: OnPostHogSurveyShown = { shownSurvey ->
             // Check if shownSurvey is originalSurvey
             if (shownSurvey.id == originalSurvey.id) {
-                val currentActiveSurvey = activeSurvey
-
-                // If currentActiveSurvey is null, set this originalSurvey as active
-                if (currentActiveSurvey == null) {
-                    setActiveSurvey(originalSurvey)
+                // If no survey is active, set this originalSurvey as active
+                synchronized(activeSurveyLock) {
+                    if (activeSurvey == null) {
+                        activeSurvey = originalSurvey
+                        activeSurveyCompleted = false
+                        currentSurveyResponses.clear()
+                    }
                 }
 
                 // Send survey shown event
@@ -260,60 +262,76 @@ public class PostHogSurveysIntegration(
 
                 // Clear up event-activated surveys if this survey has events
                 if (hasEvents(originalSurvey)) {
-                    eventActivatedSurveys.remove(originalSurvey.id)
+                    synchronized(eventActivationLock) {
+                        eventActivatedSurveys.remove(originalSurvey.id)
+                    }
                 }
             } else {
                 config.logger.log("Received a show event for a non-matching survey: ${shownSurvey.id} vs ${originalSurvey.id}")
             }
         }
 
-        val onSurveyResponse: OnPostHogSurveyResponse = { responseSurvey, questionIndex, response ->
-            // Get current active survey
-            val currentActiveSurvey = activeSurvey
+        val onSurveyResponse: OnPostHogSurveyResponse = onSurveyResponse@{ responseSurvey, questionIndex, response ->
+            // Calculate next question based on current response
+            val nextQuestion = getNextQuestion(originalSurvey, questionIndex, response)
+            var responsesToSend: Map<String, PostHogSurveyResponse>? = null
 
-            // Validate that this survey matches the currently active survey
-            if (currentActiveSurvey == null || responseSurvey.id != currentActiveSurvey.id) {
-                config.logger.log("Received a response event for a non-active survey")
-                null
-            } else {
-                // Calculate next question based on current response
-                val nextQuestion = getNextQuestion(originalSurvey, questionIndex, response)
+            synchronized(activeSurveyLock) {
+                // Validate that this survey matches the currently active survey
+                val currentActiveSurvey = activeSurvey
+                if (currentActiveSurvey == null || responseSurvey.id != currentActiveSurvey.id) {
+                    config.logger.log("Received a response event for a non-active survey")
+                    return@onSurveyResponse null
+                }
 
                 // Store the response for survey completion tracking
-                currentSurveyResponses[getResponseKey(questionIndex)] = response
+                currentSurveyResponses[getLegacyResponseKey(questionIndex)] = response
+                originalSurvey.questions.getOrNull(questionIndex)?.id?.takeIf { it.isNotEmpty() }?.let { questionId ->
+                    currentSurveyResponses[getQuestionIdResponseKey(questionId)] = response
+                }
 
                 // Check if survey is completed (needed on close event)
                 activeSurveyCompleted = nextQuestion.isSurveyCompleted
 
                 // Send completion event if survey is finished
                 if (activeSurveyCompleted) {
-                    sendSurveySentEvent(originalSurvey, currentSurveyResponses)
+                    responsesToSend = currentSurveyResponses.toMap()
                 }
-
-                nextQuestion
             }
+
+            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it) }
+
+            nextQuestion
         }
 
         val onSurveyClosed: OnPostHogSurveyClosed = onSurveyClosed@{ _ ->
-            // Get current active survey and completion state
-            val currentActiveSurvey = activeSurvey
+            var surveyResponses: Map<String, PostHogSurveyResponse> = emptyMap()
+            var wasSurveyCompleted = false
 
-            // Validate that this survey matches the currently active survey
-            if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
-                config.logger.log("[Surveys] Received a close event for a non-active survey")
-                return@onSurveyClosed
+            synchronized(activeSurveyLock) {
+                // Validate that this survey matches the currently active survey
+                val currentActiveSurvey = activeSurvey
+                if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
+                    config.logger.log("[Surveys] Received a close event for a non-active survey")
+                    return@onSurveyClosed
+                }
+
+                // Get current active survey and completion state
+                surveyResponses = currentSurveyResponses.toMap()
+                wasSurveyCompleted = activeSurveyCompleted
+
+                activeSurvey = null
+                activeSurveyCompleted = false
+                currentSurveyResponses.clear()
             }
 
             // Send survey dismissed event if survey was not completed
-            if (!activeSurveyCompleted) {
-                sendSurveyDismissedEvent(originalSurvey)
+            if (!wasSurveyCompleted) {
+                sendSurveyDismissedEvent(originalSurvey, surveyResponses)
             }
 
             // Mark survey as seen
             setSurveySeen(originalSurvey)
-
-            // Clear active survey
-            clearActiveSurvey()
 
             // Show next survey in queue after a short delay
             Thread {
@@ -607,18 +625,6 @@ public class PostHogSurveysIntegration(
     }
 
     /**
-     * Sets the currently active survey.
-     * This prevents multiple surveys from being shown simultaneously.
-     */
-    private fun setActiveSurvey(survey: Survey?) {
-        synchronized(activeSurveyLock) {
-            activeSurvey = survey
-            activeSurveyCompleted = false
-            currentSurveyResponses.clear()
-        }
-    }
-
-    /**
      * Clears the active survey when it's completed or dismissed.
      * This allows the next survey to be shown.
      */
@@ -652,26 +658,14 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
     ) {
-        val questionProperties =
-            mutableMapOf<String, Any>(
-                "\$survey_questions" to survey.questions.map { it.question },
-            )
-
-        // Add survey interaction property for "responded"
-        questionProperties["\$set"] =
-            mapOf(
-                getSurveyInteractionProperty(survey, "responded") to true,
-            )
-
-        // Convert responses to simple values
-        val responsesProperties =
-            responses.mapNotNull { (key, response) ->
-                response.toResponseValue()?.let { value ->
-                    key to value
-                }
-            }.toMap()
-
-        val additionalProperties = questionProperties + responsesProperties
+        val additionalProperties =
+            buildSurveyResponseProperties(survey, responses) +
+                mapOf(
+                    "\$set" to
+                        mapOf(
+                            getSurveyInteractionProperty(survey, "responded") to true,
+                        ),
+                )
 
         sendSurveyEvent(
             event = "survey sent",
@@ -683,21 +677,56 @@ public class PostHogSurveysIntegration(
     /**
      * Sends a "survey dismissed" event to PostHog instance
      */
-    private fun sendSurveyDismissedEvent(survey: Survey) {
+    private fun sendSurveyDismissedEvent(
+        survey: Survey,
+        responses: Map<String, PostHogSurveyResponse>,
+    ) {
         val additionalProperties =
-            mapOf(
-                "\$survey_questions" to survey.questions.map { it.question },
-                "\$set" to
-                    mapOf(
-                        getSurveyInteractionProperty(survey, "dismissed") to true,
-                    ),
-            )
+            buildSurveyResponseProperties(survey, responses) +
+                mapOf(
+                    "\$survey_partially_completed" to surveyHasResponses(responses),
+                    "\$set" to
+                        mapOf(
+                            getSurveyInteractionProperty(survey, "dismissed") to true,
+                        ),
+                )
 
         sendSurveyEvent(
             event = "survey dismissed",
             survey = survey,
             additionalProperties = additionalProperties,
         )
+    }
+
+    private fun buildSurveyResponseProperties(
+        survey: Survey,
+        responses: Map<String, PostHogSurveyResponse>,
+    ): Map<String, Any> {
+        val responsesProperties =
+            responses.mapNotNull { (key, response) ->
+                response.toResponseValue()?.let { value ->
+                    key to value
+                }
+            }.toMap()
+
+        val surveyQuestions =
+            survey.questions.mapIndexed { index, question ->
+                mutableMapOf<String, Any>().apply {
+                    question.id?.let { put("id", it) }
+                    question.question?.let { put("question", it) }
+
+                    val responseKey =
+                        question.id?.takeIf { it.isNotEmpty() }?.let(::getQuestionIdResponseKey)
+                            ?: getLegacyResponseKey(index)
+                    responsesProperties[responseKey]?.let { put("response", it) }
+                }
+            }
+
+        return mapOf("\$survey_questions" to surveyQuestions) + responsesProperties
+    }
+
+    private fun surveyHasResponses(responses: Map<String, PostHogSurveyResponse>): Boolean {
+        return responses.values.any { it.toResponseValue() != null }
     }
 
     /**
@@ -759,12 +788,20 @@ public class PostHogSurveysIntegration(
      * Generate the property key used to store a response for a given question index.
      * For index 0 returns "$survey_response", otherwise returns "$survey_response_<index>".
      */
-    private fun getResponseKey(index: Int): String {
+    private fun getLegacyResponseKey(index: Int): String {
         return if (index == 0) {
             "\$survey_response"
         } else {
             "\$survey_response_$index"
         }
+    }
+
+    /**
+     * Generate the property key used to store a response for a given question id.
+     * Returns "$survey_response_<questionId>".
+     */
+    private fun getQuestionIdResponseKey(questionId: String): String {
+        return "\$survey_response_$questionId"
     }
 
     // Seen Survey Tracking Methods
