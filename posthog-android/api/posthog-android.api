@@ -33,6 +33,19 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public final fun setSessionReplayConfig (Lcom/posthog/android/replay/PostHogSessionReplayConfig;)V
 }
 
+public final class com/posthog/android/PostHogPushNotifications {
+	public static final field INSTANCE Lcom/posthog/android/PostHogPushNotifications;
+	public static final fun hasPermission (Landroid/app/Activity;)Z
+	public static final fun registerPermissionLauncher (Landroidx/activity/ComponentActivity;)Lcom/posthog/android/PostHogPushPermissionLauncher;
+	public static final fun registerPermissionLauncher (Landroidx/activity/ComponentActivity;Lkotlin/jvm/functions/Function1;)Lcom/posthog/android/PostHogPushPermissionLauncher;
+	public static synthetic fun registerPermissionLauncher$default (Landroidx/activity/ComponentActivity;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/posthog/android/PostHogPushPermissionLauncher;
+	public static final fun registerToken (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class com/posthog/android/PostHogPushPermissionLauncher {
+	public final fun launch ()V
+}
+
 public final class com/posthog/android/internal/MainHandler {
 	public fun <init> ()V
 	public fun <init> (Landroid/os/Looper;)V
