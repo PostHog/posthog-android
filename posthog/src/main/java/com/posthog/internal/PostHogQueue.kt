@@ -481,7 +481,7 @@ public class PostHogQueue(
         }
     }
 
-    public val dequeList: List<File>
+    val dequeList: List<File>
         @PostHogVisibleForTesting
         get() {
             val tempFiles: List<File>
