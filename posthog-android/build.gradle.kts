@@ -93,12 +93,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
-    implementation("androidx.activity:activity-ktx:${PosthogBuildConfig.Dependencies.ANDROIDX_ACTIVITY}")
     implementation("com.squareup.curtains:curtains:${PosthogBuildConfig.Dependencies.CURTAINS}")
 
     // compile only
     compileOnly("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}")
-    compileOnly("com.google.firebase:firebase-messaging:${PosthogBuildConfig.Dependencies.FIREBASE_MESSAGING}")
 
     // compatibility
     signature("org.codehaus.mojo.signature:java18:${PosthogBuildConfig.Plugins.SIGNATURE_JAVA18}@signature")

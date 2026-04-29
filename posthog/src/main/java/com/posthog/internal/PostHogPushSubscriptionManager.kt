@@ -168,6 +168,11 @@ internal class PostHogPushSubscriptionManager(
         }
     }
 
+    fun close() {
+        cancelTimer()
+        retryCount = 0
+    }
+
     private fun isRetryable(e: Throwable): Boolean {
         return when (e) {
             is PostHogApiError -> e.statusCode < 400 || e.statusCode in RETRYABLE_STATUS_CODES

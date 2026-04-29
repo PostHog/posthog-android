@@ -18,7 +18,6 @@ plugins {
     id("org.jetbrains.kotlinx.binary-compatibility-validator") version PosthogBuildConfig.Plugins.API_VALIDATOR apply true
     id("com.github.gmazzo.buildconfig") version PosthogBuildConfig.Plugins.BUILD_CONFIG apply false
     id("ru.vyarus.animalsniffer") version PosthogBuildConfig.Plugins.ANIMAL_SNIFFER apply false
-    id("com.google.gms.google-services") version "4.4.2" apply false
 
     // TODO: add jacoco/codecov, gradle-versions-plugin
 }

@@ -313,6 +313,7 @@ public class PostHog private constructor(
                 queue?.stop()
                 replayQueue?.stop()
                 api = null
+                pushSubscriptionManager?.close()
                 pushSubscriptionManager = null
 
                 featureFlagsCalled.clear()
