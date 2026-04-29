@@ -148,6 +148,11 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
      */
+    @Deprecated(
+        message =
+            "Prefer evaluateFlags(distinctId).isEnabled(key) — fewer /flags requests when " +
+                "the same identity is consulted multiple times. Will be removed in the next major.",
+    )
     public fun isFeatureEnabled(
         distinctId: String,
         key: String,
@@ -163,10 +168,14 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
+    )
     public fun isFeatureEnabled(
         distinctId: String,
         key: String,
     ): Boolean {
+        @Suppress("DEPRECATION")
         return isFeatureEnabled(
             distinctId,
             key,
@@ -184,11 +193,15 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
+    )
     public fun isFeatureEnabled(
         distinctId: String,
         key: String,
         defaultValue: Boolean,
     ): Boolean {
+        @Suppress("DEPRECATION")
         return isFeatureEnabled(
             distinctId,
             key,
@@ -206,11 +219,15 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
+    )
     public fun isFeatureEnabled(
         distinctId: String,
         key: String,
         options: PostHogFeatureFlagOptions,
     ): Boolean {
+        @Suppress("DEPRECATION")
         return isFeatureEnabled(
             distinctId,
             key,
@@ -228,6 +245,9 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlag(
         distinctId: String,
         key: String,
@@ -244,10 +264,14 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @return the feature flag value or null if not found
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlag(
         distinctId: String,
         key: String,
     ): Any? {
+        @Suppress("DEPRECATION")
         return getFeatureFlag(
             distinctId,
             key,
@@ -265,11 +289,15 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlag(
         distinctId: String,
         key: String,
         options: PostHogFeatureFlagOptions,
     ): Any? {
+        @Suppress("DEPRECATION")
         return getFeatureFlag(
             distinctId,
             key,
@@ -287,11 +315,15 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlag(
         distinctId: String,
         key: String,
         defaultValue: Any?,
     ): Any? {
+        @Suppress("DEPRECATION")
         return getFeatureFlag(
             distinctId,
             key,
@@ -309,6 +341,9 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlagPayload(
         distinctId: String,
         key: String,
@@ -325,10 +360,14 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @return the feature flag payload or null if not found
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlagPayload(
         distinctId: String,
         key: String,
     ): Any? {
+        @Suppress("DEPRECATION")
         return getFeatureFlagPayload(
             distinctId,
             key,
@@ -346,11 +385,15 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlagPayload(
         distinctId: String,
         key: String,
         options: PostHogFeatureFlagOptions,
     ): Any? {
+        @Suppress("DEPRECATION")
         return getFeatureFlagPayload(
             distinctId,
             key,
@@ -368,11 +411,15 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @param defaultValue the default value if not found
      */
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
+    )
     public fun getFeatureFlagPayload(
         distinctId: String,
         key: String,
         defaultValue: Any?,
     ): Any? {
+        @Suppress("DEPRECATION")
         return getFeatureFlagPayload(
             distinctId,
             key,
@@ -394,6 +441,11 @@ public sealed interface PostHogInterface {
      * @param sendFeatureFlagEvent whether to send the $feature_flag_called event, or null to use config default
      * @return FeatureFlagResult if the flag exists, null otherwise
      */
+    @Deprecated(
+        message =
+            "Prefer evaluateFlags(distinctId) and read flag values + payload from the snapshot. " +
+                "Will be removed in the next major.",
+    )
     public fun getFeatureFlagResult(
         distinctId: String,
         key: String,
@@ -410,10 +462,16 @@ public sealed interface PostHogInterface {
      * @param key the Key
      * @return FeatureFlagResult if the flag exists, null otherwise
      */
+    @Deprecated(
+        message =
+            "Prefer evaluateFlags(distinctId) and read flag values + payload from the snapshot. " +
+                "Will be removed in the next major.",
+    )
     public fun getFeatureFlagResult(
         distinctId: String,
         key: String,
     ): FeatureFlagResult? {
+        @Suppress("DEPRECATION")
         return getFeatureFlagResult(
             distinctId,
             key,
@@ -432,11 +490,17 @@ public sealed interface PostHogInterface {
      * @param options the feature flag result options containing groups, personProperties, groupProperties, and sendFeatureFlagEvent
      * @return FeatureFlagResult if the flag exists, null otherwise
      */
+    @Deprecated(
+        message =
+            "Prefer evaluateFlags(distinctId) and read flag values + payload from the snapshot. " +
+                "Will be removed in the next major.",
+    )
     public fun getFeatureFlagResult(
         distinctId: String,
         key: String,
         options: PostHogFeatureFlagResultOptions,
     ): FeatureFlagResult? {
+        @Suppress("DEPRECATION")
         return getFeatureFlagResult(
             distinctId,
             key,

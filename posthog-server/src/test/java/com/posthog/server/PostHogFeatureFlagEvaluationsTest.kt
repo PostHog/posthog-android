@@ -61,6 +61,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         requestId: String? = "req-1",
         evaluatedAt: Long? = 1_700_000_000_000L,
         definitionsLoadedAt: Long? = null,
+        responseError: String? = null,
     ) = PostHogFeatureFlagEvaluations(
         distinctId = distinctId,
         flagMap = flags,
@@ -68,6 +69,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         requestId = requestId,
         evaluatedAt = evaluatedAt,
         definitionsLoadedAt = definitionsLoadedAt,
+        responseError = responseError,
         host = host,
     )
 
@@ -298,5 +300,37 @@ internal class PostHogFeatureFlagEvaluationsTest {
         val snapshot = snapshot(host = host, flags = mapOf("known" to flag("known")))
 
         assertNull(snapshot.getFlag("missing"))
+    }
+
+    @Test
+    fun `response-level error is propagated to feature_flag_called events`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags = mapOf("a" to flag("a")),
+                responseError = "errors_while_computing_flags,quota_limited",
+            )
+
+        snapshot.isEnabled("a")
+
+        val props = host.captures.single().properties
+        assertEquals("errors_while_computing_flags,quota_limited", props["\$feature_flag_error"])
+    }
+
+    @Test
+    fun `null response-level error means no feature_flag_error key`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags = mapOf("a" to flag("a")),
+                responseError = null,
+            )
+
+        snapshot.isEnabled("a")
+
+        val props = host.captures.single().properties
+        assertFalse(props.containsKey("\$feature_flag_error"))
     }
 }

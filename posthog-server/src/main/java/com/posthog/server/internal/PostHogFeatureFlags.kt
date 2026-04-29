@@ -728,6 +728,7 @@ internal class PostHogFeatureFlags(
                 requestId = entry.requestId,
                 evaluatedAt = entry.evaluatedAt,
                 definitionsLoadedAt = definitionsLoadedAt,
+                responseError = entry.error,
             )
         }
 
@@ -746,6 +747,7 @@ internal class PostHogFeatureFlags(
                 requestId = null,
                 evaluatedAt = null,
                 definitionsLoadedAt = definitionsLoadedAt,
+                responseError = null,
             )
         }
 
@@ -756,6 +758,7 @@ internal class PostHogFeatureFlags(
                 requestId = null,
                 evaluatedAt = null,
                 definitionsLoadedAt = definitionsLoadedAt,
+                responseError = null,
             )
         }
 
@@ -775,6 +778,7 @@ internal class PostHogFeatureFlags(
             requestId = entry?.requestId,
             evaluatedAt = entry?.evaluatedAt,
             definitionsLoadedAt = definitionsLoadedAt,
+            responseError = entry?.error,
         )
     }
 

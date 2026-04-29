@@ -11,6 +11,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@Suppress("DEPRECATION")
 internal class PostHogEvaluateFlagsTest {
     private fun drainRequests(server: MockWebServer): List<RecordedRequest> {
         val requests = mutableListOf<RecordedRequest>()
@@ -294,6 +295,68 @@ internal class PostHogEvaluateFlagsTest {
             requests.any { it.path?.contains("/flags") == true && !it.path!!.contains("local_evaluation") },
             "local evaluation should not hit /flags",
         )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `quotaLimited response propagates feature_flag_error to snapshot events`() {
+        val flagsBody = createFlagsResponseWithQuotaLimited(flagKey = "a", enabled = true)
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(flagsBody))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .flushAt(1)
+                    .build(),
+            )
+
+        val snapshot = postHog.evaluateFlags("user-1")
+        snapshot.isEnabled("a")
+        postHog.flush()
+
+        val requests = drainRequests(mockServer)
+        val batch = requests.first { it.path?.contains("/batch") == true }.parseBatch()
+        val props = batch.eventProperties("\$feature_flag_called")
+        assertEquals("quota_limited", props["\$feature_flag_error"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `capture with appendFeatureFlags=true still attaches feature properties (deprecated path keeps working)`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createFlagsResponse("a", enabled = true)))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .flushAt(1)
+                    .build(),
+            )
+
+        // The runtime DEPRECATION log fires through the core PostHogConfig logger; we don't have a
+        // public hook to swap that logger in the server config, so we assert behavior instead:
+        // the deprecated path still works end-to-end and attaches the same properties.
+        postHog.capture(
+            distinctId = "user-1",
+            event = "page_view",
+            appendFeatureFlags = true,
+        )
+
+        val requests = drainRequests(mockServer)
+        val batch = requests.first { it.path?.contains("/batch") == true }.parseBatch()
+        val props = batch.eventProperties("page_view")
+        assertEquals(true, props["\$feature/a"])
 
         postHog.close()
         mockServer.shutdown()

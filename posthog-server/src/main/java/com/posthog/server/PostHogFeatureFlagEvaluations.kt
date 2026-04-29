@@ -24,6 +24,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     public val requestId: String?,
     public val evaluatedAt: Long?,
     public val definitionsLoadedAt: Long?,
+    private val responseError: String?,
     private val host: EvaluationsHost,
     initialAccessed: Set<String> = emptySet(),
 ) {
@@ -124,6 +125,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
             requestId = requestId,
             evaluatedAt = evaluatedAt,
             definitionsLoadedAt = definitionsLoadedAt,
+            responseError = responseError,
             host = host,
             initialAccessed = emptySet(),
         )
@@ -145,6 +147,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
         requestId?.let { props["\$feature_flag_request_id"] = it }
         evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
         definitionsLoadedAt?.let { props["\$feature_flag_definitions_loaded_at"] = it }
+        responseError?.let { props["\$feature_flag_error"] = it }
         if (locallyEvaluated[key] == true) {
             props["locally_evaluated"] = true
         }
@@ -166,6 +169,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
                 requestId = null,
                 evaluatedAt = null,
                 definitionsLoadedAt = null,
+                responseError = null,
                 host = host,
             )
         }

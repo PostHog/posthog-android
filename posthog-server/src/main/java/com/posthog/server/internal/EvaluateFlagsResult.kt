@@ -12,4 +12,10 @@ internal data class EvaluateFlagsResult(
     val requestId: String?,
     val evaluatedAt: Long?,
     val definitionsLoadedAt: Long?,
+    /**
+     * Combined response-level error string (e.g. "errors_while_computing_flags",
+     * "quota_limited", or both joined by ","). Propagated to `$feature_flag_error` on snapshot
+     * events so they match what the per-flag accessor path emits.
+     */
+    val responseError: String?,
 )

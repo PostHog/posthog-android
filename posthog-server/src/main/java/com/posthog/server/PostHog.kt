@@ -6,6 +6,7 @@ import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
 import com.posthog.server.internal.PostHogFeatureFlags
 
+@Suppress("DEPRECATION")
 public class PostHog : PostHogStateless(), PostHogInterface {
     @Volatile
     private var serverConfig: PostHogConfig? = null
@@ -81,7 +82,14 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                     }
                     mergeFeatureFlagPropertiesFromSnapshot(properties, flags)
                 }
-                appendFeatureFlags ->
+                appendFeatureFlags -> {
+                    getConfig<com.posthog.PostHogConfig>()?.logger?.log(
+                        "DEPRECATION: capture(appendFeatureFlags = true) is deprecated and will be " +
+                            "removed in the next major. Call evaluateFlags(distinctId) once and pass the " +
+                            "snapshot via capture(flags = …) instead — that path attaches " +
+                            "\$feature/<key> properties without a redundant /flags request and lets you " +
+                            "scope which flags to attach via flags.onlyAccessed() or flags.only(...).",
+                    )
                     mergeFeatureFlagProperties(
                         distinctId = distinctId,
                         groups = groups,
@@ -89,6 +97,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                         groupProperties = null,
                         properties = properties,
                     )
+                }
                 else -> properties
             }
 
@@ -103,6 +112,9 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         )
     }
 
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
+    )
     override fun isFeatureEnabled(
         distinctId: String,
         key: String,
@@ -121,6 +133,9 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         )
     }
 
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
+    )
     override fun getFeatureFlag(
         distinctId: String,
         key: String,
@@ -139,6 +154,9 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         )
     }
 
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
+    )
     override fun getFeatureFlagPayload(
         distinctId: String,
         key: String,
@@ -157,6 +175,11 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         )
     }
 
+    @Deprecated(
+        message =
+            "Prefer evaluateFlags(distinctId) and read flag values + payload from the snapshot. " +
+                "Will be removed in the next major.",
+    )
     override fun getFeatureFlagResult(
         distinctId: String,
         key: String,
@@ -302,6 +325,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             requestId = result.requestId,
             evaluatedAt = result.evaluatedAt,
             definitionsLoadedAt = result.definitionsLoadedAt,
+            responseError = result.responseError,
             host = evaluationsHost,
         )
     }
