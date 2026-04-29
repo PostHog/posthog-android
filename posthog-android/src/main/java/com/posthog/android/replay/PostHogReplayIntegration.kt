@@ -400,6 +400,7 @@ public class PostHogReplayIntegration(
 
         // Wire up as buffer delegate for the replay queue
         replayQueue = config.replayQueueHolder
+        replayQueue?.clearBuffer()
         replayQueue?.bufferDelegate = this
 
         // Load cached minimum duration from remote config (if available)
@@ -1721,7 +1722,7 @@ public class PostHogReplayIntegration(
         // Check if this session has been activated
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
         return activatedSession != currentSessionId
-	}
+    }
 
     // MARK: - PostHogReplayBufferDelegate
 
@@ -1741,7 +1742,7 @@ public class PostHogReplayIntegration(
         if (minimumDurationMs == null || minimumDurationMs <= 0) {
             // No minimum duration configured: should not be buffering, migrate immediately.
             synchronized(bufferingLock) { hasPassedMinimumDuration = true }
-            replayQueue.migrateBufferToQueue()
+            migrateBufferToQueueOnBackgroundThread(replayQueue)
             return
         }
 
@@ -1757,7 +1758,21 @@ public class PostHogReplayIntegration(
             )
             // Flip state before migration so new snapshots don't keep entering the buffer during long-running migrations.
             synchronized(bufferingLock) { hasPassedMinimumDuration = true }
-            replayQueue.migrateBufferToQueue()
+            migrateBufferToQueueOnBackgroundThread(replayQueue)
+        }
+    }
+
+    private fun migrateBufferToQueueOnBackgroundThread(replayQueue: PostHogReplayQueue) {
+        try {
+            executor.submit {
+                try {
+                    replayQueue.migrateBufferToQueue()
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay migrateBufferToQueue failed: $e.")
+                }
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay scheduling migrateBufferToQueue failed: $e.")
         }
     }
 

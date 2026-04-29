@@ -112,8 +112,8 @@ public class PostHogRemoteConfig(
      */
     @Volatile
     private var sessionRecordingEventTriggers: Set<String>? = null
-	
-	/**
+
+    /**
      * The minimum recording duration in milliseconds.
      * When configured, session replay snapshots are buffered locally until
      * the session reaches this duration threshold.
@@ -377,7 +377,7 @@ public class PostHogRemoteConfig(
         @Suppress("UNCHECKED_CAST")
         val triggers = (eventTriggers as? List<String>) ?: return null
         return triggers.takeIf { it.isNotEmpty() }?.toSet()
-	}
+    }
 
     /**
      * Parses and validates a minimum duration value which may come as a Number (from the API JSON)
@@ -396,7 +396,7 @@ public class PostHogRemoteConfig(
             return null
         }
         return milliseconds
-    }	
+    }
 
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
@@ -984,7 +984,7 @@ public class PostHogRemoteConfig(
      */
     public fun getEventTriggers(): Set<String>? = sessionRecordingEventTriggers
 
-	/**
+    /**
      * Returns the current minimum recording duration in milliseconds, or null if not set.
      * When set, session replay snapshots should be buffered until the session
      * reaches this duration.

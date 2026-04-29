@@ -15,8 +15,9 @@ internal interface PostHogReplayBufferDelegate {
 
     /**
      * Called after a snapshot was added to the buffer.
-     * The delegate should check threshold conditions and call
-     * `replayQueue.migrateBufferToQueue()` when the minimum duration has been met.
+     * The delegate should check threshold conditions and schedule
+     * `replayQueue.migrateBufferToQueue()` on a background thread when
+     * the minimum duration has been met.
      */
     fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue)
 }
