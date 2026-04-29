@@ -69,6 +69,12 @@ public interface PostHogInterface : PostHogCoreInterface {
     ): Any?
 
     /**
+     * Returns list of all feature flag result containing both value and payload.
+     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     */
+    public fun getAllFeatureFlags(): List<FeatureFlagResult>?
+
+    /**
      * Returns the feature flag payload
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
@@ -155,6 +161,15 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun distinctId(): String
 
     /**
+     * Returns the stable device identifier used for device-level feature flag bucketing.
+     * This ID persists across [identify] and [reset] calls, only changing on a fresh
+     * app install, manual cache clearing, or OS-initiated storage cleanup.
+     *
+     * @return The device ID, or an empty string if not yet initialized
+     */
+    public fun getDeviceId(): String
+
+    /**
      * Starts a session
      * The SDK will automatically start a session when you call [setup]
      * On Android, the SDK will automatically start a session when the app is in the foreground
@@ -182,7 +197,11 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Starts session replay.
-     * This method will be NoOp if session replay is disabled in your project settings
+     * This method will be NoOp if session replay is disabled in your project settings.
+     *
+     * Note: This method respects ingestion controls configured in your project settings.
+     * If sampling is configured and the session is not sampled, recording will not start.
+     * If event triggers are configured, recording will not start until a matching event is captured.
      *
      * Android only.
      *

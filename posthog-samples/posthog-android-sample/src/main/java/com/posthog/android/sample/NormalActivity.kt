@@ -1,5 +1,6 @@
 package com.posthog.android.sample
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.Toast
@@ -22,6 +23,11 @@ class NormalActivity : ComponentActivity() {
 
 //        val webview = findViewById<WebView>(R.id.webview)
 //        webview.loadUrl("https://www.google.com")
+
+        val sessionReplayButton = findViewById<Button>(R.id.sessionReplayButton)
+        sessionReplayButton.setOnClickListener {
+            startActivity(Intent(this, SessionReplayActivity::class.java))
+        }
 
         val button = findViewById<Button>(R.id.button)
 //        val editText = findViewById<EditText>(R.id.editText)

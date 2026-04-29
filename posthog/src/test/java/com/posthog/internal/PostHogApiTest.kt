@@ -101,7 +101,7 @@ internal class PostHogApiTest {
 
         val sut = getSut(host = url.toString())
 
-        val response = sut.flags("distinctId", anonymousId = "anonId", emptyMap())
+        val response = sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
 
         val request = http.takeRequest()
 
@@ -123,7 +123,7 @@ internal class PostHogApiTest {
 
         val exc =
             assertThrows(PostHogApiError::class.java) {
-                sut.flags("distinctId", anonymousId = "anonId", emptyMap())
+                sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
             }
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)
@@ -383,7 +383,7 @@ internal class PostHogApiTest {
 
         val sut = getSut(host = url.toString(), debug = true, logger = logger)
 
-        sut.flags("distinctId", anonymousId = "anonId", emptyMap())
+        sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
 
         assertTrue(
             logger.messages.any { it.contains("Request headers for") && it.contains("/flags") },

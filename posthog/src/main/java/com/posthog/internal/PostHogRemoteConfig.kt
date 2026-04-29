@@ -5,6 +5,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
+import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
@@ -105,6 +106,14 @@ public class PostHogRemoteConfig(
     private var sessionRecordingSampleRate: Double? = null
 
     /**
+     * Event triggers for session recording.
+     * When configured, session recording only starts after one of these events is captured.
+     * null or empty means no event triggers (record immediately if other conditions are met).
+     */
+    @Volatile
+    private var sessionRecordingEventTriggers: Set<String>? = null
+	
+	/**
      * The minimum recording duration in milliseconds.
      * When configured, session replay snapshots are buffered locally until
      * the session reaches this duration threshold.
@@ -361,6 +370,16 @@ public class PostHogRemoteConfig(
     }
 
     /**
+     * Parses event triggers from the raw value which come as a List<String> (from the API or cache).
+     * Returns null if the value is absent or empty.
+     */
+    private fun parseEventTriggers(eventTriggers: Any?): Set<String>? {
+        @Suppress("UNCHECKED_CAST")
+        val triggers = (eventTriggers as? List<String>) ?: return null
+        return triggers.takeIf { it.isNotEmpty() }?.toSet()
+	}
+
+    /**
      * Parses and validates a minimum duration value which may come as a Number (from the API JSON)
      * or from cached storage. Returns null if the value is absent, unparseable, or negative.
      * The value is expected to be in milliseconds.
@@ -377,7 +396,7 @@ public class PostHogRemoteConfig(
             return null
         }
         return milliseconds
-    }
+    }	
 
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
@@ -408,6 +427,8 @@ public class PostHogRemoteConfig(
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
                     sessionRecordingSampleRate = parseSampleRate(it["sampleRate"])
+
+                    sessionRecordingEventTriggers = parseEventTriggers(it["eventTriggers"])
 
                     sessionRecordingMinimumDurationMs = parseMinimumDurationMs(it["minimumDurationMilliseconds"])
 
@@ -559,10 +580,13 @@ public class PostHogRemoteConfig(
         }
 
         try {
+            val deviceId = config.cachePreferences?.getValue(DEVICE_ID) as? String
+
             val response =
                 api.flags(
                     distinctId,
                     anonymousId = anonymousId,
+                    deviceId = deviceId,
                     groups = groups,
                     personProperties = getPersonPropertiesForFlags(),
                     groupProperties = getGroupPropertiesForFlags(),
@@ -747,6 +771,8 @@ public class PostHogRemoteConfig(
                     consoleLogRecordingEnabled = sessionRecording["consoleLogRecordingEnabled"] as? Boolean ?: false
 
                     sessionRecordingSampleRate = parseSampleRate(sessionRecording["sampleRate"])
+
+                    sessionRecordingEventTriggers = parseEventTriggers(sessionRecording["eventTriggers"])
 
                     sessionRecordingMinimumDurationMs = parseMinimumDurationMs(sessionRecording["minimumDurationMilliseconds"])
                 }
@@ -953,6 +979,12 @@ public class PostHogRemoteConfig(
     public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
 
     /**
+     * Returns the current event triggers for session recording, or null if not configured.
+     * When event triggers are configured, session recording only starts after one of these events is captured.
+     */
+    public fun getEventTriggers(): Set<String>? = sessionRecordingEventTriggers
+
+	/**
      * Returns the current minimum recording duration in milliseconds, or null if not set.
      * When set, session replay snapshots should be buffered until the session
      * reaches this duration.

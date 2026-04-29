@@ -1,5 +1,11 @@
 ## Next
 
+## 1.1.0
+
+### Minor Changes
+
+- 1144733: Configurable executable and env for CLI task
+
 ## 1.0.4
 
 ### Patch Changes

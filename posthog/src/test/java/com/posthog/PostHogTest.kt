@@ -24,6 +24,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -515,6 +516,39 @@ internal class PostHogTest {
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz") as Boolean)
+
+        sut.close()
+    }
+
+    @Test
+    fun `getAllFeatureFlags returns list of feature flags if enabled`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val flags = sut.getAllFeatureFlags()
+
+        val result = flags?.first()
+
+        assertNotNull(result)
+        assertIs<FeatureFlagResult>(result)
+        assertEquals("4535-funnel-bar-viz", result.key)
+        assertTrue(result.enabled)
+        assertNull(result.variant)
+        assertTrue(result.payload as Boolean)
+        assertTrue(result.value as Boolean)
 
         sut.close()
     }
@@ -3013,6 +3047,178 @@ internal class PostHogTest {
         assertEquals("\$set", batch.batch[0].event)
         assertEquals(userPropertiesToSet, batch.batch[0].properties!!["\$set"])
         assertEquals(userPropertiesToSetOnce, batch.batch[0].properties!!["\$set_once"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `getDeviceId returns a non-empty value after setup`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        val deviceId = sut.getDeviceId()
+        assertTrue(deviceId.isNotBlank())
+
+        sut.close()
+    }
+
+    @Test
+    fun `getDeviceId equals anonymousId on first init`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        val deviceId = sut.getDeviceId()
+        val distinctId = sut.distinctId()
+
+        // On first init with no identify, distinctId equals the anonymous ID
+        assertEquals(distinctId, deviceId)
+
+        sut.close()
+    }
+
+    @Test
+    fun `getDeviceId persists across SDK restarts`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        val originalDeviceId = sut.getDeviceId()
+        sut.close()
+
+        // Re-init with same preferences
+        val sut2 = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        assertEquals(originalDeviceId, sut2.getDeviceId())
+
+        sut2.close()
+    }
+
+    @Test
+    fun `getDeviceId is preserved across identify`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, personProfiles = PersonProfiles.ALWAYS)
+
+        val originalDeviceId = sut.getDeviceId()
+        sut.identify("user-123")
+
+        assertEquals(originalDeviceId, sut.getDeviceId())
+        assertEquals("user-123", sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `getDeviceId is preserved across reset`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, personProfiles = PersonProfiles.ALWAYS)
+
+        val originalDeviceId = sut.getDeviceId()
+        sut.identify("user-123")
+        sut.reset()
+
+        assertEquals(originalDeviceId, sut.getDeviceId())
+        // distinct_id should have changed after reset
+        assertNotEquals("user-123", sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `device_id is sent in flags request`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        val deviceId = sut.getDeviceId()
+        assertTrue(deviceId.isNotBlank())
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val body = request.body.unGzip()
+        val flagsRequest = serializer.deserialize<Map<String, Any>>(body.reader())
+
+        assertEquals(deviceId, flagsRequest["\$device_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `device_id remains the same in flags request after identify`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                total = 3,
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, personProfiles = PersonProfiles.ALWAYS)
+
+        val deviceId = sut.getDeviceId()
+        sut.identify("user-123")
+
+        // Drain the $identify batch event that gets flushed automatically
+        queueExecutor.awaitExecution()
+        http.takeRequest()
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val body = request.body.unGzip()
+        val flagsRequest = serializer.deserialize<Map<String, Any>>(body.reader())
+
+        assertEquals(deviceId, flagsRequest["\$device_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `getDeviceId lazy-inits for upgrades from older SDK versions`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        // Simulate an upgrade: preferences have an anonymous ID but no device_id
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        // The device_id should have been initialized during setup
+        val deviceId = sut.getDeviceId()
+        assertTrue(deviceId.isNotBlank())
+
+        // Clear the device_id to simulate an upgrade scenario where initDeviceId wasn't called
+        cachePreferences.remove("deviceId")
+
+        // getDeviceId should lazy-init from the anonymous ID
+        val lazyDeviceId = sut.getDeviceId()
+        assertTrue(lazyDeviceId.isNotBlank())
+        assertEquals(deviceId, lazyDeviceId)
 
         sut.close()
     }

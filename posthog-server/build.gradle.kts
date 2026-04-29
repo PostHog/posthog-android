@@ -1,6 +1,5 @@
 @file:Suppress("ktlint:standard:max-line-length")
 
-import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 version = properties["serverVersion"].toString()
@@ -68,7 +67,7 @@ publishing {
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions.postHogConfig()
+    compilerOptions.postHogConfig()
 }
 
 kotlin {
@@ -89,7 +88,7 @@ dependencies {
     // Depend on posthog-core module (not posthog-android)
     api(project(":posthog"))
 
-    implementation(kotlin("stdlib-jdk8", KotlinCompilerVersion.VERSION))
+    implementation(kotlin("stdlib-jdk8", PosthogBuildConfig.Kotlin.KOTLIN))
 
     implementation("com.google.code.gson:gson:${PosthogBuildConfig.Dependencies.GSON}")
 

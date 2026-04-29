@@ -16,6 +16,21 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `trims whitespace-sensitive config values`() {
+        val config = PostHogConfig(" \n$API_KEY\t ", " \nhttps://eu.i.posthog.com/\t ")
+
+        assertEquals(API_KEY, config.apiKey)
+        assertEquals("https://eu.i.posthog.com/", config.host)
+    }
+
+    @Test
+    fun `defaults a blank host after trimming whitespace`() {
+        val config = PostHogConfig(API_KEY, " \n\t ")
+
+        assertEquals(PostHogConfig.DEFAULT_HOST, config.host)
+    }
+
+    @Test
     fun `debug is disabled by default`() {
         assertFalse(config.debug)
     }
@@ -63,6 +78,31 @@ internal class PostHogConfigTest {
     @Test
     fun `encryption is not set by default`() {
         assertNull(config.encryption)
+    }
+
+    @Test
+    fun `tracingHeaders is not set by default`() {
+        assertNull(config.tracingHeaders)
+    }
+
+    @Test
+    fun `tracingHeaders copies assigned lists`() {
+        val tracingHeaders = mutableListOf("api.example.com")
+
+        config.tracingHeaders = tracingHeaders
+        tracingHeaders.add("other.example.com")
+
+        assertEquals(listOf("api.example.com"), config.tracingHeaders)
+    }
+
+    @Test
+    fun `tracingHeaders returns a snapshot`() {
+        config.tracingHeaders = listOf("api.example.com")
+
+        val tracingHeaders = config.tracingHeaders as MutableList<String>
+        tracingHeaders.add("other.example.com")
+
+        assertEquals(listOf("api.example.com"), config.tracingHeaders)
     }
 
     @Test

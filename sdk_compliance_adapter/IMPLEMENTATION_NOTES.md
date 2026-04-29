@@ -69,37 +69,11 @@ Note: When providing a custom httpClient, the SDK uses it as-is without adding t
 
 **These changes are backward compatible** - existing code works unchanged.
 
-## Building
+## Development workflow
 
-### Local Build (requires Java 8, 11, and 17)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local build and compliance test commands.
 
-```bash
-./gradlew :sdk_compliance_adapter:build
-```
-
-### Docker Build (recommended)
-
-```bash
-docker build -f sdk_compliance_adapter/Dockerfile -t posthog-android-adapter .
-```
-
-The Dockerfile uses Gradle toolchain auto-download to fetch required Java versions.
-
-## Running Tests
-
-### With Docker Compose
-
-```bash
-cd sdk_compliance_adapter
-docker-compose up --build --abort-on-container-exit
-```
-
-This runs:
-- **test-harness** - Compliance test runner
-- **adapter** - This SDK adapter
-- **mock-server** - Mock PostHog server
-
-### SDK Type
+## SDK Type
 
 The Android SDK uses **server SDK format**:
 - Endpoint: `/batch/`

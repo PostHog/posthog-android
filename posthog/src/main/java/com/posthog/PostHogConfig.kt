@@ -31,14 +31,14 @@ public open class PostHogConfig(
     /**
      * The PostHog API Key
      */
-    public val apiKey: String,
+    apiKey: String,
     /**
      * The PostHog Host
      * Defaults to https://us.i.posthog.com
      * EU Host: https://eu.i.posthog.com
      *
      */
-    public val host: String = DEFAULT_HOST,
+    host: String = DEFAULT_HOST,
     /**
      * Logs the debug logs to the [logger] if enabled
      * Defaults to false
@@ -285,6 +285,31 @@ public open class PostHogConfig(
      */
     public var releaseIdentifier: String? = null,
 ) {
+    @Volatile
+    private var tracingHeadersList: List<String>? = null
+
+    /**
+     * When set, PostHog injects tracing headers into OkHttp requests whose destination hostname
+     * exactly matches one of the configured hostnames.
+     *
+     * Injected headers:
+     * - `X-POSTHOG-DISTINCT-ID`
+     * - `X-POSTHOG-SESSION-ID`
+     *
+     * Notes:
+     * - Requires installing [PostHogOkHttpInterceptor] on each [OkHttpClient] that should send tracing headers
+     * - Hostname matching is exact and does not include ports or subdomain wildcards
+     * - The Android SDK does not send `X-POSTHOG-WINDOW-ID` because mobile apps do not have a per-window/tab concept
+     * - Existing values for these headers will be overwritten when PostHog provides a value
+     * - Reading this property returns a snapshot
+     */
+    @get:JvmSynthetic
+    public var tracingHeaders: List<String>?
+        get() = tracingHeadersList?.let { ArrayList(it) }
+        set(value) {
+            tracingHeadersList = value?.let { ArrayList(it) }
+        }
+
     /**
      * Optional custom OkHttpClient for HTTP requests.
      *
@@ -299,6 +324,18 @@ public open class PostHogConfig(
      */
     @PostHogInternal
     public var httpClient: OkHttpClient? = null
+
+    /**
+     * The PostHog API Key
+     */
+    public val apiKey: String = apiKey.trim()
+
+    /**
+     * The PostHog Host
+     * Defaults to https://us.i.posthog.com
+     * EU Host: https://eu.i.posthog.com
+     */
+    public val host: String = host.trim().ifBlank { DEFAULT_HOST }
 
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()

@@ -31,6 +31,34 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `trims whitespace-sensitive config values`() {
+        val config =
+            PostHogConfig(
+                apiKey = " \n$TEST_API_KEY\t ",
+                host = " \nhttps://eu.i.posthog.com/\t ",
+                personalApiKey = " \nphx_test_personal_api_key\t ",
+            )
+
+        assertEquals(TEST_API_KEY, config.apiKey)
+        assertEquals("https://eu.i.posthog.com/", config.host)
+        assertEquals("phx_test_personal_api_key", config.personalApiKey)
+    }
+
+    @Test
+    fun `defaults blank personal api key to null after trimming whitespace`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY, personalApiKey = " \n\t ")
+
+        assertNull(config.personalApiKey)
+    }
+
+    @Test
+    fun `defaults a blank host after trimming whitespace`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY, host = " \n\t ")
+
+        assertEquals(PostHogConfig.DEFAULT_HOST, config.host)
+    }
+
+    @Test
     fun `constructor sets all parameters when provided`() {
         val mockEncryption = createMockEncryption()
         val mockOnFeatureFlags = PostHogOnFeatureFlags { }
@@ -494,6 +522,28 @@ internal class PostHogConfigTest {
         val config =
             PostHogConfig.builder(TEST_API_KEY)
                 .personalApiKey(null)
+                .build()
+
+        assertNull(config.personalApiKey)
+        assertEquals(false, config.localEvaluation)
+    }
+
+    @Test
+    fun `builder personalApiKey trims whitespace and enables localEvaluation when not explicitly set`() {
+        val config =
+            PostHogConfig.builder(TEST_API_KEY)
+                .personalApiKey(" \ntest-personal-api-key\t ")
+                .build()
+
+        assertEquals("test-personal-api-key", config.personalApiKey)
+        assertEquals(true, config.localEvaluation)
+    }
+
+    @Test
+    fun `builder blank personalApiKey does not enable localEvaluation when not explicitly set`() {
+        val config =
+            PostHogConfig.builder(TEST_API_KEY)
+                .personalApiKey(" \n\t ")
                 .build()
 
         assertNull(config.personalApiKey)

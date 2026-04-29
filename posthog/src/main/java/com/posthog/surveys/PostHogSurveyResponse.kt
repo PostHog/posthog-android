@@ -49,7 +49,7 @@ public sealed class PostHogSurveyResponse {
             is Text -> text
             is SingleChoice -> selectedChoice
             is MultipleChoice -> selectedChoices
-            is Rating -> rating.toString()
+            is Rating -> rating?.toString()
             is Link -> if (clicked) "link clicked" else null
         }
     }

@@ -237,6 +237,17 @@ internal class PostHogStatelessTest {
     }
 
     @Test
+    fun `setup logs empty trimmed api key after logger initialization`() {
+        sut = createStatelessInstance()
+        val mockLogger = MockLogger()
+        config = PostHogConfig(" \n\t ", "https://api.posthog.com").apply { logger = mockLogger }
+
+        sut.setup(config)
+
+        assertTrue(mockLogger.messages.any { it.contains("apiKey is empty after trimming whitespace") })
+    }
+
+    @Test
     fun `setup logs warning when called multiple times`() {
         sut = createStatelessInstance()
         config = createConfig()

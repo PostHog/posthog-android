@@ -5,16 +5,19 @@ package com.posthog.android
 import org.gradle.api.Project
 import org.gradle.api.file.FileCollection
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.work.DisableCachingByDefault
 
 @DisableCachingByDefault(because = "Uploads should not be cached")
-internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
+public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
     init {
         description = "Uploads the proguard mappings file to PostHog"
 
@@ -30,11 +33,23 @@ internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask()
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val mapIdFile: RegularFileProperty
+    public abstract val mapIdFile: RegularFileProperty
 
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract var mappingsFiles: Provider<FileCollection>
+    public abstract var mappingsFiles: Provider<FileCollection>
+
+    @get:Input
+    @get:Optional
+    public abstract val releaseName: Property<String>
+
+    @get:Input
+    @get:Optional
+    public abstract val releaseVersion: Property<String>
+
+    @get:Input
+    @get:Optional
+    public abstract val build: Property<Int?>
 
     override fun exec() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
@@ -65,14 +80,29 @@ internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask()
         args.add(mappingFile.toString())
         args.add("--map-id")
         args.add(uuid)
+        releaseName.orNull?.takeIf { it.isNotEmpty() }?.let {
+            args.add("--release-name")
+            args.add(it)
+        }
+        releaseVersion.orNull?.takeIf { it.isNotEmpty() }?.let {
+            args.add("--release-version")
+            args.add(it)
+        }
+        build.orNull?.takeIf { it > 0 }?.let {
+            args.add("--build")
+            args.add(it.toString())
+        }
     }
 
-    companion object {
+    internal companion object {
         fun register(
             project: Project,
             generateMapIdTask: Provider<PostHogGenerateMapIdTask>,
             mappingFiles: Provider<FileCollection>,
             taskSuffix: String = "",
+            releaseName: Provider<String>? = null,
+            releaseVersion: Provider<String>? = null,
+            build: Provider<Int?>? = null,
         ): TaskProvider<PostHogUploadProguardMappingsTask> {
             val uploadPostHogProguardMappingsTask =
                 project.tasks.register(
@@ -83,6 +113,9 @@ internal abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask()
                     workingDir(project.rootDir)
                     this.mapIdFile.set(generateMapIdTask.flatMap { it.outputFile })
                     this.mappingsFiles = mappingFiles
+                    releaseName?.let { this.releaseName.set(it) }
+                    releaseVersion?.let { this.releaseVersion.set(it) }
+                    build?.let { this.build.set(it) }
                 }
             return uploadPostHogProguardMappingsTask
         }

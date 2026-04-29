@@ -1,5 +1,47 @@
 ## Next
 
+## 6.13.1
+
+### Patch Changes
+
+- ed31712: Include survey responses on Android dismissal events, including question id based response keys and partial completion state. Null rating responses are ignored instead of being serialized as "null".
+
+## 6.13.0
+
+### Minor Changes
+
+- fbb5a25: Add tracing header support for Android OkHttp requests.
+
+## 6.12.1
+
+### Patch Changes
+
+- 840025b: Trim surrounding whitespace from API keys, personal API keys, and host config before using them.
+
+## 6.12.0
+
+### Minor Changes
+
+- 3a0b654: add getAllFeatureFlags support
+
+## 6.11.0
+
+### Minor Changes
+
+- 6fbdcd5: feat: add device bucketing support for stable feature flag assignment across identity changes
+
+## 6.10.1
+
+### Patch Changes
+
+- a22edb0: fix: failing posthog-core release
+
+## 6.10.0
+
+### Minor Changes
+
+- f3edb25: feat: add support for session replay event triggers
+
 ## 6.9.0
 
 ### Minor Changes

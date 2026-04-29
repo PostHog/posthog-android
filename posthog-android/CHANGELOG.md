@@ -1,5 +1,56 @@
 ## Next
 
+## 3.43.1
+
+### Patch Changes
+
+- ed31712: Include survey responses on Android dismissal events, including question id based response keys and partial completion state. Null rating responses are ignored instead of being serialized as "null".
+
+## 3.43.0
+
+### Minor Changes
+
+- fbb5a25: Add tracing header support for Android OkHttp requests.
+
+## 3.42.1
+
+### Patch Changes
+
+- 840025b: Trim surrounding whitespace from API keys, personal API keys, and host config before using them.
+
+## 3.42.0
+
+### Minor Changes
+
+- 8b447c1: Attach release info (`applicationId`, `versionName`, `versionCode`) to proguard mapping uploads via the new posthog-cli `--release-name`, `--release-version`, and `--build` flags.
+- 3a0b654: add getAllFeatureFlags support
+
+## 3.41.0
+
+### Minor Changes
+
+- 6fbdcd5: feat: add device bucketing support for stable feature flag assignment across identity changes
+
+## 3.40.2
+
+### Patch Changes
+
+- 2c3101a: Ignore `isLaidOut` checks for React Native session replay.
+
+## 3.40.1
+
+### Patch Changes
+
+- a22edb0: fix: failing posthog-core release
+
+## 3.40.0
+
+### Minor Changes
+
+- f3edb25: feat: add support for session replay event triggers
+
+> ⚠️ Warning: com.posthog:posthog:6.10.0 failed to publish to Maven Central which broke this release. Please skip to 3.40.1.
+
 ## 3.39.2
 
 ### Patch Changes
