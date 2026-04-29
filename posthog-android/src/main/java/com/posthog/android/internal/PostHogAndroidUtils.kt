@@ -14,6 +14,7 @@ import android.graphics.Point
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
+import androidx.core.net.toUri
 import android.os.Process
 import android.telephony.TelephonyManager
 import android.util.Base64
@@ -178,7 +179,7 @@ internal fun Intent.getReferrerInfo(config: PostHogAndroidConfig): Map<String, S
 
 internal fun String.tryParse(config: PostHogAndroidConfig): Uri? {
     return try {
-        Uri.parse(this)
+        this.toUri()
     } catch (e: Throwable) {
         config.logger.log("Error parsing string: $this. Exception: $e.")
         null
