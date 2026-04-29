@@ -92,7 +92,7 @@ dependencies {
     implementation(kotlin("stdlib-jdk8", PosthogBuildConfig.Kotlin.KOTLIN))
     implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
     implementation("androidx.lifecycle:lifecycle-common-java8:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
-    implementation("androidx.core:core:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
+    implementation("androidx.core:core-ktx:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     implementation("com.squareup.curtains:curtains:${PosthogBuildConfig.Dependencies.CURTAINS}")
 
     // compile only
