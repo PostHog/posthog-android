@@ -62,7 +62,7 @@ public final class com/posthog/android/replay/PostHogMaskModifier {
 	public static synthetic fun postHogUnmask$default (Lcom/posthog/android/replay/PostHogMaskModifier;Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
 }
 
-public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration, com/posthog/internal/replay/PostHogSessionReplayHandler {
+public final class com/posthog/android/replay/PostHogReplayIntegration : com/posthog/PostHogIntegration, com/posthog/android/replay/PostHogReplayBufferDelegate, com/posthog/internal/replay/PostHogSessionReplayHandler {
 	public static final field ANDROID_COMPOSE_VIEW Ljava/lang/String;
 	public static final field ANDROID_COMPOSE_VIEW_CLASS_NAME Ljava/lang/String;
 	public static final field PH_NO_CAPTURE_LABEL Ljava/lang/String;
@@ -70,12 +70,22 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun isActive ()Z
+	public fun isBuffering ()Z
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public fun onRemoteConfig ()V
+	public fun onReplayBufferSnapshot (Lcom/posthog/android/replay/PostHogReplayQueue;)V
 	public fun onSessionIdChanged ()V
 	public fun start (Z)V
 	public fun stop ()V
 	public fun uninstall ()V
+}
+
+public final class com/posthog/android/replay/PostHogReplayQueue : com/posthog/internal/PostHogQueueInterface {
+	public fun add (Lcom/posthog/PostHogEvent;)V
+	public fun clear ()V
+	public fun flush ()V
+	public fun start ()V
+	public fun stop ()V
 }
 
 public final class com/posthog/android/replay/PostHogSessionReplayConfig {
