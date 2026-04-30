@@ -13,6 +13,13 @@ internal class PostHogAndroidConfigTest {
     }
 
     @Test
+    fun `defaults null api key to empty string`() {
+        val config = PostHogAndroidConfig(null)
+
+        assertEquals("", config.apiKey)
+    }
+
+    @Test
     fun `captureApplicationLifecycleEvents should be enabled by default`() {
         assertTrue(config.captureApplicationLifecycleEvents)
     }

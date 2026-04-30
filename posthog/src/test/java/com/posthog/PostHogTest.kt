@@ -127,6 +127,25 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `setup no-ops for empty trimmed api key`() {
+        val config = PostHogConfig(" \n\t ", "https://api.posthog.com")
+        val sut =
+            PostHog.withInternal(
+                config,
+                queueExecutor,
+                replayQueueExecutor,
+                remoteConfigExecutor,
+                cachedEventsExecutor,
+                reloadFeatureFlags = true,
+            )
+
+        assertTrue(config.integrations.isEmpty())
+        assertNull(config.cachePreferences)
+
+        sut.close()
+    }
+
+    @Test
     fun `setup adds integration by default`() {
         val http = mockHttp()
         val url = http.url("/")

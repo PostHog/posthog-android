@@ -40,6 +40,26 @@ internal class PostHogAndroidTest {
     }
 
     @Test
+    fun `setup no-ops for null api key`() {
+        val config = PostHogAndroidConfig(null)
+
+        PostHogAndroid.setup(context, config)
+
+        assertNull(config.cachePreferences)
+        assertTrue(config.integrations.isEmpty())
+    }
+
+    @Test
+    fun `setup no-ops for empty trimmed api key`() {
+        val config = PostHogAndroidConfig(" \n\t ")
+
+        PostHogAndroid.setup(context, config)
+
+        assertNull(config.cachePreferences)
+        assertTrue(config.integrations.isEmpty())
+    }
+
+    @Test
     fun `sets Android Logger if System logger`() {
         val config = PostHogAndroidConfig(API_KEY)
 

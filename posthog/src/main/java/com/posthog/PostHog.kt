@@ -101,6 +101,7 @@ public class PostHog private constructor(
 
                 if (config.apiKey.isEmpty()) {
                     config.logger.log("apiKey is empty after trimming whitespace; check your project API key")
+                    return
                 }
 
                 if (!apiKeys.add(config.apiKey)) {

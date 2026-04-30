@@ -31,7 +31,7 @@ public open class PostHogConfig(
     /**
      * The PostHog API Key
      */
-    apiKey: String,
+    apiKey: String?,
     /**
      * The PostHog Host
      * Defaults to https://us.i.posthog.com
@@ -328,7 +328,7 @@ public open class PostHogConfig(
     /**
      * The PostHog API Key
      */
-    public val apiKey: String = apiKey.trim()
+    public val apiKey: String = apiKey?.trim().orEmpty()
 
     /**
      * The PostHog Host

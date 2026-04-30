@@ -237,13 +237,14 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `setup logs empty trimmed api key after logger initialization`() {
+    fun `setup no-ops for empty trimmed api key after logger initialization`() {
         sut = createStatelessInstance()
         val mockLogger = MockLogger()
         config = PostHogConfig(" \n\t ", "https://api.posthog.com").apply { logger = mockLogger }
 
         sut.setup(config)
 
+        assertFalse(sut.isEnabledPublic())
         assertTrue(mockLogger.messages.any { it.contains("apiKey is empty after trimming whitespace") })
     }
 
