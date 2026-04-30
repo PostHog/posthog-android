@@ -49,8 +49,10 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.core.graphics.createBitmap
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isNotEmpty
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
@@ -795,12 +797,12 @@ public class PostHogReplayIntegration(
                 }
             }
 
-            view is ViewGroup && view.childCount > 0 -> {
+            view is ViewGroup && view.isNotEmpty() -> {
                 walkChildren = true
             }
         }
 
-        if (walkChildren && view is ViewGroup && view.childCount > 0) {
+        if (walkChildren && view is ViewGroup && view.isNotEmpty()) {
             for (i in 0 until view.childCount) {
                 if (isOnDrawnCalled) {
                     config.logger.log("Session Replay screenshot discarded due to screen changes.")
@@ -950,7 +952,7 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
-        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(view.width, view.height)
         val latch = CountDownLatch(1)
         var success = true
         val handler = ensurePixelCopyHandler()
@@ -1335,7 +1337,7 @@ public class PostHogReplayIntegration(
         }
 
         val children = mutableListOf<RRWireframe>()
-        if (view is ViewGroup && view.childCount > 0) {
+        if (view is ViewGroup && view.isNotEmpty()) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
                 viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
