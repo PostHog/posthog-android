@@ -27,28 +27,4 @@ internal data class FeatureFlagCacheEntry(
     fun isExpired(currentTime: Long = System.currentTimeMillis()): Boolean {
         return currentTime >= expiresAt
     }
-
-    override fun hashCode(): Int {
-        var result = flags?.hashCode() ?: 0
-        result = 31 * result + (timestamp xor (timestamp ushr 32)).toInt()
-        result = 31 * result + (expiresAt xor (expiresAt ushr 32)).toInt()
-        result = 31 * result + (requestId?.hashCode() ?: 0)
-        result = 31 * result + (evaluatedAt?.hashCode() ?: 0)
-        result = 31 * result + (error?.hashCode() ?: 0)
-        return result
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is FeatureFlagCacheEntry) return false
-
-        if (flags != other.flags) return false
-        if (timestamp != other.timestamp) return false
-        if (expiresAt != other.expiresAt) return false
-        if (requestId != other.requestId) return false
-        if (evaluatedAt != other.evaluatedAt) return false
-        if (error != other.error) return false
-
-        return true
-    }
 }
