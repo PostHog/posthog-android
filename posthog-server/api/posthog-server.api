@@ -108,8 +108,8 @@ public class com/posthog/server/PostHogConfig {
 	public static final field DEFAULT_POLL_INTERVAL_SECONDS I
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;Z)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public static final fun builder (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
@@ -120,7 +120,6 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getFeatureFlagCacheMaxAgeMs ()I
 	public final fun getFeatureFlagCacheSize ()I
 	public final fun getFeatureFlagCalledCacheSize ()I
-	public final fun getFeatureFlagsLogWarnings ()Z
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
@@ -141,7 +140,6 @@ public class com/posthog/server/PostHogConfig {
 	public final fun setFeatureFlagCacheMaxAgeMs (I)V
 	public final fun setFeatureFlagCacheSize (I)V
 	public final fun setFeatureFlagCalledCacheSize (I)V
-	public final fun setFeatureFlagsLogWarnings (Z)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setLocalEvaluation (Z)V
@@ -165,7 +163,6 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun featureFlagCacheMaxAgeMs (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCalledCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
-	public final fun featureFlagsLogWarnings (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushAt (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun host (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
@@ -233,8 +230,8 @@ public final class com/posthog/server/PostHogFeatureFlagEvaluations {
 	public final fun getDistinctId ()Ljava/lang/String;
 	public final fun getEvaluatedAt ()Ljava/lang/Long;
 	public final fun getFlag (Ljava/lang/String;)Ljava/lang/Object;
-	public final fun getFlagPayload (Ljava/lang/String;)Ljava/lang/Object;
-	public final fun getFlags ()Ljava/util/Map;
+	public final fun getFlagPayload (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getFlagPayloadAs (Ljava/lang/String;Ljava/lang/Class;)Ljava/lang/Object;
 	public final fun getKeys ()Ljava/util/List;
 	public final fun getRequestId ()Ljava/lang/String;
 	public final fun isEnabled (Ljava/lang/String;)Z

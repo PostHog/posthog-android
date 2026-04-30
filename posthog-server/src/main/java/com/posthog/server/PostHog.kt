@@ -8,14 +8,8 @@ import com.posthog.server.internal.PostHogFeatureFlags
 
 @Suppress("DEPRECATION")
 public class PostHog : PostHogStateless(), PostHogInterface {
-    @Volatile
-    private var serverConfig: PostHogConfig? = null
-
     private val evaluationsHost: EvaluationsHost =
         object : EvaluationsHost {
-            override val warningsEnabled: Boolean
-                get() = serverConfig?.featureFlagsLogWarnings ?: true
-
             override fun captureFeatureFlagCalled(
                 distinctId: String,
                 key: String,
@@ -32,7 +26,6 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         }
 
     override fun <T : PostHogConfig> setup(config: T) {
-        serverConfig = config
         super.setup(config.asCoreConfig())
     }
 
@@ -274,7 +267,8 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         val activeFlags = mutableListOf<String>()
         for ((key, flag) in flags) {
             val flagValue: Any = flag.variant ?: flag.enabled
-            props["\$feature/$key"] = flagValue
+            // User-supplied `$feature/<key>` overrides generated value (matches Python behavior).
+            props.putIfAbsent("\$feature/$key", flagValue)
             val isActive =
                 when (flagValue) {
                     is Boolean -> flagValue
@@ -285,7 +279,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                 activeFlags.add(key)
             }
         }
-        props["\$active_feature_flags"] = activeFlags
+        props.putIfAbsent("\$active_feature_flags", activeFlags)
 
         return props
     }

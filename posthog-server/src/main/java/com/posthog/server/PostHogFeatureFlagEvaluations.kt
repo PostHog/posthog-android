@@ -1,7 +1,10 @@
 package com.posthog.server
 
+import com.google.gson.Gson
 import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
+import com.posthog.server.internal.FeatureFlagError
+import java.util.Collections
 
 /**
  * A snapshot of feature flag evaluations for one [distinctId], produced by
@@ -12,6 +15,8 @@ import com.posthog.server.internal.EvaluationsHost
  * Accessor side-effects:
  *   - [isEnabled] / [getFlag] fire `$feature_flag_called` (deduped by the same per-distinct-id LRU
  *     used by [PostHogInterface.getFeatureFlag]). Empty/blank distinctId short-circuits the event.
+ *     Reads for unknown keys still fire a `$feature_flag_called` event with
+ *     `$feature_flag_error: flag_missing` so dashboards see the lookup attempt.
  *   - [getFlagPayload] does not fire any event.
  *
  * Filtered clones from [onlyAccessed] / [only] are independent of the parent — accessing flags on
@@ -19,8 +24,8 @@ import com.posthog.server.internal.EvaluationsHost
  */
 public class PostHogFeatureFlagEvaluations internal constructor(
     public val distinctId: String?,
-    private val flagMap: Map<String, FeatureFlag>,
-    private val locallyEvaluated: Map<String, Boolean>,
+    flagMap: Map<String, FeatureFlag>,
+    locallyEvaluated: Map<String, Boolean>,
     public val requestId: String?,
     public val evaluatedAt: Long?,
     public val definitionsLoadedAt: Long?,
@@ -28,6 +33,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     private val host: EvaluationsHost,
     initialAccessed: Set<String> = emptySet(),
 ) {
+    private val flagMap: Map<String, FeatureFlag> = Collections.unmodifiableMap(LinkedHashMap(flagMap))
+    private val locallyEvaluated: Map<String, Boolean> = Collections.unmodifiableMap(HashMap(locallyEvaluated))
+
     private val accessLock = Any()
     private val accessed: MutableSet<String> = HashSet(initialAccessed)
 
@@ -35,14 +43,19 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     public val keys: List<String>
         get() = flagMap.keys.toList()
 
-    /** Returns the immutable flag map this snapshot was built from. */
-    public val flags: Map<String, FeatureFlag>
+    /**
+     * Internal access to the rich [FeatureFlag] map. Not exposed publicly because [FeatureFlag]
+     * lives in `com.posthog.internal` and shouldn't leak through the public API. Same-package
+     * code (the server `PostHog` class) reads this when building `$feature/<key>` properties for
+     * `capture(flags = …)`.
+     */
+    internal val flags: Map<String, FeatureFlag>
         get() = flagMap
 
     /**
-     * Returns whether the flag is enabled. Unknown flags return false. Records access and fires a
-     * deduped `$feature_flag_called` event, except when this snapshot has no resolvable
-     * distinctId.
+     * Returns whether the flag is enabled. Unknown flags return false. Records access; fires a
+     * deduped `$feature_flag_called` event (with `$feature_flag_error: flag_missing` for unknown
+     * keys), except when this snapshot has no resolvable distinctId.
      */
     public fun isEnabled(key: String): Boolean {
         val flag = flagMap[key]
@@ -53,8 +66,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
 
     /**
      * Returns the flag value: the variant string, the boolean enabled flag, or null when the flag
-     * is unknown. Records access and fires a deduped `$feature_flag_called` event, except when
-     * this snapshot has no resolvable distinctId.
+     * is unknown. Records access; fires a deduped `$feature_flag_called` event (with
+     * `$feature_flag_error: flag_missing` for unknown keys), except when this snapshot has no
+     * resolvable distinctId.
      */
     public fun getFlag(key: String): Any? {
         val flag = flagMap[key]
@@ -64,30 +78,46 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     }
 
     /**
-     * Returns the flag payload. Does not fire any event and does not record the access — payloads
-     * are an inert read.
+     * Returns the raw payload string for the flag, or null when the flag is unknown or has no
+     * payload. The server returns payloads as JSON-encoded strings; use [getFlagPayloadAs] when
+     * you want the deserialized value. Does not fire any event and does not record the access.
      */
-    public fun getFlagPayload(key: String): Any? {
+    public fun getFlagPayload(key: String): String? {
         return flagMap[key]?.metadata?.payload
     }
 
     /**
+     * Returns the flag payload deserialized from JSON to type [T], or null when the flag is
+     * unknown, has no payload, or deserialization fails.
+     */
+    public inline fun <reified T> getFlagPayloadAs(key: String): T? = getFlagPayloadAs(key, T::class.java)
+
+    /**
+     * Returns the flag payload deserialized from JSON to [clazz], or null when the flag is
+     * unknown, has no payload, or deserialization fails. The server returns payloads as
+     * JSON-encoded strings, so this parses the raw string with Gson.
+     */
+    public fun <T> getFlagPayloadAs(
+        key: String,
+        clazz: Class<T>,
+    ): T? {
+        val raw = flagMap[key]?.metadata?.payload ?: return null
+        // Always Gson-parse: a raw JSON string like `"\"hello\""` should deserialize to `hello`,
+        // not pass through as the quoted form. Same intent for primitives, lists, maps, etc.
+        return try {
+            PAYLOAD_GSON.fromJson(raw, clazz)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * Returns a filtered snapshot containing only the flags accessed on this instance via
-     * [isEnabled] or [getFlag]. When no flag has been accessed yet, logs a warning and returns a
-     * clone containing every flag instead of silently dropping data.
+     * [isEnabled] or [getFlag]. Returns an empty snapshot when no flag has been accessed yet.
      */
     public fun onlyAccessed(): PostHogFeatureFlagEvaluations {
         val accessedKeys =
             synchronized(accessLock) { accessed.toSet() }
-        if (accessedKeys.isEmpty()) {
-            if (host.warningsEnabled) {
-                host.logWarning(
-                    "PostHogFeatureFlagEvaluations.onlyAccessed() called before any flag was " +
-                        "accessed; returning all $${flagMap.size} flags instead of an empty snapshot.",
-                )
-            }
-            return cloneWith(flagMap.keys)
-        }
         return cloneWith(accessedKeys)
     }
 
@@ -100,7 +130,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
         for (key in keys) {
             if (flagMap.containsKey(key)) {
                 resolved.add(key)
-            } else if (host.warningsEnabled) {
+            } else {
                 host.logWarning(
                     "PostHogFeatureFlagEvaluations.only(...) called with unknown flag key '$key'; " +
                         "dropping it from the filtered snapshot.",
@@ -136,26 +166,37 @@ public class PostHogFeatureFlagEvaluations internal constructor(
         flag: FeatureFlag?,
     ) {
         synchronized(accessLock) { accessed.add(key) }
-        if (flag == null) return
         if (distinctId.isNullOrBlank()) return
 
-        val value: Any = flag.variant ?: flag.enabled
+        val value: Any = flag?.let { it.variant ?: it.enabled } ?: false
         val props = mutableMapOf<String, Any>()
-        props["\$feature_flag_id"] = flag.metadata.id
-        props["\$feature_flag_version"] = flag.metadata.version
-        flag.reason?.description?.let { props["\$feature_flag_reason"] = it }
+        if (flag != null) {
+            props["\$feature_flag_id"] = flag.metadata.id
+            props["\$feature_flag_version"] = flag.metadata.version
+            flag.reason?.description?.let { props["\$feature_flag_reason"] = it }
+            if (locallyEvaluated[key] == true) {
+                props["locally_evaluated"] = true
+            }
+        }
         requestId?.let { props["\$feature_flag_request_id"] = it }
         evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
         definitionsLoadedAt?.let { props["\$feature_flag_definitions_loaded_at"] = it }
-        responseError?.let { props["\$feature_flag_error"] = it }
-        if (locallyEvaluated[key] == true) {
-            props["locally_evaluated"] = true
+
+        val error =
+            buildList<String> {
+                responseError?.let { add(it) }
+                if (flag == null) add(FeatureFlagError.FLAG_MISSING)
+            }
+        if (error.isNotEmpty()) {
+            props["\$feature_flag_error"] = error.joinToString(",")
         }
 
         host.captureFeatureFlagCalled(distinctId, key, value, props)
     }
 
     public companion object {
+        private val PAYLOAD_GSON: Gson = Gson()
+
         /**
          * Builds an empty snapshot. Used internally for the empty-distinctId short-circuit; any
          * accessor invocation on an empty snapshot is a no-op.

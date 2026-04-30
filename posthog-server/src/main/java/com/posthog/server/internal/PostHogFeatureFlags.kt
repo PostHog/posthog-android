@@ -290,6 +290,8 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                flagKeys = flagKeys,
+                disableGeoip = disableGeoip,
             )
 
         val cachedFlags = cache.get(cacheKey)
@@ -719,6 +721,8 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                flagKeys = flagKeys,
+                disableGeoip = disableGeoip,
             )
         cache.getEntry(cacheKey)?.let { entry ->
             val flags = entry.flags ?: emptyMap()
@@ -741,9 +745,20 @@ internal class PostHogFeatureFlags(
                 onlyEvaluateLocally,
             )
         if (localFlags != null) {
+            // Local evaluation evaluates every defined flag — apply `flagKeys` post-hoc so callers
+            // get the same scoping they'd get from a `/flags` request that honored
+            // `flag_keys_to_evaluate`. Note: we still evaluate everything; the optimization is
+            // network-side only.
+            val scoped =
+                if (flagKeys.isNullOrEmpty()) {
+                    localFlags
+                } else {
+                    val keep = flagKeys.toHashSet()
+                    localFlags.filterKeys { it in keep }
+                }
             return EvaluateFlagsResult(
-                flags = localFlags,
-                locallyEvaluated = localFlags.mapValues { true },
+                flags = scoped,
+                locallyEvaluated = scoped.mapValues { true },
                 requestId = null,
                 evaluatedAt = null,
                 definitionsLoadedAt = definitionsLoadedAt,

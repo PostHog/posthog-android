@@ -330,6 +330,74 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `capture preserves user-supplied feature properties over snapshot values`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createMultipleFlagsResponse("a" to true, "b" to false)))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .flushAt(1)
+                    .build(),
+            )
+
+        val snapshot = postHog.evaluateFlags("user-1")
+        postHog.capture(
+            distinctId = "user-1",
+            event = "purchase",
+            properties =
+                mapOf(
+                    // user-supplied $feature/a is "user-override" — must win over snapshot's `true`
+                    "\$feature/a" to "user-override",
+                ),
+            flags = snapshot,
+        )
+
+        val requests = drainRequests(mockServer)
+        val batch = requests.first { it.path?.contains("/batch") == true }.parseBatch()
+        val props = batch.eventProperties("purchase")
+        assertEquals("user-override", props["\$feature/a"])
+        // Other flags from snapshot still attached
+        assertEquals(false, props["\$feature/b"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags caches per (distinctId, flagKeys, disableGeoip) tuple`() {
+        // First call with flagKeys=[a] — only "a" comes back
+        // Second call with flagKeys=[a, b] — must miss the cache and hit /flags again
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createMultipleFlagsResponse("a" to true)))
+        mockServer.enqueue(jsonResponse(createMultipleFlagsResponse("a" to true, "b" to false)))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .build(),
+            )
+
+        val first = postHog.evaluateFlags("user-1", flagKeys = listOf("a"))
+        val second = postHog.evaluateFlags("user-1", flagKeys = listOf("a", "b"))
+
+        assertEquals(setOf("a"), first.keys.toSet())
+        assertEquals(setOf("a", "b"), second.keys.toSet())
+
+        val requests = drainRequests(mockServer)
+        val flagsRequests = requests.filter { it.path?.contains("/flags") == true }
+        assertEquals(2, flagsRequests.size, "different flagKeys must miss the cache")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `capture with appendFeatureFlags=true still attaches feature properties (deprecated path keeps working)`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(jsonResponse(createFlagsResponse("a", enabled = true)))

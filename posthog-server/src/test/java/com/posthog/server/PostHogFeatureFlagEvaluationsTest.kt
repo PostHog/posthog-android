@@ -18,7 +18,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         val properties: Map<String, Any>,
     )
 
-    private class FakeHost(override val warningsEnabled: Boolean = true) : EvaluationsHost {
+    private class FakeHost : EvaluationsHost {
         val captures = mutableListOf<RecordedCall>()
         val warnings = mutableListOf<String>()
 
@@ -74,14 +74,46 @@ internal class PostHogFeatureFlagEvaluationsTest {
     )
 
     @Test
-    fun `isEnabled returns false for unknown flags and does not fire an event`() {
+    fun `isEnabled returns false for unknown flags and fires flag_missing event`() {
         val host = FakeHost()
         val snapshot = snapshot(host = host, flags = mapOf("known" to flag("known", enabled = true)))
 
         val unknown = snapshot.isEnabled("missing")
 
         assertFalse(unknown)
-        assertTrue(host.captures.isEmpty(), "no event should fire when the flag is unknown")
+        assertEquals(1, host.captures.size)
+        val call = host.captures.single()
+        assertEquals("missing", call.key)
+        assertEquals(false, call.value)
+        assertEquals("flag_missing", call.properties["\$feature_flag_error"])
+        assertFalse(call.properties.containsKey("\$feature_flag_id"))
+    }
+
+    @Test
+    fun `getFlag returns null for unknown flags and fires flag_missing event`() {
+        val host = FakeHost()
+        val snapshot = snapshot(host = host, flags = mapOf("known" to flag("known")))
+
+        assertNull(snapshot.getFlag("missing"))
+        assertEquals("flag_missing", host.captures.single().properties["\$feature_flag_error"])
+    }
+
+    @Test
+    fun `flag_missing combines with response-level error when both apply`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags = mapOf("known" to flag("known")),
+                responseError = "errors_while_computing_flags",
+            )
+
+        snapshot.isEnabled("missing")
+
+        assertEquals(
+            "errors_while_computing_flags,flag_missing",
+            host.captures.single().properties["\$feature_flag_error"],
+        )
     }
 
     @Test
@@ -124,7 +156,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
-    fun `getFlagPayload does not fire an event and does not record access`() {
+    fun `getFlagPayload returns the raw payload string and does not fire an event`() {
         val host = FakeHost()
         val snapshot =
             snapshot(
@@ -136,9 +168,35 @@ internal class PostHogFeatureFlagEvaluationsTest {
 
         assertEquals("{\"a\":1}", payload)
         assertTrue(host.captures.isEmpty(), "payload reads should be event-free")
-        // onlyAccessed() falls back to all flags because nothing was actually accessed
-        val filtered = snapshot.onlyAccessed()
-        assertEquals(listOf("payload-flag"), filtered.keys)
+    }
+
+    @Test
+    fun `getFlagPayloadAs deserializes JSON to the requested type`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "json-object" to flag("json-object", payload = "{\"plan\":\"enterprise\",\"seats\":50}"),
+                        "json-list" to flag("json-list", payload = "[1, 2, 3]"),
+                        "json-string" to flag("json-string", payload = "\"hello\""),
+                    ),
+            )
+
+        @Suppress("UNCHECKED_CAST")
+        val asMap = snapshot.getFlagPayloadAs<Map<String, Any?>>("json-object")
+        assertEquals("enterprise", asMap?.get("plan"))
+        assertEquals(50.0, asMap?.get("seats"))
+
+        val asList = snapshot.getFlagPayloadAs<List<*>>("json-list")
+        assertEquals(listOf(1.0, 2.0, 3.0), asList)
+
+        val asString = snapshot.getFlagPayloadAs<String>("json-string")
+        assertEquals("hello", asString)
+
+        // Unknown flag → null
+        assertNull(snapshot.getFlagPayloadAs<Map<String, Any?>>("missing"))
     }
 
     @Test
@@ -162,7 +220,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
-    fun `onlyAccessed warns and falls back to all flags when nothing was accessed`() {
+    fun `onlyAccessed returns an empty snapshot when nothing has been accessed`() {
         val host = FakeHost()
         val snapshot =
             snapshot(
@@ -176,9 +234,8 @@ internal class PostHogFeatureFlagEvaluationsTest {
 
         val filtered = snapshot.onlyAccessed()
 
-        assertEquals(setOf("a", "b"), filtered.keys.toSet())
-        assertEquals(1, host.warnings.size)
-        assertTrue(host.warnings.single().contains("onlyAccessed"))
+        assertTrue(filtered.keys.isEmpty(), "no flags should remain in the empty-access case")
+        assertTrue(host.warnings.isEmpty(), "empty-access fallback should not emit a warning")
     }
 
     @Test
@@ -264,21 +321,6 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
-    fun `featureFlagsLogWarnings disabled host suppresses filter warnings`() {
-        val quietHost = FakeHost(warningsEnabled = false)
-        val snapshot =
-            snapshot(
-                host = quietHost,
-                flags = mapOf("a" to flag("a")),
-            )
-
-        snapshot.only(listOf("missing"))
-        snapshot.onlyAccessed()
-
-        assertTrue(quietHost.warnings.isEmpty(), "warnings should be suppressed when disabled")
-    }
-
-    @Test
     fun `keys exposes the snapshotted flag keys`() {
         val host = FakeHost()
         val snapshot =
@@ -292,14 +334,6 @@ internal class PostHogFeatureFlagEvaluationsTest {
             )
 
         assertEquals(listOf("a", "b"), snapshot.keys)
-    }
-
-    @Test
-    fun `getFlag returns null for unknown keys`() {
-        val host = FakeHost()
-        val snapshot = snapshot(host = host, flags = mapOf("known" to flag("known")))
-
-        assertNull(snapshot.getFlag("missing"))
     }
 
     @Test
@@ -319,7 +353,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
-    fun `null response-level error means no feature_flag_error key`() {
+    fun `null response-level error means no feature_flag_error key on known flags`() {
         val host = FakeHost()
         val snapshot =
             snapshot(

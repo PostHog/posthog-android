@@ -468,7 +468,7 @@ public open class PostHogStateless protected constructor(
      * snapshot (after checking its own config) funnel through here so dedup stays uniform.
      */
     @PostHogInternal
-    public fun captureFeatureFlagCalledEvent(
+    protected fun captureFeatureFlagCalledEvent(
         distinctId: String,
         key: String,
         value: Any?,
