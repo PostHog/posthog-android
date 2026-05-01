@@ -14,6 +14,8 @@ internal class PostHogFlagsRequest(
     personProperties: Map<String, Any?>? = null,
     groupProperties: Map<String, Map<String, Any?>>? = null,
     evaluationContexts: List<String>? = null,
+    flagKeys: List<String>? = null,
+    disableGeoip: Boolean = false,
 ) : HashMap<String, Any>() {
     init {
         this["api_key"] = apiKey
@@ -36,6 +38,12 @@ internal class PostHogFlagsRequest(
         }
         if (evaluationContexts?.isNotEmpty() == true) {
             this["evaluation_contexts"] = evaluationContexts
+        }
+        if (flagKeys?.isNotEmpty() == true) {
+            this["flag_keys_to_evaluate"] = flagKeys
+        }
+        if (disableGeoip) {
+            this["geoip_disable"] = true
         }
     }
 }
