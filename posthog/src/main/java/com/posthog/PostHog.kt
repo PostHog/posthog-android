@@ -1351,8 +1351,6 @@ public class PostHog private constructor(
         }
 
         PostHogSessionManager.startSession()
-        // Notify session replay handler about session change for event triggers
-        sessionReplayHandler?.onSessionIdChanged()
     }
 
     override fun endSession() {

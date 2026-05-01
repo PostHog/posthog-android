@@ -1605,6 +1605,15 @@ public class PostHogReplayIntegration(
         }
 
         isSessionReplayActive = true
+
+        if (!resumeCurrent) {
+            // Without this, on a static UI the first user-driven onDraw can be tens of seconds
+            // away — and incremental events (type:3) would ship under the new session before
+            // the meta + full-snapshot keyframes (type:4 + type:2) needed to render them.
+            mainHandler.handler.post {
+                decorViews.keys.forEach { it.postInvalidate() }
+            }
+        }
     }
 
     private fun clearSnapshotStates() {
