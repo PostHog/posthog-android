@@ -303,6 +303,45 @@ internal class PostHogLifecycleObserverIntegrationTest {
     }
 
     @Test
+    fun `onStop touches the session before flipping the bg flag`() {
+        // Without the touch in onStop, the activity timestamp would still point at session
+        // start. After bg+30min the getter would clear the session even though the user just
+        // backgrounded the app a few minutes ago.
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        val sessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(sessionId)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        // Sit foregrounded for 25 min with no activity (under the 30-min idle threshold).
+        val twentyFiveMinutesMs = 1000L * 60 * 25
+        fakeDateProvider.currentTimeMs = baseTime + twentyFiveMinutesMs
+
+        // Backgrounding — onStop must touch before flipping the bg flag.
+        sut.onStop(ProcessLifecycleOwner.get())
+
+        // 35 min total: 10 min since the onStop touch, well under the 30-min idle threshold.
+        // The getter under bg=true should preserve the session (clears only if idle is reached).
+        fakeDateProvider.currentTimeMs = baseTime + (1000L * 60 * 35)
+        assertEquals(sessionId, PostHogSessionManager.getActiveSessionId())
+
+        sut.uninstall()
+    }
+
+    @Test
     fun `onStart does not rotate session when React Native even if session exceeds 24 hours`() {
         PostHogSessionManager.isReactNative = true
         val baseTime = System.currentTimeMillis()

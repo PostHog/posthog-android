@@ -2356,6 +2356,122 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `restartSessionReplay does nothing when SDK is closed`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+        val sut = getSut(url.toString(), integration = integration)
+
+        sut.close()
+        integration.reset()
+
+        sut.restartSessionReplay()
+
+        assertFalse(integration.stopCalled)
+        assertFalse(integration.startCalled)
+    }
+
+    @Test
+    fun `restartSessionReplay does nothing when replay flag is disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+        // No SESSION_REPLAY pref → isSessionReplayFlagEnabled() is false.
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, integration = integration)
+
+        integration.reset()
+        sut.restartSessionReplay()
+
+        assertFalse(integration.stopCalled)
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `restartSessionReplay stops then starts when replay was active and sampling passes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, mapOf("sampleRate" to "1"))
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        integration.reset()
+        sut.restartSessionReplay()
+
+        assertTrue(integration.stopCalled)
+        assertTrue(integration.startCalled)
+        // start(false) clears snapshot state so the new session emits fresh keyframes.
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `restartSessionReplay starts even when replay was inactive and sampling passes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, mapOf("sampleRate" to "1"))
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        integration.reset()
+        sut.restartSessionReplay()
+
+        assertFalse(integration.stopCalled)
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `restartSessionReplay stops but does not start when sampling fails`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, mapOf("sampleRate" to "0"))
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        integration.reset()
+        sut.restartSessionReplay()
+
+        assertTrue(integration.stopCalled)
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `restartSessionReplay does not rotate the session id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, mapOf("sampleRate" to "1"))
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        val sessionIdBefore = sut.getSessionId()
+        sut.restartSessionReplay()
+        // Distinguishes restartSessionReplay from startSessionReplay(resumeCurrent = false),
+        // which would have rotated the session id.
+        assertEquals(sessionIdBefore, sut.getSessionId())
+
+        sut.close()
+    }
+
+    @Test
     fun `captureException captures exception with correct properties`() {
         val http = mockHttp()
         val url = http.url("/")
