@@ -209,9 +209,14 @@ public class PostHogFake : PostHogInterface {
         sessionReplayActive = false
     }
 
+    /**
+     * Mirrors the real impl: stop-if-active then start. Sampling is not modelled — assertions
+     * that count `startSessionReplayCalls` after a `restartSessionReplay()` will see this
+     * call's increment too. Tests interested in restart specifically should assert on
+     * `restartSessionReplayCalls`.
+     */
     override fun restartSessionReplay() {
         restartSessionReplayCalls++
-        // mirror the real impl: stop then start (we don't model sampling here)
         if (sessionReplayActive) {
             sessionReplayActive = false
             stopSessionReplayCalls++

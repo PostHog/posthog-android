@@ -488,9 +488,7 @@ public class PostHog private constructor(
                 config?.logger?.log("PostHog is in OptOut state.")
                 return
             }
-            // Mark activity before reading session id. iOS achieves this via UIEvent
-            // swizzling; Android lacks a global equivalent so any capture counts as
-            // activity and may rotate the session if it has gone idle for 30min.
+            // Any capture counts as activity so an idle session rotates before its id is read.
             PostHogSessionManager.touchSession()
 
             val newDistinctId = distinctId ?: this.distinctId
@@ -1449,12 +1447,11 @@ public class PostHog private constructor(
             return
         }
         sessionReplayHandler?.let {
-            // Stop any in-progress recording so the new session starts with cleared snapshot state.
             if (it.isActive()) {
                 it.stop()
             }
-            // Re-evaluate sampling for the (already-current) session id; if the prior session
-            // was sampled out, this one might pass, and vice versa.
+            // Sampling decision is per-session-id; the prior session may have been sampled out
+            // and the new one may pass (or vice versa).
             if (!shouldRecordSession()) {
                 return
             }

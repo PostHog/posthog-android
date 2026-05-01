@@ -1,7 +1,6 @@
 package com.posthog.android.internal
 
 import android.os.Build
-import android.view.View
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
@@ -14,11 +13,11 @@ import curtains.touchEventInterceptors
 
 /**
  * Marks user touches as session activity by calling [PostHogSessionManager.touchSession]
- * on every dispatched MotionEvent. Mirrors iOS UIEvent swizzling.
+ * on every dispatched MotionEvent.
  *
- * Decoupled from [com.posthog.android.replay.PostHogReplayIntegration] so apps that have
- * session replay disabled (or sampled out) still get touch-driven inactivity rotation,
- * which keeps session-id rotation behavior consistent regardless of replay state.
+ * Decoupled from session replay so apps with replay disabled or sampled out still get
+ * touch-driven inactivity rotation; otherwise session-id rotation behaviour would depend
+ * on whether the user happened to be sampled, which session metrics rely on being stable.
  */
 internal class PostHogTouchActivityIntegration(
     private val config: PostHogAndroidConfig,
@@ -38,20 +37,16 @@ internal class PostHogTouchActivityIntegration(
             dispatch(motionEvent)
         }
 
-    private val attachedWindows = mutableSetOf<View>()
-
     private val onRootViewsChangedListener =
         OnRootViewsChangedListener { view, added ->
             try {
                 val window = view.phoneWindow ?: return@OnRootViewsChangedListener
                 if (added) {
-                    if (attachedWindows.add(view)) {
+                    if (touchInterceptor !in window.touchEventInterceptors) {
                         window.touchEventInterceptors += touchInterceptor
                     }
                 } else {
-                    if (attachedWindows.remove(view)) {
-                        window.touchEventInterceptors -= touchInterceptor
-                    }
+                    window.touchEventInterceptors -= touchInterceptor
                 }
             } catch (e: Throwable) {
                 config.logger.log("PostHogTouchActivityIntegration root view changed failed: $e.")
@@ -66,7 +61,7 @@ internal class PostHogTouchActivityIntegration(
         try {
             Curtains.rootViews.forEach { view ->
                 view.phoneWindow?.let { window ->
-                    if (attachedWindows.add(view)) {
+                    if (touchInterceptor !in window.touchEventInterceptors) {
                         window.touchEventInterceptors += touchInterceptor
                     }
                 }
@@ -80,12 +75,11 @@ internal class PostHogTouchActivityIntegration(
     override fun uninstall() {
         try {
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
-            attachedWindows.forEach { view ->
+            Curtains.rootViews.forEach { view ->
                 view.phoneWindow?.let { window ->
                     window.touchEventInterceptors -= touchInterceptor
                 }
             }
-            attachedWindows.clear()
         } catch (e: Throwable) {
             config.logger.log("PostHogTouchActivityIntegration uninstall failed: $e.")
         } finally {

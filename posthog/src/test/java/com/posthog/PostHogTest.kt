@@ -872,7 +872,7 @@ internal class PostHogTest {
 
         // Set up a session whose activity timestamp is 31 minutes in the past, so
         // the touchSession at the start of capture() will trip inactivity and rotate.
-        // Background defaults to true (mirrors iOS); flip to fg so touchSession isn't a no-op.
+        // touchSession is a no-op when bg, so flip to fg.
         PostHogSessionManager.setAppInBackground(false)
         val realNow = System.currentTimeMillis()
         val fakeDate = TestDateProvider(realNow - (1000L * 60 * 31))

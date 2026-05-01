@@ -171,37 +171,26 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fake = createPostHogFake()
         sut.install(fake)
 
-        // Start a session (simulates first app open)
         PostHogSessionManager.startSession()
         val firstSessionId = PostHogSessionManager.getActiveSessionId()
         assertNotNull(firstSessionId)
 
-        // First onStart at current time - this sets lastUpdatedSession
         sut.onStart(ProcessLifecycleOwner.get())
 
-        // Simulate app going to background and coming back within 30 min interval
-        // but the total session duration exceeds 24 hours.
-        // We advance time by 25 minutes (within 30 min interval) repeatedly
-        // to simulate many short background/foreground cycles over 24+ hours.
-        // For the test, we just advance the clock by 24h+1min but keep lastUpdatedSession recent
-        // by doing a stop/start cycle at 24h+1min - 10min, then at 24h+1min
         val twentyFourHoursMs = 1000L * 60 * 60 * 24
         val tenMinutesMs = 1000L * 60 * 10
         val oneMinuteMs = 1000L * 60
 
-        // Advance to 24h - 10 min (session still under 24h, within 30 min interval doesn't matter
-        // since we're simulating continuous use)
+        // Stop/start cycle at 24h-10m keeps lastUpdatedSession recent so the next
+        // onStart routes through the 24h-rotation branch instead of the first-onStart branch.
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs - tenMinutesMs
         sut.onStop(ProcessLifecycleOwner.get())
-        sut.onStart(ProcessLifecycleOwner.get()) // updates lastUpdatedSession
+        sut.onStart(ProcessLifecycleOwner.get())
 
-        // Now advance to 24h + 1 min (11 min after last update, within 30 min interval)
-        // Session started at baseTime, so it's now > 24 hours old
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
         sut.onStop(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())
 
-        // Session should have been rotated
         val secondSessionId = PostHogSessionManager.getActiveSessionId()
         assertNotNull(secondSessionId)
         assertNotEquals(firstSessionId, secondSessionId)
@@ -231,17 +220,14 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         sut.onStart(ProcessLifecycleOwner.get())
 
-        // Advance past 24h and background the app - triggers rotation in onStop
         val twentyFourHoursMs = 1000L * 60 * 60 * 24
         val oneMinuteMs = 1000L * 60
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
         sut.onStop(ProcessLifecycleOwner.get())
 
-        // After rotation in onStop: session ended, replay stopped
         assertEquals(1, fake.stopSessionReplayCalls)
         assertEquals(false, fake.sessionReplayActive)
 
-        // User returns; a new session is created and replay should resume
         sut.onStart(ProcessLifecycleOwner.get())
 
         val secondSessionId = PostHogSessionManager.getActiveSessionId()
@@ -266,7 +252,6 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val mainHandler = MainHandler()
         val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
         val fake = createPostHogFake()
-        // replay was never active
         sut.install(fake)
 
         PostHogSessionManager.startSession()
@@ -299,22 +284,18 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fake = createPostHogFake()
         sut.install(fake)
 
-        // Start a session
         PostHogSessionManager.startSession()
         val firstSessionId = PostHogSessionManager.getActiveSessionId()
         assertNotNull(firstSessionId)
 
-        // First onStart
         sut.onStart(ProcessLifecycleOwner.get())
 
-        // Simulate returning within 5 minutes (well within both 30 min and 24 hour limits)
         val fiveMinutesMs = 1000L * 60 * 5
         fakeDateProvider.currentTimeMs = baseTime + fiveMinutesMs
 
         sut.onStop(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())
 
-        // Session should NOT have been rotated
         val secondSessionId = PostHogSessionManager.getActiveSessionId()
         assertEquals(firstSessionId, secondSessionId)
 
@@ -337,14 +318,12 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fake = createPostHogFake()
         sut.install(fake)
 
-        // RN sets its own session id
+        // RN owns its session id; the SDK must not rotate it even past the 24h cap.
         val sessionId = java.util.UUID.randomUUID()
         PostHogSessionManager.setSessionId(sessionId)
 
-        // First onStart
         sut.onStart(ProcessLifecycleOwner.get())
 
-        // Advance past 24 hours
         val twentyFourHoursMs = 1000L * 60 * 60 * 24
         val oneMinuteMs = 1000L * 60
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
@@ -352,15 +331,11 @@ internal class PostHogLifecycleObserverIntegrationTest {
         sut.onStop(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())
 
-        // Session should NOT have been rotated since RN manages its own session
         assertEquals(sessionId, PostHogSessionManager.getActiveSessionId())
 
         sut.uninstall()
     }
 
-    /**
-     * A simple fake date provider for testing time-dependent behavior.
-     */
     private class FakeDateProviderForTest(initialTimeMs: Long = System.currentTimeMillis()) : PostHogDateProvider {
         var currentTimeMs: Long = initialTimeMs
 

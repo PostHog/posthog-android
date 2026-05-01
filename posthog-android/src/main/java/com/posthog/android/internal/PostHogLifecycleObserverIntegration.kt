@@ -48,7 +48,8 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun onStart(owner: LifecycleOwner) {
         PostHogSessionManager.setAppInBackground(false)
-        // Foregrounding counts as activity (mirror iOS onDidBecomeActive).
+        // Foregrounding counts as activity so an idle session rotates here, not on the
+        // first capture after foregrounding.
         PostHogSessionManager.touchSession()
         startSession()
 
@@ -79,14 +80,12 @@ internal class PostHogLifecycleObserverIntegration(
             (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
         ) {
             postHog?.startSession()
-            // If the previous session was ended via 24h rotation in onStop,
-            // restart replay so it continues under the new session
+            // Resume replay if it was active when the previous onStop tore it down for a
+            // 24h rotation; otherwise the new session would have no recording.
             if (replayActiveBeforeRotation.compareAndSet(true, false)) {
                 postHog?.startSessionReplay(resumeCurrent = true)
             }
         } else if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
-            // Session has been active for longer than 24 hours; rotate to a new session and
-            // (if replay is enabled) re-evaluate sampling on the fresh id.
             postHog?.endSession()
             postHog?.startSession()
             postHog?.restartSessionReplay()
@@ -102,12 +101,9 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     private fun scheduleEndSession() {
-        // This timer honors the PostHogInterface.endSession docstring promise:
-        // "On Android, the SDK will automatically end a session when the app is
-        // in the background for at least 30 minutes." The getter's inactivity
-        // check isn't sufficient on its own because isSessionActive() reads the
-        // field directly — without this timer, a backgrounded app that fires no
-        // events would keep reporting an active session forever.
+        // Backgrounded apps may fire no events, so the getter's idle check never runs;
+        // this timer guarantees the session ends after 30 min of bg per the
+        // PostHogInterface.endSession docstring.
         synchronized(timerLock) {
             cancelTask()
             timerTask =
@@ -122,13 +118,13 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun onStop(owner: LifecycleOwner) {
         val currentTimeMillis = config.dateProvider.currentTimeMillis()
-        // Snapshot before flipping the bg flag: once we set it, the next getActiveSessionId
-        // (e.g., while capturing "Application Backgrounded") may clear an expired session,
-        // zeroing sessionStartedAt so the 24h check below would miss it.
+        // Capture expiry before flipping the bg flag: once bg=true, getActiveSessionId
+        // would clear an expired session and zero sessionStartedAt, hiding it from the
+        // wasExpired branch below.
         val wasExpired = PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)
 
-        // Backgrounding counts as activity (mirror iOS onDidEnterBackground). Touch before
-        // flipping the bg flag so touchSession doesn't no-op on the fg→bg transition.
+        // Touch while still foregrounded so the activity timestamp moves forward; doing
+        // this after setAppInBackground(true) would no-op.
         PostHogSessionManager.touchSession()
         PostHogSessionManager.setAppInBackground(true)
         if (config.captureApplicationLifecycleEvents) {
@@ -136,14 +132,15 @@ internal class PostHogLifecycleObserverIntegration(
         }
         postHog?.flush()
 
-        // Session has been active for longer than 24 hours, rotate to a new session
         if (wasExpired) {
             cancelTask()
             val wasReplayActive = postHog?.isSessionReplayActive() == true
             postHog?.endSession()
+            // Synchronous stop guarantees replay is torn down before the process suspends;
+            // the listener-driven path posts to main and may not run in time.
             postHog?.stopSessionReplay()
             replayActiveBeforeRotation.set(wasReplayActive)
-            // Reset so the next onStart knows to create a fresh session
+            // Zeroing forces the next onStart into the "create a fresh session" branch.
             lastUpdatedSession.set(0L)
         } else {
             lastUpdatedSession.set(currentTimeMillis)
