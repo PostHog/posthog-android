@@ -38,8 +38,11 @@ public object PostHogSessionManager {
     @Volatile
     public var isReactNative: Boolean = false
 
+    // Default to background to mirror iOS: until the first lifecycle onStart fires we don't
+    // know we're foregrounded, and treating the process as bg means an expired session is
+    // cleared (returns null) rather than silently rotated before any UI is visible.
     @Volatile
-    private var isAppInBackground: Boolean = false
+    private var isAppInBackground: Boolean = true
 
     @Volatile
     private var onSessionIdChangedListener: (() -> Unit)? = null
@@ -61,21 +64,31 @@ public object PostHogSessionManager {
     }
 
     public fun startSession() {
+        var sessionChanged = false
         synchronized(sessionLock) {
             // Re-check inside the lock — RN flag is set once at setup but checking
             // here keeps state consistent with the lock's invariants.
-            if (isReactNative || sessionId != sessionIdNone) return
+            if (isReactNative || sessionId != sessionIdNone) return@synchronized
             val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
             sessionId = TimeBasedEpochGenerator.generate()
             sessionStartedAt = now
             sessionActivityTimestamp = now
+            sessionChanged = true
+        }
+        if (sessionChanged) {
+            onSessionIdChangedListener?.invoke()
         }
     }
 
     public fun endSession() {
+        var sessionChanged = false
         synchronized(sessionLock) {
-            if (isReactNative) return
+            if (isReactNative || sessionId == sessionIdNone) return@synchronized
             clearLocked()
+            sessionChanged = true
+        }
+        if (sessionChanged) {
+            onSessionIdChangedListener?.invoke()
         }
     }
 
@@ -180,13 +193,21 @@ public object PostHogSessionManager {
     }
 
     public fun setSessionId(sessionId: UUID) {
+        var sessionChanged = false
         synchronized(sessionLock) {
+            // Only stamp on a real change; re-asserting the same id (e.g. RN syncing on every
+            // event) shouldn't reset the 24h clock or the inactivity timer.
+            // NOTE: this is an Android-specific divergence from iOS, where setSessionId always
+            // re-stamps. Keeping per Ioannis review on PR #494.
+            if (this.sessionId == sessionId) return@synchronized
             val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
             this.sessionId = sessionId
-            // Stamp the start so an externally-set session participates in the 24h
-            // expiry check; without it sessionStartedAt stays 0 and never expires.
             sessionStartedAt = now
             sessionActivityTimestamp = now
+            sessionChanged = true
+        }
+        if (sessionChanged) {
+            onSessionIdChangedListener?.invoke()
         }
     }
 
@@ -196,5 +217,17 @@ public object PostHogSessionManager {
             active = sessionId != sessionIdNone
         }
         return active
+    }
+
+    /**
+     * Read-only sibling of [getActiveSessionId]: returns the current session id without
+     * running the inactivity / max-duration checks, so callers reacting to a session-id
+     * change (e.g. PostHogReplayIntegration.onSessionIdChanged) can inspect the new id
+     * without risking a re-entrant rotation that would re-fire the listener.
+     */
+    public fun peekSessionId(): UUID? {
+        synchronized(sessionLock) {
+            return if (sessionId == sessionIdNone) null else sessionId
+        }
     }
 }

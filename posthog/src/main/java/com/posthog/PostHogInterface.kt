@@ -217,6 +217,19 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun stopSessionReplay()
 
     /**
+     * Restarts session replay for the current session id. Stops any in-progress recording,
+     * re-runs the sampling decision for the (already-current) session, and resumes recording
+     * with fresh meta + full snapshot keyframes if sampling passes.
+     *
+     * Unlike [startSessionReplay] (resumeCurrent = false), this does NOT rotate the session id —
+     * use it from places where the session has already changed (e.g. silent rotation from
+     * [PostHogSessionManager.getActiveSessionId]) so we don't rotate twice.
+     */
+    @PostHogInternal
+    public fun restartSessionReplay() {
+    }
+
+    /**
      * Returns the session Id if a session is active
      */
     public fun getSessionId(): UUID?

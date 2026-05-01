@@ -85,16 +85,11 @@ internal class PostHogLifecycleObserverIntegration(
                 postHog?.startSessionReplay(resumeCurrent = true)
             }
         } else if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
-            // Session has been active for longer than 24 hours, rotate to a new session
-            if (postHog?.isSessionReplayActive() == true) {
-                postHog?.stopSessionReplay()
-
-                // startSessionReplay will rotate the session id internally
-                postHog?.startSessionReplay(resumeCurrent = false)
-            } else {
-                postHog?.endSession()
-                postHog?.startSession()
-            }
+            // Session has been active for longer than 24 hours; rotate to a new session and
+            // (if replay is enabled) re-evaluate sampling on the fresh id.
+            postHog?.endSession()
+            postHog?.startSession()
+            postHog?.restartSessionReplay()
         }
         this.lastUpdatedSession.set(currentTimeMillis)
     }
@@ -132,6 +127,9 @@ internal class PostHogLifecycleObserverIntegration(
         // zeroing sessionStartedAt so the 24h check below would miss it.
         val wasExpired = PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)
 
+        // Backgrounding counts as activity (mirror iOS onDidEnterBackground). Touch before
+        // flipping the bg flag so touchSession doesn't no-op on the fg→bg transition.
+        PostHogSessionManager.touchSession()
         PostHogSessionManager.setAppInBackground(true)
         if (config.captureApplicationLifecycleEvents) {
             postHog?.capture("Application Backgrounded")

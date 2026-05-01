@@ -872,6 +872,8 @@ internal class PostHogTest {
 
         // Set up a session whose activity timestamp is 31 minutes in the past, so
         // the touchSession at the start of capture() will trip inactivity and rotate.
+        // Background defaults to true (mirrors iOS); flip to fg so touchSession isn't a no-op.
+        PostHogSessionManager.setAppInBackground(false)
         val realNow = System.currentTimeMillis()
         val fakeDate = TestDateProvider(realNow - (1000L * 60 * 31))
         PostHogSessionManager.setDateProvider(fakeDate)
@@ -904,7 +906,8 @@ internal class PostHogTest {
 
         // Force the manager into an expired state: stamp sessionStartedAt with an old
         // timestamp via setSessionId, then bump the clock back to "now" so the getter's
-        // expiry check trips.
+        // expiry check trips. Foreground so the getter rotates instead of clearing.
+        PostHogSessionManager.setAppInBackground(false)
         val twentyFiveHoursMs = 25L * 60 * 60 * 1000
         val realNow = System.currentTimeMillis()
         val fakeDate = TestDateProvider(realNow - twentyFiveHoursMs)

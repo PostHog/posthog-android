@@ -276,8 +276,8 @@ public class PostHogReplayIntegration(
     private val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
             val timestamp = config.dateProvider.currentTimeMillis()
-            // User touch counts as activity (closest equivalent to iOS UIEvent swizzling).
-            PostHogSessionManager.touchSession()
+            // Note: user-activity tracking (PostHogSessionManager.touchSession) lives in
+            // PostHogTouchActivityIntegration so it runs regardless of replay state.
 
             try {
                 val state = dispatch(motionEvent)
@@ -1666,11 +1666,14 @@ public class PostHogReplayIntegration(
      * Called when the session ID changes. Stops recording if event triggers are configured
      * and the new session hasn't been activated yet, or re-initializes recording so the
      * new session gets fresh meta + full wireframe events.
+     *
+     * Uses peekSessionId() (not getSessionId()) so reading the new id can't re-trigger the
+     * mutating getter and recurse back into this listener.
      */
     override fun onSessionIdChanged() {
         val postHog = this.postHog ?: return
 
-        val currentSessionId = postHog.getSessionId()?.toString()
+        val currentSessionId = PostHogSessionManager.peekSessionId()?.toString()
 
         val triggers = config.remoteConfigHolder?.getEventTriggers()
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
@@ -1681,20 +1684,27 @@ public class PostHogReplayIntegration(
                 config.logger.log("[Session Replay] Session changed. Stopping until trigger is matched.")
                 stop()
             }
-        } else if (isSessionReplayActive) {
-            // Session rotated/cleared silently (e.g., 24h max duration via getter).
-            // Posting to main: getter can be invoked from any thread that calls capture(),
-            // and start(resumeCurrent = false) iterates a non-thread-safe WeakHashMap.
-            if (currentSessionId == null) {
+            return
+        }
+
+        // Session rotated/cleared silently (e.g. 30-min idle or 24h max duration via getter).
+        // Posting to main: getter can be invoked from any thread that calls capture(),
+        // and start(resumeCurrent = false) iterates a non-thread-safe WeakHashMap.
+        if (currentSessionId == null) {
+            if (isSessionReplayActive) {
                 config.logger.log("[Session Replay] Session cleared. Stopping recording.")
                 mainHandler.handler.post { stop() }
-            } else {
-                config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
-                mainHandler.handler.post {
-                    stop()
-                    start(resumeCurrent = false)
-                }
             }
+            return
+        }
+
+        // React even when replay is currently inactive: a previous session may have been
+        // sampled out; the new session may now pass. restartSessionReplay handles the
+        // stop-if-active + sampling check + clean restart (without re-rotating the session,
+        // which would cause double-rotation on top of the silent rotation that fired this).
+        config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
+        mainHandler.handler.post {
+            postHog.restartSessionReplay()
         }
     }
 

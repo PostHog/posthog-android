@@ -15,6 +15,7 @@ import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogMetaPropertiesApplier
 import com.posthog.android.internal.PostHogSharedPreferences
+import com.posthog.android.internal.PostHogTouchActivityIntegration
 import com.posthog.android.internal.appContext
 import com.posthog.android.internal.getPackageInfo
 import com.posthog.android.internal.versionCodeCompat
@@ -132,6 +133,7 @@ public class PostHogAndroid private constructor() {
 
             val mainHandler = MainHandler()
             config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
+            config.addIntegration(PostHogTouchActivityIntegration(config))
             config.addIntegration(PostHogLogCatIntegration(config))
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {

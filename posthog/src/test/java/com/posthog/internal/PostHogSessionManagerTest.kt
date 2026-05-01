@@ -328,10 +328,12 @@ internal class PostHogSessionManagerTest {
         val fakeDate = FakeDateProvider(baseTime)
         PostHogSessionManager.setDateProvider(fakeDate)
 
+        // Wire the listener AFTER startSession so the explicit start-fire isn't counted; we
+        // want to measure only the silent rotation triggered by the getter.
+        PostHogSessionManager.startSession()
         var callCount = 0
         PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
 
-        PostHogSessionManager.startSession()
         PostHogSessionManager.getActiveSessionId() // no rotation yet
         assertEquals(0, callCount)
 
@@ -350,15 +352,62 @@ internal class PostHogSessionManagerTest {
         val fakeDate = FakeDateProvider(baseTime)
         PostHogSessionManager.setDateProvider(fakeDate)
 
+        PostHogSessionManager.startSession()
         var callCount = 0
         PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
 
-        PostHogSessionManager.startSession()
         PostHogSessionManager.setAppInBackground(true)
         fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 24) + 1
 
         assertNull(PostHogSessionManager.getActiveSessionId())
         assertEquals(1, callCount)
+    }
+
+    @Test
+    internal fun `startSession fires listener when a new session is created`() {
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.startSession()
+        assertEquals(1, callCount)
+
+        // Re-asserting startSession on an already-active session is a no-op and must not refire.
+        PostHogSessionManager.startSession()
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    internal fun `endSession fires listener once when an active session is cleared`() {
+        PostHogSessionManager.startSession()
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.endSession()
+        assertEquals(1, callCount)
+
+        // No active session → no fire.
+        PostHogSessionManager.endSession()
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    internal fun `setSessionId fires listener only when the id actually changes`() {
+        val firstId = UUID.randomUUID()
+        val sameId = firstId
+        val secondId = UUID.randomUUID()
+
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.setSessionId(firstId)
+        assertEquals(1, callCount)
+
+        // Re-asserting the same id (e.g. RN syncing on every event) must not refire.
+        PostHogSessionManager.setSessionId(sameId)
+        assertEquals(1, callCount)
+
+        PostHogSessionManager.setSessionId(secondId)
+        assertEquals(2, callCount)
     }
 
     @AfterTest

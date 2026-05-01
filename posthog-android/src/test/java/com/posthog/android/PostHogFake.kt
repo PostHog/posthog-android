@@ -17,6 +17,7 @@ public class PostHogFake : PostHogInterface {
     public var sessionReplayActive: Boolean = false
     public var startSessionReplayCalls: Int = 0
     public var stopSessionReplayCalls: Int = 0
+    public var restartSessionReplayCalls: Int = 0
 
     override fun <T : PostHogConfig> setup(config: T) {
     }
@@ -206,6 +207,17 @@ public class PostHogFake : PostHogInterface {
     override fun stopSessionReplay() {
         stopSessionReplayCalls++
         sessionReplayActive = false
+    }
+
+    override fun restartSessionReplay() {
+        restartSessionReplayCalls++
+        // mirror the real impl: stop then start (we don't model sampling here)
+        if (sessionReplayActive) {
+            sessionReplayActive = false
+            stopSessionReplayCalls++
+        }
+        sessionReplayActive = true
+        startSessionReplayCalls++
     }
 
     override fun getSessionId(): UUID? {
