@@ -16,6 +16,7 @@ public object PostHogSessionManager {
 
     private var sessionId = sessionIdNone
 
+    @Volatile
     private var dateProvider: PostHogDateProvider? = null
 
     public fun setDateProvider(dateProvider: PostHogDateProvider) {

@@ -191,7 +191,11 @@ public class PostHog private constructor(
                 queue.start()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
-                    sessionReplayHandler?.onSessionIdChanged()
+                    try {
+                        sessionReplayHandler?.onSessionIdChanged()
+                    } catch (e: Throwable) {
+                        config.logger.log("onSessionIdChanged listener failed: $e.")
+                    }
                 }
 
                 startSession()
