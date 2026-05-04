@@ -1674,12 +1674,13 @@ public class PostHogReplayIntegration(
      * new session gets fresh meta + full wireframe events.
      */
     override fun onSessionIdChanged() {
-        val postHog = this.postHog ?: return
+        if (this.postHog == null) return
 
         // Read-only: getActiveSessionId() can rotate the session and would re-fire this listener.
         val currentSessionId = PostHogSessionManager.peekSessionId()?.toString()
 
-        val triggers = config.remoteConfigHolder?.getEventTriggers()
+        val remoteConfig = config.remoteConfigHolder
+        val triggers = remoteConfig?.getEventTriggers()
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
 
         if (!triggers.isNullOrEmpty() && activatedSession != currentSessionId) {
@@ -1701,11 +1702,21 @@ public class PostHogReplayIntegration(
         }
 
         // Run regardless of isSessionReplayActive: the prior session may have been sampled out
-        // and the new one may now pass. restartSessionReplay re-checks sampling without rotating
-        // the session id (which would double-rotate on top of the silent rotation that fired us).
+        // and the new one may now pass. Sampling is re-evaluated for the (already-current)
+        // session without rotating the id (the silent rotation that fired this already
+        // rotated; we'd double-rotate if we went through PostHog.startSessionReplay(false)).
         config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
         mainHandler.handler.post {
-            postHog.restartSessionReplay()
+            if (remoteConfig?.isSessionReplayFlagActive() != true) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (remoteConfig.makeSamplingDecision(currentSessionId).not()) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (isSessionReplayActive) stop()
+            start(resumeCurrent = false)
         }
     }
 

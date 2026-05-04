@@ -86,9 +86,10 @@ internal class PostHogLifecycleObserverIntegration(
                 postHog?.startSessionReplay(resumeCurrent = true)
             }
         } else if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
+            // endSession + startSession both fire onSessionIdChangedListener on the manager;
+            // the replay integration handles stop + sampling-aware restart from there.
             postHog?.endSession()
             postHog?.startSession()
-            postHog?.restartSessionReplay()
         }
         this.lastUpdatedSession.set(currentTimeMillis)
     }

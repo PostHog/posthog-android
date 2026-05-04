@@ -1441,26 +1441,6 @@ public class PostHog private constructor(
         }
     }
 
-    override fun restartSessionReplay() {
-        if (!isEnabled()) {
-            return
-        }
-        if (!isSessionReplayFlagEnabled()) {
-            return
-        }
-        sessionReplayHandler?.let {
-            if (it.isActive()) {
-                it.stop()
-            }
-            // Sampling decision is per-session-id; the prior session may have been sampled out
-            // and the new one may pass (or vice versa).
-            if (!shouldRecordSession()) {
-                return
-            }
-            it.start(false)
-        }
-    }
-
     override fun stopSessionReplay() {
         if (!isEnabled()) {
             return
@@ -1745,10 +1725,6 @@ public class PostHog private constructor(
 
         override fun stopSessionReplay() {
             shared.stopSessionReplay()
-        }
-
-        override fun restartSessionReplay() {
-            shared.restartSessionReplay()
         }
 
         override fun getSessionId(): UUID? {
