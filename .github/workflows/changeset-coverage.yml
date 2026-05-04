@@ -36,7 +36,7 @@ jobs:
 
             - name: Post sticky PR comment
               if: steps.coverage.outputs.body != ''
-              uses: marocchino/sticky-pull-request-comment@v2
+              uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
               with:
                   header: changeset-coverage
                   message: ${{ steps.coverage.outputs.body }}
