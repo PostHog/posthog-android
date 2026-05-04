@@ -84,45 +84,57 @@ const declaredList = [...declared]
     .map(([n, b]) => `- \`${n}\` — ${b}`)
     .join('\n');
 
-const lines = [];
 if (missing.length === 0 && extra.length === 0) {
-    lines.push('### Changeset coverage looks good ✅');
-    lines.push('');
-    lines.push("This PR's changesets cover every modified workspace package.");
-    lines.push('');
-    lines.push('**Declared:**');
-    lines.push(declaredList || '_(none)_');
-} else {
-    lines.push('### Possible changeset mismatch ⚠️');
-    lines.push('');
-    lines.push("This is informational — the PR is not blocked. You can ignore it if the mismatch is intentional.");
-    lines.push('');
-    if (missing.length > 0) {
-        lines.push('**Modified in this PR but not in any changeset:**');
-        for (const n of missing) lines.push(`- \`${n}\``);
-        lines.push('');
-        lines.push(
-            'If this package should ship the change, add it to the changeset frontmatter:',
-        );
-        lines.push('');
-        lines.push('```');
-        lines.push('---');
-        for (const n of missing) lines.push(`"${n}": patch`);
-        lines.push('---');
-        lines.push('```');
-        lines.push('');
-    }
-    if (extra.length > 0) {
-        lines.push('**Declared in a changeset but no source files modified:**');
-        for (const n of extra) lines.push(`- \`${n}\``);
-        lines.push('');
-        lines.push(
-            'Double-check this is intentional — for example, releasing a previously-merged change.',
-        );
-        lines.push('');
-    }
-    lines.push('**Changesets in this PR:**');
-    lines.push(declaredList || '_(none)_');
+    // Coverage matches — no comment needed. Workflow will delete any stale one.
+    writeOutput('');
+    process.exit(0);
 }
 
-writeOutput(lines.join('\n'));
+const summary = (() => {
+    if (missing.length && extra.length) {
+        return 'Possible changeset mismatch — modified and declared packages differ';
+    }
+    if (missing.length === 1) {
+        return `\`${missing[0]}\` is modified but not declared in any changeset`;
+    }
+    if (missing.length > 1) {
+        return `${missing.length} packages modified but not declared in any changeset`;
+    }
+    if (extra.length === 1) {
+        return `Changeset declares \`${extra[0]}\` but no source files in that package changed`;
+    }
+    return 'Changesets declare packages with no source changes in this PR';
+})();
+
+const inner = [];
+inner.push(
+    'This is informational — the PR is not blocked. Click the triangle above to collapse, or push a fix and this comment will auto-delete.',
+);
+inner.push('');
+if (missing.length > 0) {
+    inner.push('**Modified in this PR but not in any changeset:**');
+    for (const n of missing) inner.push(`- \`${n}\``);
+    inner.push('');
+    inner.push('If this package should ship the change, add it to the changeset frontmatter:');
+    inner.push('');
+    inner.push('```');
+    inner.push('---');
+    for (const n of missing) inner.push(`"${n}": patch`);
+    inner.push('---');
+    inner.push('```');
+    inner.push('');
+}
+if (extra.length > 0) {
+    inner.push('**Declared in a changeset but no source files modified:**');
+    for (const n of extra) inner.push(`- \`${n}\``);
+    inner.push('');
+    inner.push(
+        'Double-check this is intentional — for example, releasing a previously-merged change.',
+    );
+    inner.push('');
+}
+inner.push('**Changesets in this PR:**');
+inner.push(declaredList || '_(none)_');
+
+const body = `<details open>\n<summary>⚠️ ${summary}</summary>\n\n${inner.join('\n')}\n\n</details>`;
+writeOutput(body);
