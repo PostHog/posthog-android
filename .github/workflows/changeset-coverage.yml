@@ -23,10 +23,10 @@ jobs:
                   ref: ${{ github.event.pull_request.head.sha }}
                   fetch-depth: 0
 
-            - name: Setup Node
-              uses: actions/setup-node@v4
+            - name: Setup environment
+              uses: ./.github/actions/setup
               with:
-                  node-version: 22
+                  install: false
 
             - name: Compute coverage report
               id: coverage

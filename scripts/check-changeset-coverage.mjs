@@ -6,21 +6,23 @@
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 const baseRef = process.env.BASE_REF || 'main';
 
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8' }).trim();
 
-// 1. Workspace package directories → package names.
-const workspaceFile = readFileSync('pnpm-workspace.yaml', 'utf8');
-const pkgDirs = [...workspaceFile.matchAll(/^\s*-\s*"([^"]+)"\s*$/gm)].map((m) => m[1]);
+// 1. Workspace package directories → package names. Use pnpm itself as the
+//    source of truth so we handle globs, exclusions, and the catalog correctly.
+const cwd = process.cwd();
+const workspaceListing = JSON.parse(sh('pnpm m ls --json --depth=-1'));
 const dirToName = {};
-for (const dir of pkgDirs) {
-    const pj = join(dir, 'package.json');
-    if (!existsSync(pj)) continue;
-    const name = JSON.parse(readFileSync(pj, 'utf8')).name;
-    if (name) dirToName[dir] = name;
+for (const entry of workspaceListing) {
+    if (!entry.name) continue; // workspace root has no name field
+    if (entry.path === cwd) continue;
+    const relPath = entry.path.startsWith(cwd + '/')
+        ? entry.path.slice(cwd.length + 1)
+        : entry.path;
+    dirToName[relPath] = entry.name;
 }
 const knownNames = new Set(Object.values(dirToName));
 
