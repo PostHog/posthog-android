@@ -15,8 +15,4 @@ concurrency:
 
 jobs:
     check:
-        # NOTE: while PostHog/.github#39 is open, pin to feat/changeset-hygiene.
-        # Update both `uses:` and `script-ref` to `@main` once that PR merges.
-        uses: PostHog/.github/.github/workflows/changeset-hygiene.yml@feat/changeset-hygiene
-        with:
-            script-ref: feat/changeset-hygiene
+        uses: PostHog/.github/.github/workflows/changeset-hygiene.yml@main
