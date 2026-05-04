@@ -11,8 +11,6 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogSessionManager
 import java.util.Timer
 import java.util.TimerTask
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Captures app opened and backgrounded events
@@ -29,9 +27,9 @@ internal class PostHogLifecycleObserverIntegration(
     private val timerLock = Any()
     private var timer = Timer(true)
     private var timerTask: TimerTask? = null
-    private val lastUpdatedSession = AtomicLong(0L)
-    private val replayActiveBeforeRotation = AtomicBoolean(false)
-    private val sessionMaxInterval = (1000 * 60 * 30).toLong() // 30 minutes
+
+    // Bg timeout for forcing endSession when no events fire to drive the manager's getter check.
+    private val bgEndSessionDelayMs = (1000 * 60 * 30).toLong() // 30 minutes
 
     private var postHog: PostHogInterface? = null
 
@@ -47,11 +45,13 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        cancelTask()
         PostHogSessionManager.setAppInBackground(false)
-        // Foregrounding counts as activity so an idle session rotates here, not on the
-        // first capture after foregrounding.
+        // touchSession rotates an idle session; startSession creates a fresh one if the
+        // session was cleared during bg. Both fire the manager's session-id-changed listener,
+        // which drives the sampling-aware replay restart in the replay integration.
         PostHogSessionManager.touchSession()
-        startSession()
+        postHog?.startSession()
 
         if (config.captureApplicationLifecycleEvents) {
             val props = mutableMapOf<String, Any>()
@@ -68,30 +68,6 @@ internal class PostHogLifecycleObserverIntegration(
 
             postHog?.capture("Application Opened", properties = props)
         }
-    }
-
-    private fun startSession() {
-        cancelTask()
-
-        val currentTimeMillis = config.dateProvider.currentTimeMillis()
-        val lastUpdatedSession = lastUpdatedSession.get()
-
-        if (lastUpdatedSession == 0L ||
-            (lastUpdatedSession + sessionMaxInterval) <= currentTimeMillis
-        ) {
-            postHog?.startSession()
-            // Resume replay if it was active when the previous onStop tore it down for a
-            // 24h rotation; otherwise the new session would have no recording.
-            if (replayActiveBeforeRotation.compareAndSet(true, false)) {
-                postHog?.startSessionReplay(resumeCurrent = true)
-            }
-        } else if (PostHogSessionManager.isSessionExceedingMaxDuration(currentTimeMillis)) {
-            // endSession + startSession both fire onSessionIdChangedListener on the manager;
-            // the replay integration handles stop + sampling-aware restart from there.
-            postHog?.endSession()
-            postHog?.startSession()
-        }
-        this.lastUpdatedSession.set(currentTimeMillis)
     }
 
     private fun cancelTask() {
@@ -113,7 +89,7 @@ internal class PostHogLifecycleObserverIntegration(
                         postHog?.endSession()
                     }
                 }
-            timer.schedule(timerTask, sessionMaxInterval)
+            timer.schedule(timerTask, bgEndSessionDelayMs)
         }
     }
 
@@ -135,16 +111,11 @@ internal class PostHogLifecycleObserverIntegration(
 
         if (wasExpired) {
             cancelTask()
-            val wasReplayActive = postHog?.isSessionReplayActive() == true
+            // Force the rotation now and stop replay synchronously — process may suspend
+            // before the listener's main-thread post can run.
             postHog?.endSession()
-            // Synchronous stop guarantees replay is torn down before the process suspends;
-            // the listener-driven path posts to main and may not run in time.
             postHog?.stopSessionReplay()
-            replayActiveBeforeRotation.set(wasReplayActive)
-            // Zeroing forces the next onStart into the "create a fresh session" branch.
-            lastUpdatedSession.set(0L)
         } else {
-            lastUpdatedSession.set(currentTimeMillis)
             scheduleEndSession()
         }
     }

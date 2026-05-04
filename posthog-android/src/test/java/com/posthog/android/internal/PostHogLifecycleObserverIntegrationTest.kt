@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogLifecycleObserverIntegrationTest {
@@ -199,7 +200,10 @@ internal class PostHogLifecycleObserverIntegrationTest {
     }
 
     @Test
-    fun `onStart restarts session replay after 24h rotation in background when replay was active`() {
+    fun `onStop ends session and stops replay synchronously when 24h expired`() {
+        // Replay restart on the next onStart is now driven by the manager's listener
+        // (covered in PostHogReplayIntegrationTest); here we verify only the synchronous
+        // teardown that has to happen before the process suspends.
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
@@ -227,20 +231,14 @@ internal class PostHogLifecycleObserverIntegrationTest {
 
         assertEquals(1, fake.stopSessionReplayCalls)
         assertEquals(false, fake.sessionReplayActive)
-
-        sut.onStart(ProcessLifecycleOwner.get())
-
-        val secondSessionId = PostHogSessionManager.getActiveSessionId()
-        assertNotNull(secondSessionId)
-        assertNotEquals(firstSessionId, secondSessionId)
-        assertEquals(1, fake.startSessionReplayCalls)
-        assertEquals(true, fake.sessionReplayActive)
+        // Session was ended; the next onStart will create a fresh one.
+        assertNull(PostHogSessionManager.getActiveSessionId())
 
         sut.uninstall()
     }
 
     @Test
-    fun `onStart does not restart session replay after 24h rotation when replay was inactive`() {
+    fun `onStart creates a fresh session after a 24h-expired onStop`() {
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
@@ -255,6 +253,8 @@ internal class PostHogLifecycleObserverIntegrationTest {
         sut.install(fake)
 
         PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
         sut.onStart(ProcessLifecycleOwner.get())
 
         val twentyFourHoursMs = 1000L * 60 * 60 * 24
@@ -263,8 +263,9 @@ internal class PostHogLifecycleObserverIntegrationTest {
         sut.onStop(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())
 
-        assertEquals(0, fake.startSessionReplayCalls)
-        assertEquals(false, fake.sessionReplayActive)
+        val secondSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(secondSessionId)
+        assertNotEquals(firstSessionId, secondSessionId)
 
         sut.uninstall()
     }
