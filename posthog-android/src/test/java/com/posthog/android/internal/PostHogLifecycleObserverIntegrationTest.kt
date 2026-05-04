@@ -179,15 +179,11 @@ internal class PostHogLifecycleObserverIntegrationTest {
         sut.onStart(ProcessLifecycleOwner.get())
 
         val twentyFourHoursMs = 1000L * 60 * 60 * 24
-        val tenMinutesMs = 1000L * 60 * 10
         val oneMinuteMs = 1000L * 60
 
-        // Stop/start cycle at 24h-10m keeps lastUpdatedSession recent so the next
-        // onStart routes through the 24h-rotation branch instead of the first-onStart branch.
-        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs - tenMinutesMs
-        sut.onStop(ProcessLifecycleOwner.get())
-        sut.onStart(ProcessLifecycleOwner.get())
-
+        // Advance past the 24h cap and cycle through bg→fg. onStop's wasExpired branch
+        // ends the session; the next onStart calls startSession on the cleared manager,
+        // which mints a fresh id.
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
         sut.onStop(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())

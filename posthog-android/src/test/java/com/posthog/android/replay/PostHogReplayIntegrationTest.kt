@@ -43,6 +43,7 @@ internal class PostHogReplayIntegrationTest {
     private fun configWithSampling(
         flagActive: Boolean,
         samplingPasses: Boolean,
+        sessionReplay: Boolean = true,
     ): PostHogAndroidConfig {
         val remoteConfig =
             mock<PostHogRemoteConfig> {
@@ -52,6 +53,7 @@ internal class PostHogReplayIntegrationTest {
             }
         return PostHogAndroidConfig(API_KEY).apply {
             remoteConfigHolder = remoteConfig
+            this.sessionReplay = sessionReplay
         }
     }
 
@@ -145,6 +147,59 @@ internal class PostHogReplayIntegrationTest {
         sut.install(fake)
         try {
             PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged does not auto-start replay when config sessionReplay is false`() {
+        // config.sessionReplay is the master switch — even if remote flag and sampling both
+        // pass, we must not auto-start replay if the customer disabled it at config level.
+        val sut =
+            getSut(
+                configWithSampling(
+                    flagActive = true,
+                    samplingPasses = true,
+                    sessionReplay = false,
+                ),
+            )
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged stops active replay on rotation when config sessionReplay is false`() {
+        // Defensive: if replay was somehow started (e.g. trigger-matched, or pre-config-flip),
+        // a rotation under config.sessionReplay = false should stop it rather than restart.
+        val sut =
+            getSut(
+                configWithSampling(
+                    flagActive = true,
+                    samplingPasses = true,
+                    sessionReplay = false,
+                ),
+            )
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
             sut.onSessionIdChanged()
             shadowOf(Looper.getMainLooper()).idle()
 
