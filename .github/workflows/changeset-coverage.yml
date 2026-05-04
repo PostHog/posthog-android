@@ -3,6 +3,7 @@ name: 'Changeset coverage'
 on:
     pull_request:
         branches: [main]
+        types: [opened, synchronize, reopened]
 
 permissions:
     contents: read
@@ -34,16 +35,51 @@ jobs:
                   BASE_REF: ${{ github.event.pull_request.base.ref }}
               run: node scripts/check-changeset-coverage.mjs >> "$GITHUB_OUTPUT"
 
-            - name: Post sticky PR comment
-              if: steps.coverage.outputs.body != ''
-              uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+            - name: Upsert or delete sticky PR comment
+              uses: actions/github-script@v7
+              env:
+                  COMMENT_BODY: ${{ steps.coverage.outputs.body }}
               with:
-                  header: changeset-coverage
-                  message: ${{ steps.coverage.outputs.body }}
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
+                  script: |
+                      const marker = '<!-- changeset-coverage -->';
+                      const body = process.env.COMMENT_BODY || '';
 
-            - name: Delete stale sticky PR comment
-              if: steps.coverage.outputs.body == ''
-              uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
-              with:
-                  header: changeset-coverage
-                  delete: true
+                      const { data: comments } = await github.rest.issues.listComments({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                      });
+                      const existing = comments.find(
+                          (c) => c.user.type === 'Bot' && c.body.includes(marker),
+                      );
+
+                      if (!body) {
+                          if (existing) {
+                              await github.rest.issues.deleteComment({
+                                  owner: context.repo.owner,
+                                  repo: context.repo.repo,
+                                  comment_id: existing.id,
+                              });
+                              console.log('Deleted stale changeset-coverage comment');
+                          }
+                          return;
+                      }
+
+                      if (existing) {
+                          await github.rest.issues.updateComment({
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              comment_id: existing.id,
+                              body,
+                          });
+                          console.log('Updated existing changeset-coverage comment');
+                      } else {
+                          await github.rest.issues.createComment({
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              issue_number: context.issue.number,
+                              body,
+                          });
+                          console.log('Created changeset-coverage comment');
+                      }
