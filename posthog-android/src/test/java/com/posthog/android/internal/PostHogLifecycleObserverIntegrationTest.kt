@@ -10,11 +10,20 @@ import com.posthog.android.FakeLifecycle
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockPackageInfo
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
+import com.posthog.internal.PostHogSessionManager
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import java.util.Calendar
+import java.util.Date
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogLifecycleObserverIntegrationTest {
@@ -30,6 +39,14 @@ internal class PostHogLifecycleObserverIntegrationTest {
     @BeforeTest
     fun `set up`() {
         PostHog.resetSharedInstance()
+        PostHogSessionManager.endSession()
+    }
+
+    @AfterTest
+    fun `tear down`() {
+        PostHogSessionManager.isReactNative = false
+        PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
+        PostHogSessionManager.endSession()
     }
 
     @Test
@@ -138,5 +155,237 @@ internal class PostHogLifecycleObserverIntegrationTest {
         assertEquals(1, fake.flushes)
 
         sut.uninstall()
+    }
+
+    @Test
+    fun `onStart rotates session when session exceeds 24 hours`() {
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val twentyFourHoursMs = 1000L * 60 * 60 * 24
+        val oneMinuteMs = 1000L * 60
+
+        // Advance past the 24h cap and cycle through bg→fg. onStop's wasExpired branch
+        // ends the session; the next onStart calls startSession on the cleared manager,
+        // which mints a fresh id.
+        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
+        sut.onStop(ProcessLifecycleOwner.get())
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val secondSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(secondSessionId)
+        assertNotEquals(firstSessionId, secondSessionId)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStop ends session and stops replay synchronously when 24h expired`() {
+        // Replay restart on the next onStart is now driven by the manager's listener
+        // (covered in PostHogReplayIntegrationTest); here we verify only the synchronous
+        // teardown that has to happen before the process suspends.
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = true
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val twentyFourHoursMs = 1000L * 60 * 60 * 24
+        val oneMinuteMs = 1000L * 60
+        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
+        sut.onStop(ProcessLifecycleOwner.get())
+
+        assertEquals(1, fake.stopSessionReplayCalls)
+        assertEquals(false, fake.sessionReplayActive)
+        // Session was ended; the next onStart will create a fresh one.
+        assertNull(PostHogSessionManager.getActiveSessionId())
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStart creates a fresh session after a 24h-expired onStop`() {
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val twentyFourHoursMs = 1000L * 60 * 60 * 24
+        val oneMinuteMs = 1000L * 60
+        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
+        sut.onStop(ProcessLifecycleOwner.get())
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val secondSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(secondSessionId)
+        assertNotEquals(firstSessionId, secondSessionId)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStart does not rotate session when session is under 24 hours`() {
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val fiveMinutesMs = 1000L * 60 * 5
+        fakeDateProvider.currentTimeMs = baseTime + fiveMinutesMs
+
+        sut.onStop(ProcessLifecycleOwner.get())
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val secondSessionId = PostHogSessionManager.getActiveSessionId()
+        assertEquals(firstSessionId, secondSessionId)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStop touches the session before flipping the bg flag`() {
+        // Without the touch in onStop, the activity timestamp would still point at session
+        // start. After bg+30min the getter would clear the session even though the user just
+        // backgrounded the app a few minutes ago.
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        val sessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(sessionId)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        // Sit foregrounded for 25 min with no activity (under the 30-min idle threshold).
+        val twentyFiveMinutesMs = 1000L * 60 * 25
+        fakeDateProvider.currentTimeMs = baseTime + twentyFiveMinutesMs
+
+        // Backgrounding — onStop must touch before flipping the bg flag.
+        sut.onStop(ProcessLifecycleOwner.get())
+
+        // 35 min total: 10 min since the onStop touch, well under the 30-min idle threshold.
+        // The getter under bg=true should preserve the session (clears only if idle is reached).
+        fakeDateProvider.currentTimeMs = baseTime + (1000L * 60 * 35)
+        assertEquals(sessionId, PostHogSessionManager.getActiveSessionId())
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStart does not rotate session when React Native even if session exceeds 24 hours`() {
+        PostHogSessionManager.isReactNative = true
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = fakeDateProvider
+                captureApplicationLifecycleEvents = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        // RN owns its session id; the SDK must not rotate it even past the 24h cap.
+        val sessionId = java.util.UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        val twentyFourHoursMs = 1000L * 60 * 60 * 24
+        val oneMinuteMs = 1000L * 60
+        fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
+
+        sut.onStop(ProcessLifecycleOwner.get())
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        assertEquals(sessionId, PostHogSessionManager.getActiveSessionId())
+
+        sut.uninstall()
+    }
+
+    private class FakeDateProviderForTest(initialTimeMs: Long = System.currentTimeMillis()) : PostHogDateProvider {
+        var currentTimeMs: Long = initialTimeMs
+
+        override fun currentDate(): Date = Date(currentTimeMs)
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date {
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = currentTimeMs
+            cal.add(Calendar.SECOND, seconds)
+            return cal.time
+        }
+
+        override fun currentTimeMillis(): Long = currentTimeMs
+
+        override fun nanoTime(): Long = System.nanoTime()
     }
 }

@@ -834,6 +834,82 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `capture preserves caller-provided session_id over the session manager`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        sut.startSession()
+        val managerSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(managerSessionId)
+
+        val callerSessionId = TimeBasedEpochGenerator.generate().toString()
+        assertNotEquals(managerSessionId.toString(), callerSessionId)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            properties = mapOf("\$session_id" to callerSessionId),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+        val theEvent = batch.batch.first()
+
+        assertEquals(callerSessionId, theEvent.properties!!["\$session_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `getter rotation fires session replay handler onSessionIdChanged`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, integration = integration)
+
+        // Force the manager into an expired state: stamp sessionStartedAt with an old
+        // timestamp via setSessionId, then bump the clock back to "now" so the getter's
+        // expiry check trips. Foreground so the getter rotates instead of clearing.
+        PostHogSessionManager.setAppInBackground(false)
+        val twentyFiveHoursMs = 25L * 60 * 60 * 1000
+        val realNow = System.currentTimeMillis()
+        val fakeDate = TestDateProvider(realNow - twentyFiveHoursMs)
+        PostHogSessionManager.setDateProvider(fakeDate)
+        PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
+        fakeDate.nowMs = realNow
+
+        // setSessionId may have triggered onSessionIdChanged via other paths during setup;
+        // reset before the assertion so we measure the rotation specifically.
+        integration.onSessionIdChangedCalled = false
+
+        sut.getSessionId() // triggers getter rotation since we're past 24h
+
+        assertTrue(integration.onSessionIdChangedCalled)
+
+        PostHogSessionManager.setDateProvider(com.posthog.internal.PostHogDeviceDateProvider())
+        sut.close()
+    }
+
+    private class TestDateProvider(var nowMs: Long) : com.posthog.internal.PostHogDateProvider {
+        override fun currentDate(): java.util.Date = java.util.Date(nowMs)
+
+        override fun addSecondsToCurrentDate(seconds: Int): java.util.Date {
+            val cal = java.util.Calendar.getInstance()
+            cal.timeInMillis = nowMs
+            cal.add(java.util.Calendar.SECOND, seconds)
+            return cal.time
+        }
+
+        override fun currentTimeMillis(): Long = nowMs
+
+        override fun nanoTime(): Long = System.nanoTime()
+    }
+
+    @Test
     fun `capture uses generated distinctId if not given`() {
         val http = mockHttp()
         val url = http.url("/")

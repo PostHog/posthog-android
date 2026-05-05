@@ -898,9 +898,14 @@ public final class com/posthog/internal/PostHogSessionManager {
 	public final fun getActiveSessionId ()Ljava/util/UUID;
 	public final fun isReactNative ()Z
 	public final fun isSessionActive ()Z
+	public final fun isSessionExceedingMaxDuration (J)Z
+	public final fun peekSessionId ()Ljava/util/UUID;
+	public final fun setAppInBackground (Z)V
+	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setReactNative (Z)V
 	public final fun setSessionId (Ljava/util/UUID;)V
 	public final fun startSession ()V
+	public final fun touchSession ()V
 }
 
 public final class com/posthog/internal/PostHogThreadFactory : java/util/concurrent/ThreadFactory {

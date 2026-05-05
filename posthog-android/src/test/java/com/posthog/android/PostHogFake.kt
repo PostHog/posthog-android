@@ -4,6 +4,7 @@ import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.internal.PostHogSessionManager
 import java.util.Date
 import java.util.UUID
 
@@ -13,6 +14,9 @@ public class PostHogFake : PostHogInterface {
     public var properties: Map<String, Any>? = null
     public var captures: Int = 0
     public var flushes: Int = 0
+    public var sessionReplayActive: Boolean = false
+    public var startSessionReplayCalls: Int = 0
+    public var stopSessionReplayCalls: Int = 0
 
     override fun <T : PostHogConfig> setup(config: T) {
     }
@@ -179,23 +183,29 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun startSession() {
+        PostHogSessionManager.startSession()
     }
 
     override fun endSession() {
+        PostHogSessionManager.endSession()
     }
 
     override fun isSessionActive(): Boolean {
-        return false
+        return PostHogSessionManager.isSessionActive()
     }
 
     override fun isSessionReplayActive(): Boolean {
-        return false
+        return sessionReplayActive
     }
 
     override fun startSessionReplay(resumeCurrent: Boolean) {
+        startSessionReplayCalls++
+        sessionReplayActive = true
     }
 
     override fun stopSessionReplay() {
+        stopSessionReplayCalls++
+        sessionReplayActive = false
     }
 
     override fun getSessionId(): UUID? {

@@ -276,7 +276,6 @@ public class PostHogReplayIntegration(
     private val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
             val timestamp = config.dateProvider.currentTimeMillis()
-
             try {
                 val state = dispatch(motionEvent)
                 try {
@@ -1606,6 +1605,15 @@ public class PostHogReplayIntegration(
         }
 
         isSessionReplayActive = true
+
+        if (!resumeCurrent) {
+            // Without this, on a static UI the first user-driven onDraw can be tens of seconds
+            // away — and incremental events (type:3) would ship under the new session before
+            // the meta + full-snapshot keyframes (type:4 + type:2) needed to render them.
+            mainHandler.handler.post {
+                decorViews.keys.forEach { it.postInvalidate() }
+            }
+        }
     }
 
     private fun clearSnapshotStates() {
@@ -1662,22 +1670,60 @@ public class PostHogReplayIntegration(
 
     /**
      * Called when the session ID changes. Stops recording if event triggers are configured
-     * and the new session hasn't been activated yet.
+     * and the new session hasn't been activated yet, or re-initialises recording so the
+     * new session gets fresh meta + full wireframe events.
      */
     override fun onSessionIdChanged() {
-        val postHog = this.postHog ?: return
+        if (this.postHog == null) return
 
-        val currentSessionId = postHog.getSessionId()?.toString()
+        // Read-only: getActiveSessionId() can rotate the session and would re-fire this listener.
+        val currentSessionId = PostHogSessionManager.peekSessionId()?.toString()
 
-        val triggers = config.remoteConfigHolder?.getEventTriggers()
+        val remoteConfig = config.remoteConfigHolder
+        val triggers = remoteConfig?.getEventTriggers()
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
 
-        // If triggers are configured and this session hasn't been activated, stop the integration
         if (!triggers.isNullOrEmpty() && activatedSession != currentSessionId) {
             if (isSessionReplayActive) {
                 config.logger.log("[Session Replay] Session changed. Stopping until trigger is matched.")
                 stop()
             }
+            return
+        }
+
+        // The listener can fire from any thread that calls capture(); replay state writes
+        // (snapshot WeakHashMap, isSessionReplayActive) must happen on main.
+        if (currentSessionId == null) {
+            if (isSessionReplayActive) {
+                config.logger.log("[Session Replay] Session cleared. Stopping recording.")
+                mainHandler.handler.post { stop() }
+            }
+            return
+        }
+
+        // Run regardless of isSessionReplayActive: the prior session may have been sampled out
+        // and the new one may now pass. Sampling is re-evaluated for the (already-current)
+        // session without rotating the id (the silent rotation that fired this already
+        // rotated; going through PostHog.startSessionReplay(false) would double-rotate).
+        config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
+        mainHandler.handler.post {
+            // config.sessionReplay is the customer-facing master switch: a config-level disable
+            // must not be overridden by remote flag + sampling. Manual PostHog.startSessionReplay
+            // calls and trigger-matched starts go through different code paths and are unaffected.
+            if (!config.sessionReplay) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (remoteConfig?.isSessionReplayFlagActive() != true) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (remoteConfig.makeSamplingDecision(currentSessionId).not()) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (isSessionReplayActive) stop()
+            start(resumeCurrent = false)
         }
     }
 
