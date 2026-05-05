@@ -62,7 +62,7 @@ jobs:
         permissions:
             contents: write
         outputs:
-            committed: ${{ steps.check-changes.outputs.committed }}
+            committed: ${{ steps.commit-version-bump.outputs.commit-hash != '' }}
         steps:
             - name: Notify Slack - Approved
               continue-on-error: true
