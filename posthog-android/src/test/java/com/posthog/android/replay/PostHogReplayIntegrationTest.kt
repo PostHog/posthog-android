@@ -18,7 +18,10 @@ import org.mockito.kotlin.whenever
 import org.robolectric.annotation.Config
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,6 +33,8 @@ import kotlin.test.assertTrue
 internal class PostHogReplayIntegrationTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
+
+    private val replayExecutors = mutableListOf<ExecutorService>()
 
     private class FakeQueue : PostHogQueueInterface {
         override fun add(event: PostHogEvent) {
@@ -74,8 +79,21 @@ internal class PostHogReplayIntegrationTest {
         fun awaitMigration(): Boolean = latch.await(2, TimeUnit.SECONDS)
     }
 
+    private fun createReplayExecutor(): ExecutorService {
+        val executor =
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "PostHogReplayQueueIntegrationTest").apply { isDaemon = true }
+            }
+        replayExecutors.add(executor)
+        return executor
+    }
+
+    private fun awaitReplayExecutors() {
+        replayExecutors.forEach { it.submit {}.get(2, TimeUnit.SECONDS) }
+    }
+
     private fun createReplayQueue(config: PostHogAndroidConfig): PostHogReplayQueue {
-        return PostHogReplayQueue(config, FakeQueue(), tmpDir.newFolder().absolutePath).apply {
+        return PostHogReplayQueue(config, FakeQueue(), tmpDir.newFolder().absolutePath, createReplayExecutor()).apply {
             bufferDelegate = NoOpBufferDelegate()
         }
     }
@@ -94,12 +112,19 @@ internal class PostHogReplayIntegrationTest {
         PostHogReplayIntegration(mock<Context>(), PostHogAndroidConfig(API_KEY), MainHandler()).uninstall()
     }
 
+    @AfterTest
+    fun tearDown() {
+        replayExecutors.forEach { it.shutdownNow() }
+        replayExecutors.clear()
+    }
+
     @Test
     fun `clears buffer when PostHogReplayIntegration is installed`() {
         val config = PostHogAndroidConfig(API_KEY)
         val replayQueue = createReplayQueue(config)
         config.replayQueueHolder = replayQueue
         replayQueue.add(createTestEvent("snapshot_1"))
+        awaitReplayExecutors()
         assertEquals(1, replayQueue.bufferDepth)
 
         val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
@@ -126,6 +151,7 @@ internal class PostHogReplayIntegrationTest {
         config.replayQueueHolder = replayQueue
         sut.install(mock<PostHogInterface>())
         replayQueue.add(createTestEvent("snapshot_1"))
+        awaitReplayExecutors()
         Thread.sleep(10)
         val callerThreadName = Thread.currentThread().name
         replayQueue.add(createTestEvent("snapshot_2"))

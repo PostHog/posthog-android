@@ -28,7 +28,7 @@ public open class PostHogAndroidConfig
             queueProvider = { config, api, endpoint, storagePrefix, executor ->
                 val defaultQueue = PostHogQueue(config, api, endpoint, storagePrefix, executor)
                 if (endpoint == PostHogApiEndpoint.SNAPSHOT) {
-                    val replayQueue = PostHogReplayQueue(config, defaultQueue, storagePrefix)
+                    val replayQueue = PostHogReplayQueue(config, defaultQueue, storagePrefix, executor)
                     (config as? PostHogAndroidConfig)?.replayQueueHolder = replayQueue
                     replayQueue
                 } else {

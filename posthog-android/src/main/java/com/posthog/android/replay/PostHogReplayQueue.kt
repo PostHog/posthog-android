@@ -3,7 +3,10 @@ package com.posthog.android.replay
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.internal.PostHogQueueInterface
+import com.posthog.internal.executeSafely
+import com.posthog.internal.submitSyncSafely
 import java.io.File
+import java.util.concurrent.ExecutorService
 
 /**
  * A replay queue that wraps an inner queue (for actual API sends) and a
@@ -18,6 +21,7 @@ internal class PostHogReplayQueue internal constructor(
     private val config: PostHogConfig,
     private val innerQueue: PostHogQueueInterface,
     replayStoragePrefix: String?,
+    private val executor: ExecutorService,
 ) : PostHogQueueInterface {
     private val replayDir = replayStoragePrefix?.let { File(it, config.apiKey) }
 
@@ -52,12 +56,19 @@ internal class PostHogReplayQueue internal constructor(
         get() = replayDir?.listFiles()?.size ?: 0
 
     override fun add(event: PostHogEvent) {
-        if (bufferDelegate?.isBuffering == true) {
-            bufferQueue.add(event)
-            config.logger.log("Buffered replay event '${event.event}'. Buffer depth: ${bufferQueue.depth}")
-            bufferDelegate?.onReplayBufferSnapshot(this)
-        } else {
+        if (bufferDelegate?.isBuffering != true) {
             innerQueue.add(event)
+            return
+        }
+
+        executor.executeSafely {
+            if (bufferDelegate?.isBuffering == true) {
+                bufferQueue.add(event)
+                config.logger.log("Buffered replay event '${event.event}'. Buffer depth: ${bufferQueue.depth}")
+                bufferDelegate?.onReplayBufferSnapshot(this)
+            } else {
+                innerQueue.add(event)
+            }
         }
     }
 
@@ -79,11 +90,14 @@ internal class PostHogReplayQueue internal constructor(
 
     override fun clear() {
         innerQueue.clear()
-        bufferQueue.clear()
+        clearBuffer()
     }
 
     /**
-     * Migrates all buffered items to the inner replay queue.
+     * Migrates all currently buffered items to the inner replay queue.
+     *
+     * This is called by the buffer delegate after a buffered write completes.
+     * It should be scheduled off the caller/UI thread because migration does disk IO.
      */
     internal fun migrateBufferToQueue() {
         val bufferedCount = bufferQueue.depth
@@ -102,7 +116,9 @@ internal class PostHogReplayQueue internal constructor(
      * Discards all buffered replay events.
      */
     internal fun clearBuffer() {
-        bufferQueue.clear()
-        config.logger.log("Replay buffer cleared")
+        executor.submitSyncSafely {
+            bufferQueue.clear()
+            config.logger.log("Replay buffer cleared")
+        }
     }
 }
