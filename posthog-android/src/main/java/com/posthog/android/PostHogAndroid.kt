@@ -123,6 +123,9 @@ public class PostHogAndroid private constructor() {
             }
 
             PostHogSessionManager.isReactNative = config.sdkName == "posthog-react-native"
+            // Mark the process as backgrounded until the first onStart fires; an expired
+            // session before any UI exists is cleared rather than silently rotated.
+            PostHogSessionManager.setAppInBackground(true)
 
             val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
             val metaPropertiesApplier = PostHogMetaPropertiesApplier()

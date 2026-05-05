@@ -38,10 +38,12 @@ public object PostHogSessionManager {
     @Volatile
     public var isReactNative: Boolean = false
 
-    // Defaults to true so an expired session before the first onStart is cleared rather
-    // than silently rotated against a process that has no UI yet.
+    // Default false so non-Android JVM consumers (no lifecycle to flip this) rotate
+    // expired sessions instead of clearing them. PostHogAndroid explicitly sets this
+    // to true at SDK init to preserve the "no UI yet at startup" semantic; the lifecycle
+    // observer flips it back to false on the first onStart.
     @Volatile
-    private var isAppInBackground: Boolean = true
+    private var isAppInBackground: Boolean = false
 
     @Volatile
     private var onSessionIdChangedListener: (() -> Unit)? = null
