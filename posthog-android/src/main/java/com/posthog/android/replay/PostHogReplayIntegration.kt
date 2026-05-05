@@ -100,7 +100,7 @@ public class PostHogReplayIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
-) : PostHogIntegration, PostHogSessionReplayHandler, PostHogReplayBufferDelegate {
+) : PostHogIntegration, PostHogSessionReplayHandler {
     private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
     private val passwordInputTypes =
@@ -176,6 +176,16 @@ public class PostHogReplayIntegration(
     @Volatile
     private var hasPassedMinimumDuration: Boolean = false
     private var cachedMinimumDurationMs: Long? = null
+
+    private val replayBufferDelegate =
+        object : PostHogReplayBufferDelegate {
+            override val isBuffering: Boolean
+                get() = this@PostHogReplayIntegration.isBuffering
+
+            override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
+                this@PostHogReplayIntegration.onReplayBufferSnapshot(replayQueue)
+            }
+        }
 
     @Volatile
     private var isOnDrawnCalled: Boolean = false
@@ -401,7 +411,7 @@ public class PostHogReplayIntegration(
         // Wire up as buffer delegate for the replay queue
         replayQueue = config.replayQueueHolder
         replayQueue?.clearBuffer()
-        replayQueue?.bufferDelegate = this
+        replayQueue?.bufferDelegate = replayBufferDelegate
 
         // Load cached minimum duration from remote config (if available)
         updateCachedMinimumDuration()
@@ -1726,7 +1736,7 @@ public class PostHogReplayIntegration(
 
     // MARK: - PostHogReplayBufferDelegate
 
-    override val isBuffering: Boolean
+    private val isBuffering: Boolean
         get() {
             synchronized(bufferingLock) {
                 val minimumDuration = cachedMinimumDurationMs
@@ -1737,7 +1747,7 @@ public class PostHogReplayIntegration(
             }
         }
 
-    override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
+    private fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
         val minimumDurationMs: Long? = synchronized(bufferingLock) { cachedMinimumDurationMs }
         if (minimumDurationMs == null || minimumDurationMs <= 0) {
             // No minimum duration configured: should not be buffering, migrate immediately.

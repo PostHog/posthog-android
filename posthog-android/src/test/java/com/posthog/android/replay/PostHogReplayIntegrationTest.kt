@@ -123,12 +123,12 @@ internal class PostHogReplayIntegrationTest {
         val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
         sut.onRemoteConfig()
         val replayQueue = createReplayQueue(config)
+        config.replayQueueHolder = replayQueue
+        sut.install(mock<PostHogInterface>())
         replayQueue.add(createTestEvent("snapshot_1"))
         Thread.sleep(10)
-        replayQueue.add(createTestEvent("snapshot_2"))
         val callerThreadName = Thread.currentThread().name
-
-        sut.onReplayBufferSnapshot(replayQueue)
+        replayQueue.add(createTestEvent("snapshot_2"))
 
         assertTrue(logger.awaitMigration(), "Timed out waiting for replay buffer migration")
         assertNotEquals(callerThreadName, logger.migrationThreadName)

@@ -14,7 +14,7 @@ import java.io.File
  * [PostHogReplayBufferDelegate]. When [PostHogReplayBufferDelegate.isBuffering]
  * is true, snapshots are routed to the buffer and `flush()` calls are suppressed.
  */
-public class PostHogReplayQueue internal constructor(
+internal class PostHogReplayQueue internal constructor(
     private val config: PostHogConfig,
     private val innerQueue: PostHogQueueInterface,
     replayStoragePrefix: String?,
