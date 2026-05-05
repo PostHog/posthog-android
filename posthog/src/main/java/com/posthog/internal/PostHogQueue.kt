@@ -13,7 +13,6 @@ import java.util.TimerTask
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -38,6 +37,7 @@ public class PostHogQueue(
     private val timerLock = Any()
     private var pausedUntil: Date? = null
     private var retryCount = 0
+    private val batchLimits = initialBatchLimits(config)
     private val initialRetryDelaySeconds = 1
     private val maxRetryDelaySeconds = 30
 
@@ -152,7 +152,7 @@ public class PostHogQueue(
     }
 
     private fun flushIfOverThreshold(isFatal: Boolean) {
-        if (isAboveThreshold(config.flushAt)) {
+        if (isAboveThreshold(batchLimits.flushAt)) {
             flushBatch(isFatal)
         }
     }
@@ -179,7 +179,7 @@ public class PostHogQueue(
     private fun takeFiles(): List<File> {
         val events: List<File>
         synchronized(dequeLock) {
-            events = deque.take(config.maxBatchSize)
+            events = deque.take(batchLimits.cap)
         }
         return events
     }
@@ -285,7 +285,7 @@ public class PostHogQueue(
                 config.logger.log("Flushed ${events.size} events successfully.")
             }
         } catch (e: PostHogApiError) {
-            deleteFiles = deleteFilesIfAPIError(e, config)
+            deleteFiles = deleteFilesIfAPIError(e, batchLimits, events.size, config.logger)
 
             // only re-throw if retriable (files kept), so executeWithRetry
             // can track retryCount and apply backoff
@@ -490,35 +490,64 @@ public class PostHogQueue(
             }
             return tempFiles
         }
+
+    val currentBatchCapForTesting: Int
+        @PostHogVisibleForTesting
+        get() = batchLimits.cap
+
+    val currentFlushAtForTesting: Int
+        @PostHogVisibleForTesting
+        get() = batchLimits.flushAt
 }
 
-private fun calcFloor(currentValue: Int): Int {
-    return max(currentValue.floorDiv(2), 1)
+internal class BatchLimits(
+    var cap: Int,
+    var flushAt: Int,
+) {
+    fun halve(actualBatchSize: Int) {
+        cap =
+            minOf(cap, actualBatchSize)
+                .div(2)
+                .coerceAtLeast(1)
+
+        // keep flushAt <= cap so we don't pile up events larger than a single batch
+        flushAt =
+            (flushAt / 2)
+                .coerceAtMost(cap)
+                .coerceAtLeast(1)
+    }
 }
+
+internal fun initialBatchLimits(config: PostHogConfig) =
+    BatchLimits(
+        cap = config.maxBatchSize.coerceAtLeast(1),
+        flushAt = config.flushAt.coerceAtLeast(1),
+    )
 
 internal fun deleteFilesIfAPIError(
     e: PostHogApiError,
-    config: PostHogConfig,
+    batchLimits: BatchLimits,
+    actualBatchSize: Int,
+    logger: PostHogLogger,
 ): Boolean {
     if (e.statusCode < 400) {
-        config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
+        logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
     }
     // workaround due to png images exceed our max. limit in kafka
-    if (e.statusCode == 413 && config.maxBatchSize > 1) {
+    if (e.statusCode == 413 && batchLimits.cap > 1) {
         // try to reduce the batch size and flushAt until its 1
         // and if it still throws 413 in the next retry, delete the files since we cannot handle anyway
-        config.maxBatchSize = calcFloor(config.maxBatchSize)
-        config.flushAt = calcFloor(config.flushAt)
+        batchLimits.halve(actualBatchSize)
 
-        config.logger.log("Flushing failed with ${e.statusCode}, let's try again with a smaller batch.")
+        logger.log("Flushing failed with ${e.statusCode}, let's try again with a smaller batch.")
 
         return false
     }
     // Transient server errors and rate limiting, retry
     if (e.statusCode in RETRYABLE_STATUS_CODES) {
-        config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
+        logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
     }
