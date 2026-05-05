@@ -19,6 +19,7 @@ import android.telephony.TelephonyManager
 import android.util.Base64
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import androidx.core.net.toUri
 import com.posthog.PostHogInternal
 import com.posthog.android.PostHogAndroidConfig
 import java.io.ByteArrayOutputStream
@@ -178,7 +179,7 @@ internal fun Intent.getReferrerInfo(config: PostHogAndroidConfig): Map<String, S
 
 internal fun String.tryParse(config: PostHogAndroidConfig): Uri? {
     return try {
-        Uri.parse(this)
+        this.toUri()
     } catch (e: Throwable) {
         config.logger.log("Error parsing string: $this. Exception: $e.")
         null

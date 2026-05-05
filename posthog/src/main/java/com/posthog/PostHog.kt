@@ -18,6 +18,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogPushSubscriptionManager
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSendCachedEventsIntegration
@@ -63,6 +64,8 @@ public class PostHog private constructor(
     private val cachedPersonPropertiesLock = Any()
 
     private var replayQueue: PostHogQueueInterface? = null
+    private var api: PostHogApi? = null
+    private var pushSubscriptionManager: PostHogPushSubscriptionManager? = null
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -169,8 +172,10 @@ public class PostHog private constructor(
                     )
 
                 this.config = config
+                this.api = api
                 this.queue = queue
                 this.replayQueue = replayQueue
+                this.pushSubscriptionManager = PostHogPushSubscriptionManager(config, api, queueExecutor)
 
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
@@ -189,6 +194,8 @@ public class PostHog private constructor(
                 getDeviceId()
 
                 queue.start()
+
+                pushSubscriptionManager?.retryPending()
 
                 startSession()
 
@@ -305,6 +312,9 @@ public class PostHog private constructor(
 
                 queue?.stop()
                 replayQueue?.stop()
+                api = null
+                pushSubscriptionManager?.close()
+                pushSubscriptionManager = null
 
                 featureFlagsCalled.clear()
 
@@ -1353,6 +1363,41 @@ public class PostHog private constructor(
         return PostHogSessionManager.isSessionActive()
     }
 
+    override fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        platform: String,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        if (config?.optOut == true) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+        if (deviceToken.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, deviceToken is blank.")
+            return
+        }
+        if (appId.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, appId is blank.")
+            return
+        }
+
+        val currentDistinctId = distinctId
+        if (currentDistinctId.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, distinctId is invalid.")
+            return
+        }
+
+        pushSubscriptionManager?.register(
+            distinctId = currentDistinctId,
+            deviceToken = deviceToken,
+            appId = appId,
+            platform = platform,
+        )
+    }
+
     override fun <T : PostHogConfig> getConfig(): T? {
         @Suppress("UNCHECKED_CAST")
         return super<PostHogStateless>.config as? T
@@ -1713,6 +1758,14 @@ public class PostHog private constructor(
 
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
+        }
+
+        override fun registerPushNotificationToken(
+            deviceToken: String,
+            appId: String,
+            platform: String,
+        ) {
+            shared.registerPushNotificationToken(deviceToken, appId, platform)
         }
     }
 }
