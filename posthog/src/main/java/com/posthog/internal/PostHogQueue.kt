@@ -12,7 +12,6 @@ import java.util.TimerTask
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -36,7 +35,7 @@ internal class PostHogQueue(
     private val timerLock = Any()
     private var pausedUntil: Date? = null
     private var retryCount = 0
-    private val batchLimits = BatchLimits.initial(config)
+    private val batchLimits = initialBatchLimits(config)
     private val initialRetryDelaySeconds = 1
     private val maxRetryDelaySeconds = 30
 
@@ -478,20 +477,25 @@ internal class BatchLimits(
     var cap: Int,
     var flushAt: Int,
 ) {
-    companion object {
-        fun initial(config: PostHogConfig): BatchLimits =
-            BatchLimits(
-                cap = max(config.maxBatchSize, 1),
-                flushAt = max(config.flushAt, 1),
-            )
-    }
-
     fun halve(actualBatchSize: Int) {
-        cap = max(min(cap, actualBatchSize) / 2, 1)
+        cap =
+            minOf(cap, actualBatchSize)
+                .div(2)
+                .coerceAtLeast(1)
+
         // keep flushAt <= cap so we don't pile up events larger than a single batch
-        flushAt = max(min(flushAt / 2, cap), 1)
+        flushAt =
+            (flushAt / 2)
+                .coerceAtMost(cap)
+                .coerceAtLeast(1)
     }
 }
+
+internal fun initialBatchLimits(config: PostHogConfig) =
+    BatchLimits(
+        cap = config.maxBatchSize.coerceAtLeast(1),
+        flushAt = config.flushAt.coerceAtLeast(1),
+    )
 
 internal fun deleteFilesIfAPIError(
     e: PostHogApiError,

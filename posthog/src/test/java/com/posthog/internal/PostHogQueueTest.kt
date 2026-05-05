@@ -394,7 +394,7 @@ internal class PostHogQueueTest {
     fun `reduces batch size if 413`() {
         val e = PostHogApiError(413, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
         assertEquals(limits.cap, 25) // default 50
@@ -407,7 +407,7 @@ internal class PostHogQueueTest {
     fun `halves cap from actual batch size when smaller than configured cap`() {
         val e = PostHogApiError(413, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config) // cap = 50
+        val limits = initialBatchLimits(config) // cap = 50
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = 10, logger = config.logger))
         assertEquals(limits.cap, 5) // halved from min(50, 10) = 10, not from 50
@@ -424,7 +424,7 @@ internal class PostHogQueueTest {
                 maxBatchSize = 50
                 flushAt = 20
             }
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = 2, logger = config.logger))
         assertEquals(limits.cap, 1) // min(50, 2) / 2 = 1
@@ -485,7 +485,7 @@ internal class PostHogQueueTest {
                 maxBatchSize = 1
                 flushAt = 1
             }
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = 1, logger = config.logger))
         assertEquals(limits.cap, 1)
@@ -496,7 +496,7 @@ internal class PostHogQueueTest {
     fun `delete files if errored`() {
         val e = PostHogApiError(400, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
@@ -505,7 +505,7 @@ internal class PostHogQueueTest {
     fun `retries on 500`() {
         val e = PostHogApiError(500, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
@@ -514,7 +514,7 @@ internal class PostHogQueueTest {
     fun `retries on 502`() {
         val e = PostHogApiError(502, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
@@ -523,7 +523,7 @@ internal class PostHogQueueTest {
     fun `retries on 429`() {
         val e = PostHogApiError(429, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
@@ -532,7 +532,7 @@ internal class PostHogQueueTest {
     fun `retries on 504`() {
         val e = PostHogApiError(504, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
@@ -541,7 +541,7 @@ internal class PostHogQueueTest {
     fun `retries on 503`() {
         val e = PostHogApiError(503, "", null)
         val config = PostHogConfig(API_KEY)
-        val limits = BatchLimits.initial(config)
+        val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
