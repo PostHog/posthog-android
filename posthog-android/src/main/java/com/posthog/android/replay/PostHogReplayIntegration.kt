@@ -170,6 +170,9 @@ public class PostHogReplayIntegration(
     private var postHog: PostHogInterface? = null
     private var replayQueue: PostHogReplayQueue? = null
 
+    @Volatile
+    private var replaySessionId: String? = null
+
     // Minimum duration buffering state
     private val bufferingLock = Any()
 
@@ -437,6 +440,7 @@ public class PostHogReplayIntegration(
             // Clear buffer delegate
             replayQueue?.bufferDelegate = null
             replayQueue = null
+            replaySessionId = null
 
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
@@ -1632,11 +1636,8 @@ public class PostHogReplayIntegration(
             return
         }
 
-        if (!resumeCurrent) {
-            clearSnapshotStates()
-            // Reset minimum duration buffering state for the new session
-            resetBufferingState()
-        }
+        val currentSessionId = postHog?.getSessionId()?.toString()
+        resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
         isSessionReplayActive = true
     }
@@ -1702,6 +1703,8 @@ public class PostHogReplayIntegration(
 
         val currentSessionId = postHog.getSessionId()?.toString()
 
+        resetSessionStateIfNeeded(currentSessionId)
+
         val triggers = config.remoteConfigHolder?.getEventTriggers()
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
 
@@ -1732,6 +1735,19 @@ public class PostHogReplayIntegration(
         // Check if this session has been activated
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
         return activatedSession != currentSessionId
+    }
+
+    private fun resetSessionStateIfNeeded(
+        currentSessionId: String?,
+        force: Boolean = false,
+    ) {
+        if (!force && replaySessionId == currentSessionId) {
+            return
+        }
+
+        replaySessionId = currentSessionId
+        clearSnapshotStates()
+        resetBufferingState()
     }
 
     // MARK: - PostHogReplayBufferDelegate

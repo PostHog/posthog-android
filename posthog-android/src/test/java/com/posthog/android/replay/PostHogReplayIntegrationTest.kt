@@ -160,4 +160,44 @@ internal class PostHogReplayIntegrationTest {
         assertNotEquals(callerThreadName, logger.migrationThreadName)
         assertEquals("PostHogReplayThread", logger.migrationThreadName)
     }
+
+    @Test
+    fun `resets buffer state when session id changes`() {
+        val logger = RecordingLogger()
+        val remoteConfig = mock<PostHogRemoteConfig>()
+        whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                this.logger = logger
+                remoteConfigHolder = remoteConfig
+            }
+        val firstSessionId = UUID.randomUUID()
+        val secondSessionId = UUID.randomUUID()
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(firstSessionId)
+        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        val replayQueue = createReplayQueue(config)
+        config.replayQueueHolder = replayQueue
+        sut.install(postHog)
+        sut.start(resumeCurrent = true)
+
+        replayQueue.add(createTestEvent("snapshot_1"))
+        awaitReplayExecutors()
+        Thread.sleep(10)
+        replayQueue.add(createTestEvent("snapshot_2"))
+
+        assertTrue(logger.awaitMigration(), "Timed out waiting for replay buffer migration")
+        assertEquals(2, replayQueue.bufferDepth)
+
+        whenever(postHog.getSessionId()).thenReturn(secondSessionId)
+        sut.onSessionIdChanged()
+
+        assertEquals(0, replayQueue.bufferDepth)
+
+        replayQueue.add(createTestEvent("snapshot_new_session"))
+        awaitReplayExecutors()
+
+        assertEquals(1, replayQueue.bufferDepth)
+        sut.uninstall()
+    }
 }
