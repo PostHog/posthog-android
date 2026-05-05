@@ -101,9 +101,12 @@ public object PostHogSessionManager {
 
     /**
      * Returns true if the current session has been active for longer than 24 hours.
+     * Always false for React Native — JS owns the session lifecycle and the native side
+     * must not drive rotation decisions on top of it.
      */
     public fun isSessionExceedingMaxDuration(currentTimeMillis: Long): Boolean {
         synchronized(sessionLock) {
+            if (isReactNative) return false
             return isMaxExpired(currentTimeMillis)
         }
     }

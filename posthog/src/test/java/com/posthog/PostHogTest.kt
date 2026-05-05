@@ -865,39 +865,6 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `capture rotates idle session via touchSession before reading session id`() {
-        val http = mockHttp()
-        val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
-
-        // Set up a session whose activity timestamp is 31 minutes in the past, so
-        // the touchSession at the start of capture() will trip inactivity and rotate.
-        // touchSession is a no-op when bg, so flip to fg.
-        PostHogSessionManager.setAppInBackground(false)
-        val realNow = System.currentTimeMillis()
-        val fakeDate = TestDateProvider(realNow - (1000L * 60 * 31))
-        PostHogSessionManager.setDateProvider(fakeDate)
-        PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
-        val originalSessionId = PostHogSessionManager.getActiveSessionId()
-        fakeDate.nowMs = realNow
-
-        sut.capture(EVENT, DISTINCT_ID)
-
-        queueExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-        val theEvent = batch.batch.first()
-
-        val eventSessionId = theEvent.properties!!["\$session_id"] as String
-        assertNotEquals(originalSessionId.toString(), eventSessionId)
-
-        PostHogSessionManager.setDateProvider(com.posthog.internal.PostHogDeviceDateProvider())
-        sut.close()
-    }
-
-    @Test
     fun `getter rotation fires session replay handler onSessionIdChanged`() {
         val http = mockHttp()
         val url = http.url("/")

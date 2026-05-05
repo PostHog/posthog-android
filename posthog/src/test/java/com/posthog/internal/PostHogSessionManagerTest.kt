@@ -124,6 +124,18 @@ internal class PostHogSessionManagerTest {
     }
 
     @Test
+    internal fun `isSessionExceedingMaxDuration returns false for React Native even past 24h`() {
+        // RN owns the session lifecycle from JS; the native side must not drive rotation
+        // decisions on top of it.
+        PostHogSessionManager.isReactNative = true
+        PostHogSessionManager.setSessionId(UUID.randomUUID())
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+
+        val twentyFiveHours = startedAt + (1000L * 60 * 60 * 25)
+        assertFalse(PostHogSessionManager.isSessionExceedingMaxDuration(twentyFiveHours))
+    }
+
+    @Test
     internal fun `touchSession refreshes activity timestamp without rotating`() {
         val baseTime = 1_000_000_000_000L
         val fakeDate = FakeDateProvider(baseTime)

@@ -492,8 +492,6 @@ public class PostHog private constructor(
                 config?.logger?.log("PostHog is in OptOut state.")
                 return
             }
-            // Any capture counts as activity so an idle session rotates before its id is read.
-            PostHogSessionManager.touchSession()
 
             val newDistinctId = distinctId ?: this.distinctId
 
