@@ -464,6 +464,14 @@ internal class PostHogQueue(
             }
             return tempFiles
         }
+
+    val currentBatchCapForTesting: Int
+        @PostHogVisibleForTesting
+        get() = batchLimits.cap
+
+    val currentFlushAtForTesting: Int
+        @PostHogVisibleForTesting
+        get() = batchLimits.flushAt
 }
 
 internal class BatchLimits(

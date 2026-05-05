@@ -432,6 +432,52 @@ internal class PostHogQueueTest {
     }
 
     @Test
+    fun `halves cap repeatedly across multiple 413s through the queue flush flow`() {
+        // End-to-end: each successive flush() against a 413 should observe a smaller
+        // cap on the next attempt, proving takeFiles() reads batchLimits.cap and
+        // not config.maxBatchSize.
+        val http = mockHttp(total = 2, response = MockResponse().setResponseCode(413).setBody(""))
+        val url = http.url("/")
+
+        val fakeCurrentTime = FakePostHogDateProvider()
+        // pause time pinned to the past so 413's calculated backoff never blocks
+        fakeCurrentTime.setAddSecondsToCurrentDate(parseISO8601Date("1970-09-20T11:58:49.000Z")!!)
+
+        // flushAt high so add() doesn't auto-flush — drive flushes manually
+        val sut =
+            getSut(
+                host = url.toString(),
+                flushAt = 100,
+                dateProvider = fakeCurrentTime,
+                maxBatchSize = 4,
+            )
+
+        for (i in 0 until 4) {
+            sut.add(generateEvent("event$i", givenUuuid = UUID.randomUUID()))
+        }
+        executor.awaitExecution()
+        assertEquals(4, sut.dequeList.size)
+        assertEquals(4, sut.currentBatchCapForTesting)
+
+        // First flush: batch=4 → 413 → cap halves to 2, batch retained.
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(2, sut.currentBatchCapForTesting)
+        assertEquals(2, sut.currentFlushAtForTesting)
+        assertEquals(4, sut.dequeList.size)
+
+        // Second flush: batch=2 (using the new, smaller cap) → 413 → cap halves to 1.
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(1, sut.currentBatchCapForTesting)
+        assertEquals(1, sut.currentFlushAtForTesting)
+        assertEquals(4, sut.dequeList.size)
+
+        sut.clear()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
     fun `delete files if batch is min already`() {
         val e = PostHogApiError(413, "", null)
         val config =
