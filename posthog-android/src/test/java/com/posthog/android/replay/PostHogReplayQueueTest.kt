@@ -3,11 +3,16 @@ package com.posthog.android.replay
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.android.API_KEY
+import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -15,6 +20,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 internal class PostHogReplayQueueTest {
     @get:Rule
@@ -107,6 +113,12 @@ internal class PostHogReplayQueueTest {
         ): Boolean = isTerminated
     }
 
+    private data class RealReplayQueueFixture(
+        val queue: PostHogReplayQueue,
+        val config: PostHogConfig,
+        val targetDir: File,
+    )
+
     private fun createFakeQueue(): FakeQueue {
         return FakeQueue()
     }
@@ -139,6 +151,35 @@ internal class PostHogReplayQueueTest {
     ): PostHogReplayQueue {
         val config = PostHogConfig(API_KEY, "http://localhost:9001")
         return PostHogReplayQueue(config, fakeInnerQueue, storagePrefix, executor)
+    }
+
+    private fun createRealReplayQueue(): RealReplayQueueFixture {
+        val config = PostHogConfig(API_KEY, "http://localhost:9001")
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val executor = createReplayExecutor()
+        val innerQueue =
+            PostHogQueue(
+                config,
+                PostHogApi(config),
+                PostHogApiEndpoint.SNAPSHOT,
+                storagePrefix,
+                executor,
+            )
+        val queue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
+        return RealReplayQueueFixture(queue, config, File(storagePrefix, API_KEY))
+    }
+
+    private fun eventNamesInDirectory(
+        config: PostHogConfig,
+        dir: File,
+    ): List<String> {
+        return (dir.listFiles() ?: emptyArray())
+            .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })
+            .mapNotNull { file ->
+                file.inputStream().use { input ->
+                    config.serializer.deserialize<PostHogEvent?>(input.reader().buffered())?.event
+                }
+            }
     }
 
     private fun createTestEvent(name: String = "test_event"): PostHogEvent {
@@ -278,6 +319,72 @@ internal class PostHogReplayQueueTest {
     }
 
     @Test
+    fun `migrateBufferToQueue moves buffered events into real replay queue`() {
+        val fixture = createRealReplayQueue()
+        val queue = fixture.queue
+        val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
+        queue.bufferDelegate = delegate
+
+        queue.add(createTestEvent("snapshot_1"))
+        Thread.sleep(10)
+        queue.add(createTestEvent("snapshot_2"))
+        Thread.sleep(10)
+        queue.add(createTestEvent("snapshot_3"))
+        awaitReplayExecutors()
+
+        queue.migrateBufferToQueue()
+
+        assertEquals(0, queue.bufferDepth)
+        assertEquals(3, queue.depth)
+        assertEquals(
+            listOf("snapshot_1", "snapshot_2", "snapshot_3"),
+            eventNamesInDirectory(fixture.config, fixture.targetDir),
+        )
+    }
+
+    @Test
+    fun `delegate can trigger successful migration into real replay queue`() {
+        val fixture = createRealReplayQueue()
+        val queue = fixture.queue
+        val migrated = CountDownLatch(1)
+        val migrationExecutor = createReplayExecutor()
+        val delegate =
+            object : PostHogReplayBufferDelegate {
+                override var isBuffering: Boolean = true
+                private var callCount = 0
+
+                override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
+                    callCount++
+                    if (callCount >= 3) {
+                        isBuffering = false
+                        migrationExecutor.execute {
+                            replayQueue.migrateBufferToQueue()
+                            migrated.countDown()
+                        }
+                    }
+                }
+            }
+        queue.bufferDelegate = delegate
+
+        queue.add(createTestEvent("snapshot_1"))
+        Thread.sleep(10)
+        queue.add(createTestEvent("snapshot_2"))
+        Thread.sleep(10)
+        queue.add(createTestEvent("snapshot_3"))
+
+        assertTrue(migrated.await(2, TimeUnit.SECONDS))
+        awaitReplayExecutors()
+
+        assertEquals(0, queue.bufferDepth)
+        assertEquals(3, queue.depth)
+        assertEquals(
+            listOf("snapshot_1", "snapshot_2", "snapshot_3"),
+            eventNamesInDirectory(fixture.config, fixture.targetDir),
+        )
+        assertEquals(false, delegate.isBuffering)
+    }
+
+    @Test
     fun `clearBuffer discards all buffered events`() {
         val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
@@ -293,6 +400,27 @@ internal class PostHogReplayQueueTest {
         queue.clearBuffer()
 
         assertEquals(0, queue.bufferDepth)
+    }
+
+    @Test
+    fun `clearBuffer does not affect inner queue events`() {
+        val fakeInnerQueue = createFakeQueue()
+        val queue = createReplayQueue(fakeInnerQueue)
+        val delegate = MockReplayBufferDelegate().apply { isBuffering = false }
+        queue.bufferDelegate = delegate
+        queue.add(createTestEvent("direct_1"))
+
+        delegate.isBuffering = true
+        queue.add(createTestEvent("buffered_1"))
+        awaitReplayExecutors()
+        assertEquals(1, queue.bufferDepth)
+        assertEquals(1, fakeInnerQueue.events.size)
+
+        queue.clearBuffer()
+
+        assertEquals(0, queue.bufferDepth)
+        assertEquals(1, fakeInnerQueue.events.size)
+        assertEquals("direct_1", fakeInnerQueue.events.first().event)
     }
 
     @Test
