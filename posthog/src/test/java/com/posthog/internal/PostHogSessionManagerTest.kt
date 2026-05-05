@@ -1,7 +1,10 @@
 package com.posthog.internal
 
+import java.util.Calendar
+import java.util.Date
 import java.util.UUID
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -11,6 +14,15 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogSessionManagerTest {
+    @BeforeTest
+    internal fun setUp() {
+        PostHogSessionManager.isReactNative = false
+        PostHogSessionManager.setAppInBackground(false)
+        PostHogSessionManager.setOnSessionIdChangedListener(null)
+        PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
+        PostHogSessionManager.endSession()
+    }
+
     @Test
     internal fun `when React Native, startSession does not create new session`() {
         PostHogSessionManager.isReactNative = true
@@ -66,9 +78,385 @@ internal class PostHogSessionManagerTest {
         assertNotEquals(firstSessionId, secondSessionId)
     }
 
+    @Test
+    internal fun `startSession sets sessionStartedAt`() {
+        PostHogSessionManager.startSession()
+
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+        assertTrue(startedAt > 0L)
+    }
+
+    @Test
+    internal fun `endSession resets sessionStartedAt to zero`() {
+        PostHogSessionManager.startSession()
+        assertTrue(PostHogSessionManager.getSessionStartedAt() > 0L)
+
+        PostHogSessionManager.endSession()
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `getSessionStartedAt returns zero when no session is active`() {
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `isSessionExceedingMaxDuration returns true after 24 hours`() {
+        PostHogSessionManager.startSession()
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+
+        val twentyFourHoursAndOneMinute = startedAt + (1000L * 60 * 60 * 24) + (1000L * 60)
+        assertTrue(PostHogSessionManager.isSessionExceedingMaxDuration(twentyFourHoursAndOneMinute))
+    }
+
+    @Test
+    internal fun `isSessionExceedingMaxDuration returns false before 24 hours`() {
+        PostHogSessionManager.startSession()
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+
+        val twentyThreeHours = startedAt + (1000L * 60 * 60 * 23)
+        assertFalse(PostHogSessionManager.isSessionExceedingMaxDuration(twentyThreeHours))
+    }
+
+    @Test
+    internal fun `isSessionExceedingMaxDuration returns false when no session is active`() {
+        assertFalse(PostHogSessionManager.isSessionExceedingMaxDuration(System.currentTimeMillis()))
+    }
+
+    @Test
+    internal fun `isSessionExceedingMaxDuration returns false for React Native even past 24h`() {
+        // RN owns the session lifecycle from JS; the native side must not drive rotation
+        // decisions on top of it.
+        PostHogSessionManager.isReactNative = true
+        PostHogSessionManager.setSessionId(UUID.randomUUID())
+        val startedAt = PostHogSessionManager.getSessionStartedAt()
+
+        val twentyFiveHours = startedAt + (1000L * 60 * 60 * 25)
+        assertFalse(PostHogSessionManager.isSessionExceedingMaxDuration(twentyFiveHours))
+    }
+
+    @Test
+    internal fun `touchSession refreshes activity timestamp without rotating`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        val originalSessionId = PostHogSessionManager.getActiveSessionId()
+
+        // Touch at 29m resets the inactivity origin; 31m total is only 2m since touch.
+        fakeDate.nowMs = baseTime + (1000L * 60 * 29)
+        PostHogSessionManager.touchSession()
+
+        fakeDate.nowMs = baseTime + (1000L * 60 * 31)
+        assertEquals(originalSessionId, PostHogSessionManager.getActiveSessionId())
+    }
+
+    @Test
+    internal fun `touchSession rotates session after 30 min of inactivity`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        val originalSessionId = PostHogSessionManager.getActiveSessionId()
+
+        fakeDate.nowMs = baseTime + (1000L * 60 * 31)
+        PostHogSessionManager.touchSession()
+
+        val rotatedSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(rotatedSessionId)
+        assertNotEquals(originalSessionId, rotatedSessionId)
+    }
+
+    @Test
+    internal fun `touchSession is no-op when app is backgrounded`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+
+        PostHogSessionManager.setAppInBackground(true)
+        fakeDate.nowMs = baseTime + (1000L * 60 * 31)
+
+        // If touchSession refreshed the activity timestamp here, the getter wouldn't see
+        // the inactivity and would not clear.
+        PostHogSessionManager.touchSession()
+
+        assertNull(PostHogSessionManager.getActiveSessionId())
+    }
+
+    @Test
+    internal fun `touchSession is no-op when no session is active`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.touchSession()
+
+        assertNull(PostHogSessionManager.getActiveSessionId())
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `touchSession is no-op for React Native`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        val rnSessionId = UUID.randomUUID()
+        PostHogSessionManager.isReactNative = true
+        PostHogSessionManager.setSessionId(rnSessionId)
+
+        fakeDate.nowMs = baseTime + (1000L * 60 * 60)
+        PostHogSessionManager.touchSession()
+
+        assertEquals(rnSessionId, PostHogSessionManager.getActiveSessionId())
+    }
+
+    @Test
+    internal fun `getActiveSessionId rotates foregrounded session after inactivity`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        val originalSessionId = PostHogSessionManager.getActiveSessionId()
+
+        // No touchSession call — exercising the getter's own inactivity check.
+        fakeDate.nowMs = baseTime + (1000L * 60 * 31)
+
+        val rotatedSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(rotatedSessionId)
+        assertNotEquals(originalSessionId, rotatedSessionId)
+    }
+
+    @Test
+    internal fun `getActiveSessionId clears backgrounded session after inactivity`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        assertNotNull(PostHogSessionManager.getActiveSessionId())
+
+        PostHogSessionManager.setAppInBackground(true)
+        fakeDate.nowMs = baseTime + (1000L * 60 * 31)
+
+        assertNull(PostHogSessionManager.getActiveSessionId())
+    }
+
+    @Test
+    internal fun `setSessionId stamps sessionStartedAt`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.setSessionId(UUID.randomUUID())
+
+        assertEquals(baseTime, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `setSessionId is a no-op when the id is unchanged`() {
+        // Re-asserting the same id (e.g. RN syncing the current id on every event) must not
+        // reset the 24h max-duration or 30-min inactivity clocks.
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        val id = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(id)
+        val firstStartedAt = PostHogSessionManager.getSessionStartedAt()
+        assertEquals(baseTime, firstStartedAt)
+
+        fakeDate.nowMs = baseTime + (1000L * 60 * 10)
+        PostHogSessionManager.setSessionId(id)
+        assertEquals(firstStartedAt, PostHogSessionManager.getSessionStartedAt())
+
+        PostHogSessionManager.setSessionId(UUID.randomUUID())
+        assertEquals(fakeDate.nowMs, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `getActiveSessionId rotates foregrounded session after 24 hours`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(firstSessionId)
+
+        fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 24) + 1
+
+        val rotatedSessionId = PostHogSessionManager.getActiveSessionId()
+        assertNotNull(rotatedSessionId)
+        assertNotEquals(firstSessionId, rotatedSessionId)
+        assertTrue(PostHogSessionManager.getSessionStartedAt() > baseTime)
+    }
+
+    @Test
+    internal fun `getActiveSessionId clears backgrounded session after 24 hours`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        assertNotNull(PostHogSessionManager.getActiveSessionId())
+
+        PostHogSessionManager.setAppInBackground(true)
+        fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 24) + 1
+
+        assertNull(PostHogSessionManager.getActiveSessionId())
+        assertEquals(0L, PostHogSessionManager.getSessionStartedAt())
+    }
+
+    @Test
+    internal fun `getActiveSessionId does not rotate when React Native`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        val rnSessionId = UUID.randomUUID()
+        PostHogSessionManager.isReactNative = true
+        PostHogSessionManager.setSessionId(rnSessionId)
+
+        fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 48)
+
+        assertEquals(rnSessionId, PostHogSessionManager.getActiveSessionId())
+    }
+
+    @Test
+    internal fun `getActiveSessionId does not rotate when active and under 24h`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        val firstSessionId = PostHogSessionManager.getActiveSessionId()
+
+        // Touch every 25 minutes for 23 hours to keep the session under both
+        // the 30-min inactivity and 24-hour max-duration thresholds.
+        var elapsed = 0L
+        val twentyFiveMin = 1000L * 60 * 25
+        val twentyThreeHours = 1000L * 60 * 60 * 23
+        while (elapsed + twentyFiveMin <= twentyThreeHours) {
+            elapsed += twentyFiveMin
+            fakeDate.nowMs = baseTime + elapsed
+            PostHogSessionManager.touchSession()
+        }
+
+        assertEquals(firstSessionId, PostHogSessionManager.getActiveSessionId())
+    }
+
+    @Test
+    internal fun `getActiveSessionId fires listener on rotation`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        // Wire the listener AFTER startSession so the explicit start-fire isn't counted.
+        PostHogSessionManager.startSession()
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.getActiveSessionId()
+        assertEquals(0, callCount)
+
+        fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 24) + 1
+        PostHogSessionManager.getActiveSessionId()
+        assertEquals(1, callCount)
+
+        PostHogSessionManager.getActiveSessionId()
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    internal fun `getActiveSessionId fires listener on clear`() {
+        val baseTime = 1_000_000_000_000L
+        val fakeDate = FakeDateProvider(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDate)
+
+        PostHogSessionManager.startSession()
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.setAppInBackground(true)
+        fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 24) + 1
+
+        assertNull(PostHogSessionManager.getActiveSessionId())
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    internal fun `startSession fires listener when a new session is created`() {
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.startSession()
+        assertEquals(1, callCount)
+
+        // Idempotent re-assert on an already-active session must not refire.
+        PostHogSessionManager.startSession()
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    internal fun `endSession fires listener once when an active session is cleared`() {
+        PostHogSessionManager.startSession()
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.endSession()
+        assertEquals(1, callCount)
+
+        PostHogSessionManager.endSession()
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    internal fun `setSessionId fires listener only when the id actually changes`() {
+        val firstId = UUID.randomUUID()
+        val sameId = firstId
+        val secondId = UUID.randomUUID()
+
+        var callCount = 0
+        PostHogSessionManager.setOnSessionIdChangedListener { callCount++ }
+
+        PostHogSessionManager.setSessionId(firstId)
+        assertEquals(1, callCount)
+
+        // Re-asserting the same id (e.g. RN syncing on every event) must not refire.
+        PostHogSessionManager.setSessionId(sameId)
+        assertEquals(1, callCount)
+
+        PostHogSessionManager.setSessionId(secondId)
+        assertEquals(2, callCount)
+    }
+
     @AfterTest
     internal fun cleanup() {
         PostHogSessionManager.isReactNative = false
+        PostHogSessionManager.setAppInBackground(false)
+        PostHogSessionManager.setOnSessionIdChangedListener(null)
+        PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
         PostHogSessionManager.endSession()
+    }
+
+    private class FakeDateProvider(var nowMs: Long) : PostHogDateProvider {
+        override fun currentDate(): Date = Date(nowMs)
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date {
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = nowMs
+            cal.add(Calendar.SECOND, seconds)
+            return cal.time
+        }
+
+        override fun currentTimeMillis(): Long = nowMs
+
+        override fun nanoTime(): Long = System.nanoTime()
     }
 }

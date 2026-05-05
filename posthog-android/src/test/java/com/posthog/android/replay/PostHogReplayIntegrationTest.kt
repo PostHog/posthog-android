@@ -1,20 +1,26 @@
 package com.posthog.android.replay
 
 import android.content.Context
+import android.os.Looper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogEvent
 import com.posthog.PostHogInterface
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
+import com.posthog.internal.PostHogSessionManager
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -25,15 +31,17 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [26])
+@Config(sdk = [26]) // PostHogReplayIntegration.isSupported() requires API >= O.
 internal class PostHogReplayIntegrationTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
+    private val context = mock<Context>()
     private val replayExecutors = mutableListOf<ExecutorService>()
 
     private class FakeQueue : PostHogQueueInterface {
@@ -79,10 +87,28 @@ internal class PostHogReplayIntegrationTest {
         fun awaitMigration(): Boolean = latch.await(2, TimeUnit.SECONDS)
     }
 
+    @BeforeTest
+    fun `set up`() {
+        PostHogSessionManager.isReactNative = false
+        PostHogSessionManager.setAppInBackground(false)
+        PostHogSessionManager.endSession()
+    }
+
+    @AfterTest
+    fun `tear down`() {
+        PostHogSessionManager.isReactNative = false
+        PostHogSessionManager.endSession()
+        PostHogSessionManager.setAppInBackground(true)
+        replayExecutors.forEach { it.shutdownNow() }
+        replayExecutors.clear()
+    }
+
     private fun createReplayExecutor(): ExecutorService {
         val executor =
             Executors.newSingleThreadExecutor { runnable ->
-                Thread(runnable, "PostHogReplayQueueIntegrationTest").apply { isDaemon = true }
+                Thread(runnable, "PostHogReplayQueueIntegrationTest").apply {
+                    isDaemon = true
+                }
             }
         replayExecutors.add(executor)
         return executor
@@ -93,7 +119,12 @@ internal class PostHogReplayIntegrationTest {
     }
 
     private fun createReplayQueue(config: PostHogAndroidConfig): PostHogReplayQueue {
-        return PostHogReplayQueue(config, FakeQueue(), tmpDir.newFolder().absolutePath, createReplayExecutor()).apply {
+        return PostHogReplayQueue(
+            config,
+            FakeQueue(),
+            tmpDir.newFolder().absolutePath,
+            createReplayExecutor(),
+        ).apply {
             bufferDelegate = NoOpBufferDelegate()
         }
     }
@@ -107,15 +138,173 @@ internal class PostHogReplayIntegrationTest {
         )
     }
 
-    @BeforeTest
-    fun setUp() {
-        PostHogReplayIntegration(mock<Context>(), PostHogAndroidConfig(API_KEY), MainHandler()).uninstall()
+    private fun configWithSampling(
+        flagActive: Boolean,
+        samplingPasses: Boolean,
+        sessionReplay: Boolean = true,
+    ): PostHogAndroidConfig {
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { isSessionReplayFlagActive() } doReturn flagActive
+                on { makeSamplingDecision(any()) } doReturn samplingPasses
+                on { getEventTriggers() } doReturn emptySet<String>()
+            }
+        return PostHogAndroidConfig(API_KEY).apply {
+            remoteConfigHolder = remoteConfig
+            this.sessionReplay = sessionReplay
+        }
     }
 
-    @AfterTest
-    fun tearDown() {
-        replayExecutors.forEach { it.shutdownNow() }
-        replayExecutors.clear()
+    private fun getSut(config: PostHogAndroidConfig = PostHogAndroidConfig(API_KEY)): PostHogReplayIntegration {
+        return PostHogReplayIntegration(context, config, MainHandler())
+    }
+
+    @Test
+    fun `onSessionIdChanged starts replay when previously inactive and sampling passes`() {
+        // The prior session may have been sampled out; rotation must re-evaluate sampling and
+        // start replay even though isSessionReplayActive was false.
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged stops then starts replay when active and sampling passes`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            // Pre-activate replay so we can verify it's stopped+restarted, not just left running.
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged stops replay when sampling fails`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = false))
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged stops replay when session is cleared`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
+            // Clear the session, then fire onSessionIdChanged — peekSessionId returns null.
+            PostHogSessionManager.endSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged does not start replay when flag is disabled`() {
+        val sut = getSut(configWithSampling(flagActive = false, samplingPasses = true))
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged does not auto-start replay when config sessionReplay is false`() {
+        // config.sessionReplay is the master switch — even if remote flag and sampling both
+        // pass, we must not auto-start replay if the customer disabled it at config level.
+        val sut =
+            getSut(
+                configWithSampling(
+                    flagActive = true,
+                    samplingPasses = true,
+                    sessionReplay = false,
+                ),
+            )
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionIdChanged stops active replay on rotation when config sessionReplay is false`() {
+        // Defensive: if replay was somehow started (e.g. trigger-matched, or pre-config-flip),
+        // a rotation under config.sessionReplay = false should stop it rather than restart.
+        val sut =
+            getSut(
+                configWithSampling(
+                    flagActive = true,
+                    samplingPasses = true,
+                    sessionReplay = false,
+                ),
+            )
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
     }
 
     @Test
@@ -159,6 +348,7 @@ internal class PostHogReplayIntegrationTest {
         assertTrue(logger.awaitMigration(), "Timed out waiting for replay buffer migration")
         assertNotEquals(callerThreadName, logger.migrationThreadName)
         assertEquals("PostHogReplayThread", logger.migrationThreadName)
+        sut.uninstall()
     }
 
     @Test
@@ -178,6 +368,7 @@ internal class PostHogReplayIntegrationTest {
         val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
         val replayQueue = createReplayQueue(config)
         config.replayQueueHolder = replayQueue
+        PostHogSessionManager.setSessionId(firstSessionId)
         sut.install(postHog)
         sut.start(resumeCurrent = true)
 
@@ -189,6 +380,7 @@ internal class PostHogReplayIntegrationTest {
         assertTrue(logger.awaitMigration(), "Timed out waiting for replay buffer migration")
         assertEquals(2, replayQueue.bufferDepth)
 
+        PostHogSessionManager.setSessionId(secondSessionId)
         whenever(postHog.getSessionId()).thenReturn(secondSessionId)
         sut.onSessionIdChanged()
 

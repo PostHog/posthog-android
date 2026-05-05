@@ -15,7 +15,7 @@ A changeset file will be generated in the `.changeset/` directory — commit it 
 
 ## Release process
 
-Add a `release` label to your PR. When the PR is merged to `main`, the release workflow will automatically:
+When a PR with a changeset is merged to `main`, the release workflow will automatically run on the push to `main` and:
 
 1. Bump versions based on changesets
 2. Update changelogs in each package subfolder (e.g. `posthog/CHANGELOG.md`, `posthog-android/CHANGELOG.md`)
@@ -23,7 +23,7 @@ Add a `release` label to your PR. When the PR is merged to `main`, the release w
 4. Publish packages to Maven Central
 5. Create Git tags and GitHub releases
 
-All of this happens automatically when the PR is merged — no manual tagging or release creation needed!
+All of this happens automatically when the PR is merged — no release label, manual tagging, or manual release creation needed!
 
 ## Dependency order
 

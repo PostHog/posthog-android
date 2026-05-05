@@ -138,6 +138,8 @@ public class PostHogApi(
         groups: Map<String, String>? = null,
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
+        flagKeys: List<String>? = null,
+        disableGeoip: Boolean = false,
     ): PostHogFlagsResponse? {
         val flagsRequest =
             PostHogFlagsRequest(
@@ -149,6 +151,8 @@ public class PostHogApi(
                 personProperties,
                 groupProperties,
                 config.evaluationContexts,
+                flagKeys = flagKeys,
+                disableGeoip = disableGeoip,
             )
 
         val url = "$theHost/flags/?v=2"

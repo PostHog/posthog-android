@@ -15,6 +15,7 @@ public class PostHogCaptureOptions private constructor(
     public val groups: Map<String, String>?,
     public val timestamp: Date? = null,
     public val appendFeatureFlags: Boolean = false,
+    public val flags: PostHogFeatureFlagEvaluations? = null,
 ) {
     public class Builder {
         public var properties: MutableMap<String, Any>? = null
@@ -23,6 +24,7 @@ public class PostHogCaptureOptions private constructor(
         public var groups: MutableMap<String, String>? = null
         public var timestamp: Date? = null
         public var appendFeatureFlags: Boolean = false
+        public var flags: PostHogFeatureFlagEvaluations? = null
 
         /**
          * Add a single custom property to the capture options
@@ -168,6 +170,17 @@ public class PostHogCaptureOptions private constructor(
             return this
         }
 
+        /**
+         * Attach a snapshot returned by [PostHogInterface.evaluateFlags]. The capture event will be
+         * enriched with `$feature/<key>` properties and `$active_feature_flags` from the snapshot
+         * without making another `/flags` request. Mutually exclusive with [appendFeatureFlags];
+         * the snapshot wins when both are supplied.
+         */
+        public fun flags(flags: PostHogFeatureFlagEvaluations?): Builder {
+            this.flags = flags
+            return this
+        }
+
         public fun build(): PostHogCaptureOptions =
             PostHogCaptureOptions(
                 properties,
@@ -176,6 +189,7 @@ public class PostHogCaptureOptions private constructor(
                 groups,
                 timestamp,
                 appendFeatureFlags,
+                flags,
             )
     }
 

@@ -49,4 +49,19 @@ public interface PostHogFeatureFlagsInterface {
     ): String? {
         return null
     }
+
+    /**
+     * Returns the rich [FeatureFlag] (with id/version/payload metadata and reason) cached for the
+     * given identity tuple, or null when no cached value is available. Default implementation
+     * returns null so older implementations stay binary-compatible.
+     */
+    public fun getFeatureFlagDetails(
+        key: String,
+        distinctId: String? = null,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+    ): FeatureFlag? {
+        return null
+    }
 }
