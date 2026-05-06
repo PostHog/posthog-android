@@ -1,5 +1,11 @@
 ## Next
 
+## 3.44.0
+
+### Minor Changes
+
+- 006f5d0: feat: support session replay minimum recording duration
+
 ## 3.43.3
 
 ### Patch Changes
