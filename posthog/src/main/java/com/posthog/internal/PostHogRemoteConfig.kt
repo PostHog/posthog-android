@@ -113,6 +113,15 @@ public class PostHogRemoteConfig(
     @Volatile
     private var sessionRecordingEventTriggers: Set<String>? = null
 
+    /**
+     * The minimum recording duration in milliseconds.
+     * When configured, session replay snapshots are buffered locally until
+     * the session reaches this duration threshold.
+     * null or 0 means no minimum duration (send immediately).
+     */
+    @Volatile
+    private var sessionRecordingMinimumDurationMs: Long? = null
+
     init {
         preloadSessionRecordingConfig()
         preloadSurveys()
@@ -370,6 +379,25 @@ public class PostHogRemoteConfig(
         return triggers.takeIf { it.isNotEmpty() }?.toSet()
     }
 
+    /**
+     * Parses and validates a minimum duration value which may come as a Number (from the API JSON)
+     * or from cached storage. Returns null if the value is absent, unparseable, or negative.
+     * The value is expected to be in milliseconds.
+     */
+    private fun parseMinimumDurationMs(raw: Any?): Long? {
+        val milliseconds: Long? =
+            when (raw) {
+                is Number -> raw.toLong()
+                is String -> raw.toLongOrNull()
+                else -> null
+            }
+        if (milliseconds != null && milliseconds < 0) {
+            config.logger.log("Remote config minimumDurationMilliseconds must be non-negative, got $milliseconds. Ignoring.")
+            return null
+        }
+        return milliseconds
+    }
+
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
             is Boolean -> {
@@ -401,6 +429,8 @@ public class PostHogRemoteConfig(
                     sessionRecordingSampleRate = parseSampleRate(it["sampleRate"])
 
                     sessionRecordingEventTriggers = parseEventTriggers(it["eventTriggers"])
+
+                    sessionRecordingMinimumDurationMs = parseMinimumDurationMs(it["minimumDurationMilliseconds"])
 
                     config.cachePreferences?.setValue(SESSION_REPLAY, it)
 
@@ -743,6 +773,8 @@ public class PostHogRemoteConfig(
                     sessionRecordingSampleRate = parseSampleRate(sessionRecording["sampleRate"])
 
                     sessionRecordingEventTriggers = parseEventTriggers(sessionRecording["eventTriggers"])
+
+                    sessionRecordingMinimumDurationMs = parseMinimumDurationMs(sessionRecording["minimumDurationMilliseconds"])
                 }
             }
         }
@@ -951,6 +983,13 @@ public class PostHogRemoteConfig(
      * When event triggers are configured, session recording only starts after one of these events is captured.
      */
     public fun getEventTriggers(): Set<String>? = sessionRecordingEventTriggers
+
+    /**
+     * Returns the current minimum recording duration in milliseconds, or null if not set.
+     * When set, session replay snapshots should be buffered until the session
+     * reaches this duration.
+     */
+    public fun getRecordingMinimumDurationMs(): Long? = sessionRecordingMinimumDurationMs
 
     override fun getRequestId(
         distinctId: String?,

@@ -3,28 +3,89 @@ package com.posthog.android.replay
 import android.content.Context
 import android.os.Looper
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.posthog.PostHogEvent
+import com.posthog.PostHogInterface
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
+import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [26]) // PostHogReplayIntegration.isSupported() requires API >= O.
 internal class PostHogReplayIntegrationTest {
+    @get:Rule
+    val tmpDir = TemporaryFolder()
+
     private val context = mock<Context>()
+    private val replayExecutors = mutableListOf<ExecutorService>()
+
+    private class FakeQueue : PostHogQueueInterface {
+        override fun add(event: PostHogEvent) {
+        }
+
+        override fun flush() {
+        }
+
+        override fun start() {
+        }
+
+        override fun stop() {
+        }
+
+        override fun clear() {
+        }
+    }
+
+    private class NoOpBufferDelegate : PostHogReplayBufferDelegate {
+        override val isBuffering: Boolean = true
+
+        override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
+        }
+    }
+
+    private class RecordingLogger : PostHogLogger {
+        private val latch = CountDownLatch(1)
+
+        @Volatile
+        var migrationThreadName: String? = null
+            private set
+
+        override fun log(message: String) {
+            if (message.startsWith("Replay buffer migration skipped") || message.startsWith("Migrated")) {
+                migrationThreadName = Thread.currentThread().name
+                latch.countDown()
+            }
+        }
+
+        override fun isEnabled(): Boolean = true
+
+        fun awaitMigration(): Boolean = latch.await(2, TimeUnit.SECONDS)
+    }
 
     @BeforeTest
     fun `set up`() {
@@ -38,6 +99,43 @@ internal class PostHogReplayIntegrationTest {
         PostHogSessionManager.isReactNative = false
         PostHogSessionManager.endSession()
         PostHogSessionManager.setAppInBackground(true)
+        replayExecutors.forEach { it.shutdownNow() }
+        replayExecutors.clear()
+    }
+
+    private fun createReplayExecutor(): ExecutorService {
+        val executor =
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "PostHogReplayQueueIntegrationTest").apply {
+                    isDaemon = true
+                }
+            }
+        replayExecutors.add(executor)
+        return executor
+    }
+
+    private fun awaitReplayExecutors() {
+        replayExecutors.forEach { it.submit {}.get(2, TimeUnit.SECONDS) }
+    }
+
+    private fun createReplayQueue(config: PostHogAndroidConfig): PostHogReplayQueue {
+        return PostHogReplayQueue(
+            config,
+            FakeQueue(),
+            tmpDir.newFolder().absolutePath,
+            createReplayExecutor(),
+        ).apply {
+            bufferDelegate = NoOpBufferDelegate()
+        }
+    }
+
+    private fun createTestEvent(name: String): PostHogEvent {
+        return PostHogEvent(
+            event = name,
+            distinctId = "test-user",
+            properties = mutableMapOf("test" to "value"),
+            uuid = UUID.randomUUID(),
+        )
     }
 
     private fun configWithSampling(
@@ -207,5 +305,91 @@ internal class PostHogReplayIntegrationTest {
         } finally {
             sut.uninstall()
         }
+    }
+
+    @Test
+    fun `clears buffer when PostHogReplayIntegration is installed`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        val replayQueue = createReplayQueue(config)
+        config.replayQueueHolder = replayQueue
+        replayQueue.add(createTestEvent("snapshot_1"))
+        awaitReplayExecutors()
+        assertEquals(1, replayQueue.bufferDepth)
+
+        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        sut.install(mock<PostHogInterface>())
+
+        assertEquals(0, replayQueue.bufferDepth)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `migrates buffered snapshots on background thread when minimum duration is met`() {
+        val logger = RecordingLogger()
+        val remoteConfig = mock<PostHogRemoteConfig>()
+        whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                this.logger = logger
+                remoteConfigHolder = remoteConfig
+            }
+        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        sut.onRemoteConfig()
+        val replayQueue = createReplayQueue(config)
+        config.replayQueueHolder = replayQueue
+        sut.install(mock<PostHogInterface>())
+        replayQueue.add(createTestEvent("snapshot_1"))
+        awaitReplayExecutors()
+        Thread.sleep(10)
+        val callerThreadName = Thread.currentThread().name
+        replayQueue.add(createTestEvent("snapshot_2"))
+
+        assertTrue(logger.awaitMigration(), "Timed out waiting for replay buffer migration")
+        assertNotEquals(callerThreadName, logger.migrationThreadName)
+        assertEquals("PostHogReplayThread", logger.migrationThreadName)
+        sut.uninstall()
+    }
+
+    @Test
+    fun `resets buffer state when session id changes`() {
+        val logger = RecordingLogger()
+        val remoteConfig = mock<PostHogRemoteConfig>()
+        whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                this.logger = logger
+                remoteConfigHolder = remoteConfig
+            }
+        val firstSessionId = UUID.randomUUID()
+        val secondSessionId = UUID.randomUUID()
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(firstSessionId)
+        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        val replayQueue = createReplayQueue(config)
+        config.replayQueueHolder = replayQueue
+        PostHogSessionManager.setSessionId(firstSessionId)
+        sut.install(postHog)
+        sut.start(resumeCurrent = true)
+
+        replayQueue.add(createTestEvent("snapshot_1"))
+        awaitReplayExecutors()
+        Thread.sleep(10)
+        replayQueue.add(createTestEvent("snapshot_2"))
+
+        assertTrue(logger.awaitMigration(), "Timed out waiting for replay buffer migration")
+        assertEquals(2, replayQueue.bufferDepth)
+
+        PostHogSessionManager.setSessionId(secondSessionId)
+        whenever(postHog.getSessionId()).thenReturn(secondSessionId)
+        sut.onSessionIdChanged()
+
+        assertEquals(0, replayQueue.bufferDepth)
+
+        replayQueue.add(createTestEvent("snapshot_new_session"))
+        awaitReplayExecutors()
+
+        assertEquals(1, replayQueue.bufferDepth)
+        sut.uninstall()
     }
 }
