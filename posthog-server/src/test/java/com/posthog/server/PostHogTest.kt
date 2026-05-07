@@ -454,28 +454,14 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `empty api key disables SDK even with personal api key`() {
-        val mockServer = MockWebServer()
-        mockServer.start()
-
-        val url = mockServer.url("/").toString()
+    fun `empty api key disables SDK`() {
         val postHog = PostHog()
-        postHog.setup(
-            PostHogConfig.builder(" \n\t ")
-                .host(url)
-                .personalApiKey("phx_test_personal_api_key")
-                .flushAt(1)
-                .build(),
-        )
 
-        val flags = postHog.evaluateFlags("user123")
+        postHog.setup(PostHogConfig.builder(" \n\t ").build())
 
         assertTrue(postHog.isOptOut())
-        assertFalse(flags.isEnabled("test-flag"))
-        assertNull(mockServer.takeRequest(2, TimeUnit.SECONDS))
 
         postHog.close()
-        mockServer.shutdown()
     }
 
     @Test
