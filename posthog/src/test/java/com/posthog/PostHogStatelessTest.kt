@@ -1,7 +1,6 @@
 package com.posthog
 
 import com.posthog.internal.PostHogFeatureFlagsInterface
-import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
@@ -239,7 +238,7 @@ internal class PostHogStatelessTest {
     @Test
     fun `setup no-ops for empty trimmed api key after logger initialization`() {
         sut = createStatelessInstance()
-        val mockLogger = MockLogger()
+        val mockLogger = TestLogger()
         config = PostHogConfig(" \n\t ", "https://api.posthog.com").apply { logger = mockLogger }
 
         sut.setup(config)
@@ -252,7 +251,7 @@ internal class PostHogStatelessTest {
     fun `setup logs warning when called multiple times`() {
         sut = createStatelessInstance()
         config = createConfig()
-        val mockLogger = MockLogger()
+        val mockLogger = TestLogger()
         config.logger = mockLogger
 
         sut.setup(config)
@@ -267,7 +266,7 @@ internal class PostHogStatelessTest {
         val sut2 = createStatelessInstance()
         val config1 = createConfig()
         val config2 = createConfig()
-        val mockLogger = MockLogger()
+        val mockLogger = TestLogger()
         config2.logger = mockLogger
 
         sut1.setup(config1)
@@ -295,7 +294,7 @@ internal class PostHogStatelessTest {
     fun `close handles errors gracefully`() {
         sut = createStatelessInstance()
         config = createConfig()
-        val mockLogger = MockLogger()
+        val mockLogger = TestLogger()
         config.logger = mockLogger
 
         sut.close() // Close without setup
@@ -894,7 +893,7 @@ internal class PostHogStatelessTest {
     @Test
     fun `beforeSend error handling does not crash`() {
         val mockQueue = MockQueue()
-        val mockLogger = MockLogger()
+        val mockLogger = TestLogger()
         sut = createStatelessInstance()
         config =
             createConfig().apply {
@@ -1397,16 +1396,6 @@ internal class PostHogStatelessTest {
     }
 
     // Helper classes
-    private class MockLogger : PostHogLogger {
-        val messages = mutableListOf<String>()
-
-        override fun log(message: String) {
-            messages.add(message)
-        }
-
-        override fun isEnabled(): Boolean = true
-    }
-
     private class MockPostHogStateless : PostHogStatelessInterface {
         var setupCalled = false
         var closeCalled = false

@@ -2,7 +2,6 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
-import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
@@ -142,8 +141,7 @@ internal class PostHogTest {
                 reloadFeatureFlags = true,
             )
 
-        assertTrue(config.integrations.isEmpty())
-        assertNull(config.cachePreferences)
+        assertTrue(sut.isOptOut())
         assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
 
         sut.close()
@@ -3322,13 +3320,4 @@ internal class PostHogTest {
         sut.close()
     }
 
-    private class TestLogger : PostHogLogger {
-        val messages = mutableListOf<String>()
-
-        override fun log(message: String) {
-            messages.add(message)
-        }
-
-        override fun isEnabled(): Boolean = true
-    }
 }
