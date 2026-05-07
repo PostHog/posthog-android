@@ -50,8 +50,7 @@ internal class PostHogAndroidTest {
 
         PostHogAndroid.setup(context, config)
 
-        assertTrue(config.cachePreferences is PostHogSharedPreferences)
-        assertTrue(config.integrations.isNotEmpty())
+        assertTrue(PostHog.isOptOut())
         assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
     }
 
