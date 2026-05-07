@@ -10,6 +10,7 @@ import com.posthog.android.internal.PostHogAndroidNetworkStatus
 import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
+import com.posthog.internal.PostHogLogger
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -40,23 +41,18 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `setup no-ops for null api key`() {
-        val config = PostHogAndroidConfig(null)
-
-        PostHogAndroid.setup(context, config)
-
-        assertNull(config.cachePreferences)
-        assertTrue(config.integrations.isEmpty())
-    }
-
-    @Test
-    fun `setup no-ops for empty trimmed api key`() {
+    fun `setup configures Android then core disables SDK for empty trimmed api key`() {
         val config = PostHogAndroidConfig(" \n\t ")
+        val logger = TestLogger()
+        config.logger = logger
+
+        mockContextAppStart(context, tmpDir)
 
         PostHogAndroid.setup(context, config)
 
-        assertNull(config.cachePreferences)
-        assertTrue(config.integrations.isEmpty())
+        assertTrue(config.cachePreferences is PostHogSharedPreferences)
+        assertTrue(config.integrations.isNotEmpty())
+        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
     }
 
     @Test
@@ -236,5 +232,15 @@ internal class PostHogAndroidTest {
         assertTrue(config.logger is PostHogAndroidLogger)
 
         postHog.close()
+    }
+
+    private class TestLogger : PostHogLogger {
+        val messages = mutableListOf<String>()
+
+        override fun log(message: String) {
+            messages.add(message)
+        }
+
+        override fun isEnabled(): Boolean = true
     }
 }

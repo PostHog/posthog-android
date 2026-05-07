@@ -2,6 +2,7 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
@@ -129,6 +130,8 @@ internal class PostHogTest {
     @Test
     fun `setup no-ops for empty trimmed api key`() {
         val config = PostHogConfig(" \n\t ", "https://api.posthog.com")
+        val logger = TestLogger()
+        config.logger = logger
         val sut =
             PostHog.withInternal(
                 config,
@@ -141,6 +144,7 @@ internal class PostHogTest {
 
         assertTrue(config.integrations.isEmpty())
         assertNull(config.cachePreferences)
+        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
 
         sut.close()
     }
@@ -3316,5 +3320,15 @@ internal class PostHogTest {
         assertEquals(deviceId, lazyDeviceId)
 
         sut.close()
+    }
+
+    private class TestLogger : PostHogLogger {
+        val messages = mutableListOf<String>()
+
+        override fun log(message: String) {
+            messages.add(message)
+        }
+
+        override fun isEnabled(): Boolean = true
     }
 }

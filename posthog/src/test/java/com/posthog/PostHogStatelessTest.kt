@@ -245,7 +245,7 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         assertFalse(sut.isEnabledPublic())
-        assertTrue(mockLogger.messages.any { it.contains("apiKey is empty after trimming whitespace") })
+        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
     }
 
     @Test

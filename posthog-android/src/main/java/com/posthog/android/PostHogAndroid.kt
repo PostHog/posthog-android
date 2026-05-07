@@ -48,11 +48,6 @@ public class PostHogAndroid private constructor() {
             config: T,
         ) {
             synchronized(lock) {
-                if (config.apiKey.isEmpty()) {
-                    PostHog.setup(config)
-                    return
-                }
-
                 setAndroidConfig(context.appContext(), config)
 
                 PostHog.setup(config)
@@ -75,10 +70,6 @@ public class PostHogAndroid private constructor() {
             context: Context,
             config: T,
         ): PostHogInterface {
-            if (config.apiKey.isEmpty()) {
-                return PostHog.with(config)
-            }
-
             setAndroidConfig(context.appContext(), config)
             return PostHog.with(config)
         }

@@ -13,10 +13,10 @@ internal class PostHogAndroidConfigTest {
     }
 
     @Test
-    fun `defaults null api key to empty string`() {
-        val config = PostHogAndroidConfig(null)
+    fun `trims whitespace-sensitive config values`() {
+        val config = PostHogAndroidConfig(" \n$API_KEY\t ")
 
-        assertEquals("", config.apiKey)
+        assertEquals(API_KEY, config.apiKey)
     }
 
     @Test

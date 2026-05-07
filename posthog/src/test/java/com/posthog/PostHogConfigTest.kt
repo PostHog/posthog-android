@@ -24,13 +24,6 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `defaults null api key to empty string`() {
-        val config = PostHogConfig(null, "https://api.posthog.com")
-
-        assertEquals("", config.apiKey)
-    }
-
-    @Test
     fun `defaults a blank host after trimming whitespace`() {
         val config = PostHogConfig(API_KEY, " \n\t ")
 

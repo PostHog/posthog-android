@@ -16,7 +16,7 @@ import com.posthog.internal.PostHogQueue
 public open class PostHogAndroidConfig
     @JvmOverloads
     constructor(
-        apiKey: String?,
+        apiKey: String,
         host: String = DEFAULT_HOST,
         public var captureApplicationLifecycleEvents: Boolean = true,
         public var captureDeepLinks: Boolean = true,

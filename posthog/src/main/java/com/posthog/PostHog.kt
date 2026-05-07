@@ -100,7 +100,7 @@ public class PostHog private constructor(
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (config.apiKey.isEmpty()) {
-                    config.logger.log("apiKey is empty after trimming whitespace; check your project API key")
+                    config.logger.log("PostHog SDK is disabled because the API key is required and was empty after trimming whitespace.")
                     return
                 }
 
