@@ -3319,5 +3319,4 @@ internal class PostHogTest {
 
         sut.close()
     }
-
 }
