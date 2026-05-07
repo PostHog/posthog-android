@@ -405,7 +405,11 @@ internal class PostHogFeatureFlags(
      * Uses ETag for conditional requests to reduce bandwidth when flags haven't changed.
      */
     public fun loadFeatureFlagDefinitions() {
-        if (!localEvaluation || personalApiKey == null) {
+        if (!localEvaluation) {
+            return
+        }
+        if (personalApiKey.isNullOrBlank()) {
+            logMissingPersonalApiKey()
             return
         }
 
@@ -536,7 +540,7 @@ internal class PostHogFeatureFlags(
         }
 
         if (personalApiKey.isNullOrBlank()) {
-            config.logger.log("Local evaluation enabled but no personal API key provided")
+            logMissingPersonalApiKey()
             return
         }
 
@@ -620,6 +624,10 @@ internal class PostHogFeatureFlags(
 
     private fun localEvaluationEnabled(): Boolean {
         return localEvaluation && !personalApiKey.isNullOrBlank()
+    }
+
+    private fun logMissingPersonalApiKey() {
+        config.logger.log("Local evaluation requires a personal API key. This call will be ignored.")
     }
 
     /**
@@ -715,6 +723,18 @@ internal class PostHogFeatureFlags(
         onlyEvaluateLocally: Boolean,
         disableGeoip: Boolean,
     ): EvaluateFlagsResult {
+        if (onlyEvaluateLocally && personalApiKey.isNullOrBlank()) {
+            logMissingPersonalApiKey()
+            return EvaluateFlagsResult(
+                flags = emptyMap(),
+                locallyEvaluated = emptyMap(),
+                requestId = null,
+                evaluatedAt = null,
+                definitionsLoadedAt = definitionsLoadedAt,
+                responseError = null,
+            )
+        }
+
         val cacheKey =
             FeatureFlagCacheKey(
                 distinctId = distinctId,
