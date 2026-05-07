@@ -17,6 +17,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@Suppress("DEPRECATION")
 internal class PostHogTest {
     private fun createMockStateless(): PostHog {
         return spy(PostHog())

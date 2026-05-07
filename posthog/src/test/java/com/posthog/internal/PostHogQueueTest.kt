@@ -394,10 +394,87 @@ internal class PostHogQueueTest {
     fun `reduces batch size if 413`() {
         val e = PostHogApiError(413, "", null)
         val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
 
-        assertFalse(deleteFilesIfAPIError(e, config))
-        assertEquals(config.maxBatchSize, 25) // default 50
-        assertEquals(config.flushAt, 10) // default 20
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
+        assertEquals(limits.cap, 25) // default 50
+        assertEquals(limits.flushAt, 10) // default 20
+        assertEquals(config.maxBatchSize, 50) // unchanged
+        assertEquals(config.flushAt, 20) // unchanged
+    }
+
+    @Test
+    fun `halves cap from actual batch size when smaller than configured cap`() {
+        val e = PostHogApiError(413, "", null)
+        val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config) // cap = 50
+
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = 10, logger = config.logger))
+        assertEquals(limits.cap, 5) // halved from min(50, 10) = 10, not from 50
+    }
+
+    @Test
+    fun `clamps flushAt to cap after halving so we don't queue more than a batch`() {
+        // 413 on a tiny batch shrinks cap aggressively while flushAt would only halve.
+        // Without clamping, flushAt could exceed cap and we'd buffer more events than
+        // we can ever send in a single batch.
+        val e = PostHogApiError(413, "", null)
+        val config =
+            PostHogConfig(API_KEY).apply {
+                maxBatchSize = 50
+                flushAt = 20
+            }
+        val limits = initialBatchLimits(config)
+
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = 2, logger = config.logger))
+        assertEquals(limits.cap, 1) // min(50, 2) / 2 = 1
+        assertEquals(limits.flushAt, 1) // would be 10 without the clamp
+    }
+
+    @Test
+    fun `halves cap repeatedly across multiple 413s through the queue flush flow`() {
+        // End-to-end: each successive flush() against a 413 should observe a smaller
+        // cap on the next attempt, proving takeFiles() reads batchLimits.cap and
+        // not config.maxBatchSize.
+        val http = mockHttp(total = 2, response = MockResponse().setResponseCode(413).setBody(""))
+        val url = http.url("/")
+
+        val fakeCurrentTime = FakePostHogDateProvider()
+        // pause time pinned to the past so 413's calculated backoff never blocks
+        fakeCurrentTime.setAddSecondsToCurrentDate(parseISO8601Date("1970-09-20T11:58:49.000Z")!!)
+
+        // flushAt high so add() doesn't auto-flush — drive flushes manually
+        val sut =
+            getSut(
+                host = url.toString(),
+                flushAt = 100,
+                dateProvider = fakeCurrentTime,
+                maxBatchSize = 4,
+            )
+
+        for (i in 0 until 4) {
+            sut.add(generateEvent("event$i", givenUuuid = UUID.randomUUID()))
+        }
+        executor.awaitExecution()
+        assertEquals(4, sut.dequeList.size)
+        assertEquals(4, sut.currentBatchCapForTesting)
+
+        // First flush: batch=4 → 413 → cap halves to 2, batch retained.
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(2, sut.currentBatchCapForTesting)
+        assertEquals(2, sut.currentFlushAtForTesting)
+        assertEquals(4, sut.dequeList.size)
+
+        // Second flush: batch=2 (using the new, smaller cap) → 413 → cap halves to 1.
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(1, sut.currentBatchCapForTesting)
+        assertEquals(1, sut.currentFlushAtForTesting)
+        assertEquals(4, sut.dequeList.size)
+
+        sut.clear()
+        executor.shutdownAndAwaitTermination()
     }
 
     @Test
@@ -408,58 +485,65 @@ internal class PostHogQueueTest {
                 maxBatchSize = 1
                 flushAt = 1
             }
+        val limits = initialBatchLimits(config)
 
-        assertTrue(deleteFilesIfAPIError(e, config))
-        assertEquals(config.maxBatchSize, 1)
-        assertEquals(config.flushAt, 1)
+        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = 1, logger = config.logger))
+        assertEquals(limits.cap, 1)
+        assertEquals(limits.flushAt, 1)
     }
 
     @Test
     fun `delete files if errored`() {
         val e = PostHogApiError(400, "", null)
         val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
 
-        assertTrue(deleteFilesIfAPIError(e, config))
+        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
 
     @Test
     fun `retries on 500`() {
         val e = PostHogApiError(500, "", null)
         val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
 
-        assertFalse(deleteFilesIfAPIError(e, config))
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
 
     @Test
     fun `retries on 502`() {
         val e = PostHogApiError(502, "", null)
         val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
 
-        assertFalse(deleteFilesIfAPIError(e, config))
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
 
     @Test
     fun `retries on 429`() {
         val e = PostHogApiError(429, "", null)
         val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
 
-        assertFalse(deleteFilesIfAPIError(e, config))
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
 
     @Test
     fun `retries on 504`() {
         val e = PostHogApiError(504, "", null)
         val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
 
-        assertFalse(deleteFilesIfAPIError(e, config))
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
 
     @Test
     fun `retries on 503`() {
         val e = PostHogApiError(503, "", null)
         val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
 
-        assertFalse(deleteFilesIfAPIError(e, config))
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
 
     @Test

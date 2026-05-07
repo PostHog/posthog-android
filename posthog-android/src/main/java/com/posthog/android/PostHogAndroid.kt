@@ -15,6 +15,7 @@ import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogMetaPropertiesApplier
 import com.posthog.android.internal.PostHogSharedPreferences
+import com.posthog.android.internal.PostHogTouchActivityIntegration
 import com.posthog.android.internal.appContext
 import com.posthog.android.internal.getPackageInfo
 import com.posthog.android.internal.versionCodeCompat
@@ -116,8 +117,10 @@ public class PostHogAndroid private constructor() {
                     val dateProvider = PostHogAndroidDateProvider()
                     config.dateProvider = dateProvider
                     TimeBasedEpochGenerator.setDateProvider(dateProvider)
+                    PostHogSessionManager.setDateProvider(dateProvider)
                 } else {
                     TimeBasedEpochGenerator.setDateProvider(config.dateProvider)
+                    PostHogSessionManager.setDateProvider(config.dateProvider)
                 }
             }
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
@@ -129,6 +132,9 @@ public class PostHogAndroid private constructor() {
             }
 
             PostHogSessionManager.isReactNative = config.sdkName == "posthog-react-native"
+            // Mark the process as backgrounded until the first onStart fires; an expired
+            // session before any UI exists is cleared rather than silently rotated.
+            PostHogSessionManager.setAppInBackground(true)
 
             val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
             val metaPropertiesApplier = PostHogMetaPropertiesApplier()
@@ -139,6 +145,7 @@ public class PostHogAndroid private constructor() {
 
             val mainHandler = MainHandler()
             config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
+            config.addIntegration(PostHogTouchActivityIntegration(config))
             config.addIntegration(PostHogLogCatIntegration(config))
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {

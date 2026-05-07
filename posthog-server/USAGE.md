@@ -208,6 +208,50 @@ postHog.capture(
 
 When `appendFeatureFlags` is `true`, the SDK will fetch feature flags for the user (or use locally evaluated flags if local evaluation is enabled) and include them in the event properties.
 
+### Single-Call Flag Evaluation: `evaluateFlags()`
+
+When you need to read several flags for the same user, call `evaluateFlags()` once and pass the resulting snapshot around. The snapshot answers `isEnabled` / `getFlag` / `getFlagPayload` from memory, dedups `$feature_flag_called` events per flag, and can be attached to a `capture()` call so the event is enriched without making another `/flags` request.
+
+#### Kotlin
+
+```kotlin
+val flags = postHog.evaluateFlags("user123")
+
+if (flags.isEnabled("new-checkout")) {
+    showNewCheckout()
+}
+val payload = flags.getFlagPayload("pricing-experiment")
+
+// Attach only the flags actually consulted on this request to the capture event:
+postHog.capture(
+    distinctId = "user123",
+    event = "purchase_completed",
+    properties = mapOf("amount" to 99.99),
+    flags = flags.onlyAccessed(),
+)
+```
+
+#### Java
+
+```java
+PostHogFeatureFlagEvaluations flags = postHog.evaluateFlags("user123");
+
+if (flags.isEnabled("new-checkout")) {
+    showNewCheckout();
+}
+
+postHog.capture(
+    "user123",
+    "purchase_completed",
+    PostHogCaptureOptions.builder()
+        .property("amount", 99.99)
+        .flags(flags.onlyAccessed())
+        .build()
+);
+```
+
+`flagKeys` (an option on `evaluateFlags`) restricts what the server computes; the snapshot's `only(...)` helper, by contrast, filters in memory after the request.
+
 ## Error Tracking
 
 PostHog provides error tracking to help you monitor and debug errors in your application. Use the `captureException` API to log exceptions to PostHog.

@@ -168,6 +168,27 @@ public class PostHogReplayIntegration(
         get() = (config.sdkName != "posthog-flutter")
 
     private var postHog: PostHogInterface? = null
+    private var replayQueue: PostHogReplayQueue? = null
+
+    @Volatile
+    private var replaySessionId: String? = null
+
+    // Minimum duration buffering state
+    private val bufferingLock = Any()
+
+    @Volatile
+    private var hasPassedMinimumDuration: Boolean = false
+    private var cachedMinimumDurationMs: Long? = null
+
+    private val replayBufferDelegate =
+        object : PostHogReplayBufferDelegate {
+            override val isBuffering: Boolean
+                get() = this@PostHogReplayIntegration.isBuffering
+
+            override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
+                this@PostHogReplayIntegration.onReplayBufferSnapshot(replayQueue)
+            }
+        }
 
     @Volatile
     private var isOnDrawnCalled: Boolean = false
@@ -276,7 +297,6 @@ public class PostHogReplayIntegration(
     private val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
             val timestamp = config.dateProvider.currentTimeMillis()
-
             try {
                 val state = dispatch(motionEvent)
                 try {
@@ -390,6 +410,14 @@ public class PostHogReplayIntegration(
         integrationInstalled = true
         this.postHog = postHog
 
+        // Wire up as buffer delegate for the replay queue
+        replayQueue = config.replayQueueHolder
+        replayQueue?.clearBuffer()
+        replayQueue?.bufferDelegate = replayBufferDelegate
+
+        // Load cached minimum duration from remote config (if available)
+        updateCachedMinimumDuration()
+
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
         Curtains.rootViews.forEach { view ->
@@ -407,6 +435,12 @@ public class PostHogReplayIntegration(
         try {
             integrationInstalled = false
             this.postHog = null
+
+            // Clear buffer delegate
+            replayQueue?.bufferDelegate = null
+            replayQueue = null
+            replaySessionId = null
+
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
             decorViews.entries.forEach {
@@ -1601,11 +1635,19 @@ public class PostHogReplayIntegration(
             return
         }
 
-        if (!resumeCurrent) {
-            clearSnapshotStates()
-        }
+        val currentSessionId = postHog?.getSessionId()?.toString()
+        resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
         isSessionReplayActive = true
+
+        if (!resumeCurrent) {
+            // Without this, on a static UI the first user-driven onDraw can be tens of seconds
+            // away — and incremental events (type:3) would ship under the new session before
+            // the meta + full-snapshot keyframes (type:4 + type:2) needed to render them.
+            mainHandler.handler.post {
+                decorViews.keys.forEach { it.postInvalidate() }
+            }
+        }
     }
 
     private fun clearSnapshotStates() {
@@ -1662,22 +1704,63 @@ public class PostHogReplayIntegration(
 
     /**
      * Called when the session ID changes. Stops recording if event triggers are configured
-     * and the new session hasn't been activated yet.
+     * and the new session hasn't been activated yet, or re-initialises recording so the
+     * new session gets fresh meta + full wireframe events.
      */
     override fun onSessionIdChanged() {
-        val postHog = this.postHog ?: return
+        if (this.postHog == null) return
 
-        val currentSessionId = postHog.getSessionId()?.toString()
+        // Read-only: getActiveSessionId() can rotate the session and would re-fire this listener.
+        val currentSessionId = PostHogSessionManager.peekSessionId()?.toString()
 
-        val triggers = config.remoteConfigHolder?.getEventTriggers()
+        resetSessionStateIfNeeded(currentSessionId)
+
+        val remoteConfig = config.remoteConfigHolder
+        val triggers = remoteConfig?.getEventTriggers()
+
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
 
-        // If triggers are configured and this session hasn't been activated, stop the integration
         if (!triggers.isNullOrEmpty() && activatedSession != currentSessionId) {
             if (isSessionReplayActive) {
                 config.logger.log("[Session Replay] Session changed. Stopping until trigger is matched.")
                 stop()
             }
+            return
+        }
+
+        // The listener can fire from any thread that calls capture(); replay state writes
+        // (snapshot WeakHashMap, isSessionReplayActive) must happen on main.
+        if (currentSessionId == null) {
+            if (isSessionReplayActive) {
+                config.logger.log("[Session Replay] Session cleared. Stopping recording.")
+                mainHandler.handler.post { stop() }
+            }
+            return
+        }
+
+        // Run regardless of isSessionReplayActive: the prior session may have been sampled out
+        // and the new one may now pass. Sampling is re-evaluated for the (already-current)
+        // session without rotating the id (the silent rotation that fired this already
+        // rotated; going through PostHog.startSessionReplay(false) would double-rotate).
+        config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
+        mainHandler.handler.post {
+            // config.sessionReplay is the customer-facing master switch: a config-level disable
+            // must not be overridden by remote flag + sampling. Manual PostHog.startSessionReplay
+            // calls and trigger-matched starts go through different code paths and are unaffected.
+            if (!config.sessionReplay) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (remoteConfig?.isSessionReplayFlagActive() != true) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (remoteConfig.makeSamplingDecision(currentSessionId).not()) {
+                if (isSessionReplayActive) stop()
+                return@post
+            }
+            if (isSessionReplayActive) stop()
+            start(resumeCurrent = false)
         }
     }
 
@@ -1699,6 +1782,98 @@ public class PostHogReplayIntegration(
         // Check if this session has been activated
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
         return activatedSession != currentSessionId
+    }
+
+    private fun resetSessionStateIfNeeded(
+        currentSessionId: String?,
+        force: Boolean = false,
+    ) {
+        if (!force && replaySessionId == currentSessionId) {
+            return
+        }
+
+        replaySessionId = currentSessionId
+        clearSnapshotStates()
+        resetBufferingState()
+    }
+
+    // MARK: - PostHogReplayBufferDelegate
+
+    private val isBuffering: Boolean
+        get() {
+            synchronized(bufferingLock) {
+                val minimumDuration = cachedMinimumDurationMs
+                if (minimumDuration == null || minimumDuration <= 0) {
+                    return false
+                }
+                return !hasPassedMinimumDuration
+            }
+        }
+
+    private fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
+        val minimumDurationMs: Long? = synchronized(bufferingLock) { cachedMinimumDurationMs }
+        if (minimumDurationMs == null || minimumDurationMs <= 0) {
+            // No minimum duration configured: should not be buffering, migrate immediately.
+            synchronized(bufferingLock) { hasPassedMinimumDuration = true }
+            migrateBufferToQueueOnBackgroundThread(replayQueue)
+            return
+        }
+
+        // Check buffer content duration (oldest to newest snapshot)
+        val bufferDurationMs = replayQueue.bufferDurationMs ?: 0
+
+        // Keep buffered snapshots intact until threshold is reached.
+        // Session replay payloads may include metadata snapshots required by the player,
+        // so buffering follows an all-or-nothing migration strategy.
+        if (bufferDurationMs >= minimumDurationMs) {
+            config.logger.log(
+                "[Session Replay] Minimum duration met. Migrating ${replayQueue.bufferDepth} buffered events to replay queue.",
+            )
+            // Flip state before migration so new snapshots don't keep entering the buffer during long-running migrations.
+            synchronized(bufferingLock) { hasPassedMinimumDuration = true }
+            migrateBufferToQueueOnBackgroundThread(replayQueue)
+        }
+    }
+
+    private fun migrateBufferToQueueOnBackgroundThread(replayQueue: PostHogReplayQueue) {
+        try {
+            executor.submit {
+                try {
+                    replayQueue.migrateBufferToQueue()
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay migrateBufferToQueue failed: $e.")
+                }
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay scheduling migrateBufferToQueue failed: $e.")
+        }
+    }
+
+    // MARK: - Remote Config
+
+    override fun onRemoteConfig() {
+        updateCachedMinimumDuration()
+    }
+
+    private fun updateCachedMinimumDuration() {
+        val minimumDuration = config.remoteConfigHolder?.getRecordingMinimumDurationMs()
+        synchronized(bufferingLock) {
+            cachedMinimumDurationMs = minimumDuration
+        }
+    }
+
+    // MARK: - Buffering State
+
+    /**
+     * Resets buffering state for a new session — clears the buffer and marks
+     * as not yet passed minimum duration.
+     */
+    private fun resetBufferingState() {
+        synchronized(bufferingLock) {
+            hasPassedMinimumDuration = false
+        }
+        // Clear any buffered events from previous session
+        replayQueue?.clearBuffer()
     }
 
     internal companion object {

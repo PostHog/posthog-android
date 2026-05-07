@@ -191,6 +191,14 @@ public class PostHog private constructor(
 
                 queue.start()
 
+                PostHogSessionManager.setOnSessionIdChangedListener {
+                    try {
+                        sessionReplayHandler?.onSessionIdChanged()
+                    } catch (e: Throwable) {
+                        config.logger.log("onSessionIdChanged listener failed: $e.")
+                    }
+                }
+
                 startSession()
 
                 config.integrations.forEach {
@@ -308,6 +316,8 @@ public class PostHog private constructor(
                 replayQueue?.stop()
 
                 featureFlagsCalled.clear()
+
+                PostHogSessionManager.setOnSessionIdChangedListener(null)
 
                 endSession()
             } catch (e: Throwable) {
@@ -434,8 +444,14 @@ public class PostHog private constructor(
 
         val isSessionReplayActive = isSessionReplayActive()
 
-        PostHogSessionManager.getActiveSessionId()?.let { sessionId ->
-            val tempSessionId = sessionId.toString()
+        // Skip the getter when caller pre-attached an id: getActiveSessionId() can
+        // silently rotate, and the caller's value wins via putAll either way.
+        val propSessionId = properties?.get("\$session_id") as? String
+        val sessionIdString =
+            propSessionId?.takeIf { it.isNotBlank() }
+                ?: PostHogSessionManager.getActiveSessionId()?.toString()
+
+        sessionIdString?.let { tempSessionId ->
             props["\$session_id"] = tempSessionId
             // only Session replay needs $window_id
             if (!appendSharedProps && isSessionReplayActive) {
@@ -1334,8 +1350,6 @@ public class PostHog private constructor(
         }
 
         PostHogSessionManager.startSession()
-        // Notify session replay handler about session change for event triggers
-        sessionReplayHandler?.onSessionIdChanged()
     }
 
     override fun endSession() {

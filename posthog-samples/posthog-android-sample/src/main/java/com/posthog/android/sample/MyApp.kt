@@ -41,8 +41,8 @@ class MyApp : Application() {
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true
                 sessionReplayConfig.screenshot = true
-                surveys = true
-                errorTrackingConfig.autoCapture = true
+                surveys = false
+                errorTrackingConfig.autoCapture = false
             }
         PostHogAndroid.setup(this, config)
     }

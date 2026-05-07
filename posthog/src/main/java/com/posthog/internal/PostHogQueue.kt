@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.PostHogInternal
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
@@ -12,7 +13,6 @@ import java.util.TimerTask
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -24,7 +24,8 @@ private val RETRYABLE_STATUS_CODES = setOf(429, 500, 502, 503, 504)
  * @property api the API
  * @property executor the Executor
  */
-internal class PostHogQueue(
+@PostHogInternal
+public class PostHogQueue(
     private val config: PostHogConfig,
     private val api: PostHogApi,
     private val endpoint: PostHogApiEndpoint,
@@ -36,6 +37,7 @@ internal class PostHogQueue(
     private val timerLock = Any()
     private var pausedUntil: Date? = null
     private var retryCount = 0
+    private val batchLimits = initialBatchLimits(config)
     private val initialRetryDelaySeconds = 1
     private val maxRetryDelaySeconds = 30
 
@@ -53,6 +55,9 @@ internal class PostHogQueue(
     private var dirCreated = false
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
+
+    public val queueDirectory: File?
+        get() = storagePrefix?.let { File(it, config.apiKey) }
 
     private fun addEventSync(event: PostHogEvent): Boolean {
         storagePrefix?.let {
@@ -147,7 +152,7 @@ internal class PostHogQueue(
     }
 
     private fun flushIfOverThreshold(isFatal: Boolean) {
-        if (isAboveThreshold(config.flushAt)) {
+        if (isAboveThreshold(batchLimits.flushAt)) {
             flushBatch(isFatal)
         }
     }
@@ -174,7 +179,7 @@ internal class PostHogQueue(
     private fun takeFiles(): List<File> {
         val events: List<File>
         synchronized(dequeLock) {
-            events = deque.take(config.maxBatchSize)
+            events = deque.take(batchLimits.cap)
         }
         return events
     }
@@ -280,7 +285,7 @@ internal class PostHogQueue(
                 config.logger.log("Flushed ${events.size} events successfully.")
             }
         } catch (e: PostHogApiError) {
-            deleteFiles = deleteFilesIfAPIError(e, config)
+            deleteFiles = deleteFilesIfAPIError(e, batchLimits, events.size, config.logger)
 
             // only re-throw if retriable (files kept), so executeWithRetry
             // can track retryCount and apply backoff
@@ -407,31 +412,53 @@ internal class PostHogQueue(
      * with any new events added after SDK start.
      */
     private fun loadCachedEvents() {
-        storagePrefix?.let {
-            val dir = File(it, config.apiKey)
+        val files = loadQueueFilesFromDisk()
+        if (files.isEmpty()) return
 
-            if (!dir.existsSafely(config)) {
-                return
-            }
+        synchronized(dequeLock) {
+            // prepend cached files before any events already in the deque
+            // so that older events are sent first
+            val existingFiles = deque.toList()
+            deque.clear()
+            deque.addAll(files)
+            deque.addAll(existingFiles)
+        }
+        config.logger.log("Loaded ${files.size} cached events from disk for $endpoint.")
+    }
 
-            val files = (dir.listFiles() ?: emptyArray()).toMutableList()
+    private fun loadQueueFilesFromDisk(): List<File> {
+        val dir = queueDirectory ?: return emptyList()
 
-            if (files.isEmpty()) return
+        if (!dir.existsSafely(config)) {
+            return emptyList()
+        }
 
-            // sort by last modified date ascending so events are sent in order
-            files.sortBy { file -> file.lastModified() }
+        val files = (dir.listFiles() ?: emptyArray()).toMutableList()
+        if (files.isEmpty()) {
+            return emptyList()
+        }
 
-            if (files.isNotEmpty()) {
-                synchronized(dequeLock) {
-                    // prepend cached files before any events already in the deque
-                    // so that older events are sent first
-                    val existingFiles = deque.toList()
-                    deque.clear()
-                    deque.addAll(files)
-                    deque.addAll(existingFiles)
-                }
-                config.logger.log("Loaded ${files.size} cached events from disk for $endpoint.")
-            }
+        // sort by last modified date ascending so events are sent in order
+        files.sortBy { file -> file.lastModified() }
+        return files
+    }
+
+    private fun reloadFromDiskSync() {
+        val files = loadQueueFilesFromDisk()
+        synchronized(dequeLock) {
+            deque.clear()
+            deque.addAll(files)
+        }
+        cachedEventsLoaded = true
+    }
+
+    /**
+     * Rebuilds the in-memory deque from disk, sorted by file last-modified time.
+     */
+    @PostHogInternal
+    public fun reloadFromDisk() {
+        executor.submitSyncSafely {
+            reloadFromDiskSync()
         }
     }
 
@@ -454,7 +481,7 @@ internal class PostHogQueue(
         }
     }
 
-    val dequeList: List<File>
+    internal val dequeList: List<File>
         @PostHogVisibleForTesting
         get() {
             val tempFiles: List<File>
@@ -463,35 +490,64 @@ internal class PostHogQueue(
             }
             return tempFiles
         }
+
+    internal val currentBatchCapForTesting: Int
+        @PostHogVisibleForTesting
+        get() = batchLimits.cap
+
+    internal val currentFlushAtForTesting: Int
+        @PostHogVisibleForTesting
+        get() = batchLimits.flushAt
 }
 
-private fun calcFloor(currentValue: Int): Int {
-    return max(currentValue.floorDiv(2), 1)
+internal class BatchLimits(
+    var cap: Int,
+    var flushAt: Int,
+) {
+    fun halve(actualBatchSize: Int) {
+        cap =
+            minOf(cap, actualBatchSize)
+                .div(2)
+                .coerceAtLeast(1)
+
+        // keep flushAt <= cap so we don't pile up events larger than a single batch
+        flushAt =
+            (flushAt / 2)
+                .coerceAtMost(cap)
+                .coerceAtLeast(1)
+    }
 }
+
+internal fun initialBatchLimits(config: PostHogConfig) =
+    BatchLimits(
+        cap = config.maxBatchSize.coerceAtLeast(1),
+        flushAt = config.flushAt.coerceAtLeast(1),
+    )
 
 internal fun deleteFilesIfAPIError(
     e: PostHogApiError,
-    config: PostHogConfig,
+    batchLimits: BatchLimits,
+    actualBatchSize: Int,
+    logger: PostHogLogger,
 ): Boolean {
     if (e.statusCode < 400) {
-        config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
+        logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
     }
     // workaround due to png images exceed our max. limit in kafka
-    if (e.statusCode == 413 && config.maxBatchSize > 1) {
+    if (e.statusCode == 413 && batchLimits.cap > 1) {
         // try to reduce the batch size and flushAt until its 1
         // and if it still throws 413 in the next retry, delete the files since we cannot handle anyway
-        config.maxBatchSize = calcFloor(config.maxBatchSize)
-        config.flushAt = calcFloor(config.flushAt)
+        batchLimits.halve(actualBatchSize)
 
-        config.logger.log("Flushing failed with ${e.statusCode}, let's try again with a smaller batch.")
+        logger.log("Flushing failed with ${e.statusCode}, let's try again with a smaller batch.")
 
         return false
     }
     // Transient server errors and rate limiting, retry
     if (e.statusCode in RETRYABLE_STATUS_CODES) {
-        config.logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
+        logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
     }

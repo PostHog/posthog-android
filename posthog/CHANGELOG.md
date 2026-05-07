@@ -1,5 +1,23 @@
 ## Next
 
+## 6.14.0
+
+### Minor Changes
+
+- 006f5d0: feat: support session replay minimum recording duration
+
+## 6.13.3
+
+### Patch Changes
+
+- 3a2a1ec: Stop mutating user-supplied `PostHogConfig.maxBatchSize` and `PostHogConfig.flushAt` when the events queue adapts to HTTP 413 responses. The adaptive cap is now kept in private queue state, halved from the actual batch size that triggered the 413, and `flushAt` is clamped to the cap so a partial-batch 413 can't leave the queue buffering more events than a single batch can drain.
+
+## 6.13.2
+
+### Patch Changes
+
+- 590d694: Enforce 24-hour maximum session duration and 30-minute inactivity rotation with automatic session rotation, mirroring iOS. Note: `PostHogSessionManager.isAppInBackground` now defaults to `true` until the first lifecycle `onStart` flips it; downstream wrappers (Flutter, RN) that exercise the manager directly in tests may need to call `setAppInBackground(false)` to simulate a foregrounded process.
+
 ## 6.13.1
 
 ### Patch Changes

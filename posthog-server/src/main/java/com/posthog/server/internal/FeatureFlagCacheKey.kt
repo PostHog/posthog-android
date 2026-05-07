@@ -8,4 +8,6 @@ internal data class FeatureFlagCacheKey(
     val groups: Map<String, String>?,
     val personProperties: Map<String, Any?>?,
     val groupProperties: Map<String, Map<String, Any?>>?,
+    val flagKeys: List<String>? = null,
+    val disableGeoip: Boolean = false,
 )
