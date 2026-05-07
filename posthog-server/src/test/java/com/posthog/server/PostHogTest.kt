@@ -454,6 +454,51 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `local evaluation works with empty api key and personal api key`() {
+        val localEvalResponse = createLocalEvaluationResponse("test-flag")
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(localEvalResponse))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(" \n\t ")
+                    .host(url)
+                    .personalApiKey("phx_test_personal_api_key")
+                    .flushAt(1)
+                    .build(),
+            )
+
+        val flags = postHog.evaluateFlags("user123")
+
+        assertTrue(flags.isEnabled("test-flag"))
+
+        val requests = mutableListOf<RecordedRequest>()
+        var request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        while (request != null) {
+            requests.add(request)
+            request = mockServer.takeRequest(2, TimeUnit.SECONDS)
+        }
+
+        assertTrue(
+            requests.any { it.path?.contains("/local_evaluation") == true },
+            "Expected /local_evaluation to be called",
+        )
+        assertFalse(
+            requests.any { it.path?.contains("/flags") == true },
+            "Expected /flags to NOT be called without an API key",
+        )
+        assertFalse(
+            requests.any { it.path?.contains("/batch") == true },
+            "Expected /batch to NOT be called without an API key",
+        )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `capture with appendFeatureFlags without local evaluation calls flags endpoint`() {
         val flagsResponse = createFlagsResponse("test-flag")
         val mockServer = MockWebServer()

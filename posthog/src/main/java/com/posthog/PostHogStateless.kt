@@ -54,11 +54,11 @@ public open class PostHogStateless protected constructor(
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (config.apiKey.isEmpty()) {
-                    config.logger.log("PostHog SDK is disabled because the API key is required and was empty after trimming whitespace.")
-                    return
-                }
-
-                if (!apiKeys.add(config.apiKey)) {
+                    config.logger.log(
+                        "PostHog API key is empty after trimming whitespace. SDK setup will continue, " +
+                            "but product analytics and other features that require an API key are disabled.",
+                    )
+                } else if (!apiKeys.add(config.apiKey)) {
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
                 }
 
@@ -233,8 +233,14 @@ public open class PostHogStateless protected constructor(
                 return
             }
 
+            val config = config
             if (config?.optOut == true) {
-                config?.logger?.log("PostHog is in OptOut state.")
+                config.logger.log("PostHog is in OptOut state.")
+                return
+            }
+
+            if (config?.apiKey?.isEmpty() == true) {
+                config.logger.log("PostHog event $event was dropped because the API key is required.")
                 return
             }
 

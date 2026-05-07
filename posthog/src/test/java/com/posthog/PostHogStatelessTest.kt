@@ -236,15 +236,26 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `setup no-ops for empty trimmed api key after logger initialization`() {
+    fun `setup stays enabled for empty trimmed api key after logger initialization`() {
         sut = createStatelessInstance()
         val mockLogger = TestLogger()
-        config = PostHogConfig(" \n\t ", "https://api.posthog.com").apply { logger = mockLogger }
+        val mockQueue = MockQueue()
+        config =
+            PostHogConfig(
+                " \n\t ",
+                "https://api.posthog.com",
+                queueProvider = { _, _, _, _, _ -> mockQueue },
+            ).apply { logger = mockLogger }
 
         sut.setup(config)
+        sut.captureStateless("test_event", "distinct_id")
 
-        assertFalse(sut.isEnabledPublic())
-        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
+        assertTrue(sut.isEnabledPublic())
+        assertFalse(sut.isOptOut())
+        assertTrue(mockQueue.isStarted)
+        assertTrue(mockQueue.events.isEmpty())
+        assertTrue(mockLogger.messages.any { it.contains("SDK setup will continue") })
+        assertTrue(mockLogger.messages.any { it.contains("PostHog event test_event was dropped because the API key is required") })
     }
 
     @Test
