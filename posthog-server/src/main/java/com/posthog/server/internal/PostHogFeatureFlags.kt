@@ -173,7 +173,7 @@ internal class PostHogFeatureFlags(
             if (flagDef != null) {
                 try {
                     config.logger.log("Attempting local evaluation for flag '$key' for distinctId: $distinctId")
-                    val props = (personProperties ?: emptyMap()).toMutableMap()
+                    val props = (personProperties ?: EMPTY_PROPERTIES).toMutableMap()
 
                     val result =
                         computeFlagLocally(
@@ -248,7 +248,7 @@ internal class PostHogFeatureFlags(
 
         config.logger.log("Attempting local evaluation for distinctId: $distinctId")
         val localFlags = mutableMapOf<String, FeatureFlag>()
-        val props = (personProperties ?: emptyMap()).toMutableMap()
+        val props = (personProperties ?: EMPTY_PROPERTIES).toMutableMap()
 
         // Evaluate all flags locally
         for ((key, flagDef) in currentFlagDefinitions) {
@@ -408,7 +408,7 @@ internal class PostHogFeatureFlags(
         if (!localEvaluation) {
             return
         }
-        if (personalApiKey.isNullOrBlank()) {
+        if (personalApiKey == null) {
             logMissingPersonalApiKey()
             return
         }
@@ -539,7 +539,7 @@ internal class PostHogFeatureFlags(
             return
         }
 
-        if (personalApiKey.isNullOrBlank()) {
+        if (personalApiKey == null) {
             logMissingPersonalApiKey()
             return
         }
@@ -615,15 +615,15 @@ internal class PostHogFeatureFlags(
         return evaluator.matchFeatureFlagProperties(
             flag = flag,
             distinctId = evaluationId,
-            properties = evaluationProperties ?: emptyMap(),
-            cohortProperties = cohorts ?: emptyMap(),
+            properties = evaluationProperties ?: EMPTY_PROPERTIES,
+            cohortProperties = cohorts ?: EMPTY_COHORT_PROPERTIES,
             flagsByKey = flags,
             evaluationCache = evaluationCache,
         )
     }
 
     private fun localEvaluationEnabled(): Boolean {
-        return localEvaluation && !personalApiKey.isNullOrBlank()
+        return localEvaluation && personalApiKey != null
     }
 
     private fun logMissingPersonalApiKey() {
@@ -723,16 +723,9 @@ internal class PostHogFeatureFlags(
         onlyEvaluateLocally: Boolean,
         disableGeoip: Boolean,
     ): EvaluateFlagsResult {
-        if (onlyEvaluateLocally && personalApiKey.isNullOrBlank()) {
+        if (onlyEvaluateLocally && personalApiKey == null) {
             logMissingPersonalApiKey()
-            return EvaluateFlagsResult(
-                flags = emptyMap(),
-                locallyEvaluated = emptyMap(),
-                requestId = null,
-                evaluatedAt = null,
-                definitionsLoadedAt = definitionsLoadedAt,
-                responseError = null,
-            )
+            return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
         val cacheKey =
@@ -745,7 +738,7 @@ internal class PostHogFeatureFlags(
                 disableGeoip = disableGeoip,
             )
         cache.getEntry(cacheKey)?.let { entry ->
-            val flags = entry.flags ?: emptyMap()
+            val flags = entry.flags ?: EMPTY_FLAGS
             return EvaluateFlagsResult(
                 flags = flags,
                 locallyEvaluated = flags.mapValues { isLocallyEvaluated(it.value) },
@@ -787,14 +780,7 @@ internal class PostHogFeatureFlags(
         }
 
         if (onlyEvaluateLocally) {
-            return EvaluateFlagsResult(
-                flags = emptyMap(),
-                locallyEvaluated = emptyMap(),
-                requestId = null,
-                evaluatedAt = null,
-                definitionsLoadedAt = definitionsLoadedAt,
-                responseError = null,
-            )
+            return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
         val remoteFlags =
@@ -805,7 +791,7 @@ internal class PostHogFeatureFlags(
                 groupProperties,
                 flagKeys,
                 disableGeoip,
-            ) ?: emptyMap()
+            ) ?: EMPTY_FLAGS
         val entry = cache.getEntry(cacheKey)
         return EvaluateFlagsResult(
             flags = remoteFlags,
@@ -861,5 +847,19 @@ internal class PostHogFeatureFlags(
     internal companion object {
         internal const val LOCAL_EVALUATION_REASON_CODE: String = "local_evaluation"
         internal const val LOCAL_EVALUATION_REASON_DESCRIPTION: String = "Evaluated locally"
+
+        private val EMPTY_PROPERTIES: Map<String, Any?> = emptyMap()
+        private val EMPTY_COHORT_PROPERTIES: Map<String, PropertyGroup> = emptyMap()
+        private val EMPTY_FLAGS: Map<String, FeatureFlag> = emptyMap()
+        private val EMPTY_LOCALLY_EVALUATED: Map<String, Boolean> = emptyMap()
+        private val EMPTY_EVALUATE_FLAGS_RESULT =
+            EvaluateFlagsResult(
+                flags = EMPTY_FLAGS,
+                locallyEvaluated = EMPTY_LOCALLY_EVALUATED,
+                requestId = null,
+                evaluatedAt = null,
+                definitionsLoadedAt = null,
+                responseError = null,
+            )
     }
 }
