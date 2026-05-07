@@ -1,5 +1,11 @@
 ## Next
 
+## 6.14.1
+
+### Patch Changes
+
+- e2f9884: Disable SDK setup when the API key is empty or whitespace after trimming.
+
 ## 6.14.0
 
 ### Minor Changes
