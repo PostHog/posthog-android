@@ -13,6 +13,13 @@ internal class PostHogAndroidConfigTest {
     }
 
     @Test
+    fun `trims whitespace-sensitive config values`() {
+        val config = PostHogAndroidConfig(" \n$API_KEY\t ")
+
+        assertEquals(API_KEY, config.apiKey)
+    }
+
+    @Test
     fun `captureApplicationLifecycleEvents should be enabled by default`() {
         assertTrue(config.captureApplicationLifecycleEvents)
     }

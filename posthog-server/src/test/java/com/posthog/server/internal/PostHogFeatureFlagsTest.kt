@@ -475,6 +475,69 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `loadFeatureFlagDefinitions no-ops and logs without personal api key`() {
+        val logger = TestLogger()
+        val mockServer = createMockHttp(jsonResponse(createLocalEvaluationResponse("test-flag")))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = null,
+                pollerEnabled = false,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(0, mockServer.requestCount)
+        assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags local only no-ops and logs without personal api key`() {
+        val logger = TestLogger()
+        val mockServer = createMockHttp(jsonResponse(createFlagsResponse("test-flag")))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = false,
+                personalApiKey = null,
+            )
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "test-user",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertTrue(result.flags.isEmpty())
+        assertEquals(0, mockServer.requestCount)
+        assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `poller starts when pollerEnabled is true (default)`() {
         val logger = TestLogger()
         val localEvalResponse =

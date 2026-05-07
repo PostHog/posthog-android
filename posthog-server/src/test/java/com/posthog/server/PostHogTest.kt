@@ -454,6 +454,17 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `empty api key disables SDK`() {
+        val postHog = PostHog()
+
+        postHog.setup(PostHogConfig.builder(" \n\t ").build())
+
+        assertTrue(postHog.isOptOut())
+
+        postHog.close()
+    }
+
+    @Test
     fun `capture with appendFeatureFlags without local evaluation calls flags endpoint`() {
         val flagsResponse = createFlagsResponse("test-flag")
         val mockServer = MockWebServer()

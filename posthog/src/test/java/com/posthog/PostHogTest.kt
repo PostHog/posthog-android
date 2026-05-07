@@ -127,6 +127,27 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `setup no-ops for empty trimmed api key`() {
+        val config = PostHogConfig(" \n\t ", "https://api.posthog.com")
+        val logger = TestLogger()
+        config.logger = logger
+        val sut =
+            PostHog.withInternal(
+                config,
+                queueExecutor,
+                replayQueueExecutor,
+                remoteConfigExecutor,
+                cachedEventsExecutor,
+                reloadFeatureFlags = true,
+            )
+
+        assertTrue(sut.isOptOut())
+        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
+
+        sut.close()
+    }
+
+    @Test
     fun `setup adds integration by default`() {
         val http = mockHttp()
         val url = http.url("/")
