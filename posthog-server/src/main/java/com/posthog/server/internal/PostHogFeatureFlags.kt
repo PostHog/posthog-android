@@ -299,11 +299,6 @@ internal class PostHogFeatureFlags(
             return cachedFlags
         }
 
-        if (config.apiKey.isEmpty()) {
-            config.logger.log("Remote feature flags were not loaded because the API key is required.")
-            return null
-        }
-
         return try {
             val response =
                 api.flags(

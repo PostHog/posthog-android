@@ -4,4 +4,4 @@
 "posthog-server": patch
 ---
 
-Handle empty or whitespace API keys by disabling API-key-dependent capture while allowing server-side local evaluation with a personal API key.
+Disable SDK setup when the API key is empty or whitespace after trimming.
