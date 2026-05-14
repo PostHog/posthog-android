@@ -1,13 +1,10 @@
 package com.posthog.surveys
 
 /**
- * Localized overrides for a survey's user-visible strings.
+ * Localized overrides for a survey, keyed by language code (e.g. "fr", "pt-BR").
  *
- * Attached to [Survey.translations] as a map keyed by language code (e.g. "fr", "pt-BR").
- * All fields are optional — missing fields fall back to the original survey value.
- *
- * Note: the survey-level `description` is intentionally NOT translatable here.
- * It is only used for internal previews and never rendered to end users.
+ * The survey-level `description` is intentionally NOT translatable — it is only
+ * used for internal previews and never rendered to end users.
  */
 public data class SurveyTranslation(
     val name: String? = null,

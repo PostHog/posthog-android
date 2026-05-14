@@ -243,8 +243,6 @@ public class PostHogSurveysIntegration(
             return
         }
 
-        // Resolve the survey display language and apply translations once. The resulting
-        // matchedKey is stamped onto all three survey events as $survey_language.
         val displayLanguage = resolveDisplayLanguage()
         val translations = resolveSurveyTranslations(survey, displayLanguage)
         val resolvedLanguage = translations.matchedKey
@@ -598,12 +596,6 @@ public class PostHogSurveysIntegration(
     // Lifecycle management
     private var isStarted: Boolean = false
 
-    /**
-     * Resolves the language to use for the next survey display. Priority chain:
-     *   1. `PostHogSurveysConfig.overrideDisplayLanguage`
-     *   2. The `"language"` person property persisted by identify()
-     *   3. The device locale (BCP-47 tag, e.g. "en-US")
-     */
     private fun resolveDisplayLanguage(): String? {
         val override = config.surveysConfig.overrideDisplayLanguage
         val personProperties = readPersistedPersonProperties(config)

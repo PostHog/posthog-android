@@ -43,10 +43,6 @@ public data class PostHogDisplaySurveyAppearance(
     val thankYouMessageCloseButtonText: String? = null,
 ) {
     internal companion object {
-        /**
-         * Creates a PostHogDisplaySurveyAppearance from a SurveyAppearance object,
-         * applying the optional survey-level translation when provided.
-         */
         internal fun fromSurveyAppearance(
             appearance: SurveyAppearance,
             translation: SurveyTranslation? = null,

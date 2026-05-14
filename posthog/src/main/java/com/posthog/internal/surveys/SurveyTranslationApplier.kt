@@ -13,15 +13,10 @@ import com.posthog.surveys.SurveyQuestionTranslation
 import com.posthog.surveys.SurveyTranslation
 
 /**
- * Outcome of resolving translations for one survey at display time.
- *
- * @property matchedKey the original-cased key from a `translations` dictionary that drove
- *   the change (preferring the survey-level key when both survey and question matched).
- *   `null` when no translation was applied at all.
- * @property survey the (possibly translated) survey-level fields. `null` when no
- *   survey-level translation matched.
- * @property questions per-question translation, indexed positionally against
- *   [Survey.questions]. Each element is `null` when no translation applied to that question.
+ * [matchedKey] is the original-cased key from a `translations` dictionary that drove
+ * the change (preferring the survey-level key when both survey and question matched),
+ * or `null` when no user-visible field actually changed. [questions] is indexed
+ * positionally against [Survey.questions].
  */
 @PostHogInternal
 public data class ResolvedSurveyTranslations(
@@ -31,10 +26,9 @@ public data class ResolvedSurveyTranslations(
 )
 
 /**
- * Resolves which translations should be applied to [survey] given the user's
- * [targetLanguage]. Tracks whether the resolution actually changed any user-visible
- * field; if not, [ResolvedSurveyTranslations.matchedKey] is `null` so callers don't
- * mistakenly stamp `$survey_language` onto events.
+ * Returns a non-null [ResolvedSurveyTranslations.matchedKey] only when applying the
+ * matched translation would actually change a user-visible field — so callers don't
+ * stamp `$survey_language` onto events when nothing on screen changed.
  */
 @PostHogInternal
 public fun resolveSurveyTranslations(

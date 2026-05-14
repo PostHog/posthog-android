@@ -9,11 +9,6 @@ public open class SurveyQuestion {
     public val optional: Boolean? = null
     public val buttonText: String? = null
     public val branching: SurveyQuestionBranching? = null
-
-    /**
-     * Optional localized overrides keyed by language code (e.g. "fr", "pt-BR").
-     * Applied at display time based on the resolved survey display language.
-     */
     public val translations: Map<String, SurveyQuestionTranslation>? = null
 }
 

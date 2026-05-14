@@ -19,10 +19,6 @@ public open class PostHogDisplaySurveyQuestion(
     public val buttonText: String?,
 ) {
     internal companion object {
-        /**
-         * Creates a display question from a survey question, applying the optional
-         * per-question translation when provided.
-         */
         internal fun fromSurveyQuestion(
             question: SurveyQuestion,
             translation: SurveyQuestionTranslation? = null,
