@@ -19,15 +19,14 @@ public open class PostHogDisplaySurveyQuestion(
     public val buttonText: String?,
 ) {
     internal companion object {
-        /**
-         * Creates a display question from a survey question
-         *
-         * @param question The survey question to convert
-         * @return A display question or null if the question type is not supported
-         */
-        internal fun fromSurveyQuestion(question: SurveyQuestion): PostHogDisplaySurveyQuestion? {
+        internal fun fromSurveyQuestion(
+            question: SurveyQuestion,
+            translation: SurveyQuestionTranslation? = null,
+        ): PostHogDisplaySurveyQuestion? {
             val id = question.id ?: ""
-            val questionText = question.question ?: return null
+            val questionText = translation?.question ?: question.question ?: return null
+            val description = translation?.description ?: question.description
+            val buttonText = translation?.buttonText ?: question.buttonText
             val isOptional = question.optional ?: false
             val contentType =
                 question.descriptionContentType?.let {
@@ -42,34 +41,23 @@ public open class PostHogDisplaySurveyQuestion(
                     PostHogDisplayOpenQuestion(
                         id = id,
                         question = questionText,
-                        questionDescription = question.description,
+                        questionDescription = description,
                         questionDescriptionContentType = contentType,
                         isOptional = isOptional,
-                        buttonText = question.buttonText,
+                        buttonText = buttonText,
                     )
 
                 SurveyQuestionType.LINK -> {
-                    if (question is LinkSurveyQuestion) {
-                        PostHogDisplayLinkQuestion(
-                            id = id,
-                            question = questionText,
-                            questionDescription = question.description,
-                            questionDescriptionContentType = contentType,
-                            isOptional = isOptional,
-                            buttonText = question.buttonText,
-                            link = question.link,
-                        )
-                    } else {
-                        PostHogDisplayLinkQuestion(
-                            id = id,
-                            question = questionText,
-                            questionDescription = question.description,
-                            questionDescriptionContentType = contentType,
-                            isOptional = isOptional,
-                            buttonText = question.buttonText,
-                            link = null,
-                        )
-                    }
+                    val originalLink = (question as? LinkSurveyQuestion)?.link
+                    PostHogDisplayLinkQuestion(
+                        id = id,
+                        question = questionText,
+                        questionDescription = description,
+                        questionDescriptionContentType = contentType,
+                        isOptional = isOptional,
+                        buttonText = buttonText,
+                        link = translation?.link ?: originalLink,
+                    )
                 }
 
                 SurveyQuestionType.RATING -> {
@@ -92,101 +80,63 @@ public open class PostHogDisplaySurveyQuestion(
                         PostHogDisplayRatingQuestion(
                             id = id,
                             question = questionText,
-                            questionDescription = question.description,
+                            questionDescription = description,
                             questionDescriptionContentType = contentType,
                             isOptional = isOptional,
-                            buttonText = question.buttonText,
+                            buttonText = buttonText,
                             ratingType = ratingType,
                             scaleLowerBound = scaleLower,
                             scaleUpperBound = scaleUpper,
-                            lowerBoundLabel = question.lowerBoundLabel ?: "",
-                            upperBoundLabel = question.upperBoundLabel ?: "",
+                            lowerBoundLabel = translation?.lowerBoundLabel ?: question.lowerBoundLabel ?: "",
+                            upperBoundLabel = translation?.upperBoundLabel ?: question.upperBoundLabel ?: "",
                         )
                     } else {
                         PostHogDisplayRatingQuestion(
                             id = id,
                             question = questionText,
-                            questionDescription = question.description,
+                            questionDescription = description,
                             questionDescriptionContentType = contentType,
                             isOptional = isOptional,
-                            buttonText = question.buttonText,
+                            buttonText = buttonText,
                             ratingType = PostHogDisplaySurveyRatingType.NUMBER,
                             scaleLowerBound = 1,
                             scaleUpperBound = 5,
-                            lowerBoundLabel = "",
-                            upperBoundLabel = "",
+                            lowerBoundLabel = translation?.lowerBoundLabel ?: "",
+                            upperBoundLabel = translation?.upperBoundLabel ?: "",
                         )
                     }
                 }
 
                 SurveyQuestionType.SINGLE_CHOICE -> {
-                    val choices =
-                        if (question is SingleSurveyQuestion) {
-                            question.choices ?: emptyList()
-                        } else {
-                            emptyList()
-                        }
-
-                    val hasOpenChoice =
-                        if (question is SingleSurveyQuestion) {
-                            question.hasOpenChoice ?: false
-                        } else {
-                            false
-                        }
-
-                    val shuffleOptions =
-                        if (question is SingleSurveyQuestion) {
-                            question.shuffleOptions ?: false
-                        } else {
-                            false
-                        }
-
+                    val single = question as? SingleSurveyQuestion
+                    val choices = translation?.choices ?: single?.choices ?: emptyList()
                     PostHogDisplayChoiceQuestion(
                         id = id,
                         question = questionText,
-                        questionDescription = question.description,
+                        questionDescription = description,
                         questionDescriptionContentType = contentType,
                         isOptional = isOptional,
-                        buttonText = question.buttonText,
+                        buttonText = buttonText,
                         choices = choices,
-                        hasOpenChoice = hasOpenChoice,
-                        shuffleOptions = shuffleOptions,
+                        hasOpenChoice = single?.hasOpenChoice ?: false,
+                        shuffleOptions = single?.shuffleOptions ?: false,
                         isMultipleChoice = false,
                     )
                 }
 
                 SurveyQuestionType.MULTIPLE_CHOICE -> {
-                    val choices =
-                        if (question is MultipleSurveyQuestion) {
-                            question.choices ?: emptyList()
-                        } else {
-                            emptyList()
-                        }
-
-                    val hasOpenChoice =
-                        if (question is MultipleSurveyQuestion) {
-                            question.hasOpenChoice ?: false
-                        } else {
-                            false
-                        }
-
-                    val shuffleOptions =
-                        if (question is MultipleSurveyQuestion) {
-                            question.shuffleOptions ?: false
-                        } else {
-                            false
-                        }
-
+                    val multiple = question as? MultipleSurveyQuestion
+                    val choices = translation?.choices ?: multiple?.choices ?: emptyList()
                     PostHogDisplayChoiceQuestion(
                         id = id,
                         question = questionText,
-                        questionDescription = question.description,
+                        questionDescription = description,
                         questionDescriptionContentType = contentType,
                         isOptional = isOptional,
-                        buttonText = question.buttonText,
+                        buttonText = buttonText,
                         choices = choices,
-                        hasOpenChoice = hasOpenChoice,
-                        shuffleOptions = shuffleOptions,
+                        hasOpenChoice = multiple?.hasOpenChoice ?: false,
+                        shuffleOptions = multiple?.shuffleOptions ?: false,
                         isMultipleChoice = true,
                     )
                 }

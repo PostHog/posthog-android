@@ -9,6 +9,7 @@ public open class SurveyQuestion {
     public val optional: Boolean? = null
     public val buttonText: String? = null
     public val branching: SurveyQuestionBranching? = null
+    public val translations: Map<String, SurveyQuestionTranslation>? = null
 }
 
 public class OpenSurveyQuestion : SurveyQuestion()

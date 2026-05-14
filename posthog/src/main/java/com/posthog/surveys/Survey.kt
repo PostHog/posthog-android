@@ -28,4 +28,5 @@ public data class Survey(
     @SerializedName("end_date")
     val endDate: Date?,
     val schedule: SurveySchedule?,
+    val translations: Map<String, SurveyTranslation>? = null,
 )
