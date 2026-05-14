@@ -248,12 +248,13 @@ public class PostHogSurveysIntegration(
         val displayLanguage = resolveDisplayLanguage()
         val translations = resolveSurveyTranslations(survey, displayLanguage)
         val resolvedLanguage = translations.matchedKey
+        val resolvedQuestionTranslations = translations.questions
 
         val displaySurvey =
             PostHogDisplaySurvey.toDisplaySurvey(
                 survey,
                 surveyTranslation = translations.survey,
-                questionTranslations = translations.questions,
+                questionTranslations = resolvedQuestionTranslations,
             )
 
         // Store the original survey for branching logic
@@ -268,6 +269,7 @@ public class PostHogSurveysIntegration(
                     if (activeSurvey == null) {
                         activeSurvey = originalSurvey
                         activeSurveyLanguage = resolvedLanguage
+                        activeSurveyQuestionTranslations = resolvedQuestionTranslations
                         activeSurveyCompleted = false
                         currentSurveyResponses.clear()
                     }
@@ -315,7 +317,7 @@ public class PostHogSurveysIntegration(
                 }
             }
 
-            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it, resolvedLanguage) }
+            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it, resolvedLanguage, resolvedQuestionTranslations) }
 
             nextQuestion
         }
@@ -338,13 +340,14 @@ public class PostHogSurveysIntegration(
 
                 activeSurvey = null
                 activeSurveyLanguage = null
+                activeSurveyQuestionTranslations = null
                 activeSurveyCompleted = false
                 currentSurveyResponses.clear()
             }
 
             // Send survey dismissed event if survey was not completed
             if (!wasSurveyCompleted) {
-                sendSurveyDismissedEvent(originalSurvey, surveyResponses, resolvedLanguage)
+                sendSurveyDismissedEvent(originalSurvey, surveyResponses, resolvedLanguage, resolvedQuestionTranslations)
             }
 
             // Mark survey as seen
@@ -590,6 +593,7 @@ public class PostHogSurveysIntegration(
     // Active survey tracking
     private var activeSurvey: Survey? = null
     private var activeSurveyLanguage: String? = null
+    private var activeSurveyQuestionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>? = null
 
     // Lifecycle management
     private var isStarted: Boolean = false
@@ -668,6 +672,7 @@ public class PostHogSurveysIntegration(
         synchronized(activeSurveyLock) {
             activeSurvey = null
             activeSurveyLanguage = null
+            activeSurveyQuestionTranslations = null
             activeSurveyCompleted = false
             currentSurveyResponses.clear()
         }
@@ -699,9 +704,10 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
         language: String?,
+        questionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>?,
     ) {
         val additionalProperties =
-            buildSurveyResponseProperties(survey, responses) +
+            buildSurveyResponseProperties(survey, responses, questionTranslations) +
                 mapOf(
                     "\$set" to
                         mapOf(
@@ -724,9 +730,10 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
         language: String?,
+        questionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>?,
     ) {
         val additionalProperties =
-            buildSurveyResponseProperties(survey, responses) +
+            buildSurveyResponseProperties(survey, responses, questionTranslations) +
                 mapOf(
                     "\$survey_partially_completed" to surveyHasResponses(responses),
                     "\$set" to
@@ -746,6 +753,7 @@ public class PostHogSurveysIntegration(
     private fun buildSurveyResponseProperties(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
+        questionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>?,
     ): Map<String, Any> {
         val responsesProperties =
             responses.mapNotNull { (key, response) ->
@@ -758,7 +766,10 @@ public class PostHogSurveysIntegration(
             survey.questions.mapIndexed { index, question ->
                 mutableMapOf<String, Any>().apply {
                     question.id?.let { put("id", it) }
-                    question.question?.let { put("question", it) }
+                    // Use translated question text (if applied) so $survey_questions matches what the user saw.
+                    val translatedText = questionTranslations?.getOrNull(index)?.question
+                    val effectiveQuestion = translatedText ?: question.question
+                    effectiveQuestion?.let { put("question", it) }
 
                     val responseKey =
                         question.id?.takeIf { it.isNotEmpty() }?.let(::getQuestionIdResponseKey)

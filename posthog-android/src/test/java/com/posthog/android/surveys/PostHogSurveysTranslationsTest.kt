@@ -12,11 +12,9 @@ import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogSurveyResponse
 import com.posthog.surveys.PostHogSurveysDelegate
 import com.posthog.surveys.Survey
-import com.posthog.surveys.SurveyQuestion
-import com.posthog.surveys.SurveyQuestionTranslation
-import com.posthog.surveys.SurveyTranslation
-import com.posthog.surveys.SurveyType
 import org.junit.runner.RunWith
+import java.io.StringReader
+import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -66,64 +64,10 @@ internal class PostHogSurveysTranslationsTest {
         return integration to postHog
     }
 
-    private fun createQuestion(
-        id: String,
-        question: String,
-        translations: Map<String, SurveyQuestionTranslation>? = null,
-    ): SurveyQuestion {
-        val map =
-            mutableMapOf<String, Any?>(
-                "id" to id,
-                "type" to "open",
-                "question" to question,
-                "description" to null,
-                "descriptionContentType" to "text",
-                "optional" to false,
-                "buttonText" to null,
-                "branching" to null,
-            )
-        if (translations != null) {
-            map["translations"] =
-                translations.mapValues { (_, t) ->
-                    mapOf(
-                        "question" to t.question,
-                        "description" to t.description,
-                        "buttonText" to t.buttonText,
-                        "link" to t.link,
-                        "lowerBoundLabel" to t.lowerBoundLabel,
-                        "upperBoundLabel" to t.upperBoundLabel,
-                        "choices" to t.choices,
-                    )
-                }
-        }
-        return checkNotNull(
-            serializer.deserializeList<SurveyQuestion>(listOf(map))?.firstOrNull(),
-        )
-    }
-
-    private fun createSurveyWithTranslations(
-        questionTranslations: Map<String, SurveyQuestionTranslation>? = null,
-        surveyTranslations: Map<String, SurveyTranslation>? = null,
-    ): Survey {
-        return Survey(
-            id = "translated-survey",
-            name = "Original Name",
-            type = SurveyType.POPOVER,
-            questions = listOf(createQuestion("q-1", "Original question?", questionTranslations)),
-            description = null,
-            featureFlagKeys = null,
-            linkedFlagKey = null,
-            targetingFlagKey = null,
-            internalTargetingFlagKey = null,
-            conditions = null,
-            appearance = null,
-            currentIteration = null,
-            currentIterationStartDate = null,
-            startDate = java.util.Date(),
-            endDate = null,
-            schedule = null,
-            translations = surveyTranslations,
-        )
+    private fun decodeSurvey(json: String): Survey {
+        val survey = serializer.deserialize<Survey>(StringReader(json))
+        // Round-trip the survey through copy() so startDate is set to now (matching constructor pattern)
+        return survey.copy(startDate = Date())
     }
 
     @Test
@@ -134,12 +78,8 @@ internal class PostHogSurveysTranslationsTest {
                 delegate,
                 overrideLanguage = "fr",
             )
-        val survey =
-            createSurveyWithTranslations(
-                questionTranslations = mapOf("fr" to SurveyQuestionTranslation(question = "Question traduite?")),
-            )
 
-        integration.showSurvey(survey)
+        integration.showSurvey(decodeSurvey(SURVEY_WITH_FR_QUESTION_TRANSLATION))
         val shownSurvey = assertNotNull(delegate.shownSurvey)
 
         // Translated text reaches the delegate
@@ -161,26 +101,21 @@ internal class PostHogSurveysTranslationsTest {
     }
 
     @Test
-    fun `survey dismissed includes survey_language when translation applied`() {
+    fun `survey dismissed includes survey_language when translation applied via base language fallback`() {
         val delegate = RecordingDelegate()
         val (integration, postHog) =
             createIntegration(
                 delegate,
                 overrideLanguage = "pt-BR",
             )
-        val survey =
-            createSurveyWithTranslations(
-                // Question translation only under "pt" — base-language fallback applies
-                questionTranslations = mapOf("pt" to SurveyQuestionTranslation(question = "Pergunta?")),
-            )
 
-        integration.showSurvey(survey)
+        integration.showSurvey(decodeSurvey(SURVEY_WITH_PT_QUESTION_TRANSLATION))
         val shownSurvey = assertNotNull(delegate.shownSurvey)
         assertNotNull(delegate.onSurveyShown).invoke(shownSurvey)
         assertNotNull(delegate.onSurveyClosed).invoke(shownSurvey)
 
         assertEquals("survey dismissed", postHog.event)
-        // matchedKey is the original-cased dictionary key, not the request
+        // matchedKey is the original-cased dictionary key, not the requested target
         assertEquals("pt", postHog.properties?.get("\$survey_language"))
     }
 
@@ -192,12 +127,8 @@ internal class PostHogSurveysTranslationsTest {
                 delegate,
                 overrideLanguage = "ja",
             )
-        val survey =
-            createSurveyWithTranslations(
-                questionTranslations = mapOf("fr" to SurveyQuestionTranslation(question = "Bonjour?")),
-            )
 
-        integration.showSurvey(survey)
+        integration.showSurvey(decodeSurvey(SURVEY_WITH_FR_QUESTION_TRANSLATION))
         val shownSurvey = assertNotNull(delegate.shownSurvey)
 
         // No translation applied — UI shows original
@@ -211,18 +142,124 @@ internal class PostHogSurveysTranslationsTest {
     }
 
     @Test
-    fun `survey without translations omits survey_language even when language override set`() {
+    fun `survey without translations omits survey_language even when override is set`() {
         val delegate = RecordingDelegate()
         val (integration, postHog) =
             createIntegration(
                 delegate,
                 overrideLanguage = "fr",
             )
-        val survey = createSurveyWithTranslations() // no translations
 
-        integration.showSurvey(survey)
+        integration.showSurvey(decodeSurvey(SURVEY_WITHOUT_TRANSLATIONS))
         val shownSurvey = assertNotNull(delegate.shownSurvey)
         assertNotNull(delegate.onSurveyShown).invoke(shownSurvey)
         assertNull(postHog.properties?.get("\$survey_language"))
+    }
+
+    private companion object {
+        private val SURVEY_WITH_FR_QUESTION_TRANSLATION =
+            """
+            {
+              "id": "translated-survey",
+              "name": "Original Name",
+              "type": "popover",
+              "description": null,
+              "feature_flag_keys": null,
+              "linked_flag_key": null,
+              "targeting_flag_key": null,
+              "internal_targeting_flag_key": null,
+              "conditions": null,
+              "appearance": null,
+              "current_iteration": null,
+              "current_iteration_start_date": null,
+              "start_date": "2025-01-01T00:00:00.000Z",
+              "end_date": null,
+              "schedule": null,
+              "questions": [
+                {
+                  "id": "q-1",
+                  "type": "open",
+                  "question": "Original question?",
+                  "description": null,
+                  "descriptionContentType": "text",
+                  "optional": false,
+                  "buttonText": null,
+                  "branching": null,
+                  "translations": {
+                    "fr": { "question": "Question traduite?" }
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+
+        private val SURVEY_WITH_PT_QUESTION_TRANSLATION =
+            """
+            {
+              "id": "translated-survey",
+              "name": "Original Name",
+              "type": "popover",
+              "description": null,
+              "feature_flag_keys": null,
+              "linked_flag_key": null,
+              "targeting_flag_key": null,
+              "internal_targeting_flag_key": null,
+              "conditions": null,
+              "appearance": null,
+              "current_iteration": null,
+              "current_iteration_start_date": null,
+              "start_date": "2025-01-01T00:00:00.000Z",
+              "end_date": null,
+              "schedule": null,
+              "questions": [
+                {
+                  "id": "q-1",
+                  "type": "open",
+                  "question": "Original question?",
+                  "description": null,
+                  "descriptionContentType": "text",
+                  "optional": false,
+                  "buttonText": null,
+                  "branching": null,
+                  "translations": {
+                    "pt": { "question": "Pergunta?" }
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+
+        private val SURVEY_WITHOUT_TRANSLATIONS =
+            """
+            {
+              "id": "translated-survey",
+              "name": "Original Name",
+              "type": "popover",
+              "description": null,
+              "feature_flag_keys": null,
+              "linked_flag_key": null,
+              "targeting_flag_key": null,
+              "internal_targeting_flag_key": null,
+              "conditions": null,
+              "appearance": null,
+              "current_iteration": null,
+              "current_iteration_start_date": null,
+              "start_date": "2025-01-01T00:00:00.000Z",
+              "end_date": null,
+              "schedule": null,
+              "questions": [
+                {
+                  "id": "q-1",
+                  "type": "open",
+                  "question": "Original question?",
+                  "description": null,
+                  "descriptionContentType": "text",
+                  "optional": false,
+                  "buttonText": null,
+                  "branching": null
+                }
+              ]
+            }
+            """.trimIndent()
     }
 }
