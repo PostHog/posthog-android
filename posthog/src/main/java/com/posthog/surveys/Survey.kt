@@ -28,4 +28,9 @@ public data class Survey(
     @SerializedName("end_date")
     val endDate: Date?,
     val schedule: SurveySchedule?,
+    /**
+     * Optional localized overrides keyed by language code (e.g. "fr", "pt-BR").
+     * Applied at display time based on the resolved survey display language.
+     */
+    val translations: Map<String, SurveyTranslation>? = null,
 )

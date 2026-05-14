@@ -44,12 +44,13 @@ public data class PostHogDisplaySurveyAppearance(
 ) {
     internal companion object {
         /**
-         * Creates a PostHogDisplaySurveyAppearance from a SurveyAppearance object
-         *
-         * @param appearance The SurveyAppearance object to convert
-         * @return A new PostHogDisplaySurveyAppearance instance
+         * Creates a PostHogDisplaySurveyAppearance from a SurveyAppearance object,
+         * applying the optional survey-level translation when provided.
          */
-        internal fun fromSurveyAppearance(appearance: SurveyAppearance): PostHogDisplaySurveyAppearance {
+        internal fun fromSurveyAppearance(
+            appearance: SurveyAppearance,
+            translation: SurveyTranslation? = null,
+        ): PostHogDisplaySurveyAppearance {
             val thankYouContentType =
                 if (appearance.thankYouMessageDescriptionContentType?.value == "html") {
                     PostHogDisplaySurveyTextContentType.HTML
@@ -72,10 +73,10 @@ public data class PostHogDisplaySurveyAppearance(
                 inputTextColor = appearance.inputTextColor,
                 placeholder = appearance.placeholder,
                 displayThankYouMessage = appearance.displayThankYouMessage ?: false,
-                thankYouMessageHeader = appearance.thankYouMessageHeader,
-                thankYouMessageDescription = appearance.thankYouMessageDescription,
+                thankYouMessageHeader = translation?.thankYouMessageHeader ?: appearance.thankYouMessageHeader,
+                thankYouMessageDescription = translation?.thankYouMessageDescription ?: appearance.thankYouMessageDescription,
                 thankYouMessageDescriptionContentType = thankYouContentType,
-                thankYouMessageCloseButtonText = appearance.thankYouMessageCloseButtonText,
+                thankYouMessageCloseButtonText = translation?.thankYouMessageCloseButtonText ?: appearance.thankYouMessageCloseButtonText,
             )
         }
     }

@@ -11,8 +11,11 @@ import com.posthog.internal.formatISO8601Date
 import com.posthog.internal.parseISO8601Date
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.internal.surveys.canActivateRepeatedly
+import com.posthog.internal.surveys.detectSurveyLanguage
 import com.posthog.internal.surveys.hasEvents
 import com.posthog.internal.surveys.hasWaitPeriodPassed
+import com.posthog.internal.surveys.readPersistedPersonProperties
+import com.posthog.internal.surveys.resolveSurveyTranslations
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
@@ -29,6 +32,7 @@ import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
 import com.posthog.surveys.SurveyType
 import java.util.Date
+import java.util.Locale
 
 public class PostHogSurveysIntegration(
     context: Context,
@@ -239,7 +243,18 @@ public class PostHogSurveysIntegration(
             return
         }
 
-        val displaySurvey = PostHogDisplaySurvey.toDisplaySurvey(survey)
+        // Resolve the survey display language and apply translations once. The resulting
+        // matchedKey is stamped onto all three survey events as $survey_language.
+        val displayLanguage = resolveDisplayLanguage()
+        val translations = resolveSurveyTranslations(survey, displayLanguage)
+        val resolvedLanguage = translations.matchedKey
+
+        val displaySurvey =
+            PostHogDisplaySurvey.toDisplaySurvey(
+                survey,
+                surveyTranslation = translations.survey,
+                questionTranslations = translations.questions,
+            )
 
         // Store the original survey for branching logic
         val originalSurvey = survey
@@ -252,13 +267,14 @@ public class PostHogSurveysIntegration(
                 synchronized(activeSurveyLock) {
                     if (activeSurvey == null) {
                         activeSurvey = originalSurvey
+                        activeSurveyLanguage = resolvedLanguage
                         activeSurveyCompleted = false
                         currentSurveyResponses.clear()
                     }
                 }
 
                 // Send survey shown event
-                sendSurveyShownEvent(originalSurvey)
+                sendSurveyShownEvent(originalSurvey, resolvedLanguage)
 
                 // Clear up event-activated surveys if this survey has events
                 if (hasEvents(originalSurvey)) {
@@ -299,7 +315,7 @@ public class PostHogSurveysIntegration(
                 }
             }
 
-            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it) }
+            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it, resolvedLanguage) }
 
             nextQuestion
         }
@@ -321,13 +337,14 @@ public class PostHogSurveysIntegration(
                 wasSurveyCompleted = activeSurveyCompleted
 
                 activeSurvey = null
+                activeSurveyLanguage = null
                 activeSurveyCompleted = false
                 currentSurveyResponses.clear()
             }
 
             // Send survey dismissed event if survey was not completed
             if (!wasSurveyCompleted) {
-                sendSurveyDismissedEvent(originalSurvey, surveyResponses)
+                sendSurveyDismissedEvent(originalSurvey, surveyResponses, resolvedLanguage)
             }
 
             // Mark survey as seen
@@ -572,9 +589,28 @@ public class PostHogSurveysIntegration(
 
     // Active survey tracking
     private var activeSurvey: Survey? = null
+    private var activeSurveyLanguage: String? = null
 
     // Lifecycle management
     private var isStarted: Boolean = false
+
+    /**
+     * Resolves the language to use for the next survey display. Priority chain:
+     *   1. `PostHogSurveysConfig.overrideDisplayLanguage`
+     *   2. The `"language"` person property persisted by identify()
+     *   3. The device locale (BCP-47 tag, e.g. "en-US")
+     */
+    private fun resolveDisplayLanguage(): String? {
+        val override = config.surveysConfig.overrideDisplayLanguage
+        val personProperties = readPersistedPersonProperties(config)
+        val deviceLocale =
+            try {
+                Locale.getDefault().toLanguageTag()
+            } catch (_: Throwable) {
+                null
+            }
+        return detectSurveyLanguage(override, personProperties, deviceLocale)
+    }
 
     /**
      * Checks if we can show the next survey.
@@ -631,6 +667,7 @@ public class PostHogSurveysIntegration(
     private fun clearActiveSurvey() {
         synchronized(activeSurveyLock) {
             activeSurvey = null
+            activeSurveyLanguage = null
             activeSurveyCompleted = false
             currentSurveyResponses.clear()
         }
@@ -641,10 +678,14 @@ public class PostHogSurveysIntegration(
     /**
      * Sends a "survey shown" event to PostHog instance
      */
-    private fun sendSurveyShownEvent(survey: Survey) {
+    private fun sendSurveyShownEvent(
+        survey: Survey,
+        language: String?,
+    ) {
         sendSurveyEvent(
             event = "survey shown",
             survey = survey,
+            language = language,
         )
     }
 
@@ -657,6 +698,7 @@ public class PostHogSurveysIntegration(
     private fun sendSurveySentEvent(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
+        language: String?,
     ) {
         val additionalProperties =
             buildSurveyResponseProperties(survey, responses) +
@@ -671,6 +713,7 @@ public class PostHogSurveysIntegration(
             event = "survey sent",
             survey = survey,
             additionalProperties = additionalProperties,
+            language = language,
         )
     }
 
@@ -680,6 +723,7 @@ public class PostHogSurveysIntegration(
     private fun sendSurveyDismissedEvent(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
+        language: String?,
     ) {
         val additionalProperties =
             buildSurveyResponseProperties(survey, responses) +
@@ -695,6 +739,7 @@ public class PostHogSurveysIntegration(
             event = "survey dismissed",
             survey = survey,
             additionalProperties = additionalProperties,
+            language = language,
         )
     }
 
@@ -736,6 +781,7 @@ public class PostHogSurveysIntegration(
         event: String,
         survey: Survey,
         additionalProperties: Map<String, Any> = emptyMap(),
+        language: String? = null,
     ) {
         val postHog =
             postHog ?: run {
@@ -744,6 +790,9 @@ public class PostHogSurveysIntegration(
 
         val properties = getBaseSurveyEventProperties(survey).toMutableMap()
         properties.putAll(additionalProperties)
+        if (!language.isNullOrEmpty()) {
+            properties["\$survey_language"] = language
+        }
 
         postHog.capture(event, properties = properties)
     }

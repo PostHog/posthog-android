@@ -23,17 +23,34 @@ public data class PostHogDisplaySurvey(
 ) {
     public companion object {
         /**
-         * Creates a PostHogDisplaySurvey from a Survey object
+         * Creates a PostHogDisplaySurvey from a Survey object.
          *
-         * @param survey The Survey object to convert
-         * @return A new PostHogDisplaySurvey instance
+         * @param survey The Survey object to convert.
+         * @param surveyTranslation Optional resolved survey-level translation overrides.
+         * @param questionTranslations Optional per-question translation overrides, indexed
+         *   positionally against `survey.questions`. When provided, must be the same length
+         *   as `survey.questions`; `null` entries leave the question untranslated.
          */
-        public fun toDisplaySurvey(survey: Survey): PostHogDisplaySurvey {
+        public fun toDisplaySurvey(
+            survey: Survey,
+            surveyTranslation: SurveyTranslation? = null,
+            questionTranslations: List<SurveyQuestionTranslation?>? = null,
+        ): PostHogDisplaySurvey {
+            val translatedQuestions =
+                survey.questions.mapIndexedNotNull { index, question ->
+                    PostHogDisplaySurveyQuestion.fromSurveyQuestion(
+                        question,
+                        questionTranslations?.getOrNull(index),
+                    )
+                }
             return PostHogDisplaySurvey(
                 id = survey.id,
-                name = survey.name,
-                questions = survey.questions.mapNotNull { PostHogDisplaySurveyQuestion.fromSurveyQuestion(it) },
-                appearance = survey.appearance?.let { PostHogDisplaySurveyAppearance.fromSurveyAppearance(it) },
+                name = surveyTranslation?.name ?: survey.name,
+                questions = translatedQuestions,
+                appearance =
+                    survey.appearance?.let {
+                        PostHogDisplaySurveyAppearance.fromSurveyAppearance(it, surveyTranslation)
+                    },
                 startDate = survey.startDate,
                 endDate = survey.endDate,
             )
