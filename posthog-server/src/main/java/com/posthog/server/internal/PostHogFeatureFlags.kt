@@ -4,6 +4,7 @@ import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.FeatureFlag
+import com.posthog.internal.FeatureFlagMetadata
 import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiError
@@ -311,7 +312,11 @@ internal class PostHogFeatureFlags(
                     flagKeys = flagKeys,
                     disableGeoip = disableGeoip,
                 )
-            val flags = response?.flags
+            // V4 responses carry the rich FeatureFlag map directly on `flags`. V1
+            // responses (some self-hosted deployments, older endpoint versions) only
+            // populate the legacy `featureFlags` map; adapt them so legacy methods
+            // and snapshot reads see a consistent shape.
+            val flags = response?.flags ?: adaptLegacyFlags(response)
             cache.put(
                 cacheKey,
                 flags,
@@ -340,6 +345,41 @@ internal class PostHogFeatureFlags(
             config.logger.log("Loading remote feature flags failed: $e")
             cache.put(cacheKey, null, error = FeatureFlagError.UNKNOWN_ERROR)
             null
+        }
+    }
+
+    /**
+     * Adapt a legacy V1 `/flags` response (only the `featureFlags` map populated)
+     * into the rich `Map<String, FeatureFlag>` shape that the rest of the SDK
+     * reads from `response.flags`. Returns null when the legacy map is absent
+     * too, so the caller falls through to its existing null handling.
+     *
+     * - `featureFlags["key"] = true | false` → boolean flag; `enabled` matches.
+     * - `featureFlags["key"] = "variant-name"` → multi-variant; `enabled = true`,
+     *   `variant = "variant-name"` (mirrors the server's V4 semantics).
+     */
+    private fun adaptLegacyFlags(response: PostHogFlagsResponse?): Map<String, FeatureFlag>? {
+        val legacy = response?.featureFlags ?: return null
+        val payloads = response.featureFlagPayloads ?: emptyMap()
+        return legacy.mapValues { (key, value) ->
+            val (enabled, variant) =
+                when (value) {
+                    is Boolean -> value to null
+                    is String -> true to value
+                    else -> false to null
+                }
+            FeatureFlag(
+                key = key,
+                enabled = enabled,
+                variant = variant,
+                metadata =
+                    FeatureFlagMetadata(
+                        id = 0,
+                        payload = payloads[key]?.toString(),
+                        version = 0,
+                    ),
+                reason = null,
+            )
         }
     }
 

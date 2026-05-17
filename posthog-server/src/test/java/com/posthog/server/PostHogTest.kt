@@ -648,4 +648,45 @@ internal class PostHogTest {
         postHog.close()
         mockServer.shutdown()
     }
+
+    @Test
+    fun `isFeatureEnabled returns true when server returns the legacy featureFlags response shape`() {
+        // Repro: production saw isFeatureEnabled return the caller-supplied
+        // defaultValue (false) for a flag that is enabled at 100% of all users,
+        // and `$feature_flag_called` events carried `$feature_flag_error: "unknown_error"`.
+        //
+        // PostHogFlagsResponse has both a legacy `featureFlags: Map<String, Any>?`
+        // field (just key → enabled) and a new `flags: Map<String, FeatureFlag>?` field.
+        // `getFeatureFlagsFromRemote` only reads `response.flags`. If the server
+        // returns a payload with the old `featureFlags` shape but no `flags` field,
+        // the SDK caches `flags = null` and every legacy-method lookup falls back
+        // to the caller's defaultValue.
+        val legacyShapeResponse =
+            """
+            {
+                "featureFlags": {
+                    "greenwheels-reducing-balance": true
+                },
+                "requestId": "req-1",
+                "evaluatedAt": 1747487809
+            }
+            """.trimIndent()
+        val mockServer = createMockHttp(jsonResponse(legacyShapeResponse))
+        val url = mockServer.url("/").toString()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .build(),
+            )
+
+        val options = PostHogFeatureFlagOptions.builder().defaultValue(false).build()
+        val result = postHog.isFeatureEnabled("brian", "greenwheels-reducing-balance", options)
+
+        assertTrue(result, "Expected the flag to resolve to true (100% rollout); got the default value instead")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
 }
