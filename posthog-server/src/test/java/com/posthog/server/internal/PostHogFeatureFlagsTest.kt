@@ -19,6 +19,7 @@ import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -1391,6 +1392,37 @@ internal class PostHogFeatureFlagsTest {
         val result = featureFlags.getFeatureFlag("test-flag-v2", false, "test-user")
         assertEquals(true, result)
 
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `getFeatureFlagDetails returns the flag after a successful legacy getFeatureFlag`() {
+        // Regression: getFeatureFlagDetails used a 4-field cache key while
+        // getFeatureFlagsFromRemote stored under a 6-field key (with the
+        // flagKeys/disableGeoip added in 2.5.0), causing every legacy
+        // lookup to miss and return null even after a successful evaluation.
+        val flagsResponse = createFlagsResponse("test-flag", enabled = true)
+        val mockServer = createMockHttp(jsonResponse(flagsResponse))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val remoteConfig = PostHogFeatureFlags(config, api, 60000, 100)
+
+        remoteConfig.getFeatureFlag(
+            key = "test-flag",
+            defaultValue = false,
+            distinctId = "test-user",
+        )
+
+        val details =
+            remoteConfig.getFeatureFlagDetails(
+                key = "test-flag",
+                distinctId = "test-user",
+            )
+
+        assertNotNull(details)
+        assertEquals(true, details.enabled)
         mockServer.shutdown()
     }
 }

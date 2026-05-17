@@ -220,6 +220,8 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                flagKeys = null,
+                disableGeoip = false,
             )
 
         return cache.get(cacheKey)
@@ -648,6 +650,8 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                flagKeys = null,
+                disableGeoip = false,
             )
         return cache.getEntry(cacheKey)?.requestId
     }
@@ -670,6 +674,8 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                flagKeys = null,
+                disableGeoip = false,
             )
         return cache.getEntry(cacheKey)?.evaluatedAt
     }
@@ -705,6 +711,8 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                flagKeys = null,
+                disableGeoip = false,
             )
         return cache.getEntry(cacheKey)?.flags?.get(key)
     }
@@ -824,6 +832,8 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                flagKeys = null,
+                disableGeoip = false,
             )
 
         val entry = cache.getEntry(cacheKey) ?: return FeatureFlagError.UNKNOWN_ERROR

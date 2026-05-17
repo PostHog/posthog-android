@@ -253,4 +253,37 @@ internal class FeatureFlagErrorTrackingTest {
 
         assertEquals(FeatureFlagError.UNKNOWN_ERROR, error)
     }
+
+    @Test
+    fun `getFeatureFlagError returns null after a successful legacy getFeatureFlag`() {
+        // Regression: getFeatureFlagError used a 4-field cache key while
+        // getFeatureFlagsFromRemote stored under a 6-field key (with the
+        // flagKeys/disableGeoip added in 2.5.0), causing every legacy
+        // lookup to miss and return UNKNOWN_ERROR even after a successful
+        // evaluation.
+        val flagsResponse = createFlagsResponse("test-flag", enabled = true)
+        val mockServer = createMockHttp(jsonResponse(flagsResponse))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val remoteConfig = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val flagValue =
+            remoteConfig.getFeatureFlag(
+                key = "test-flag",
+                defaultValue = false,
+                distinctId = "test-user",
+            )
+
+        val error =
+            remoteConfig.getFeatureFlagError(
+                key = "test-flag",
+                distinctId = "test-user",
+            )
+
+        assertEquals(true, flagValue)
+        assertNull(error)
+        mockServer.shutdown()
+    }
 }
