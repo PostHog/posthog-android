@@ -4,7 +4,10 @@ import com.posthog.API_KEY
 import com.posthog.BuildConfig
 import com.posthog.PostHogConfig
 import com.posthog.generateEvent
+import com.posthog.logs.PostHogLogRecord
+import com.posthog.logs.PostHogLogSeverity
 import com.posthog.mockHttp
+import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
@@ -439,5 +442,73 @@ internal class PostHogApiTest {
             logger.messages.any { it.contains("Request headers for") && it.contains("/array/") },
             "Should log request headers for /array/ (remoteConfig) endpoint",
         )
+    }
+
+    @Test
+    fun `sendLogs posts OTLP body to slash i v1 logs with token in query`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(host = url.toString())
+
+        val record =
+            PostHogLogRecord(
+                body = "hello",
+                level = PostHogLogSeverity.INFO,
+                timeUnixNano = "1700000000000000000",
+                observedTimeUnixNano = "1700000000000000000",
+            )
+        sut.sendLogs(listOf(record), emptyMap())
+
+        val request = http.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/i/v1/logs?token=$API_KEY", request.path)
+        assertEquals("gzip", request.headers["Content-Encoding"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+
+        val unzipped = request.body.unGzip()
+        // Smoke-test the OTLP wire shape — exhaustive shape coverage is in PostHogLogsOTLPTest.
+        assertTrue(unzipped.contains("\"resourceLogs\""))
+        assertTrue(unzipped.contains("\"scopeLogs\""))
+        assertTrue(unzipped.contains("\"logRecords\""))
+        assertTrue(unzipped.contains("\"telemetry.sdk.name\""))
+        assertTrue(unzipped.contains("\"posthog-java\"") || unzipped.contains("\"posthog-android\""))
+        assertTrue(unzipped.contains("\"stringValue\":\"hello\""))
+    }
+
+    @Test
+    fun `sendLogs throws on non-success`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(500).setBody("oops"))
+        val url = http.url("/")
+        val sut = getSut(host = url.toString())
+
+        val record = PostHogLogRecord(body = "x")
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.sendLogs(listOf(record), emptyMap())
+            }
+        assertEquals(500, exc.statusCode)
+    }
+
+    @Test
+    fun `sendLogs throws PostHogApiError on 408`() {
+        // The whole reason isLogsRetriableStatusCode exists separately from the
+        // events predicate is to cover 408. Lock in that the wire path surfaces
+        // a 408 as a retriable PostHogApiError so the queue can keep records.
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setResponseCode(408)
+                        .setHeader("Retry-After", "3")
+                        .setBody("timeout"),
+            )
+        val sut = getSut(host = http.url("/").toString())
+
+        val record = PostHogLogRecord(body = "x")
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.sendLogs(listOf(record), emptyMap())
+            }
+        assertEquals(408, exc.statusCode)
     }
 }

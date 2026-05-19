@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
+import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
@@ -18,6 +19,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSendCachedEventsIntegration
@@ -28,6 +30,7 @@ import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.sortMapRecursively
 import com.posthog.internal.surveys.PostHogSurveysHandler
+import com.posthog.logs.PostHogLogRecord
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
@@ -42,6 +45,10 @@ public class PostHog private constructor(
     private val replayExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("PostHogReplayQueueThread"),
+        ),
+    private val logsExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogLogsQueueThread"),
         ),
     private val remoteConfigExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -63,6 +70,8 @@ public class PostHog private constructor(
     private val cachedPersonPropertiesLock = Any()
 
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
+
+    private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -127,6 +136,17 @@ public class PostHog private constructor(
                         config.replayStoragePrefix,
                         replayExecutor,
                     )
+                // The events/snapshot queueProvider is intentionally kept
+                // PostHogEvent-typed; logs have a different record type and
+                // no `wrap me` extension point analogous to replay, so the
+                // queue is constructed directly here rather than threading a
+                // second generic through PostHogConfig.
+                val logsQueue =
+                    PostHogQueue(
+                        config,
+                        EndpointSpec.logs(config, api, config.logsStoragePrefix),
+                        logsExecutor,
+                    )
                 val onRemoteConfigLoaded =
                     PostHogOnRemoteConfigLoaded {
                         try {
@@ -172,6 +192,7 @@ public class PostHog private constructor(
                 this.config = config
                 this.queue = queue
                 this.replayQueue = replayQueue
+                this.logsQueue = logsQueue
 
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
@@ -190,6 +211,7 @@ public class PostHog private constructor(
                 getDeviceId()
 
                 queue.start()
+                // logsQueue.start() — uncomment when the public log() API ships
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
                     try {
@@ -314,6 +336,7 @@ public class PostHog private constructor(
 
                 queue?.stop()
                 replayQueue?.stop()
+                logsQueue?.stop()
 
                 featureFlagsCalled.clear()
 
@@ -1205,6 +1228,7 @@ public class PostHog private constructor(
         }
         super.flush()
         replayQueue?.flush()
+        logsQueue?.flush()
     }
 
     public override fun setPersonPropertiesForFlags(
@@ -1500,13 +1524,18 @@ public class PostHog private constructor(
             featureFlagsExecutor: ExecutorService,
             cachedEventsExecutor: ExecutorService,
             reloadFeatureFlags: Boolean,
+            logsExecutor: ExecutorService =
+                Executors.newSingleThreadScheduledExecutor(
+                    PostHogThreadFactory("PostHogLogsQueueThread"),
+                ),
         ): PostHogInterface {
             val instance =
                 PostHog(
-                    queueExecutor,
-                    replayExecutor,
-                    featureFlagsExecutor,
-                    cachedEventsExecutor,
+                    queueExecutor = queueExecutor,
+                    replayExecutor = replayExecutor,
+                    logsExecutor = logsExecutor,
+                    remoteConfigExecutor = featureFlagsExecutor,
+                    cachedEventsExecutor = cachedEventsExecutor,
                     reloadFeatureFlags = reloadFeatureFlags,
                 )
             instance.setup(config)

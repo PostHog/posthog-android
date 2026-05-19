@@ -22,7 +22,7 @@ public final class com/posthog/PersonProfiles : java/lang/Enum {
 
 public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posthog/PostHogInterface {
 	public static final field Companion Lcom/posthog/PostHog$Companion;
-	public synthetic fun <init> (Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;Ljava/util/concurrent/ExecutorService;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun alias (Ljava/lang/String;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;)V
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
@@ -143,6 +143,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getIntegrations ()Ljava/util/List;
 	public final fun getLegacyStoragePrefix ()Ljava/lang/String;
 	public final fun getLogger ()Lcom/posthog/internal/PostHogLogger;
+	public final fun getLogsStoragePrefix ()Ljava/lang/String;
 	public final fun getMaxBatchSize ()I
 	public final fun getMaxQueueSize ()I
 	public final fun getMaxRetries ()I
@@ -188,6 +189,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setHttpClient (Lokhttp3/OkHttpClient;)V
 	public final fun setLegacyStoragePrefix (Ljava/lang/String;)V
 	public final fun setLogger (Lcom/posthog/internal/PostHogLogger;)V
+	public final fun setLogsStoragePrefix (Ljava/lang/String;)V
 	public final fun setMaxBatchSize (I)V
 	public final fun setMaxQueueSize (I)V
 	public final fun setMaxRetries (I)V

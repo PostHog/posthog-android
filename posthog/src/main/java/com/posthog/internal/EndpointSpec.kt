@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
+import com.posthog.logs.PostHogLogRecord
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
@@ -84,9 +85,48 @@ public class EndpointSpec<Record> internal constructor(
                 isFatalRecord = { it.isFatalExceptionEvent() },
                 recordUuid = { it.uuid },
             )
+
+        /**
+         * Returns the [EndpointSpec] for PostHog's logs ingestion endpoint
+         * (`/i/v1/logs`, OTLP/JSON). Pass the result to a
+         * [com.posthog.internal.PostHogQueue] to enqueue and flush log
+         * records.
+         *
+         * `resourceAttributes` is captured by value; supply the
+         * once-per-setup snapshot of any user-configurable resource keys
+         * (e.g. `service.name`, `service.version`, `deployment.environment`)
+         * here. SDK-managed `telemetry.sdk.*` keys are appended automatically
+         * and override any user-supplied values for those keys.
+         */
+        internal fun logs(
+            config: PostHogConfig,
+            api: PostHogApi,
+            storagePrefix: String?,
+            resourceAttributes: Map<String, Any> = emptyMap(),
+        ): EndpointSpec<PostHogLogRecord> =
+            EndpointSpec(
+                recordsLabel = "logs",
+                storagePrefix = storagePrefix,
+                initialCap = { it.maxBatchSize },
+                initialFlushAt = { it.flushAt },
+                maxQueueSize = { it.maxQueueSize },
+                flushIntervalSeconds = { it.flushIntervalSeconds },
+                encode = { record, stream ->
+                    config.serializer.serialize(record.toStorageMap(), stream.writer().buffered())
+                },
+                decode = { stream ->
+                    val map: Map<String, Any>? = config.serializer.deserialize(stream.reader().buffered())
+                    map?.let { PostHogLogRecord.fromStorageMap(it) }
+                },
+                describe = { _ -> "log" },
+                send = { records -> api.sendLogs(records, resourceAttributes) },
+                isRetriableStatusCode = ::isLogsRetriableStatusCode,
+            )
     }
 }
 
 internal val DEFAULT_EVENTS_RETRYABLE_STATUS_CODES: Set<Int> = setOf(429, 500, 502, 503, 504)
 
 internal fun isEventsRetriableStatusCode(code: Int): Boolean = code in DEFAULT_EVENTS_RETRYABLE_STATUS_CODES
+
+internal fun isLogsRetriableStatusCode(code: Int): Boolean = code == 408 || code == 429 || code in 500..599

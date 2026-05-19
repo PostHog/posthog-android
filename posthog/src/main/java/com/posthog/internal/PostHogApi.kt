@@ -7,6 +7,8 @@ import com.posthog.PostHogConfig.Companion.DEFAULT_US_ASSETS_HOST
 import com.posthog.PostHogConfig.Companion.DEFAULT_US_HOST
 import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
+import com.posthog.internal.logs.PostHogLogsOTLP
+import com.posthog.logs.PostHogLogRecord
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -87,6 +89,46 @@ public class PostHogApi(
         val request =
             makeRequest(url) {
                 config.serializer.serialize(events, it.bufferedWriter())
+            }
+
+        logRequestHeaders(request)
+
+        client.newCall(request).execute().use {
+            val response = logResponse(it)
+
+            if (!response.isSuccessful) {
+                throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
+            }
+        }
+    }
+
+    /**
+     * Builds an OTLP/JSON payload for the supplied [records] and posts it to
+     * `/i/v1/logs?token=<apiKey>`. Throws [PostHogApiError] on a non-success
+     * status and [IOException] on a transport failure.
+     *
+     * `resourceAttributes` (e.g. `service.name`, `service.version`) is merged
+     * with SDK-managed `telemetry.sdk.*` keys before serialization.
+     */
+    @Throws(PostHogApiError::class, IOException::class)
+    internal fun sendLogs(
+        records: List<PostHogLogRecord>,
+        resourceAttributes: Map<String, Any>,
+    ) {
+        val payload =
+            PostHogLogsOTLP.buildPayload(
+                records = records,
+                resourceAttributes = resourceAttributes,
+                sdkName = config.sdkName,
+                sdkVersion = config.sdkVersion,
+            )
+
+        val url = "$theHost/i/v1/logs?token=${config.apiKey}"
+        val request =
+            makeRequest(url) {
+                logRequest(payload, url)
+
+                config.serializer.serialize(payload, it.bufferedWriter())
             }
 
         logRequestHeaders(request)

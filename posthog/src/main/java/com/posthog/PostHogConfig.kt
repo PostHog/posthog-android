@@ -384,6 +384,9 @@ public open class PostHogConfig(
     public var replayStoragePrefix: String? = null
 
     @PostHogInternal
+    public var logsStoragePrefix: String? = null
+
+    @PostHogInternal
     public var cachePreferences: PostHogPreferences? = null
 
     @PostHogInternal

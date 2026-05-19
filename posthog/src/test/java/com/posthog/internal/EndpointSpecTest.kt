@@ -6,6 +6,7 @@ import com.posthog.awaitExecution
 import com.posthog.generateEvent
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
+import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -205,6 +206,67 @@ internal class EndpointSpecTest {
         // All 5 records retained — proves the spec re-reads config.maxQueueSize
         // each time removeRecordSync runs. A snapshot would still cap at 2.
         assertEquals(5, queue.dequeList.size)
+    }
+
+    @Test
+    fun `EndpointSpec logs factory writes to slash i v1 logs`() {
+        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val config =
+            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+                this.storagePrefix = storagePrefix
+                this.flushAt = 1
+            }
+        val api = PostHogApi(config)
+        val spec = EndpointSpec.logs(config, api, storagePrefix)
+        val queue = PostHogQueue(config, spec, executor)
+
+        queue.add(com.posthog.logs.PostHogLogRecord(body = "via-spec"))
+
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+        val request = http.takeRequest()
+        assertTrue(request.path!!.startsWith("/i/v1/logs?token="))
+        // Without the body assertion the test would pass if the queue posted an
+        // empty body or a non-OTLP body — prove the encoded record actually
+        // reaches the wire.
+        val unzipped = request.body.unGzip()
+        assertTrue(unzipped.contains("\"resourceLogs\""))
+        assertTrue(unzipped.contains("\"stringValue\":\"via-spec\""))
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `logs spec retry policy retries 408 429 and 5xx`() {
+        assertTrue(isLogsRetriableStatusCode(408))
+        assertTrue(isLogsRetriableStatusCode(429))
+        assertTrue(isLogsRetriableStatusCode(500))
+        assertTrue(isLogsRetriableStatusCode(599))
+        // 3xx redirects are not retriable — a redirect from /i/v1/logs means
+        // misconfigured host, retrying would loop.
+        assertEquals(false, isLogsRetriableStatusCode(301))
+        assertEquals(false, isLogsRetriableStatusCode(400))
+        assertEquals(false, isLogsRetriableStatusCode(404))
+        assertEquals(false, isLogsRetriableStatusCode(600))
+    }
+
+    @Test
+    fun `events spec retry policy stays narrower than logs`() {
+        // Locks in the asymmetry. If someone copy-pastes the logs predicate
+        // (408 + all 5xx) into the events code path, 408 and 501/505/etc.
+        // would silently start retrying for events.
+        assertTrue(isEventsRetriableStatusCode(429))
+        assertTrue(isEventsRetriableStatusCode(500))
+        assertTrue(isEventsRetriableStatusCode(502))
+        assertTrue(isEventsRetriableStatusCode(503))
+        assertTrue(isEventsRetriableStatusCode(504))
+        assertEquals(false, isEventsRetriableStatusCode(408))
+        assertEquals(false, isEventsRetriableStatusCode(501))
+        assertEquals(false, isEventsRetriableStatusCode(505))
+        assertEquals(false, isEventsRetriableStatusCode(599))
     }
 
     @Test
