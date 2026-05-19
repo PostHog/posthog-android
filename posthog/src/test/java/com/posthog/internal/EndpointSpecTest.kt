@@ -47,7 +47,7 @@ internal class EndpointSpecTest {
         initialFlushAt: Int = 50,
     ): EndpointSpec<SyntheticRecord> =
         EndpointSpec(
-            name = "synthetic",
+            recordsLabel = "synthetic",
             storagePrefix = storagePrefix,
             initialCap = { 50 },
             initialFlushAt = { initialFlushAt },
@@ -169,6 +169,42 @@ internal class EndpointSpecTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, File(storagePrefix, API_KEY).listFiles()!!.size)
+    }
+
+    @Test
+    fun `spec maxQueueSize lambda is re-read from config on each add`() {
+        // Locks in the lambda-vs-snapshot contract: spec config knobs are
+        // (PostHogConfig) -> Int lambdas so runtime mutations to config
+        // are honored. If maxQueueSize were snapshotted at construction,
+        // raising config.maxQueueSize after setup would have no effect
+        // and the deque would still cap at the original value.
+        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val config =
+            PostHogConfig(API_KEY, "http://localhost:9999").apply {
+                this.storagePrefix = storagePrefix
+                this.maxQueueSize = 2
+                this.flushAt = 1000 // never auto-flush
+            }
+        val api = PostHogApi(config)
+        val queue = PostHogQueue(config, EndpointSpec.batch(config, api, storagePrefix), executor)
+
+        queue.add(generateEvent("a"))
+        queue.add(generateEvent("b"))
+        executor.awaitExecution()
+        assertEquals(2, queue.dequeList.size)
+
+        // Raise the cap at runtime.
+        config.maxQueueSize = 5
+
+        queue.add(generateEvent("c"))
+        queue.add(generateEvent("d"))
+        queue.add(generateEvent("e"))
+        executor.shutdownAndAwaitTermination()
+
+        // All 5 records retained — proves the spec re-reads config.maxQueueSize
+        // each time removeRecordSync runs. A snapshot would still cap at 2.
+        assertEquals(5, queue.dequeList.size)
     }
 
     @Test

@@ -18,7 +18,7 @@ import java.util.UUID
  */
 @PostHogInternal
 public class EndpointSpec<Record> internal constructor(
-    internal val name: String,
+    internal val recordsLabel: String,
     internal val storagePrefix: String?,
     internal val initialCap: (PostHogConfig) -> Int,
     internal val initialFlushAt: (PostHogConfig) -> Int,
@@ -40,7 +40,7 @@ public class EndpointSpec<Record> internal constructor(
             storagePrefix: String?,
         ): EndpointSpec<PostHogEvent> =
             EndpointSpec(
-                name = "events",
+                recordsLabel = "events",
                 storagePrefix = storagePrefix,
                 initialCap = { it.maxBatchSize },
                 initialFlushAt = { it.flushAt },
@@ -66,7 +66,7 @@ public class EndpointSpec<Record> internal constructor(
             storagePrefix: String?,
         ): EndpointSpec<PostHogEvent> =
             EndpointSpec(
-                name = "snapshots",
+                recordsLabel = "snapshots",
                 storagePrefix = storagePrefix,
                 initialCap = { it.maxBatchSize },
                 initialFlushAt = { it.flushAt },

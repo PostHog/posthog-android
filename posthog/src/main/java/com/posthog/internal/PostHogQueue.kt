@@ -99,7 +99,7 @@ public class PostHogQueue<Record>(
                     first = deque.removeFirst()
                 }
                 first.deleteSafely(config)
-                config.logger.log("Queue is full, the oldest ${spec.name} ${first.name} is dropped.")
+                config.logger.log("Queue is full, the oldest ${spec.recordsLabel} ${first.name} is dropped.")
             } catch (ignored: NoSuchElementException) {
             }
         }
@@ -114,7 +114,7 @@ public class PostHogQueue<Record>(
             try {
                 loadCachedRecords()
             } catch (e: Throwable) {
-                config.logger.log("Failed to load cached ${spec.name}: $e.")
+                config.logger.log("Failed to load cached ${spec.recordsLabel}: $e.")
             } finally {
                 cachedRecordsLoaded = true
             }
@@ -206,7 +206,7 @@ public class PostHogQueue<Record>(
             retryCount++
 
             if (retryCount > config.maxRetries) {
-                config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping ${spec.name}.")
+                config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping ${spec.recordsLabel}.")
                 retryCount = 0
                 pausedUntil = null
                 dropAllRecords()
@@ -270,11 +270,11 @@ public class PostHogQueue<Record>(
         var deleteFiles = true
         try {
             if (records.isNotEmpty()) {
-                config.logger.log("Flushing ${records.size} ${spec.name}.")
+                config.logger.log("Flushing ${records.size} ${spec.recordsLabel}.")
 
                 spec.send(records)
 
-                config.logger.log("Flushed ${records.size} ${spec.name} successfully.")
+                config.logger.log("Flushed ${records.size} ${spec.recordsLabel} successfully.")
             }
         } catch (e: PostHogApiError) {
             deleteFiles = deleteFilesIfAPIError(e, batchLimits, records.size, config.logger, spec.isRetriableStatusCode)
@@ -394,7 +394,7 @@ public class PostHogQueue<Record>(
         }
 
         config.networkStatus?.register {
-            config.logger.log("Network is available, flushing queued ${spec.name}.")
+            config.logger.log("Network is available, flushing queued ${spec.recordsLabel}.")
             flush()
         }
     }
@@ -415,7 +415,7 @@ public class PostHogQueue<Record>(
             deque.addAll(files)
             deque.addAll(existingFiles)
         }
-        config.logger.log("Loaded ${files.size} cached ${spec.name} from disk.")
+        config.logger.log("Loaded ${files.size} cached ${spec.recordsLabel} from disk.")
     }
 
     private fun loadQueueFilesFromDisk(): List<File> {
