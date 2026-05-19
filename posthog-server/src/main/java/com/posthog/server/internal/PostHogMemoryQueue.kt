@@ -31,7 +31,7 @@ internal class PostHogMemoryQueue(
     private val executor: ExecutorService,
     private val retryDelaySeconds: Int = DEFAULT_RETRY_DELAY_SECONDS,
     private val maxRetryDelaySeconds: Int = DEFAULT_MAX_RETRY_DELAY_SECONDS,
-) : PostHogQueueInterface {
+) : PostHogQueueInterface<PostHogEvent> {
     private val events: ArrayDeque<PostHogEvent> = ArrayDeque()
     private val eventsLock = Any()
     private val timerLock = Any()

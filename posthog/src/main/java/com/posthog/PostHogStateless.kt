@@ -39,7 +39,7 @@ public open class PostHogStateless protected constructor(
     protected var config: PostHogConfig? = null
 
     protected var featureFlags: PostHogFeatureFlagsInterface? = null
-    protected var queue: PostHogQueueInterface? = null
+    protected var queue: PostHogQueueInterface<PostHogEvent>? = null
     protected var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
     protected val throwableCoercer: ThrowableCoercer = ThrowableCoercer()
 

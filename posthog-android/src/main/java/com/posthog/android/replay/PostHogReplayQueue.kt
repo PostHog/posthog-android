@@ -19,10 +19,10 @@ import java.util.concurrent.ExecutorService
  */
 internal class PostHogReplayQueue internal constructor(
     private val config: PostHogConfig,
-    private val innerQueue: PostHogQueueInterface,
+    private val innerQueue: PostHogQueueInterface<PostHogEvent>,
     replayStoragePrefix: String?,
     private val executor: ExecutorService,
-) : PostHogQueueInterface {
+) : PostHogQueueInterface<PostHogEvent> {
     private val replayDir = replayStoragePrefix?.let { File(it, config.apiKey) }
 
     private val bufferQueue: PostHogReplayBufferQueue =

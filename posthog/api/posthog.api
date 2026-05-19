@@ -488,6 +488,17 @@ public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
 	public final fun setAutoCapture (Z)V
 }
 
+public final class com/posthog/internal/EndpointSpec {
+	public static final field Companion Lcom/posthog/internal/EndpointSpec$Companion;
+	public static final fun batch (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
+	public static final fun snapshot (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
+}
+
+public final class com/posthog/internal/EndpointSpec$Companion {
+	public final fun batch (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
+	public final fun snapshot (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
+}
+
 public final class com/posthog/internal/EvaluationReason {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -832,8 +843,8 @@ public final class com/posthog/internal/PostHogPrintLogger : com/posthog/interna
 }
 
 public final class com/posthog/internal/PostHogQueue : com/posthog/internal/PostHogQueueInterface {
-	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Lcom/posthog/internal/PostHogApiEndpoint;Ljava/lang/String;Ljava/util/concurrent/ExecutorService;)V
-	public fun add (Lcom/posthog/PostHogEvent;)V
+	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/EndpointSpec;Ljava/util/concurrent/ExecutorService;)V
+	public fun add (Ljava/lang/Object;)V
 	public fun clear ()V
 	public fun flush ()V
 	public final fun getQueueDirectory ()Ljava/io/File;
@@ -843,7 +854,7 @@ public final class com/posthog/internal/PostHogQueue : com/posthog/internal/Post
 }
 
 public abstract interface class com/posthog/internal/PostHogQueueInterface {
-	public abstract fun add (Lcom/posthog/PostHogEvent;)V
+	public abstract fun add (Ljava/lang/Object;)V
 	public abstract fun clear ()V
 	public abstract fun flush ()V
 	public abstract fun start ()V

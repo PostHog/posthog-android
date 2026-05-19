@@ -1,9 +1,7 @@
 package com.posthog.internal
 
-import com.posthog.PostHogEvent
-
-public interface PostHogQueueInterface {
-    public fun add(event: PostHogEvent)
+public interface PostHogQueueInterface<Record> {
+    public fun add(record: Record)
 
     public fun flush()
 

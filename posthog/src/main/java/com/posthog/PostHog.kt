@@ -62,7 +62,7 @@ public class PostHog private constructor(
     private val featureFlagsCalledLock = Any()
     private val cachedPersonPropertiesLock = Any()
 
-    private var replayQueue: PostHogQueueInterface? = null
+    private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder

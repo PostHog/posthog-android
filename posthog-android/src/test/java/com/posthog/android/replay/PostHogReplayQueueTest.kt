@@ -3,8 +3,8 @@ package com.posthog.android.replay
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.android.API_KEY
+import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
-import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import org.junit.Rule
@@ -34,7 +34,7 @@ internal class PostHogReplayQueueTest {
         executors.clear()
     }
 
-    private class FakeQueue : PostHogQueueInterface {
+    private class FakeQueue : PostHogQueueInterface<PostHogEvent> {
         val events = mutableListOf<PostHogEvent>()
         var flushCallCount = 0
         var startCallCount = 0
@@ -160,9 +160,7 @@ internal class PostHogReplayQueueTest {
         val innerQueue =
             PostHogQueue(
                 config,
-                PostHogApi(config),
-                PostHogApiEndpoint.SNAPSHOT,
-                storagePrefix,
+                EndpointSpec.snapshot(config, PostHogApi(config), storagePrefix),
                 executor,
             )
         val queue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
