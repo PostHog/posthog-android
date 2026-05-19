@@ -156,6 +156,29 @@ internal class PostHogSurveysTranslationsTest {
         assertNull(postHog.properties?.get("\$survey_language"))
     }
 
+    @Test
+    fun `events omit survey_language when translation matches but values are identical`() {
+        // Translation dictionary lookup succeeds (target "fr" matches the "fr" key) but
+        // the translated values are identical to the originals, so nothing actually
+        // changed on screen and no $survey_language should be stamped on events.
+        val delegate = RecordingDelegate()
+        val (integration, postHog) =
+            createIntegration(
+                delegate,
+                overrideLanguage = "fr",
+            )
+
+        integration.showSurvey(decodeSurvey(SURVEY_WITH_NOOP_TRANSLATION))
+        val shownSurvey = assertNotNull(delegate.shownSurvey)
+        assertNotNull(delegate.onSurveyShown).invoke(shownSurvey)
+        assertEquals("survey shown", postHog.event)
+        assertNull(postHog.properties?.get("\$survey_language"))
+
+        assertNotNull(delegate.onSurveyResponse).invoke(shownSurvey, 0, PostHogSurveyResponse.Text("ok"))
+        assertEquals("survey sent", postHog.event)
+        assertNull(postHog.properties?.get("\$survey_language"))
+    }
+
     private companion object {
         private val SURVEY_WITH_FR_QUESTION_TRANSLATION =
             """
@@ -223,6 +246,42 @@ internal class PostHogSurveysTranslationsTest {
                   "branching": null,
                   "translations": {
                     "pt": { "question": "Pergunta?" }
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+
+        private val SURVEY_WITH_NOOP_TRANSLATION =
+            """
+            {
+              "id": "translated-survey",
+              "name": "Original Name",
+              "type": "popover",
+              "description": null,
+              "feature_flag_keys": null,
+              "linked_flag_key": null,
+              "targeting_flag_key": null,
+              "internal_targeting_flag_key": null,
+              "conditions": null,
+              "appearance": null,
+              "current_iteration": null,
+              "current_iteration_start_date": null,
+              "start_date": "2025-01-01T00:00:00.000Z",
+              "end_date": null,
+              "schedule": null,
+              "questions": [
+                {
+                  "id": "q-1",
+                  "type": "open",
+                  "question": "Original question?",
+                  "description": null,
+                  "descriptionContentType": "text",
+                  "optional": false,
+                  "buttonText": null,
+                  "branching": null,
+                  "translations": {
+                    "fr": { "question": "Original question?" }
                   }
                 }
               ]
