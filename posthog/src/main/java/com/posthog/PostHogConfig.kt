@@ -259,6 +259,7 @@ public open class PostHogConfig(
     /**
      * Factory to instantiate a custom queue implementation.
      */
+    @PostHogInternal
     public val queueProvider: (
         PostHogConfig,
         PostHogApi,
