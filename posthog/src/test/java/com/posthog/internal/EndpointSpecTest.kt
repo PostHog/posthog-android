@@ -49,10 +49,10 @@ internal class EndpointSpecTest {
         EndpointSpec(
             name = "synthetic",
             storagePrefix = storagePrefix,
-            initialCap = 50,
-            initialFlushAt = initialFlushAt,
-            maxQueueSize = 1000,
-            flushIntervalSeconds = 30,
+            initialCap = { 50 },
+            initialFlushAt = { initialFlushAt },
+            maxQueueSize = { 1000 },
+            flushIntervalSeconds = { 30 },
             encode = { record, stream ->
                 if (encodeFails) throw RuntimeException("encode failed")
                 stream.writer().buffered().use { it.write(record.value) }

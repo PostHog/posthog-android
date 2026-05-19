@@ -31,7 +31,8 @@ public class PostHogQueue<Record>(
     private val timerLock = Any()
     private var pausedUntil: Date? = null
     private var retryCount = 0
-    private val batchLimits = BatchLimits(cap = spec.initialCap.coerceAtLeast(1), flushAt = spec.initialFlushAt.coerceAtLeast(1))
+    private val batchLimits =
+        BatchLimits(cap = spec.initialCap(config).coerceAtLeast(1), flushAt = spec.initialFlushAt(config).coerceAtLeast(1))
     private val initialRetryDelaySeconds = 1
     private val maxRetryDelaySeconds = 30
 
@@ -44,11 +45,11 @@ public class PostHogQueue<Record>(
     private var isFlushing = AtomicBoolean(false)
 
     @Volatile
-    private var cachedEventsLoaded = false
+    private var cachedRecordsLoaded = false
 
     private var dirCreated = false
 
-    private val delay: Long get() = (spec.flushIntervalSeconds * 1000).toLong()
+    private val delay: Long get() = (spec.flushIntervalSeconds(config) * 1000).toLong()
 
     public val queueDirectory: File?
         get() = spec.storagePrefix?.let { File(it, config.apiKey) }
@@ -91,7 +92,7 @@ public class PostHogQueue<Record>(
     }
 
     private fun removeRecordSync() {
-        if (deque.size >= spec.maxQueueSize) {
+        if (deque.size >= spec.maxQueueSize(config)) {
             try {
                 val first: File
                 synchronized(dequeLock) {
@@ -108,14 +109,14 @@ public class PostHogQueue<Record>(
      * Ensures cached records from disk are loaded into the deque exactly once.
      * Must be called on the executor thread (single-threaded executor, no lock needed).
      */
-    private fun ensureCachedEventsLoaded() {
-        if (!cachedEventsLoaded) {
+    private fun ensureCachedRecordsLoaded() {
+        if (!cachedRecordsLoaded) {
             try {
                 loadCachedRecords()
             } catch (e: Throwable) {
                 config.logger.log("Failed to load cached ${spec.name}: $e.")
             } finally {
-                cachedEventsLoaded = true
+                cachedRecordsLoaded = true
             }
         }
     }
@@ -124,7 +125,7 @@ public class PostHogQueue<Record>(
         record: Record,
         isFatal: Boolean = false,
     ) {
-        ensureCachedEventsLoaded()
+        ensureCachedRecordsLoaded()
         removeRecordSync()
         if (addRecordSync(record)) {
             // this is best effort since we dont know if theres
@@ -313,7 +314,7 @@ public class PostHogQueue<Record>(
 
         executor.executeSafely {
             // load any cached records from disk before checking the threshold
-            ensureCachedEventsLoaded()
+            ensureCachedRecordsLoaded()
 
             if (!isConnected()) {
                 isFlushing.set(false)
@@ -440,7 +441,7 @@ public class PostHogQueue<Record>(
             deque.clear()
             deque.addAll(files)
         }
-        cachedEventsLoaded = true
+        cachedRecordsLoaded = true
     }
 
     /**

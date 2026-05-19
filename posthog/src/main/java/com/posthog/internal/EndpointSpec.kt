@@ -20,10 +20,10 @@ import java.util.UUID
 public class EndpointSpec<Record> internal constructor(
     internal val name: String,
     internal val storagePrefix: String?,
-    internal val initialCap: Int,
-    internal val initialFlushAt: Int,
-    internal val maxQueueSize: Int,
-    internal val flushIntervalSeconds: Int,
+    internal val initialCap: (PostHogConfig) -> Int,
+    internal val initialFlushAt: (PostHogConfig) -> Int,
+    internal val maxQueueSize: (PostHogConfig) -> Int,
+    internal val flushIntervalSeconds: (PostHogConfig) -> Int,
     internal val encode: (Record, OutputStream) -> Unit,
     internal val decode: (InputStream) -> Record?,
     internal val describe: (Record) -> String,
@@ -42,10 +42,10 @@ public class EndpointSpec<Record> internal constructor(
             EndpointSpec(
                 name = "events",
                 storagePrefix = storagePrefix,
-                initialCap = config.maxBatchSize,
-                initialFlushAt = config.flushAt,
-                maxQueueSize = config.maxQueueSize,
-                flushIntervalSeconds = config.flushIntervalSeconds,
+                initialCap = { it.maxBatchSize },
+                initialFlushAt = { it.flushAt },
+                maxQueueSize = { it.maxQueueSize },
+                flushIntervalSeconds = { it.flushIntervalSeconds },
                 encode = { event, stream ->
                     config.serializer.serialize(event, stream.writer().buffered())
                 },
@@ -68,10 +68,10 @@ public class EndpointSpec<Record> internal constructor(
             EndpointSpec(
                 name = "snapshots",
                 storagePrefix = storagePrefix,
-                initialCap = config.maxBatchSize,
-                initialFlushAt = config.flushAt,
-                maxQueueSize = config.maxQueueSize,
-                flushIntervalSeconds = config.flushIntervalSeconds,
+                initialCap = { it.maxBatchSize },
+                initialFlushAt = { it.flushAt },
+                maxQueueSize = { it.maxQueueSize },
+                flushIntervalSeconds = { it.flushIntervalSeconds },
                 encode = { event, stream ->
                     config.serializer.serialize(event, stream.writer().buffered())
                 },
