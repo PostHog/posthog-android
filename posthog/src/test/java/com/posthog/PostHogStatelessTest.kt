@@ -42,7 +42,7 @@ internal class PostHogStatelessTest {
     ) : PostHogStateless(queueExecutor, featureFlagsExecutor) {
         fun isEnabledPublic(): Boolean = isEnabled()
 
-        fun setMockQueue(queue: PostHogQueueInterface) {
+        fun setMockQueue(queue: PostHogQueueInterface<PostHogEvent>) {
             this.queue = queue
         }
 
@@ -60,7 +60,7 @@ internal class PostHogStatelessTest {
     }
 
     // Mock classes for testing
-    private class MockQueue : PostHogQueueInterface {
+    private class MockQueue : PostHogQueueInterface<PostHogEvent> {
         val events = mutableListOf<PostHogEvent>()
         var isStarted = false
         var isStopped = false

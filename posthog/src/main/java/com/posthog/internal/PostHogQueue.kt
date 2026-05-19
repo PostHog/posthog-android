@@ -1,7 +1,6 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
-import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
@@ -16,28 +15,23 @@ import kotlin.concurrent.schedule
 import kotlin.math.min
 import kotlin.math.pow
 
-private val RETRYABLE_STATUS_CODES = setOf(429, 500, 502, 503, 504)
-
 /**
- * The class that manages the events Queue
- * @property config the Config
- * @property api the API
- * @property executor the Executor
+ * Generic file-backed queue. One implementation, multiple instances —
+ * events, replay snapshots, and future endpoints (logs) each get their
+ * own instance with their own [EndpointSpec] and dispatch executor.
  */
 @PostHogInternal
-public class PostHogQueue(
+public class PostHogQueue<Record>(
     private val config: PostHogConfig,
-    private val api: PostHogApi,
-    private val endpoint: PostHogApiEndpoint,
-    private val storagePrefix: String?,
+    private val spec: EndpointSpec<Record>,
     private val executor: ExecutorService,
-) : PostHogQueueInterface {
+) : PostHogQueueInterface<Record> {
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()
     private val timerLock = Any()
     private var pausedUntil: Date? = null
     private var retryCount = 0
-    private val batchLimits = initialBatchLimits(config)
+    private val batchLimits = BatchLimits(cap = spec.initialCap.coerceAtLeast(1), flushAt = spec.initialFlushAt.coerceAtLeast(1))
     private val initialRetryDelaySeconds = 1
     private val maxRetryDelaySeconds = 30
 
@@ -54,13 +48,13 @@ public class PostHogQueue(
 
     private var dirCreated = false
 
-    private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
+    private val delay: Long get() = (spec.flushIntervalSeconds * 1000).toLong()
 
     public val queueDirectory: File?
-        get() = storagePrefix?.let { File(it, config.apiKey) }
+        get() = spec.storagePrefix?.let { File(it, config.apiKey) }
 
-    private fun addEventSync(event: PostHogEvent): Boolean {
-        storagePrefix?.let {
+    private fun addRecordSync(record: Record): Boolean {
+        spec.storagePrefix?.let {
             val dir = File(it, config.apiKey)
 
             if (!dirCreated) {
@@ -68,7 +62,7 @@ public class PostHogQueue(
                 dirCreated = true
             }
 
-            val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
+            val uuid = spec.recordUuid(record) ?: TimeBasedEpochGenerator.generate()
             val file = File(dir, "$uuid.event")
             synchronized(dequeLock) {
                 deque.add(file)
@@ -77,13 +71,13 @@ public class PostHogQueue(
             try {
                 val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
                 os.use { theOutputStream ->
-                    config.serializer.serialize(event, theOutputStream.writer().buffered())
+                    spec.encode(record, theOutputStream)
                 }
-                config.logger.log("Queued Event ${event.event}: ${file.name}.")
+                config.logger.log("Queued ${spec.describe(record)}: ${file.name}.")
 
                 return true
             } catch (e: Throwable) {
-                config.logger.log("Event ${event.event}: ${file.name} failed to parse: $e.")
+                config.logger.log("${spec.describe(record)}: ${file.name} failed to parse: $e.")
 
                 // if for some reason the file failed to serialize, lets delete it
                 file.deleteSafely(config)
@@ -96,57 +90,57 @@ public class PostHogQueue(
         return true
     }
 
-    private fun removeEventSync() {
-        if (deque.size >= config.maxQueueSize) {
+    private fun removeRecordSync() {
+        if (deque.size >= spec.maxQueueSize) {
             try {
                 val first: File
                 synchronized(dequeLock) {
                     first = deque.removeFirst()
                 }
                 first.deleteSafely(config)
-                config.logger.log("Queue is full, the oldest event ${first.name} is dropped.")
+                config.logger.log("Queue is full, the oldest ${spec.name} ${first.name} is dropped.")
             } catch (ignored: NoSuchElementException) {
             }
         }
     }
 
     /**
-     * Ensures cached events from disk are loaded into the deque exactly once.
+     * Ensures cached records from disk are loaded into the deque exactly once.
      * Must be called on the executor thread (single-threaded executor, no lock needed).
      */
     private fun ensureCachedEventsLoaded() {
         if (!cachedEventsLoaded) {
             try {
-                loadCachedEvents()
+                loadCachedRecords()
             } catch (e: Throwable) {
-                config.logger.log("Failed to load cached events: $e.")
+                config.logger.log("Failed to load cached ${spec.name}: $e.")
             } finally {
                 cachedEventsLoaded = true
             }
         }
     }
 
-    private fun flushEventSync(
-        event: PostHogEvent,
+    private fun flushRecordSync(
+        record: Record,
         isFatal: Boolean = false,
     ) {
         ensureCachedEventsLoaded()
-        removeEventSync()
-        if (addEventSync(event)) {
+        removeRecordSync()
+        if (addRecordSync(record)) {
             // this is best effort since we dont know if theres
-            // enough time to flush events to the wire
+            // enough time to flush records to the wire
             flushIfOverThreshold(isFatal)
         }
     }
 
-    override fun add(event: PostHogEvent) {
-        if (event.isFatalExceptionEvent()) {
+    override fun add(record: Record) {
+        if (spec.isFatalRecord(record)) {
             executor.submitSyncSafely {
-                flushEventSync(event, true)
+                flushRecordSync(record, true)
             }
         } else {
             executor.executeSafely {
-                flushEventSync(event)
+                flushRecordSync(record)
             }
         }
     }
@@ -161,7 +155,7 @@ public class PostHogQueue(
         if (deque.size >= flushAt) {
             return true
         } else if (deque.size > 0) {
-            // only log if there are events in the queue
+            // only log if there are records in the queue
             config.logger.log("Cannot flush the Queue yet, below the threshold: $flushAt")
         }
         return false
@@ -211,10 +205,10 @@ public class PostHogQueue(
             retryCount++
 
             if (retryCount > config.maxRetries) {
-                config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping events.")
+                config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping ${spec.name}.")
                 retryCount = 0
                 pausedUntil = null
-                dropAllEvents()
+                dropAllRecords()
             } else {
                 retry = true
 
@@ -236,7 +230,7 @@ public class PostHogQueue(
         }
 
         executeWithRetry {
-            batchEvents()
+            batchRecords()
         }
     }
 
@@ -252,17 +246,17 @@ public class PostHogQueue(
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    private fun batchEvents() {
+    private fun batchRecords() {
         val files = takeFiles()
 
-        val events = mutableListOf<PostHogEvent>()
+        val records = mutableListOf<Record>()
         for (file in files) {
             try {
                 val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
                 inputStream.use {
-                    val event = config.serializer.deserialize<PostHogEvent?>(it.reader().buffered())
-                    event?.let { theEvent ->
-                        events.add(theEvent)
+                    val record = spec.decode(it)
+                    record?.let { theRecord ->
+                        records.add(theRecord)
                     } ?: run {
                         deleteFileSafely(file)
                     }
@@ -274,18 +268,15 @@ public class PostHogQueue(
 
         var deleteFiles = true
         try {
-            if (events.isNotEmpty()) {
-                config.logger.log("Flushing ${events.size} events.")
+            if (records.isNotEmpty()) {
+                config.logger.log("Flushing ${records.size} ${spec.name}.")
 
-                when (endpoint) {
-                    PostHogApiEndpoint.BATCH -> api.batch(events)
-                    PostHogApiEndpoint.SNAPSHOT -> api.snapshot(events)
-                }
+                spec.send(records)
 
-                config.logger.log("Flushed ${events.size} events successfully.")
+                config.logger.log("Flushed ${records.size} ${spec.name} successfully.")
             }
         } catch (e: PostHogApiError) {
-            deleteFiles = deleteFilesIfAPIError(e, batchLimits, events.size, config.logger)
+            deleteFiles = deleteFilesIfAPIError(e, batchLimits, records.size, config.logger, spec.isRetriableStatusCode)
 
             // only re-throw if retriable (files kept), so executeWithRetry
             // can track retryCount and apply backoff
@@ -321,7 +312,7 @@ public class PostHogQueue(
         }
 
         executor.executeSafely {
-            // load any cached events from disk before checking the threshold
+            // load any cached records from disk before checking the threshold
             ensureCachedEventsLoaded()
 
             if (!isConnected()) {
@@ -343,7 +334,7 @@ public class PostHogQueue(
 
             executeWithRetry {
                 while (deque.isNotEmpty()) {
-                    batchEvents()
+                    batchRecords()
                 }
             }
         }
@@ -357,7 +348,7 @@ public class PostHogQueue(
         return true
     }
 
-    private fun dropAllEvents() {
+    private fun dropAllRecords() {
         val tempFiles: List<File>
         synchronized(dequeLock) {
             tempFiles = deque.toList()
@@ -394,7 +385,7 @@ public class PostHogQueue(
                         config.logger.log("Queue is flushing.")
                         return@schedule
                     }
-                    // if the timer passes, send pending events, no need to wait for the flushAt threshold
+                    // if the timer passes, send pending records, no need to wait for the flushAt threshold
                     flush()
                 }
             this.timerTask = timerTask
@@ -402,28 +393,28 @@ public class PostHogQueue(
         }
 
         config.networkStatus?.register {
-            config.logger.log("Network is available, flushing queued events.")
+            config.logger.log("Network is available, flushing queued ${spec.name}.")
             flush()
         }
     }
 
     /**
-     * Loads cached event files from disk into the deque so they are sent in order
-     * with any new events added after SDK start.
+     * Loads cached record files from disk into the deque so they are sent in order
+     * with any new records added after SDK start.
      */
-    private fun loadCachedEvents() {
+    private fun loadCachedRecords() {
         val files = loadQueueFilesFromDisk()
         if (files.isEmpty()) return
 
         synchronized(dequeLock) {
-            // prepend cached files before any events already in the deque
-            // so that older events are sent first
+            // prepend cached files before any records already in the deque
+            // so that older records are sent first
             val existingFiles = deque.toList()
             deque.clear()
             deque.addAll(files)
             deque.addAll(existingFiles)
         }
-        config.logger.log("Loaded ${files.size} cached events from disk for $endpoint.")
+        config.logger.log("Loaded ${files.size} cached ${spec.name} from disk.")
     }
 
     private fun loadQueueFilesFromDisk(): List<File> {
@@ -438,7 +429,7 @@ public class PostHogQueue(
             return emptyList()
         }
 
-        // sort by last modified date ascending so events are sent in order
+        // sort by last modified date ascending so records are sent in order
         files.sortBy { file -> file.lastModified() }
         return files
     }
@@ -477,7 +468,7 @@ public class PostHogQueue(
 
     override fun clear() {
         executor.executeSafely {
-            dropAllEvents()
+            dropAllRecords()
         }
     }
 
@@ -510,7 +501,7 @@ internal class BatchLimits(
                 .div(2)
                 .coerceAtLeast(1)
 
-        // keep flushAt <= cap so we don't pile up events larger than a single batch
+        // keep flushAt <= cap so we don't pile up records larger than a single batch
         flushAt =
             (flushAt / 2)
                 .coerceAtMost(cap)
@@ -529,6 +520,7 @@ internal fun deleteFilesIfAPIError(
     batchLimits: BatchLimits,
     actualBatchSize: Int,
     logger: PostHogLogger,
+    isRetriableStatusCode: (Int) -> Boolean = ::isEventsRetriableStatusCode,
 ): Boolean {
     if (e.statusCode < 400) {
         logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
@@ -546,7 +538,7 @@ internal fun deleteFilesIfAPIError(
         return false
     }
     // Transient server errors and rate limiting, retry
-    if (e.statusCode in RETRYABLE_STATUS_CODES) {
+    if (isRetriableStatusCode(e.statusCode)) {
         logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 
         return false
