@@ -1,5 +1,14 @@
 ## Next
 
+## 3.44.2
+
+### Patch Changes
+
+- 27650da: Refactor `PostHogQueue` to be generic on `Record` and introduce `EndpointSpec`
+  for per-endpoint codec, send, retry policy, and runtime knobs. No behavior
+  change for events or session replay; sets up future log-record support without
+  duplicating queue plumbing.
+
 ## 3.44.1
 
 ### Patch Changes
