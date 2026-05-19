@@ -90,8 +90,8 @@ internal class PostHogReplayBufferQueue(
      *
      * Returns the number of events successfully migrated.
      */
-    fun migrateAllTo(targetQueue: PostHogQueueInterface): Int {
-        if (targetQueue !is PostHogQueue) {
+    fun migrateAllTo(targetQueue: PostHogQueueInterface<PostHogEvent>): Int {
+        if (targetQueue !is PostHogQueue<*>) {
             config.logger.log("Replay buffer migration skipped: target queue is not PostHogQueue")
             return 0
         }

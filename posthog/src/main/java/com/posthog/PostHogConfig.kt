@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.errortracking.PostHogErrorTrackingConfig
+import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogContext
@@ -258,8 +259,21 @@ public open class PostHogConfig(
     /**
      * Factory to instantiate a custom queue implementation.
      */
-    public val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface =
-        { config, api, endpoint, storagePrefix, executor -> PostHogQueue(config, api, endpoint, storagePrefix, executor) },
+    public val queueProvider: (
+        PostHogConfig,
+        PostHogApi,
+        PostHogApiEndpoint,
+        String?,
+        ExecutorService,
+    ) -> PostHogQueueInterface<PostHogEvent> =
+        { config, api, endpoint, storagePrefix, executor ->
+            val spec =
+                when (endpoint) {
+                    PostHogApiEndpoint.BATCH -> EndpointSpec.batch(config, api, storagePrefix)
+                    PostHogApiEndpoint.SNAPSHOT -> EndpointSpec.snapshot(config, api, storagePrefix)
+                }
+            PostHogQueue(config, spec, executor)
+        },
     /**
      * Configuration for PostHog Error Tracking feature.
      */

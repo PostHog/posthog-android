@@ -3,6 +3,7 @@ package com.posthog.android
 import com.posthog.PostHogConfig
 import com.posthog.android.replay.PostHogReplayQueue
 import com.posthog.android.replay.PostHogSessionReplayConfig
+import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogQueue
 
@@ -26,7 +27,12 @@ public open class PostHogAndroidConfig
             apiKey = apiKey,
             host = host,
             queueProvider = { config, api, endpoint, storagePrefix, executor ->
-                val defaultQueue = PostHogQueue(config, api, endpoint, storagePrefix, executor)
+                val spec =
+                    when (endpoint) {
+                        PostHogApiEndpoint.BATCH -> EndpointSpec.batch(config, api, storagePrefix)
+                        PostHogApiEndpoint.SNAPSHOT -> EndpointSpec.snapshot(config, api, storagePrefix)
+                    }
+                val defaultQueue = PostHogQueue(config, spec, executor)
                 if (endpoint == PostHogApiEndpoint.SNAPSHOT) {
                     val replayQueue = PostHogReplayQueue(config, defaultQueue, storagePrefix, executor)
                     (config as? PostHogAndroidConfig)?.replayQueueHolder = replayQueue
