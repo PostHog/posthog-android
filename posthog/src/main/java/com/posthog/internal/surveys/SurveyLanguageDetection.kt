@@ -44,13 +44,13 @@ public fun <T> findBestTranslationMatch(
     if (translations.isNullOrEmpty() || targetLanguage.isNullOrBlank()) return null
 
     val normalizedTarget = targetLanguage.lowercase()
+    val findKey = { target: String -> translations.keys.firstOrNull { it.lowercase() == target } }
 
-    translations.keys.firstOrNull { it.lowercase() == normalizedTarget }?.let { return it }
+    findKey(normalizedTarget)?.let { return it }
 
     val hyphenIndex = normalizedTarget.indexOf('-')
     if (hyphenIndex > 0) {
-        val base = normalizedTarget.substring(0, hyphenIndex)
-        translations.keys.firstOrNull { it.lowercase() == base }?.let { return it }
+        findKey(normalizedTarget.substring(0, hyphenIndex))?.let { return it }
     }
 
     return null
