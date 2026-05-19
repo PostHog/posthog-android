@@ -1092,7 +1092,8 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun getPersonPropertiesForFlags(): Map<String, Any> {
+    @PostHogInternal
+    public fun getPersonPropertiesForFlags(): Map<String, Any> {
         synchronized(personPropertiesForFlagsLock) {
             val properties = mutableMapOf<String, Any>()
 

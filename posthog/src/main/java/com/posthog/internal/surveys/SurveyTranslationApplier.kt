@@ -47,28 +47,31 @@ public fun resolveSurveyTranslations(
     val surveyTranslation = surveyKey?.let { survey.translations?.get(it) }
     val surveyChanged = surveyTranslation != null && surveyTranslationChangesAnything(survey, surveyTranslation)
 
-    val questionMatches: List<Pair<String?, SurveyQuestionTranslation?>> =
+    var firstQuestionKey: String? = null
+    val questionTranslations =
         survey.questions.map { question ->
             val key = findBestTranslationMatch(question.translations, targetLanguage)
             val translation = key?.let { question.translations?.get(it) }
             val changes = translation != null && questionTranslationChangesAnything(question, translation)
-            if (changes) key to translation else null to null
+            if (changes) {
+                if (firstQuestionKey == null) firstQuestionKey = key
+                translation
+            } else {
+                null
+            }
         }
 
-    val anyQuestionChanged = questionMatches.any { it.second != null }
+    if (!surveyChanged && firstQuestionKey == null) return empty
 
-    if (!surveyChanged && !anyQuestionChanged) return empty
-
-    val matchedKey =
-        when {
-            surveyChanged -> surveyKey
-            else -> questionMatches.firstNotNullOfOrNull { it.first }
-        }
+    // Prefer the survey-level key if it actually drove a change; otherwise fall back to
+    // whichever question's translation key did. In the common case both refer to the
+    // same target language and the choice is purely cosmetic.
+    val matchedKey = if (surveyChanged) surveyKey else firstQuestionKey
 
     return ResolvedSurveyTranslations(
         matchedKey = matchedKey,
         survey = if (surveyChanged) surveyTranslation else null,
-        questions = questionMatches.map { it.second },
+        questions = questionTranslations,
     )
 }
 

@@ -865,6 +865,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getFeatureFlagResult (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/FeatureFlagResult;
 	public fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public final fun getFlagDetails (Ljava/lang/String;)Lcom/posthog/internal/FeatureFlag;
+	public final fun getPersonPropertiesForFlags ()Ljava/util/Map;
 	public final fun getRecordingMinimumDurationMs ()Ljava/lang/Long;
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
@@ -1367,7 +1368,6 @@ public final class com/posthog/internal/surveys/ResolvedSurveyTranslations {
 public final class com/posthog/internal/surveys/SurveyLanguageDetectionKt {
 	public static final fun detectSurveyLanguage (Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Ljava/lang/String;
 	public static final fun findBestTranslationMatch (Ljava/util/Map;Ljava/lang/String;)Ljava/lang/String;
-	public static final fun readPersistedPersonProperties (Lcom/posthog/PostHogConfig;)Ljava/util/Map;
 }
 
 public final class com/posthog/internal/surveys/SurveyTranslationApplierKt {

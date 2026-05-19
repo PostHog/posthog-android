@@ -1,6 +1,5 @@
 package com.posthog.internal.surveys
 
-import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 
 /**
@@ -57,20 +56,4 @@ public fun <T> findBestTranslationMatch(
     return null
 }
 
-/**
- * Reads the persisted person properties dictionary written by `identify()` and
- * `setPersonPropertiesForFlags()`. Returns an empty map when nothing is persisted.
- *
- * NOTE: the storage key here intentionally duplicates the value of the (internal)
- * `PostHogPreferences.PERSON_PROPERTIES_FOR_FLAGS` constant. Keeping it local avoids
- * widening the SDK's internal preference key API surface.
- */
-@PostHogInternal
-public fun readPersistedPersonProperties(config: PostHogConfig): Map<String, Any?> {
-    val raw = config.cachePreferences?.getValue(PERSON_PROPERTIES_FOR_FLAGS_KEY) ?: return emptyMap()
-    @Suppress("UNCHECKED_CAST")
-    return (raw as? Map<String, Any?>) ?: emptyMap()
-}
-
 private const val PERSON_PROPERTY_LANGUAGE = "language"
-private const val PERSON_PROPERTIES_FOR_FLAGS_KEY = "personPropertiesForFlags"

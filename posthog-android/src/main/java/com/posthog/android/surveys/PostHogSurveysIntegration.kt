@@ -14,7 +14,6 @@ import com.posthog.internal.surveys.canActivateRepeatedly
 import com.posthog.internal.surveys.detectSurveyLanguage
 import com.posthog.internal.surveys.hasEvents
 import com.posthog.internal.surveys.hasWaitPeriodPassed
-import com.posthog.internal.surveys.readPersistedPersonProperties
 import com.posthog.internal.surveys.resolveSurveyTranslations
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
@@ -30,6 +29,7 @@ import com.posthog.surveys.SurveyMatchType
 import com.posthog.surveys.SurveyPropertyFilter
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyQuestionBranching
+import com.posthog.surveys.SurveyQuestionTranslation
 import com.posthog.surveys.SurveyType
 import java.util.Date
 import java.util.Locale
@@ -591,20 +591,15 @@ public class PostHogSurveysIntegration(
     // Active survey tracking
     private var activeSurvey: Survey? = null
     private var activeSurveyLanguage: String? = null
-    private var activeSurveyQuestionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>? = null
+    private var activeSurveyQuestionTranslations: List<SurveyQuestionTranslation?>? = null
 
     // Lifecycle management
     private var isStarted: Boolean = false
 
     private fun resolveDisplayLanguage(): String? {
         val override = config.surveysConfig.overrideDisplayLanguage
-        val personProperties = readPersistedPersonProperties(config)
-        val deviceLocale =
-            try {
-                Locale.getDefault().toLanguageTag()
-            } catch (_: Throwable) {
-                null
-            }
+        val personProperties = config.remoteConfigHolder?.getPersonPropertiesForFlags()
+        val deviceLocale = Locale.getDefault().toLanguageTag()
         return detectSurveyLanguage(override, personProperties, deviceLocale)
     }
 
@@ -696,7 +691,7 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
         language: String?,
-        questionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>?,
+        questionTranslations: List<SurveyQuestionTranslation?>?,
     ) {
         val additionalProperties =
             buildSurveyResponseProperties(survey, responses, questionTranslations) +
@@ -722,7 +717,7 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
         language: String?,
-        questionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>?,
+        questionTranslations: List<SurveyQuestionTranslation?>?,
     ) {
         val additionalProperties =
             buildSurveyResponseProperties(survey, responses, questionTranslations) +
@@ -745,7 +740,7 @@ public class PostHogSurveysIntegration(
     private fun buildSurveyResponseProperties(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
-        questionTranslations: List<com.posthog.surveys.SurveyQuestionTranslation?>?,
+        questionTranslations: List<SurveyQuestionTranslation?>?,
     ): Map<String, Any> {
         val responsesProperties =
             responses.mapNotNull { (key, response) ->
