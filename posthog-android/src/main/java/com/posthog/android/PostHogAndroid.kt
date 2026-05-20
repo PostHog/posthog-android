@@ -97,9 +97,11 @@ public class PostHogAndroid private constructor() {
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
             val path = File(context.cacheDir, "posthog-disk-queue")
             val replayPath = File(context.cacheDir, "posthog-disk-replay-queue")
+            val logsPath = File(context.cacheDir, "posthog-disk-logs-queue")
             config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
             config.storagePrefix = config.storagePrefix ?: path.absolutePath
             config.replayStoragePrefix = config.replayStoragePrefix ?: replayPath.absolutePath
+            config.logsStoragePrefix = config.logsStoragePrefix ?: logsPath.absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             // Defaults to PostHogDeviceDateProvider when api < 33
