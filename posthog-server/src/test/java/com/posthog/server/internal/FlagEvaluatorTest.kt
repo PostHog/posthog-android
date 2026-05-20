@@ -2309,8 +2309,8 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
-    internal fun testSemverLeadingZeros() {
-        // "01.02.03" should parse as (1, 2, 3)
+    internal fun testSemverLeadingZerosRejected() {
+        // Semver 2.0.0 §2: numeric identifiers MUST NOT include leading zeros.
         val property =
             FlagProperty(
                 key = "version",
@@ -2321,8 +2321,111 @@ internal class FlagEvaluatorTest {
                 dependencyChain = null,
             )
 
-        assertTrue(evaluator.matchProperty(property, mapOf("version" to "01.02.03")))
-        assertTrue(evaluator.matchProperty(property, mapOf("version" to "001.002.003")))
+        val invalidOverrides =
+            listOf("01.2.3", "1.02.3", "1.2.03", "1.07.3", "001.2.3", "01.02.03", "001.002.003")
+        for (override in invalidOverrides) {
+            try {
+                evaluator.matchProperty(property, mapOf("version" to override))
+                assertTrue("Expected InconclusiveMatchException for '$override'", false)
+            } catch (e: InconclusiveMatchException) {
+                assertTrue(e.message?.contains("not a valid semver") ?: false)
+            }
+        }
+    }
+
+    @Test
+    internal fun testSemverLiteralZeroComponentsAllowed() {
+        // A single "0" is a valid numeric identifier; only multi-digit leading zeros are rejected.
+        val property =
+            FlagProperty(
+                key = "version",
+                propertyValue = "0.1.0",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        assertTrue(evaluator.matchProperty(property, mapOf("version" to "0.1.0")))
+
+        val zeroZeroZero =
+            FlagProperty(
+                key = "version",
+                propertyValue = "0.0.0",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        assertTrue(evaluator.matchProperty(zeroZeroZero, mapOf("version" to "0.0.0")))
+
+        val oneZeroZero =
+            FlagProperty(
+                key = "version",
+                propertyValue = "1.0.0",
+                propertyOperator = PropertyOperator.SEMVER_EQ,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        assertTrue(evaluator.matchProperty(oneZeroZero, mapOf("version" to "1.0.0")))
+    }
+
+    @Test
+    internal fun testSemverLeadingZerosRejectedAcrossOperators() {
+        // Leading zeros must be rejected in flag condition values as well as override values,
+        // and for every semver operator (gt, caret, tilde, wildcard).
+        val operatorsWithFlagValue =
+            listOf(
+                PropertyOperator.SEMVER_GT to "1.07.0",
+                PropertyOperator.SEMVER_CARET to "01.2.3",
+                PropertyOperator.SEMVER_TILDE to "1.02.3",
+                PropertyOperator.SEMVER_WILDCARD to "01.*",
+            )
+
+        for ((op, badConditionValue) in operatorsWithFlagValue) {
+            val property =
+                FlagProperty(
+                    key = "version",
+                    propertyValue = badConditionValue,
+                    propertyOperator = op,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            try {
+                evaluator.matchProperty(property, mapOf("version" to "1.2.3"))
+                assertTrue("Expected InconclusiveMatchException for operator $op with '$badConditionValue'", false)
+            } catch (e: InconclusiveMatchException) {
+                assertTrue(e.message?.contains("not a valid semver") ?: false)
+            }
+        }
+
+        // Override values with leading zeros must also be rejected across operators.
+        val operatorsWithGoodConditionValue =
+            listOf(
+                PropertyOperator.SEMVER_GT to "1.0.0",
+                PropertyOperator.SEMVER_CARET to "1.2.3",
+                PropertyOperator.SEMVER_TILDE to "1.2.3",
+                PropertyOperator.SEMVER_WILDCARD to "1.*",
+            )
+
+        for ((op, conditionValue) in operatorsWithGoodConditionValue) {
+            val property =
+                FlagProperty(
+                    key = "version",
+                    propertyValue = conditionValue,
+                    propertyOperator = op,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            try {
+                evaluator.matchProperty(property, mapOf("version" to "1.07.3"))
+                assertTrue("Expected InconclusiveMatchException for operator $op with override '1.07.3'", false)
+            } catch (e: InconclusiveMatchException) {
+                assertTrue(e.message?.contains("not a valid semver") ?: false)
+            }
+        }
     }
 
     @Test
