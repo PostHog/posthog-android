@@ -70,7 +70,8 @@ public sealed interface PostHogInterface {
 
     /**
      * Captures events
-     * @param distinctId the distinctId of the user performing the event
+     * @param distinctId the distinctId of the user performing the event. When blank, the current
+     *   [PostHogRequestContext] distinct ID is used; if none exists, a personless UUID is generated.
      * @param event the event name
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
@@ -96,8 +97,37 @@ public sealed interface PostHogInterface {
     )
 
     /**
+     * Captures an event using the current [PostHogRequestContext] distinct ID, or as a personless
+     * event when no request context identity is active.
+     */
+    @JvmSynthetic
+    public fun capture(
+        event: String,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        groups: Map<String, String>? = null,
+        timestamp: Date? = null,
+        appendFeatureFlags: Boolean = false,
+        flags: PostHogFeatureFlagEvaluations? = null,
+    ) {
+        capture(
+            distinctId = "",
+            event = event,
+            properties = properties,
+            userProperties = userProperties,
+            userPropertiesSetOnce = userPropertiesSetOnce,
+            groups = groups,
+            timestamp = timestamp,
+            appendFeatureFlags = appendFeatureFlags,
+            flags = flags,
+        )
+    }
+
+    /**
      * Captures events
-     * @param distinctId the distinctId
+     * @param distinctId the distinctId. When blank, the current [PostHogRequestContext] distinct ID
+     *   is used; if none exists, a personless UUID is generated.
      * @param event the event name
      * @param options the capture options containing properties, userProperties, userPropertiesSetOnce, groups, and appendFeatureFlags
      */
@@ -120,9 +150,25 @@ public sealed interface PostHogInterface {
     }
 
     /**
+     * Captures an event using the current [PostHogRequestContext] distinct ID, or as a personless
+     * event when no request context identity is active.
+     */
+    public fun capture(
+        event: String,
+        options: PostHogCaptureOptions,
+    ) {
+        capture(
+            "",
+            event,
+            options,
+        )
+    }
+
+    /**
      * Captures events
      * @param event the event name
-     * @param distinctId the distinctId
+     * @param distinctId the distinctId. When blank, the current [PostHogRequestContext] distinct ID
+     *   is used; if none exists, a personless UUID is generated.
      */
     public fun capture(
         distinctId: String,
@@ -138,6 +184,17 @@ public sealed interface PostHogInterface {
             null,
             false,
             null,
+        )
+    }
+
+    /**
+     * Captures an event using the current [PostHogRequestContext] distinct ID, or as a personless
+     * event when no request context identity is active.
+     */
+    public fun capture(event: String) {
+        capture(
+            "",
+            event,
         )
     }
 
@@ -598,6 +655,17 @@ public sealed interface PostHogInterface {
     }
 
     /**
+     * Evaluate every feature flag using the current [PostHogRequestContext] distinct ID and the
+     * supplied options object. Returns an empty snapshot when no request context identity is active.
+     */
+    public fun evaluateFlags(options: PostHogEvaluateFlagsOptions): PostHogFeatureFlagEvaluations {
+        return evaluateFlags(
+            "",
+            options,
+        )
+    }
+
+    /**
      * Evaluate every feature flag for [distinctId] using default options.
      */
     public fun evaluateFlags(distinctId: String): PostHogFeatureFlagEvaluations {
@@ -610,6 +678,14 @@ public sealed interface PostHogInterface {
             onlyEvaluateLocally = false,
             disableGeoip = false,
         )
+    }
+
+    /**
+     * Evaluate every feature flag using the current [PostHogRequestContext] distinct ID. Returns an
+     * empty snapshot when no request context identity is active.
+     */
+    public fun evaluateFlags(): PostHogFeatureFlagEvaluations {
+        return evaluateFlags("")
     }
 
     /**

@@ -208,6 +208,69 @@ postHog.capture(
 
 When `appendFeatureFlags` is `true`, the SDK will fetch feature flags for the user (or use locally evaluated flags if local evaluation is enabled) and include them in the event properties.
 
+### Frontend-to-backend request context
+
+If your server handles requests from a frontend that sends PostHog tracing headers, wrap request handling in a request context. Captures inside the scope can omit `distinctId`; the SDK uses the context distinct ID, falls back to a generated personless UUID when missing, and adds `$session_id` plus any request metadata unless explicitly overridden.
+
+#### Kotlin
+
+```kotlin
+val context = PostHogRequestContext.fromHeaders(
+    headers = mapOf(
+        "X-PostHog-Distinct-Id" to requestDistinctIdHeader,
+        "X-PostHog-Session-Id" to requestSessionIdHeader,
+    ),
+    properties = mapOf(
+        "\$current_url" to currentUrlWithoutSecrets,
+        "\$request_method" to method,
+        "\$request_path" to path,
+        "\$user_agent" to userAgent,
+        "\$ip" to clientIp,
+    ),
+)
+
+PostHogRequestContext.beginScope(context, fresh = true).use {
+    postHog.capture("backend_event")
+    postHog.captureException(error)
+
+    // Uses context distinctId when omitted
+    val flags = postHog.evaluateFlags()
+
+    // Same, with request-scoped options
+    val scopedFlags = postHog.evaluateFlags(
+        PostHogEvaluateFlagsOptions.builder()
+            .flagKeys(listOf("new-checkout"))
+            .build()
+    )
+}
+```
+
+#### Java
+
+```java
+Map<String, Object> properties = new HashMap<>();
+properties.put("$request_path", path);
+properties.put("$request_method", method);
+
+PostHogRequestContextData context = PostHogRequestContext.fromHeaders(headers, true, properties);
+try (PostHogRequestContext.Scope ignored = PostHogRequestContext.beginScope(context, true)) {
+    postHog.capture("backend_event");
+    postHog.captureException(error);
+
+    // Uses context distinctId when omitted
+    PostHogFeatureFlagEvaluations flags = postHog.evaluateFlags();
+
+    // Same, with request-scoped options
+    PostHogFeatureFlagEvaluations scopedFlags = postHog.evaluateFlags(
+        PostHogEvaluateFlagsOptions.builder()
+            .flagKeys(Arrays.asList("new-checkout"))
+            .build()
+    );
+}
+```
+
+Use `PostHogRequestContext.fromHeaders(headers, false, properties)` to ignore client-supplied tracing headers while still attaching request metadata. Explicit `distinctId` and explicit `$session_id` values passed to `capture` always override request context. Header values are trimmed, control characters are removed, empty values are ignored, and long values are capped.
+
 ### Single-Call Flag Evaluation: `evaluateFlags()`
 
 When you need to read several flags for the same user, call `evaluateFlags()` once and pass the resulting snapshot around. The snapshot answers `isEnabled` / `getFlag` / `getFlagPayload` from memory, dedups `$feature_flag_called` events per flag, and can be attached to a `capture()` call so the event is enriched without making another `/flags` request.
