@@ -1,6 +1,8 @@
 package com.posthog.internal.logs
 
+import com.posthog.internal.formatISO8601Date
 import com.posthog.logs.PostHogLogRecord
+import java.util.Date
 
 /**
  * OpenTelemetry / OTLP-JSON serialization for log records.
@@ -42,6 +44,7 @@ internal object PostHogLogsOTLP {
                 }
                 mapOf("kvlistValue" to mapOf("values" to toKeyValueList(safe)))
             }
+            is Date -> mapOf("stringValue" to formatISO8601Date(value))
             // Last resort: stringify so the user gets something rather than a
             // silently dropped attribute.
             else -> mapOf("stringValue" to value.toString())
@@ -103,10 +106,6 @@ internal object PostHogLogsOTLP {
      * Layers SDK-managed resource attributes (`telemetry.sdk.name`,
      * `telemetry.sdk.version`) on top of the user-supplied
      * `resourceAttributes` so the SDK identification can't be shadowed.
-     *
-     * Other resource attributes (`service.name`, `os.*`,
-     * `deployment.environment`) are populated by the caller through
-     * `resourceAttributes` once a logs config / context bridge exists.
      */
     fun buildResourceAttributes(
         userResourceAttributes: Map<String, Any>,

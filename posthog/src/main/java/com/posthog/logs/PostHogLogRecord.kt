@@ -1,5 +1,8 @@
 package com.posthog.logs
 
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
+
 /** A captured log entry queued for delivery to PostHog's logs ingestion. */
 internal data class PostHogLogRecord(
     val body: String,
@@ -74,6 +77,13 @@ internal data class PostHogLogRecord(
             )
         }
 
-        internal fun nanosNow(): String = (System.currentTimeMillis() * 1_000_000L).toString()
+        /**
+         * Default timestamp source. Production capture should call this with
+         * `config.dateProvider` so tests using `FakePostHogDateProvider` can
+         * drive log timestamps deterministically; the no-arg default falls
+         * back to the device clock for callers without an SDK instance.
+         */
+        internal fun nanosNow(dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()): String =
+            (dateProvider.currentDate().time * 1_000_000L).toString()
     }
 }

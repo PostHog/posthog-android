@@ -3,6 +3,7 @@ package com.posthog.internal.logs
 import com.posthog.logs.PostHogLogRecord
 import com.posthog.logs.PostHogLogSeverity
 import java.math.BigInteger
+import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -214,6 +215,13 @@ internal class PostHogLogsOTLPTest {
         assertEquals("abc", out["traceId"])
         assertEquals("def", out["spanId"])
         assertEquals(1, out["flags"])
+    }
+
+    @Test
+    fun `toAnyValue encodes Date as ISO8601 stringValue`() {
+        val epoch = Date(0L)
+        val result = PostHogLogsOTLP.toAnyValue(epoch)
+        assertEquals(mapOf("stringValue" to "1970-01-01T00:00:00.000Z"), result)
     }
 
     @Test

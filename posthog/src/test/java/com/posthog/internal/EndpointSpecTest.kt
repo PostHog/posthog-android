@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
+import com.posthog.TestPostHogContext
 import com.posthog.awaitExecution
 import com.posthog.generateEvent
 import com.posthog.mockHttp
@@ -251,6 +252,66 @@ internal class EndpointSpecTest {
         assertEquals(false, isLogsRetriableStatusCode(400))
         assertEquals(false, isLogsRetriableStatusCode(404))
         assertEquals(false, isLogsRetriableStatusCode(600))
+    }
+
+    @Test
+    fun `logs factory wires os name and version from PostHogContext into resource attributes`() {
+        // TestPostHogContext supplies $os_name = "Android" and $os_version = "13".
+        // The logs factory should translate those into OTLP os.name / os.version
+        // on the wire so log payloads carry device context without needing
+        // PostHogLogsConfig (lands in the public-capture PR).
+        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val config =
+            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+                this.storagePrefix = storagePrefix
+                this.flushAt = 1
+                this.context = TestPostHogContext()
+            }
+        val api = PostHogApi(config)
+        val spec = EndpointSpec.logs(config, api, storagePrefix)
+        val queue = PostHogQueue(config, spec, executor)
+
+        queue.add(com.posthog.logs.PostHogLogRecord(body = "ctx"))
+
+        executor.shutdownAndAwaitTermination()
+
+        val unzipped = http.takeRequest().body.unGzip()
+        assertTrue(unzipped.contains("\"key\":\"os.name\""), "os.name missing: $unzipped")
+        assertTrue(unzipped.contains("\"stringValue\":\"Android\""), "os.name=Android missing: $unzipped")
+        assertTrue(unzipped.contains("\"key\":\"os.version\""), "os.version missing: $unzipped")
+        assertTrue(unzipped.contains("\"stringValue\":\"13\""), "os.version=13 missing: $unzipped")
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `logs factory omits os attributes when PostHogContext is null`() {
+        // Pure-JVM consumers without the Android overlay have config.context == null.
+        // The factory must not crash and must not emit os.* keys.
+        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val config =
+            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+                this.storagePrefix = storagePrefix
+                this.flushAt = 1
+                // context intentionally not set (null)
+            }
+        val api = PostHogApi(config)
+        val spec = EndpointSpec.logs(config, api, storagePrefix)
+        val queue = PostHogQueue(config, spec, executor)
+
+        queue.add(com.posthog.logs.PostHogLogRecord(body = "no-ctx"))
+
+        executor.shutdownAndAwaitTermination()
+
+        val unzipped = http.takeRequest().body.unGzip()
+        assertEquals(false, unzipped.contains("\"os.name\""), "os.name should be absent: $unzipped")
+        assertEquals(false, unzipped.contains("\"os.version\""), "os.version should be absent: $unzipped")
+
+        http.shutdown()
     }
 
     @Test

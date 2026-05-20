@@ -103,8 +103,12 @@ public class EndpointSpec<Record> internal constructor(
             api: PostHogApi,
             storagePrefix: String?,
             resourceAttributes: Map<String, Any> = emptyMap(),
-        ): EndpointSpec<PostHogLogRecord> =
-            EndpointSpec(
+        ): EndpointSpec<PostHogLogRecord> {
+            // Capture `os.*` from PostHogContext once at factory time. SDK-managed
+            // keys (telemetry.sdk.*) are layered on inside PostHogLogsOTLP; this
+            // overlay carries Android-side context.
+            val mergedResourceAttributes = mergeOsResourceAttributes(resourceAttributes, config.context)
+            return EndpointSpec(
                 recordsLabel = "logs",
                 storagePrefix = storagePrefix,
                 initialCap = { it.maxBatchSize },
@@ -119,9 +123,10 @@ public class EndpointSpec<Record> internal constructor(
                     map?.let { PostHogLogRecord.fromStorageMap(it) }
                 },
                 describe = { _ -> "log" },
-                send = { records -> api.sendLogs(records, resourceAttributes) },
+                send = { records -> api.sendLogs(records, mergedResourceAttributes) },
                 isRetriableStatusCode = ::isLogsRetriableStatusCode,
             )
+        }
     }
 }
 
@@ -130,3 +135,26 @@ internal val DEFAULT_EVENTS_RETRYABLE_STATUS_CODES: Set<Int> = setOf(429, 500, 5
 internal fun isEventsRetriableStatusCode(code: Int): Boolean = code in DEFAULT_EVENTS_RETRYABLE_STATUS_CODES
 
 internal fun isLogsRetriableStatusCode(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+
+/**
+ * Layers OpenTelemetry `os.name` / `os.version` resource attributes from
+ * [PostHogContext]'s static context onto the user-supplied resource attributes.
+ * SDK-managed keys win over user-supplied so the wire output reflects the
+ * actual device. Returns the user map unchanged when no context is present
+ * (e.g. pure-JVM `posthog` module without the Android overlay).
+ */
+private fun mergeOsResourceAttributes(
+    userResourceAttributes: Map<String, Any>,
+    context: PostHogContext?,
+): Map<String, Any> {
+    if (context == null) return userResourceAttributes
+    val staticContext = context.getStaticContext()
+    val osName = staticContext["\$os_name"] as? String
+    val osVersion = staticContext["\$os_version"] as? String
+    if (osName == null && osVersion == null) return userResourceAttributes
+    val merged = LinkedHashMap<String, Any>(userResourceAttributes.size + 2)
+    merged.putAll(userResourceAttributes)
+    osName?.let { merged["os.name"] = it }
+    osVersion?.let { merged["os.version"] = it }
+    return merged
+}
