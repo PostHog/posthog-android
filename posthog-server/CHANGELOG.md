@@ -1,5 +1,11 @@
 ## Next
 
+## 2.5.3
+
+### Patch Changes
+
+- b498d90: Reject semver values with leading zeros in local flag evaluation. Per semver 2.0.0 §2, numeric identifiers must not include leading zeros — values like `1.07.3` are not valid semver and should not match targeting conditions. Both override values and flag values are now validated; invalid inputs raise `InconclusiveMatchException` so the condition does not match.
+
 ## 2.5.2
 
 ### Patch Changes
