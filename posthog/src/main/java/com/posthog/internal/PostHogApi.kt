@@ -126,12 +126,7 @@ public class PostHogApi(
         val url = "$theHost/i/v1/logs?token=${config.apiKey}"
         val request =
             makeRequest(url) {
-                // Intentionally NOT calling logRequest(payload, ...) — the
-                // payload carries user log bodies which can contain PII.
-                // Surface count + URL only so debug-mode users see something.
-                if (config.debug) {
-                    config.logger.log("Request POST $url with ${records.size} log record(s)")
-                }
+                logRequest(payload, url)
                 config.serializer.serialize(payload, it.bufferedWriter())
             }
 
