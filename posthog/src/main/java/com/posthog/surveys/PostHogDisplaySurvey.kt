@@ -23,8 +23,14 @@ public data class PostHogDisplaySurvey(
 ) {
     public companion object {
         /**
-         * When provided, [questionTranslations] is indexed positionally against
-         * [Survey.questions]; `null` entries leave the corresponding question untranslated.
+         * Creates a PostHogDisplaySurvey from a Survey object.
+         *
+         * @param survey The Survey object to convert.
+         * @param surveyTranslation Optional resolved survey-level translation. When
+         *   provided, overrides the survey `name` and `thankYouMessage*` fields.
+         * @param questionTranslations Optional per-question translations, indexed
+         *   positionally against [Survey.questions]. `null` entries leave the
+         *   corresponding question untranslated.
          */
         public fun toDisplaySurvey(
             survey: Survey,

@@ -43,6 +43,13 @@ public data class PostHogDisplaySurveyAppearance(
     val thankYouMessageCloseButtonText: String? = null,
 ) {
     internal companion object {
+        /**
+         * Creates a PostHogDisplaySurveyAppearance from a SurveyAppearance.
+         *
+         * @param appearance The SurveyAppearance object to convert.
+         * @param translation Optional resolved survey-level translation. When present,
+         *   overrides the `thankYouMessage*` fields; field-level fallback applies.
+         */
         internal fun fromSurveyAppearance(
             appearance: SurveyAppearance,
             translation: SurveyTranslation? = null,

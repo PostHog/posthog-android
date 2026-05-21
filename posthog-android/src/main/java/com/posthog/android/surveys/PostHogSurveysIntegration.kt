@@ -266,8 +266,6 @@ public class PostHogSurveysIntegration(
                 synchronized(activeSurveyLock) {
                     if (activeSurvey == null) {
                         activeSurvey = originalSurvey
-                        activeSurveyLanguage = resolvedLanguage
-                        activeSurveyQuestionTranslations = resolvedQuestionTranslations
                         activeSurveyCompleted = false
                         currentSurveyResponses.clear()
                     }
@@ -337,8 +335,6 @@ public class PostHogSurveysIntegration(
                 wasSurveyCompleted = activeSurveyCompleted
 
                 activeSurvey = null
-                activeSurveyLanguage = null
-                activeSurveyQuestionTranslations = null
                 activeSurveyCompleted = false
                 currentSurveyResponses.clear()
             }
@@ -590,8 +586,6 @@ public class PostHogSurveysIntegration(
 
     // Active survey tracking
     private var activeSurvey: Survey? = null
-    private var activeSurveyLanguage: String? = null
-    private var activeSurveyQuestionTranslations: List<SurveyQuestionTranslation?>? = null
 
     // Lifecycle management
     private var isStarted: Boolean = false
@@ -658,8 +652,6 @@ public class PostHogSurveysIntegration(
     private fun clearActiveSurvey() {
         synchronized(activeSurveyLock) {
             activeSurvey = null
-            activeSurveyLanguage = null
-            activeSurveyQuestionTranslations = null
             activeSurveyCompleted = false
             currentSurveyResponses.clear()
         }

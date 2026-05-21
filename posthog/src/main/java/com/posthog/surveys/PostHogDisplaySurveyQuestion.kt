@@ -19,6 +19,14 @@ public open class PostHogDisplaySurveyQuestion(
     public val buttonText: String?,
 ) {
     internal companion object {
+        /**
+         * Creates a display question from a survey question.
+         *
+         * @param question The survey question to convert.
+         * @param translation Optional resolved per-question translation. Field-level
+         *   fallback applies — `null` values defer to the original question.
+         * @return A display question, or `null` if the question type is not supported.
+         */
         internal fun fromSurveyQuestion(
             question: SurveyQuestion,
             translation: SurveyQuestionTranslation? = null,
