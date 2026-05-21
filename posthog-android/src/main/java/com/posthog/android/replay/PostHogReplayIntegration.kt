@@ -190,13 +190,6 @@ public class PostHogReplayIntegration(
             }
         }
 
-    @Volatile
-    private var isOnDrawnCalled: Boolean = false
-
-    private fun onDrawCallback() {
-        isOnDrawnCalled = true
-    }
-
     private fun addView(
         view: View,
         added: Boolean = true,
@@ -219,15 +212,24 @@ public class PostHogReplayIntegration(
                                         mainHandler,
                                         config.dateProvider,
                                         config.sessionReplayConfig.throttleDelayMs,
-                                        ::onDrawCallback,
                                     ) {
                                         if (!isActive() || !isNativeSdk) {
                                             return@onNextDraw
                                         }
 
+                                        // Collect masks on the main thread so they're in sync with PixelCopy pixel data.
+                                        val maskableWidgets =
+                                            if (config.sessionReplayConfig.screenshot && decorView.isAliveAndAttachedToWindow()) {
+                                                val masks = mutableListOf<Rect>()
+                                                findMaskableWidgets(decorView, masks)
+                                                masks
+                                            } else {
+                                                emptyList()
+                                            }
+
                                         executor.submit {
                                             try {
-                                                generateSnapshot(WeakReference(decorView), WeakReference(window))
+                                                generateSnapshot(WeakReference(decorView), WeakReference(window), maskableWidgets)
                                             } catch (e: Throwable) {
                                                 config.logger.log("Session Replay generateSnapshot failed: $e.")
                                             }
@@ -448,7 +450,6 @@ public class PostHogReplayIntegration(
             }
 
             isSessionReplayActive = false
-            isOnDrawnCalled = false
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -477,6 +478,7 @@ public class PostHogReplayIntegration(
     private fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
+        maskableWidgets: List<Rect> = emptyList(),
     ) {
         // Early bail if stopped and this is processing previous generateSnapshot() from executor.submit
         if (!isActive()) return
@@ -494,6 +496,7 @@ public class PostHogReplayIntegration(
             if (config.sessionReplayConfig.screenshot) {
                 view.toScreenshotWireframe(
                     window,
+                    maskableWidgets,
                 ) ?: return
             } else {
                 view.toWireframe() ?: return
@@ -754,12 +757,12 @@ public class PostHogReplayIntegration(
         view: View,
         maskableWidgets: MutableList<Rect>,
         visitedViews: MutableSet<Int> = mutableSetOf(),
-    ): Boolean {
+    ) {
         val viewId = System.identityHashCode(view)
 
         // Check for cycles to prevent stack overflow
         if (viewId in visitedViews) {
-            return true
+            return
         }
         visitedViews.add(viewId)
 
@@ -836,25 +839,15 @@ public class PostHogReplayIntegration(
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
-                if (isOnDrawnCalled) {
-                    config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                    return false
-                }
-
                 val viewChild = view.getChildAt(i) ?: continue
 
                 if (!viewChild.isVisible()) {
                     continue
                 }
 
-                if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
-                    // do not continue if the screen has changed
-                    return false
-                }
+                findMaskableWidgets(viewChild, maskableWidgets, visitedViews)
             }
         }
-
-        return true
     }
 
     private fun findMaskableComposeWidgets(
@@ -962,7 +955,10 @@ public class PostHogReplayIntegration(
 
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
-    private fun View.toScreenshotWireframe(window: Window): RRWireframe? {
+    private fun View.toScreenshotWireframe(
+        window: Window,
+        maskableWidgets: List<Rect>,
+    ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
             return null
@@ -995,60 +991,35 @@ public class PostHogReplayIntegration(
         var callbackCompleted = false
 
         try {
-            // reset the isOnDrawnCalled since we are about to take a screenshot
-            isOnDrawnCalled = false
-
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
                     if (copyResult != PixelCopy.SUCCESS) {
                         config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                         success = false
                     } else {
-                        if (!isOnDrawnCalled) {
-                            val maskableWidgets = mutableListOf<Rect>()
-
-                            if (findMaskableWidgets(view, maskableWidgets)) {
-                                if (!bitmap.isValid()) {
-                                    config.logger.log("Session Replay Bitmap is invalid.")
-                                    success = false
-                                    return@request
-                                }
-
-                                val canvas =
-                                    try {
-                                        Canvas(bitmap)
-                                    } catch (e: Throwable) {
-                                        config.logger.log("Session Replay Canvas creation failed: $e.")
-                                        success = false
-                                        return@request
-                                    }
-
-                                maskableWidgets.forEach {
-                                    if (isOnDrawnCalled) {
-                                        config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                                        success = false
-                                        return@forEach
-                                    }
-                                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
-                                }
-                            } else {
-                                config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                                success = false
-                            }
-                        } else {
-                            config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                            // if isOnDrawnCalled is true, it means that the view has already been drawn
-                            // again, so we don't need to draw the maskable widgets otherwise
-                            // they might be out of sync (leaking possible PII)
+                        if (!bitmap.isValid()) {
+                            config.logger.log("Session Replay Bitmap is invalid.")
                             success = false
+                            return@request
+                        }
+
+                        val canvas =
+                            try {
+                                Canvas(bitmap)
+                            } catch (e: Throwable) {
+                                config.logger.log("Session Replay Canvas creation failed: $e.")
+                                success = false
+                                return@request
+                            }
+
+                        maskableWidgets.forEach {
+                            canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
                         }
                     }
                 } catch (e: Throwable) {
                     config.logger.log("Session Replay PixelCopy failed: $e.")
                     success = false
                 } finally {
-                    // reset the isOnDrawnCalled since we've taken the screenshot
-                    isOnDrawnCalled = false
                     callbackCompleted = true
                     latch.countDown()
                 }
@@ -1070,7 +1041,6 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
-            isOnDrawnCalled = false
             // Only recycle the bitmap if the callback has completed.
             // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
             // on another thread; recycling it now would cause a native SIGSEGV.
@@ -1659,7 +1629,6 @@ public class PostHogReplayIntegration(
 
     override fun stop() {
         isSessionReplayActive = false
-        isOnDrawnCalled = false
     }
 
     override fun isActive(): Boolean {

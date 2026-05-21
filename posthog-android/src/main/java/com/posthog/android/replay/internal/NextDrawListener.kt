@@ -12,13 +12,11 @@ internal class NextDrawListener(
     mainHandler: MainHandler,
     dateProvider: PostHogDateProvider,
     throttleDelayMs: Long,
-    private val onDrawCallback: () -> Unit,
     private val onDrawThrottlerCallback: () -> Unit,
 ) : ViewTreeObserver.OnDrawListener {
     private val throttler = Throttler(mainHandler, dateProvider, throttleDelayMs)
 
     override fun onDraw() {
-        onDrawCallback()
         throttler.throttle {
             onDrawThrottlerCallback()
         }
@@ -36,11 +34,10 @@ internal class NextDrawListener(
             mainHandler: MainHandler,
             dateProvider: PostHogDateProvider,
             throttleDelayMs: Long,
-            onDrawCallback: () -> Unit,
             onDrawThrottlerCallback: () -> Unit,
         ): NextDrawListener {
             val nextDrawListener =
-                NextDrawListener(this, mainHandler, dateProvider, throttleDelayMs, onDrawCallback, onDrawThrottlerCallback)
+                NextDrawListener(this, mainHandler, dateProvider, throttleDelayMs, onDrawThrottlerCallback)
             nextDrawListener.safelyRegisterForNextDraw()
             return nextDrawListener
         }
