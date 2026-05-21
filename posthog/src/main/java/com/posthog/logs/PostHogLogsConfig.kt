@@ -238,12 +238,13 @@ public class PostHogLogsConfig {
         }
         var current: PostHogLogRecord = record
         for (hook in beforeSend) {
-            current = try {
-                hook.run(current) ?: return null
-            } catch (e: Throwable) {
-                onHookError?.invoke(e)
-                return null
-            }
+            current =
+                try {
+                    hook.run(current) ?: return null
+                } catch (e: Throwable) {
+                    onHookError?.invoke(e)
+                    return null
+                }
         }
         if (current.body.isBlank()) return null
         return current
