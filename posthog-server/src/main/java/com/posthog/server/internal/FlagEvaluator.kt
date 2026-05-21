@@ -506,11 +506,28 @@ internal class FlagEvaluator(
             REGEX_SEMVER.matchEntire(cleaned)
                 ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
 
-        val major = match.groupValues[1].toInt()
-        val minor = match.groupValues[2].takeIf { it.isNotEmpty() }?.toInt() ?: 0
-        val patch = match.groupValues[3].takeIf { it.isNotEmpty() }?.toInt() ?: 0
+        val major =
+            parseSemverNumericIdentifier(match.groupValues[1])
+                ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+        val minor =
+            match.groupValues[2].takeIf { it.isNotEmpty() }?.let {
+                parseSemverNumericIdentifier(it)
+                    ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+            } ?: 0
+        val patch =
+            match.groupValues[3].takeIf { it.isNotEmpty() }?.let {
+                parseSemverNumericIdentifier(it)
+                    ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+            } ?: 0
 
         return SemverVersion(major, minor, patch)
+    }
+
+    // Semver 2.0.0 §2: numeric identifiers MUST NOT include leading zeros.
+    private fun parseSemverNumericIdentifier(part: String): Int? {
+        if (part.isEmpty() || !part.all { it.isDigit() }) return null
+        if (part.length > 1 && part[0] == '0') return null
+        return part.toIntOrNull()
     }
 
     /**
@@ -559,7 +576,12 @@ internal class FlagEvaluator(
             }
 
             PropertyOperator.SEMVER_WILDCARD -> {
-                val (lower, upper) = computeWildcardBounds(propertyString)
+                val (lower, upper) =
+                    try {
+                        computeWildcardBounds(propertyString)
+                    } catch (e: InconclusiveMatchException) {
+                        throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
+                    }
                 overrideVersion >= lower && overrideVersion < upper
             }
 
@@ -655,7 +677,7 @@ internal class FlagEvaluator(
         for (part in parts) {
             if (part.isEmpty()) continue
             val num =
-                part.toIntOrNull()
+                parseSemverNumericIdentifier(part)
                     ?: throw InconclusiveMatchException("Invalid wildcard version: '$propertyValue'")
             components.add(num)
         }
