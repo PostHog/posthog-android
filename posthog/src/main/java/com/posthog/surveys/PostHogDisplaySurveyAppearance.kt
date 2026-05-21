@@ -44,12 +44,16 @@ public data class PostHogDisplaySurveyAppearance(
 ) {
     internal companion object {
         /**
-         * Creates a PostHogDisplaySurveyAppearance from a SurveyAppearance object
+         * Creates a PostHogDisplaySurveyAppearance from a SurveyAppearance.
          *
-         * @param appearance The SurveyAppearance object to convert
-         * @return A new PostHogDisplaySurveyAppearance instance
+         * @param appearance The SurveyAppearance object to convert.
+         * @param translation Optional resolved survey-level translation. When present,
+         *   overrides the `thankYouMessage*` fields; field-level fallback applies.
          */
-        internal fun fromSurveyAppearance(appearance: SurveyAppearance): PostHogDisplaySurveyAppearance {
+        internal fun fromSurveyAppearance(
+            appearance: SurveyAppearance,
+            translation: SurveyTranslation? = null,
+        ): PostHogDisplaySurveyAppearance {
             val thankYouContentType =
                 if (appearance.thankYouMessageDescriptionContentType?.value == "html") {
                     PostHogDisplaySurveyTextContentType.HTML
@@ -72,10 +76,10 @@ public data class PostHogDisplaySurveyAppearance(
                 inputTextColor = appearance.inputTextColor,
                 placeholder = appearance.placeholder,
                 displayThankYouMessage = appearance.displayThankYouMessage ?: false,
-                thankYouMessageHeader = appearance.thankYouMessageHeader,
-                thankYouMessageDescription = appearance.thankYouMessageDescription,
+                thankYouMessageHeader = translation?.thankYouMessageHeader ?: appearance.thankYouMessageHeader,
+                thankYouMessageDescription = translation?.thankYouMessageDescription ?: appearance.thankYouMessageDescription,
                 thankYouMessageDescriptionContentType = thankYouContentType,
-                thankYouMessageCloseButtonText = appearance.thankYouMessageCloseButtonText,
+                thankYouMessageCloseButtonText = translation?.thankYouMessageCloseButtonText ?: appearance.thankYouMessageCloseButtonText,
             )
         }
     }
