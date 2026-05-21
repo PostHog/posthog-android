@@ -31,6 +31,8 @@ import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.sortMapRecursively
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.logs.PostHogLogRecord
+import com.posthog.logs.PostHogLogSeverity
+import com.posthog.logs.PostHogLogger
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
@@ -72,6 +74,17 @@ public class PostHog private constructor(
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
     private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
+
+    public override val logger: PostHogLogger = PostHogLogger(::captureLog)
+
+    @Volatile
+    private var lastScreenName: String? = null
+
+    // Logs rate-cap state. Tumbling window: when wall-clock time advances
+    // past windowStartMillis + window, the counter resets to 1.
+    private val logsRateCapLock = Any()
+    private var logsRateCapWindowStartMillis: Long = 0
+    private var logsRateCapWindowCount: Int = 0
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -211,7 +224,7 @@ public class PostHog private constructor(
                 getDeviceId()
 
                 queue.start()
-                // logsQueue.start() — uncomment when the public log() API ships
+                logsQueue.start()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
                     try {
@@ -339,6 +352,7 @@ public class PostHog private constructor(
                 logsQueue?.stop()
 
                 featureFlagsCalled.clear()
+                lastScreenName = null
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
 
@@ -622,6 +636,81 @@ public class PostHog private constructor(
         }
     }
 
+    /**
+     * Internal entry point invoked by [PostHogLogger]. Builds a record from
+     * the call-site arguments + capture-time context (distinctId, sessionId,
+     * screenName, app state, active feature flag keys), runs the `beforeSend`
+     * chain, and enqueues to the logs queue.
+     *
+     * No-ops when the SDK is disabled or opted-out.
+     */
+    internal fun captureLog(
+        message: String,
+        severity: PostHogLogSeverity,
+        attributes: Map<String, Any>?,
+    ) {
+        try {
+            if (!isEnabled()) return
+            val cfg = config ?: return
+            if (cfg.optOut) return
+            if (message.isBlank()) return
+            if (!acquireLogsRateCap(cfg)) return
+
+            // Filter + sort done inside PostHogRemoteConfig's existing lock
+            // to avoid an unnecessary value-map copy on the hot capture path.
+            val featureFlagKeys = remoteConfig?.getActiveFeatureFlagKeys() ?: emptyList()
+
+            val record =
+                PostHogLogRecord(
+                    body = message,
+                    level = severity,
+                    // Defensive copy — caller may reuse the map; serializer
+                    // reads it later on the logs executor thread.
+                    attributes = attributes?.let { LinkedHashMap(it) } ?: emptyMap(),
+                    distinctId = distinctId.takeIf { it.isNotBlank() },
+                    sessionId = PostHogSessionManager.getActiveSessionId()?.toString(),
+                    screenName = lastScreenName,
+                    featureFlagKeys = featureFlagKeys,
+                    appState = if (PostHogSessionManager.isAppInBackgroundSnapshot()) "background" else "foreground",
+                    timeUnixNano = PostHogLogRecord.nanosNow(cfg.dateProvider),
+                )
+
+            val sendable =
+                cfg.logs.runBeforeSend(record) { e ->
+                    cfg.logger.log("Error in beforeSend function: ${e.javaClass.simpleName}")
+                } ?: return
+            logsQueue?.add(sendable)
+        } catch (e: Throwable) {
+            // Only the throwable class — a hook's exception message can embed
+            // user log bodies / attributes (PII).
+            config?.logger?.log("captureLog failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Tumbling-window rate cap for log capture. Returns `true` if the call
+     * is allowed, `false` if the window's budget is exhausted. Non-positive
+     * `rateCapMaxLogs` or `rateCapWindowSeconds` disable the cap.
+     */
+    private fun acquireLogsRateCap(cfg: PostHogConfig): Boolean {
+        val max = cfg.logs.rateCapMaxLogs
+        val windowSeconds = cfg.logs.rateCapWindowSeconds
+        if (max <= 0 || windowSeconds <= 0) return true
+
+        val now = cfg.dateProvider.currentTimeMillis()
+        val windowMillis = windowSeconds * 1000L
+        synchronized(logsRateCapLock) {
+            if (now - logsRateCapWindowStartMillis >= windowMillis) {
+                logsRateCapWindowStartMillis = now
+                logsRateCapWindowCount = 1
+                return true
+            }
+            if (logsRateCapWindowCount >= max) return false
+            logsRateCapWindowCount++
+            return true
+        }
+    }
+
     public override fun optIn() {
         if (!isEnabled()) {
             return
@@ -661,6 +750,9 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return
         }
+
+        // Cache for capture-time context snapshot on log records.
+        this.lastScreenName = screenTitle
 
         val props = mutableMapOf<String, Any>()
         props["\$screen_name"] = screenTitle
@@ -1301,6 +1393,7 @@ public class PostHog private constructor(
         getPreferences().clear(except = except.toList())
         remoteConfig?.clear()
         featureFlagsCalled.clear()
+        lastScreenName = null
         synchronized(cachedPersonPropertiesLock) {
             cachedPersonPropertiesHash = null
         }
@@ -1494,6 +1587,9 @@ public class PostHog private constructor(
         private var defaultSharedInstance = shared
 
         private val apiKeys = mutableSetOf<String>()
+
+        public override val logger: PostHogLogger
+            get() = shared.logger
 
         @PostHogVisibleForTesting
         public fun overrideSharedInstance(postHog: PostHogInterface) {

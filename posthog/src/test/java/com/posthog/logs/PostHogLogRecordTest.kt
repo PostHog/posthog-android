@@ -16,11 +16,27 @@ internal class PostHogLogRecordTest {
     fun `timeUnixNano defaults to current time and observedTimeUnixNano mirrors it`() {
         val before = System.currentTimeMillis() * 1_000_000L
         val record = PostHogLogRecord(body = "hello")
-        val after = System.currentTimeMillis() * 1_000_000L
+        // monotonic bump can put `time` up to N nanoseconds past `after`
+        // where N is the number of in-process calls; tolerate a small margin.
+        val after = (System.currentTimeMillis() * 1_000_000L) + 10_000L
 
         val time = record.timeUnixNano.toLong()
         assertTrue(time in before..after, "timeUnixNano ($time) not in [$before, $after]")
         assertEquals(record.timeUnixNano, record.observedTimeUnixNano)
+    }
+
+    @Test
+    fun `nanosNow is strictly monotonic across rapid calls`() {
+        // Tight loop within a single millisecond would collide on
+        // System.currentTimeMillis * 1_000_000 if not for the monotonic
+        // counter. Guarantees each record gets a unique timeUnixNano.
+        val samples = (1..1000).map { PostHogLogRecord.nanosNow().toLong() }
+        for (i in 1 until samples.size) {
+            assertTrue(
+                samples[i] > samples[i - 1],
+                "non-monotonic at $i: prev=${samples[i - 1]} curr=${samples[i]}",
+            )
+        }
     }
 
     @Test

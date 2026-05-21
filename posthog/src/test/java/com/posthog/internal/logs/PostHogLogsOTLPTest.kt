@@ -205,15 +205,15 @@ internal class PostHogLogsOTLPTest {
         val record =
             PostHogLogRecord(
                 body = "trace",
-                traceId = "abc",
-                spanId = "def",
+                traceId = "0102030405060708090a0b0c0d0e0f10",
+                spanId = "0102030405060708",
                 traceFlags = 1,
                 timeUnixNano = "1",
                 observedTimeUnixNano = "1",
             )
         val out = PostHogLogsOTLP.buildLogRecord(record)
-        assertEquals("abc", out["traceId"])
-        assertEquals("def", out["spanId"])
+        assertEquals("0102030405060708090a0b0c0d0e0f10", out["traceId"])
+        assertEquals("0102030405060708", out["spanId"])
         assertEquals(1, out["flags"])
     }
 

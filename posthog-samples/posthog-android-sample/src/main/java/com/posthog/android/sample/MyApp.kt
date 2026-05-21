@@ -43,6 +43,8 @@ class MyApp : Application() {
                 sessionReplayConfig.screenshot = true
                 surveys = false
                 errorTrackingConfig.autoCapture = false
+                logs.serviceName = "posthog-android-sample"
+                logs.environment = "development"
             }
         PostHogAndroid.setup(this, config)
     }
