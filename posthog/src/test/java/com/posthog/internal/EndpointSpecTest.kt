@@ -269,7 +269,7 @@ internal class EndpointSpecTest {
         val config =
             PostHogConfig(API_KEY, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
-                this.flushAt = 1
+                this.logs.flushAt = 1
                 this.context = TestPostHogContext()
             }
         val api = PostHogApi(config)
@@ -299,7 +299,7 @@ internal class EndpointSpecTest {
         val config =
             PostHogConfig(API_KEY, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
-                this.flushAt = 1
+                this.logs.flushAt = 1
                 // context intentionally not set (null)
             }
         val api = PostHogApi(config)
