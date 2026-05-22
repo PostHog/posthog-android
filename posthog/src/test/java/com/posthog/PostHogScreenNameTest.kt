@@ -114,4 +114,32 @@ internal class PostHogScreenNameTest {
 
         sut.close()
     }
+
+    @Test
+    fun `exception event carries screen_name`() {
+        val sut = getSut()
+
+        sut.screen("Home")
+        sut.captureException(RuntimeException("boom"))
+        queueExecutor.awaitExecution()
+
+        val theEvent = captured.first { it.event == "\$exception" }
+        assertEquals("Home", theEvent.properties!!["\$screen_name"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `snapshot event does not carry screen_name`() {
+        val sut = getSut()
+
+        sut.screen("Home")
+        sut.capture("\$snapshot", DISTINCT_ID, properties = mapOf("\$session_id" to "test-session-id"))
+        queueExecutor.awaitExecution()
+
+        val theEvent = captured.first { it.event == "\$snapshot" }
+        assertFalse(theEvent.properties!!.containsKey("\$screen_name"))
+
+        sut.close()
+    }
 }
