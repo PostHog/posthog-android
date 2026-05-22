@@ -472,8 +472,6 @@ public class PostHog private constructor(
 
             props["\$is_identified"] = isIdentified
             props["\$process_person_profile"] = hasPersonProcessing()
-
-            lastScreenName?.let { props["\$screen_name"] = it }
         }
 
         // Session replay should have the SDK info as well
@@ -502,6 +500,18 @@ public class PostHog private constructor(
 
         properties?.let {
             props.putAll(it)
+        }
+
+        // Stamp $screen_name from the cache only if the caller didn't supply a
+        // meaningful value. Treat caller empty/blank as absent (almost always
+        // accidental) so the cache wins. Runs after putAll so a real caller
+        // override still takes precedence.
+        if (appendSharedProps) {
+            val cachedName = lastScreenName
+            val callerName = (props["\$screen_name"] as? String)?.trim()
+            if (!cachedName.isNullOrEmpty() && callerName.isNullOrEmpty()) {
+                props["\$screen_name"] = cachedName
+            }
         }
 
         // only Session replay needs distinct_id also in the props

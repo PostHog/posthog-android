@@ -102,6 +102,32 @@ internal class PostHogScreenNameTest {
     }
 
     @Test
+    fun `caller-supplied empty screen_name falls back to cached value`() {
+        val sut = getSut()
+
+        sut.screen("Home")
+        sut.captureAndAwait(EVENT, properties = mapOf("\$screen_name" to ""))
+
+        val theEvent = captured.first { it.event == EVENT }
+        assertEquals("Home", theEvent.properties!!["\$screen_name"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `caller-supplied whitespace screen_name falls back to cached value`() {
+        val sut = getSut()
+
+        sut.screen("Home")
+        sut.captureAndAwait(EVENT, properties = mapOf("\$screen_name" to "   "))
+
+        val theEvent = captured.first { it.event == EVENT }
+        assertEquals("Home", theEvent.properties!!["\$screen_name"])
+
+        sut.close()
+    }
+
+    @Test
     fun `reset clears screen_name from subsequent events`() {
         val sut = getSut()
 
