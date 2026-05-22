@@ -472,6 +472,8 @@ public class PostHog private constructor(
 
             props["\$is_identified"] = isIdentified
             props["\$process_person_profile"] = hasPersonProcessing()
+
+            lastScreenName?.let { props["\$screen_name"] = it }
         }
 
         // Session replay should have the SDK info as well
@@ -743,6 +745,12 @@ public class PostHog private constructor(
         return config?.optOut ?: true
     }
 
+    /**
+     * Captures a `$screen` event and caches [screenTitle] so it is automatically
+     * attached as `$screen_name` to every subsequent event (until [reset] or
+     * [close]). Callers can override per-event by passing `$screen_name` in
+     * `properties` on the next [capture] call.
+     */
     public override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
@@ -751,7 +759,6 @@ public class PostHog private constructor(
             return
         }
 
-        // Cache for capture-time context snapshot on log records.
         this.lastScreenName = screenTitle
 
         val props = mutableMapOf<String, Any>()

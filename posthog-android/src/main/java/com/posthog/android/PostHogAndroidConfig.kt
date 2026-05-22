@@ -12,7 +12,9 @@ import com.posthog.internal.PostHogQueue
  * @property apiKey the PostHog API Key
  * @property captureApplicationLifecycleEvents captures lifecycle events such as app installed, app updated, app opened and backgrounded
  * @property captureDeepLinks captures deep links events
- * @property captureScreenViews captures screen views events
+ * @property captureScreenViews captures screen views events. When enabled, `$screen_name`
+ * is also automatically attached to subsequent events. Disable this and avoid calling
+ * `PostHog.screen()` to opt out of `$screen_name` stamping entirely.
  */
 public open class PostHogAndroidConfig
     @JvmOverloads
