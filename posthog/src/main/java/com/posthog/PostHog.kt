@@ -746,10 +746,16 @@ public class PostHog private constructor(
     }
 
     /**
-     * Captures a `$screen` event and caches [screenTitle] so it is automatically
-     * attached as `$screen_name` to every subsequent event (until [reset] or
-     * [close]). Callers can override per-event by passing `$screen_name` in
-     * `properties` on the next [capture] call.
+     * Records a screen view by capturing a `$screen` event with [screenTitle].
+     *
+     * The title is also cached and automatically attached as `$screen_name` to
+     * every subsequent event (until [reset] or [close] clears it).
+     *
+     * To override the auto-attached value on a specific event, pass `$screen_name`
+     * in that event's `properties` on the next [capture] call.
+     *
+     * @param screenTitle the screen name to record
+     * @param properties additional properties to attach to this `$screen` event
      */
     public override fun screen(
         screenTitle: String,
