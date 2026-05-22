@@ -1,0 +1,5 @@
+{
+    "transitiveReExports": {
+        "posthog": ["posthog-android", "posthog-server"]
+    }
+}

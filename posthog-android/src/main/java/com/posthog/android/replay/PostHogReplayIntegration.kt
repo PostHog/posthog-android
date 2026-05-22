@@ -193,8 +193,18 @@ public class PostHogReplayIntegration(
     @Volatile
     private var isOnDrawnCalled: Boolean = false
 
-    private fun onDrawCallback() {
+    // True when the draw was triggered purely by an in-progress animation (e.g. Lottie) rather
+    // than a structural layout change. When set, the isOnDrawnCalled guard is relaxed so that
+    // continuously-animating screens can still be captured (mask geometry remains valid).
+    @Volatile
+    private var isOnlyAnimationRedraw: Boolean = false
+
+    private fun onDrawCallback(decorView: View) {
         isOnDrawnCalled = true
+        // hasTransientState() propagates up from any descendant using a ValueAnimator (e.g. Lottie),
+        // indicating pixel-only changes with stable view geometry. We additionally exclude legacy
+        // view.animation which mutates the transformation matrix and can shift mask positions.
+        isOnlyAnimationRedraw = decorView.hasTransientState() && !decorView.isAnimationRunning()
     }
 
     private fun addView(
@@ -219,7 +229,7 @@ public class PostHogReplayIntegration(
                                         mainHandler,
                                         config.dateProvider,
                                         config.sessionReplayConfig.throttleDelayMs,
-                                        ::onDrawCallback,
+                                        { onDrawCallback(decorView) },
                                     ) {
                                         if (!isActive() || !isNativeSdk) {
                                             return@onNextDraw
@@ -449,6 +459,7 @@ public class PostHogReplayIntegration(
 
             isSessionReplayActive = false
             isOnDrawnCalled = false
+            isOnlyAnimationRedraw = false
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -836,7 +847,7 @@ public class PostHogReplayIntegration(
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
-                if (isOnDrawnCalled) {
+                if (isOnDrawnCalled && !isOnlyAnimationRedraw) {
                     config.logger.log("Session Replay screenshot discarded due to screen changes.")
                     return false
                 }
@@ -995,8 +1006,9 @@ public class PostHogReplayIntegration(
         var callbackCompleted = false
 
         try {
-            // reset the isOnDrawnCalled since we are about to take a screenshot
+            // reset the draw-dirty flags since we are about to take a screenshot
             isOnDrawnCalled = false
+            isOnlyAnimationRedraw = false
 
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
@@ -1004,7 +1016,10 @@ public class PostHogReplayIntegration(
                         config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                         success = false
                     } else {
-                        if (!isOnDrawnCalled) {
+                        // Allow capture if the screen hasn't redrawn, or if the only redraws
+                        // since PixelCopy started were animation frames (e.g. Lottie). In the
+                        // animation case, view geometry is stable so mask positions are still valid.
+                        if (!isOnDrawnCalled || isOnlyAnimationRedraw) {
                             val maskableWidgets = mutableListOf<Rect>()
 
                             if (findMaskableWidgets(view, maskableWidgets)) {
@@ -1024,7 +1039,7 @@ public class PostHogReplayIntegration(
                                     }
 
                                 maskableWidgets.forEach {
-                                    if (isOnDrawnCalled) {
+                                    if (isOnDrawnCalled && !isOnlyAnimationRedraw) {
                                         config.logger.log("Session Replay screenshot discarded due to screen changes.")
                                         success = false
                                         return@forEach
@@ -1037,9 +1052,8 @@ public class PostHogReplayIntegration(
                             }
                         } else {
                             config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                            // if isOnDrawnCalled is true, it means that the view has already been drawn
-                            // again, so we don't need to draw the maskable widgets otherwise
-                            // they might be out of sync (leaking possible PII)
+                            // isOnDrawnCalled is true and it was a structural change (not just an
+                            // animation frame), so masks may be out of sync — discard to avoid PII leak.
                             success = false
                         }
                     }
@@ -1047,8 +1061,9 @@ public class PostHogReplayIntegration(
                     config.logger.log("Session Replay PixelCopy failed: $e.")
                     success = false
                 } finally {
-                    // reset the isOnDrawnCalled since we've taken the screenshot
+                    // reset the draw-dirty flags since we've taken the screenshot
                     isOnDrawnCalled = false
+                    isOnlyAnimationRedraw = false
                     callbackCompleted = true
                     latch.countDown()
                 }
@@ -1071,6 +1086,7 @@ public class PostHogReplayIntegration(
             config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
             isOnDrawnCalled = false
+            isOnlyAnimationRedraw = false
             // Only recycle the bitmap if the callback has completed.
             // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
             // on another thread; recycling it now would cause a native SIGSEGV.
@@ -1660,6 +1676,7 @@ public class PostHogReplayIntegration(
     override fun stop() {
         isSessionReplayActive = false
         isOnDrawnCalled = false
+        isOnlyAnimationRedraw = false
     }
 
     override fun isActive(): Boolean {
