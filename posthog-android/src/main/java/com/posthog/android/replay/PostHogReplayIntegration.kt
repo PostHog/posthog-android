@@ -201,9 +201,10 @@ public class PostHogReplayIntegration(
 
     private fun onDrawCallback(decorView: View) {
         isOnDrawnCalled = true
-        // hasTransientState() propagates up from any descendant that is actively animating,
-        // so checking the decor view tells us whether the invalidation came from an animation.
-        isOnlyAnimationRedraw = decorView.hasTransientState()
+        // hasTransientState() propagates up from any descendant using a ValueAnimator (e.g. Lottie),
+        // indicating pixel-only changes with stable view geometry. We additionally exclude legacy
+        // view.animation which mutates the transformation matrix and can shift mask positions.
+        isOnlyAnimationRedraw = decorView.hasTransientState() && !decorView.isAnimationRunning()
     }
 
     private fun addView(
