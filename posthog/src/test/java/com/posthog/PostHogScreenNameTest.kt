@@ -142,7 +142,9 @@ internal class PostHogScreenNameTest {
         // Blank screen() calls leave the cache intact at the last useful name.
         val theEvent = captured.first { it.event == EVENT }
         assertEquals("Home", theEvent.properties!!["\$screen_name"])
-        assertFalse(captured.any { it.event == PostHogEventName.SCREEN.event && (it.properties?.get("\$screen_name") as? String).isNullOrBlank() })
+        assertFalse(
+            captured.any { it.event == PostHogEventName.SCREEN.event && (it.properties?.get("\$screen_name") as? String).isNullOrBlank() },
+        )
 
         sut.close()
     }
