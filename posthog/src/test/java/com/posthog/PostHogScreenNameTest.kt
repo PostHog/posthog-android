@@ -102,6 +102,35 @@ internal class PostHogScreenNameTest {
     }
 
     @Test
+    fun `caller-supplied screen_name from posthog-flutter is preserved`() {
+        val sut = getSut()
+
+        sut.screen("AndroidScreen")
+        sut.captureAndAwait(EVENT, properties = mapOf("\$screen_name" to "FlutterHome"))
+
+        val theEvent = captured.first { it.event == EVENT }
+        assertEquals("FlutterHome", theEvent.properties!!["\$screen_name"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `screen with whitespace-padded title is trimmed for cache and event payload`() {
+        val sut = getSut()
+
+        sut.screen("  Home  ")
+        sut.captureAndAwait(EVENT)
+
+        val screenEvent = captured.first { it.event == PostHogEventName.SCREEN.event }
+        assertEquals("Home", screenEvent.properties!!["\$screen_name"])
+
+        val theEvent = captured.first { it.event == EVENT }
+        assertEquals("Home", theEvent.properties!!["\$screen_name"])
+
+        sut.close()
+    }
+
+    @Test
     fun `screen with blank title is dropped and does not touch the cache`() {
         val sut = getSut()
 

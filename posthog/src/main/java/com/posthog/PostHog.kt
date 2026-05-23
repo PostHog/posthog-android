@@ -503,9 +503,10 @@ public class PostHog private constructor(
         }
 
         // Stamp $screen_name from the cache only if the caller didn't supply a
-        // meaningful value. Treat caller empty/blank as absent (almost always
-        // accidental) so the cache wins. Runs after putAll so a real caller
-        // override still takes precedence.
+        // meaningful value. Runs after putAll so a real caller override (incl.
+        // posthog-flutter, which sets $screen_name in properties on capture)
+        // still takes precedence. Treat caller empty/blank as absent (almost
+        // always accidental) so the cache wins.
         if (appendSharedProps) {
             val cachedName = lastScreenName
             val callerName = (props["\$screen_name"] as? String)?.trim()
@@ -775,14 +776,15 @@ public class PostHog private constructor(
             return
         }
 
-        if (screenTitle.isBlank()) {
+        val trimmedTitle = screenTitle.trim()
+        if (trimmedTitle.isEmpty()) {
             return
         }
 
-        this.lastScreenName = screenTitle
+        this.lastScreenName = trimmedTitle
 
         val props = mutableMapOf<String, Any>()
-        props["\$screen_name"] = screenTitle
+        props["\$screen_name"] = trimmedTitle
 
         properties?.let {
             props.putAll(it)
