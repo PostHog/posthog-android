@@ -102,6 +102,23 @@ internal class PostHogScreenNameTest {
     }
 
     @Test
+    fun `screen with blank title is dropped and does not touch the cache`() {
+        val sut = getSut()
+
+        sut.screen("Home")
+        sut.screen("")
+        sut.screen("   ")
+        sut.captureAndAwait(EVENT)
+
+        // Blank screen() calls leave the cache intact at the last useful name.
+        val theEvent = captured.first { it.event == EVENT }
+        assertEquals("Home", theEvent.properties!!["\$screen_name"])
+        assertFalse(captured.any { it.event == PostHogEventName.SCREEN.event && (it.properties?.get("\$screen_name") as? String).isNullOrBlank() })
+
+        sut.close()
+    }
+
+    @Test
     fun `caller-supplied empty screen_name falls back to cached value`() {
         val sut = getSut()
 

@@ -775,6 +775,10 @@ public class PostHog private constructor(
             return
         }
 
+        if (screenTitle.isBlank()) {
+            return
+        }
+
         this.lastScreenName = screenTitle
 
         val props = mutableMapOf<String, Any>()
