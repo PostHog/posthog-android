@@ -261,6 +261,61 @@ internal class PostHogFeatureFlagCalledCacheTest {
     }
 
     @Test
+    fun `same flag and value with different group contexts are tracked separately`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-a")))
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-b")))
+
+        assertEquals(2, cache.size())
+    }
+
+    @Test
+    fun `same flag and value with same group context dedupe`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-a")))
+        assertFalse(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-a")))
+
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `same flag and value with same groups in different key order dedupe`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(
+            cache.add(
+                "user1",
+                "flag1",
+                "value1",
+                linkedMapOf("organization" to "org-a", "team" to "red"),
+            ),
+        )
+        assertFalse(
+            cache.add(
+                "user1",
+                "flag1",
+                "value1",
+                linkedMapOf("team" to "red", "organization" to "org-a"),
+            ),
+        )
+
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `null vs empty vs unset groups all dedupe to no-group bucket`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1"))
+        assertFalse(cache.add("user1", "flag1", "value1", null))
+        assertFalse(cache.add("user1", "flag1", "value1", emptyMap()))
+
+        assertEquals(1, cache.size())
+    }
+
+    @Test
     fun `batch eviction allows cache to grow beyond max before next eviction`() {
         val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
 

@@ -22,14 +22,20 @@ internal class PostHogFeatureFlagCalledCache(
     /**
      * Atomically check if this combination has been seen before, and if not, mark it as seen.
      * Returns true if this is the first time seeing this combination (was added), false if already seen.
+     *
+     * `groups` is canonicalized into a sorted-key representation so group-scoped flags
+     * fire a separate `$feature_flag_called` event for each distinct group context the
+     * same user is evaluated under. Same groups passed in a different insertion order
+     * still dedupe to the same cache entry.
      */
     @Synchronized
     fun add(
         distinctId: String,
         flagKey: String,
         value: Any?,
+        groups: Map<String, String>? = null,
     ): Boolean {
-        val key = FeatureFlagCalledKey(distinctId, flagKey, value)
+        val key = FeatureFlagCalledKey(distinctId, flagKey, value, canonicalGroupsRepr(groups))
 
         val existingNode = cache.get(key)
         if (existingNode != null) {
@@ -121,10 +127,29 @@ internal class PostHogFeatureFlagCalledCache(
 }
 
 /**
- * Cache key combining distinct ID, flag key, and value
+ * Cache key combining distinct ID, flag key, evaluated value, and a canonical
+ * representation of the group context.
  */
 internal data class FeatureFlagCalledKey(
     val distinctId: String,
     val flagKey: String,
     val value: Any?,
+    val groupsRepr: String,
 )
+
+/**
+ * Build a canonical string from the group map so two equal maps with keys
+ * inserted in a different order produce the same dedup key. An empty / null
+ * map returns the empty string so callers that never pass groups keep their
+ * legacy "no groups" dedup behavior.
+ */
+internal fun canonicalGroupsRepr(groups: Map<String, String>?): String {
+    if (groups.isNullOrEmpty()) {
+        return ""
+    }
+    val sb = StringBuilder()
+    for (key in groups.keys.sorted()) {
+        sb.append(key).append('=').append(groups[key]).append(';')
+    }
+    return sb.toString()
+}

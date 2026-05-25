@@ -15,9 +15,10 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                 key: String,
                 value: Any?,
                 properties: Map<String, Any>,
+                groups: Map<String, String>?,
             ) {
                 if (getConfig<com.posthog.PostHogConfig>()?.sendFeatureFlagEvent == false) return
-                this@PostHog.captureFeatureFlagCalledEvent(distinctId, key, value, properties)
+                this@PostHog.captureFeatureFlagCalledEvent(distinctId, key, value, properties, groups)
             }
 
             override fun logWarning(message: String) {
@@ -321,6 +322,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             definitionsLoadedAt = result.definitionsLoadedAt,
             responseError = result.responseError,
             host = evaluationsHost,
+            groups = groups,
         )
     }
 

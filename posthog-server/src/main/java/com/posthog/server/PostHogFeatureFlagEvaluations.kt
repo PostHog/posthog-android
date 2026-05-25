@@ -32,6 +32,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     private val responseError: String?,
     private val host: EvaluationsHost,
     initialAccessed: Set<String> = emptySet(),
+    private val groups: Map<String, String>? = null,
 ) {
     private val flagMap: Map<String, FeatureFlag> = Collections.unmodifiableMap(LinkedHashMap(flagMap))
     private val locallyEvaluated: Map<String, Boolean> = Collections.unmodifiableMap(HashMap(locallyEvaluated))
@@ -158,6 +159,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
             responseError = responseError,
             host = host,
             initialAccessed = emptySet(),
+            groups = groups,
         )
     }
 
@@ -191,7 +193,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
             props["\$feature_flag_error"] = error.joinToString(",")
         }
 
-        host.captureFeatureFlagCalled(distinctId, key, value, props)
+        host.captureFeatureFlagCalled(distinctId, key, value, props, groups)
     }
 
     public companion object {

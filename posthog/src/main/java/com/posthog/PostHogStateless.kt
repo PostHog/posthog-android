@@ -458,7 +458,7 @@ public open class PostHogStateless protected constructor(
             details.reason?.description?.let { props["\$feature_flag_reason"] = it }
         }
 
-        captureFeatureFlagCalledEvent(distinctId, key, value, props)
+        captureFeatureFlagCalledEvent(distinctId, key, value, props, groups)
     }
 
     /**
@@ -467,15 +467,20 @@ public open class PostHogStateless protected constructor(
      * the per-distinct-id dedup and routes through the queue. Both the existing per-flag accessor
      * (after applying its `sendFeatureFlagEvent` override) and the new feature-flag-evaluations
      * snapshot (after checking its own config) funnel through here so dedup stays uniform.
+     *
+     * `groups` is mixed into the dedup key so group-scoped flags fire a separate event for each
+     * group a user is evaluated under, instead of dedup-ing across groups.
      */
     @PostHogInternal
+    @JvmOverloads
     protected fun captureFeatureFlagCalledEvent(
         distinctId: String,
         key: String,
         value: Any?,
         properties: Map<String, Any>,
+        groups: Map<String, String>? = null,
     ) {
-        val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value) ?: false
+        val isNewlySeen = featureFlagsCalled?.add(distinctId, key, value, groups) ?: false
         if (!isNewlySeen) return
 
         val props = mutableMapOf<String, Any>()
@@ -483,7 +488,7 @@ public open class PostHogStateless protected constructor(
         props["\$feature_flag"] = key
         props["\$feature_flag_response"] = value ?: ""
 
-        captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props)
+        captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props, groups = groups)
     }
 
     public override fun getFeatureFlagStateless(

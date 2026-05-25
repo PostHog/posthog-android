@@ -16,6 +16,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         val key: String,
         val value: Any?,
         val properties: Map<String, Any>,
+        val groups: Map<String, String>?,
     )
 
     private class FakeHost : EvaluationsHost {
@@ -27,8 +28,9 @@ internal class PostHogFeatureFlagEvaluationsTest {
             key: String,
             value: Any?,
             properties: Map<String, Any>,
+            groups: Map<String, String>?,
         ) {
-            captures.add(RecordedCall(distinctId, key, value, properties))
+            captures.add(RecordedCall(distinctId, key, value, properties, groups))
         }
 
         override fun logWarning(message: String) {
@@ -62,6 +64,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         evaluatedAt: Long? = 1_700_000_000_000L,
         definitionsLoadedAt: Long? = null,
         responseError: String? = null,
+        groups: Map<String, String>? = null,
     ) = PostHogFeatureFlagEvaluations(
         distinctId = distinctId,
         flagMap = flags,
@@ -71,6 +74,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         definitionsLoadedAt = definitionsLoadedAt,
         responseError = responseError,
         host = host,
+        groups = groups,
     )
 
     @Test
@@ -114,6 +118,23 @@ internal class PostHogFeatureFlagEvaluationsTest {
             "errors_while_computing_flags,flag_missing",
             host.captures.single().properties["\$feature_flag_error"],
         )
+    }
+
+    @Test
+    fun `isEnabled propagates groups to the host so dedup can include group context`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags = mapOf("group-flag" to flag("group-flag", enabled = true)),
+                groups = mapOf("organization" to "org-a"),
+            )
+
+        snapshot.isEnabled("group-flag")
+
+        assertEquals(1, host.captures.size)
+        val call = host.captures.single()
+        assertEquals(mapOf("organization" to "org-a"), call.groups)
     }
 
     @Test
