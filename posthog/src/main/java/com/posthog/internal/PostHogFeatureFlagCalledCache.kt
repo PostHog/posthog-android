@@ -163,7 +163,10 @@ internal fun canonicalGroupsRepr(groups: Map<String, String>?): String {
     return sb.toString()
 }
 
-private fun appendEscaped(sb: StringBuilder, value: String) {
+private fun appendEscaped(
+    sb: StringBuilder,
+    value: String,
+) {
     for (c in value) {
         when (c) {
             '\\', '=', ';' -> sb.append('\\').append(c)
