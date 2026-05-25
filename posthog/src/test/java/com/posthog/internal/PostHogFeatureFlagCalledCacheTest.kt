@@ -305,14 +305,44 @@ internal class PostHogFeatureFlagCalledCacheTest {
     }
 
     @Test
-    fun `null vs empty vs unset groups all dedupe to no-group bucket`() {
+    fun `null and unset groups canonicalize to the same no-group bucket`() {
+        // Independent caches per pair so a returned `false` means the canonical
+        // repr matched, not merely that the prior call inserted the same key.
         val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
 
         assertTrue(cache.add("user1", "flag1", "value1"))
         assertFalse(cache.add("user1", "flag1", "value1", null))
-        assertFalse(cache.add("user1", "flag1", "value1", emptyMap()))
-
         assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `emptyMap and unset groups canonicalize to the same no-group bucket`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1"))
+        assertFalse(cache.add("user1", "flag1", "value1", emptyMap()))
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `null and emptyMap groups canonicalize to the same no-group bucket`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", null))
+        assertFalse(cache.add("user1", "flag1", "value1", emptyMap()))
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `values containing the entry separators dedupe distinctly from synthetic decompositions`() {
+        // Without escaping, mapOf("a" to "b;c=d", "e" to "f") and
+        // mapOf("a" to "b", "c" to "d", "e" to "f") both serialize to the same
+        // `a=b;c=d;e=f;` string. Verify they hit two different cache entries.
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("a" to "b;c=d", "e" to "f")))
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("a" to "b", "c" to "d", "e" to "f")))
+        assertEquals(2, cache.size())
     }
 
     @Test

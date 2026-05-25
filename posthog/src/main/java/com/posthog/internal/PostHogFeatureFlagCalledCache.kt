@@ -142,6 +142,12 @@ internal data class FeatureFlagCalledKey(
  * inserted in a different order produce the same dedup key. An empty / null
  * map returns the empty string so callers that never pass groups keep their
  * legacy "no groups" dedup behavior.
+ *
+ * Keys and values are escaped so that a literal `=`, `;`, or `\` embedded in
+ * either cannot collide with the separators used to join entries. Without
+ * this, e.g. `mapOf("a" to "b;c=d", "e" to "f")` and
+ * `mapOf("a" to "b", "c" to "d", "e" to "f")` would both serialize to
+ * `a=b;c=d;e=f;` and silently dedupe to the same cache entry.
  */
 internal fun canonicalGroupsRepr(groups: Map<String, String>?): String {
     if (groups.isNullOrEmpty()) {
@@ -149,7 +155,19 @@ internal fun canonicalGroupsRepr(groups: Map<String, String>?): String {
     }
     val sb = StringBuilder()
     for (key in groups.keys.sorted()) {
-        sb.append(key).append('=').append(groups[key]).append(';')
+        appendEscaped(sb, key)
+        sb.append('=')
+        appendEscaped(sb, groups[key] ?: "")
+        sb.append(';')
     }
     return sb.toString()
+}
+
+private fun appendEscaped(sb: StringBuilder, value: String) {
+    for (c in value) {
+        when (c) {
+            '\\', '=', ';' -> sb.append('\\').append(c)
+            else -> sb.append(c)
+        }
+    }
 }
