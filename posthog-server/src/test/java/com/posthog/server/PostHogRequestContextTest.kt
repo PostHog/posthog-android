@@ -56,6 +56,21 @@ internal class PostHogRequestContextTest {
     }
 
     @Test
+    fun `null capture distinct id uses request context identity`() {
+        withPostHog { http, postHog ->
+            PostHogRequestContext.beginScope(PostHogRequestContextData(distinctId = "context-user"), fresh = true).use {
+                postHog.capture(null, "null-distinct-event")
+            }
+
+            val request = http.takeRequest(5, TimeUnit.SECONDS)
+            assertNotNull(request)
+            val batch = request.parseBatch()
+            assertEquals("context-user", batch.firstEvent?.get("distinct_id")?.asString)
+            assertFalse(batch.firstEventProperties().containsKey("\$process_person_profile"))
+        }
+    }
+
+    @Test
     fun `explicit capture values override request context`() {
         withPostHog { http, postHog ->
             PostHogRequestContext.beginScope(

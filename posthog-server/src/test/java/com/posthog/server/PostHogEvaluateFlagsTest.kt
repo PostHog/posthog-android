@@ -266,6 +266,39 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `evaluateFlags uses request context distinctId when null`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createFlagsResponse("a", enabled = true)))
+        mockServer.start()
+
+        var postHog: PostHogInterface? = null
+        try {
+            postHog =
+                PostHog.with(
+                    PostHogConfig.builder(TEST_API_KEY)
+                        .host(mockServer.url("/").toString())
+                        .build(),
+                )
+
+            val snapshot =
+                PostHogRequestContext.withContext(PostHogRequestContextData(distinctId = "context-user")) {
+                    postHog.evaluateFlags(null)
+                }
+
+            assertEquals("context-user", snapshot.distinctId)
+            assertTrue(snapshot.isEnabled("a"))
+
+            val request = mockServer.takeRequest(2, TimeUnit.SECONDS)
+            assertNotNull(request)
+            val body = request.body.unGzip()
+            assertTrue(body.contains("\"distinct_id\":\"context-user\""), "expected context distinctId in request body, got: $body")
+        } finally {
+            postHog?.close()
+            mockServer.shutdown()
+        }
+    }
+
+    @Test
     fun `evaluateFlags with blank distinctId returns an empty snapshot and fires no events on access`() {
         val mockServer = MockWebServer()
         mockServer.start()

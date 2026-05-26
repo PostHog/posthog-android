@@ -54,7 +54,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     }
 
     override fun capture(
-        distinctId: String,
+        distinctId: String?,
         event: String,
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
@@ -300,7 +300,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     }
 
     override fun evaluateFlags(
-        distinctId: String,
+        distinctId: String?,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
