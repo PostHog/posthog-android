@@ -75,6 +75,19 @@ public class PostHog private constructor(
 
     private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
 
+    /**
+     * Captures application log records into PostHog's logs product
+     * (separate from product analytics events). Use the severity-specific
+     * helpers (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) or the
+     * generic [PostHogLogger.log].
+     *
+     * ```kotlin
+     * PostHog.logger.info("checkout opened")
+     * PostHog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
+     * ```
+     *
+     * Not to be confused with the internal `config.logger` debug sink.
+     */
     public override val logger: PostHogLogger = PostHogLogger(::captureLog)
 
     @Volatile
@@ -1648,6 +1661,16 @@ public class PostHog private constructor(
 
         private val apiKeys = mutableSetOf<String>()
 
+        /**
+         * Captures application log records into PostHog's logs product
+         * (separate from product analytics events). Forwards to the shared
+         * SDK instance.
+         *
+         * ```kotlin
+         * PostHog.logger.info("checkout opened")
+         * PostHog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
+         * ```
+         */
         public override val logger: PostHogLogger
             get() = shared.logger
 

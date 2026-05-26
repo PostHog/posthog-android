@@ -35,14 +35,16 @@ import java.util.concurrent.atomic.AtomicLong
  * @property sessionId Snapshot of the active session id at capture time.
  * @property screenName Last screen name reported via
  *   [com.posthog.PostHog.screen].
- * @property featureFlagKeys Snapshot of locally-active feature flag keys
- *   at capture time.
+ * @property featureFlagKeys Snapshot of feature flag keys that evaluated
+ *   to active (truthy boolean or any multivariant value) at capture
+ *   time. Use this to filter logs by flag state in the PostHog UI.
  * @property appState `"foreground"` or `"background"` at capture time.
- * @property timeUnixNano Capture time as nanoseconds since epoch, string
- *   to avoid i64 overflow on the JSON wire.
- * @property observedTimeUnixNano Defaults to [timeUnixNano]; differs only
- *   when the SDK observes a record after the original timestamp (e.g.
- *   replay from persisted storage).
+ * @property timeUnixNano Advanced/observability field. Capture time as
+ *   nanoseconds since epoch, encoded as a string to avoid i64 overflow
+ *   on the JSON wire.
+ * @property observedTimeUnixNano Advanced/observability field. Defaults
+ *   to [timeUnixNano]; differs only when the SDK observes a record after
+ *   the original timestamp (e.g. replay from persisted storage).
  */
 public data class PostHogLogRecord(
     val body: String,
