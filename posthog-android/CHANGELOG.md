@@ -1,5 +1,14 @@
 ## Next
 
+## 3.47.0
+
+### Minor Changes
+
+- 8d11398: Add public Logs API: `PostHog.logger.trace/debug/info/warn/error/fatal(message, attrs?)` plus a `PostHogLogsConfig` for serviceName, environment, resourceAttributes, rate cap, and `addBeforeSend` redaction hooks. Logs ship via OTLP/JSON to `/i/v1/logs` and pick up auto-attached attributes (`app.state`, distinctId, sessionId, screen name, feature flags). Matches the equivalent surfaces on posthog-ios and posthog-react-native.
+- 8d11398: Auto-attach `$screen_name` to every captured event after `PostHog.screen()` has been called (manually or via Activity-lifecycle auto-capture). Cached value is cleared by `reset()` and `close()`.
+
+  **To opt out of `$screen_name` stamping entirely**, set `PostHogAndroidConfig.captureScreenViews = false` **and** stop calling `PostHog.screen()` manually. Disabling `captureScreenViews` alone is not sufficient — a single manual `PostHog.screen("Home")` call will re-enable stamping.
+
 ## 3.46.0
 
 ### Minor Changes
