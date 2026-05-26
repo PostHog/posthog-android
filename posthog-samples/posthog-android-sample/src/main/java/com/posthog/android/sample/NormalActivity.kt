@@ -29,6 +29,11 @@ class NormalActivity : ComponentActivity() {
             startActivity(Intent(this, SessionReplayActivity::class.java))
         }
 
+        val logsButton = findViewById<Button>(R.id.logsButton)
+        logsButton.setOnClickListener {
+            startActivity(Intent(this, LogsActivity::class.java))
+        }
+
         val button = findViewById<Button>(R.id.button)
 //        val editText = findViewById<EditText>(R.id.editText)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)

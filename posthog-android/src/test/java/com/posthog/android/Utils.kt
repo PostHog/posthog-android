@@ -20,6 +20,7 @@ import android.net.Uri
 import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
 import com.posthog.PostHog
+import com.posthog.PostHogFake
 import org.junit.rules.TemporaryFolder
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock

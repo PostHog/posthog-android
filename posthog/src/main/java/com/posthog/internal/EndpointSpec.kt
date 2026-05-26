@@ -88,33 +88,27 @@ public class EndpointSpec<Record> internal constructor(
 
         /**
          * Returns the [EndpointSpec] for PostHog's logs ingestion endpoint
-         * (`/i/v1/logs`, OTLP/JSON). Pass the result to a
-         * [com.posthog.internal.PostHogQueue] to enqueue and flush log
-         * records.
-         *
-         * `resourceAttributes` is captured by value; supply the
-         * once-per-setup snapshot of any user-configurable resource keys
-         * (e.g. `service.name`, `service.version`, `deployment.environment`)
-         * here. SDK-managed `telemetry.sdk.*` keys are appended automatically
-         * and override any user-supplied values for those keys.
+         * (`/i/v1/logs`, OTLP/JSON). Resource attributes (`service.name`,
+         * `service.version`, `deployment.environment`, `os.*`, user-supplied
+         * `resourceAttributes`) are captured from `config.logs` and
+         * `config.context` once at factory time; post-setup mutations to
+         * those configs are not honored. Batch knobs are read live from
+         * `config.logs` on every flush.
          */
-        internal fun logs(
+        @JvmStatic
+        public fun logs(
             config: PostHogConfig,
             api: PostHogApi,
             storagePrefix: String?,
-            resourceAttributes: Map<String, Any> = emptyMap(),
         ): EndpointSpec<PostHogLogRecord> {
-            // Capture `os.*` from PostHogContext once at factory time. SDK-managed
-            // keys (telemetry.sdk.*) are layered on inside PostHogLogsOTLP; this
-            // overlay carries Android-side context.
-            val mergedResourceAttributes = mergeOsResourceAttributes(resourceAttributes, config.context)
+            val resourceAttrs: Map<String, Any> by lazy { buildLogsResourceAttributes(config) }
             return EndpointSpec(
                 recordsLabel = "logs",
                 storagePrefix = storagePrefix,
-                initialCap = { it.maxBatchSize },
-                initialFlushAt = { it.flushAt },
-                maxQueueSize = { it.maxQueueSize },
-                flushIntervalSeconds = { it.flushIntervalSeconds },
+                initialCap = { it.logs.maxBatchSize },
+                initialFlushAt = { it.logs.flushAt },
+                maxQueueSize = { it.logs.maxBufferSize },
+                flushIntervalSeconds = { it.logs.flushIntervalSeconds },
                 encode = { record, stream ->
                     config.serializer.serialize(record.toStorageMap(), stream.writer().buffered())
                 },
@@ -123,7 +117,7 @@ public class EndpointSpec<Record> internal constructor(
                     map?.let { PostHogLogRecord.fromStorageMap(it) }
                 },
                 describe = { _ -> "log" },
-                send = { records -> api.sendLogs(records, mergedResourceAttributes) },
+                send = { records -> api.sendLogs(records, resourceAttrs) },
                 isRetriableStatusCode = ::isLogsRetriableStatusCode,
             )
         }
@@ -137,24 +131,38 @@ internal fun isEventsRetriableStatusCode(code: Int): Boolean = code in DEFAULT_E
 internal fun isLogsRetriableStatusCode(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
 
 /**
- * Layers OpenTelemetry `os.name` / `os.version` resource attributes from
- * [PostHogContext]'s static context onto the user-supplied resource attributes.
- * SDK-managed keys win over user-supplied so the wire output reflects the
- * actual device. Returns the user map unchanged when no context is present
- * (e.g. pure-JVM `posthog` module without the Android overlay).
+ * Captures the resource attributes for the logs endpoint at SDK setup.
+ *
+ * Layering order (lowest priority first, later wins on collision):
+ * 1. User-supplied `config.logs.resourceAttributes`
+ * 2. `os.name` / `os.version` from [PostHogContext]'s static context
+ * 3. `service.name` / `service.version` from [PostHogLogsConfig], falling
+ *    back to `$app_namespace` / `$app_version` from [PostHogContext]
+ * 4. `deployment.environment` when set on the logs config
+ *
+ * SDK-managed `telemetry.sdk.*` keys are layered separately inside
+ * `PostHogLogsOTLP.buildPayload` and beat everything here.
  */
-private fun mergeOsResourceAttributes(
-    userResourceAttributes: Map<String, Any>,
-    context: PostHogContext?,
-): Map<String, Any> {
-    if (context == null) return userResourceAttributes
-    val staticContext = context.getStaticContext()
-    val osName = staticContext["\$os_name"] as? String
-    val osVersion = staticContext["\$os_version"] as? String
-    if (osName == null && osVersion == null) return userResourceAttributes
-    val merged = LinkedHashMap<String, Any>(userResourceAttributes.size + 2)
-    merged.putAll(userResourceAttributes)
-    osName?.let { merged["os.name"] = it }
-    osVersion?.let { merged["os.version"] = it }
+private fun buildLogsResourceAttributes(config: PostHogConfig): Map<String, Any> {
+    val logs = config.logs
+    val staticContext = config.context?.getStaticContext().orEmpty()
+    val merged = LinkedHashMap<String, Any>()
+
+    merged.putAll(logs.resourceAttributes)
+
+    (staticContext["\$os_name"] as? String)?.let { merged["os.name"] = it }
+    (staticContext["\$os_version"] as? String)?.let { merged["os.version"] = it }
+
+    // OTel spec requires service.name; default to "unknown_service" when no
+    // user value or context override is available.
+    val serviceName =
+        logs.serviceName
+            ?: staticContext["\$app_namespace"] as? String
+            ?: "unknown_service"
+    merged["service.name"] = serviceName
+    val serviceVersion = logs.serviceVersion ?: staticContext["\$app_version"] as? String
+    serviceVersion?.let { merged["service.version"] = it }
+    logs.environment?.let { merged["deployment.environment"] = it }
+
     return merged
 }

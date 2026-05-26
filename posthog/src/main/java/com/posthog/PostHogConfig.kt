@@ -19,6 +19,7 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSerializer
+import com.posthog.logs.PostHogLogsConfig
 import com.posthog.surveys.PostHogSurveysConfig
 import okhttp3.OkHttpClient
 import java.net.Proxy
@@ -111,18 +112,18 @@ public open class PostHogConfig(
      * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */
-    public var flushAt: Int = 20,
+    public var flushAt: Int = DEFAULT_FLUSH_AT,
     /**
      * Number of maximum events in memory and disk, when the maximum is exceed, the oldest
      * event is deleted and the new one takes place
      * Defaults to 1000
      */
-    public var maxQueueSize: Int = 1000,
+    public var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE,
     /**
      * Number of maximum events in a batch call
      * Defaults to 50
      */
-    public var maxBatchSize: Int = 50,
+    public var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
     /**
      * Maximum number of retries for failed flush attempts before events are dropped
      * Defaults to 3
@@ -135,7 +136,7 @@ public open class PostHogConfig(
      * Defaults to 30s
      */
     @Suppress("ktlint:standard:no-consecutive-comments")
-    public var flushIntervalSeconds: Int = 30,
+    public var flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS,
     /**
      * Hook for encrypt and decrypt events
      * Devices are sandbox so likely not needed
@@ -226,6 +227,14 @@ public open class PostHogConfig(
      * Note: Not fully supported or documented yet. Primarily used by hybrid SDKs to attach a custom display logic.
      */
     public var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
+    /**
+     * Configuration for the logs subsystem. See [PostHogLogsConfig] for
+     * per-field mutability semantics — resource attributes and the
+     * `flushAt` / `maxBatchSize` knobs are snapshotted at setup; the
+     * `beforeSend` chain, `maxBufferSize`, and `flushIntervalSeconds`
+     * remain live.
+     */
+    public var logs: PostHogLogsConfig = PostHogLogsConfig(),
     /**
      * Factory to instantiate a custom [com.posthog.internal.PostHogRemoteConfigInterface] implementation.
      */
@@ -502,6 +511,18 @@ public open class PostHogConfig(
         }
 
     public companion object {
+        /** Shared default for [flushAt] and [PostHogLogsConfig.flushAt]. */
+        public const val DEFAULT_FLUSH_AT: Int = 20
+
+        /** Shared default for [maxBatchSize] and [PostHogLogsConfig.maxBatchSize]. */
+        public const val DEFAULT_MAX_BATCH_SIZE: Int = 50
+
+        /** Shared default for [maxQueueSize] and [PostHogLogsConfig.maxBufferSize]. */
+        public const val DEFAULT_MAX_QUEUE_SIZE: Int = 1000
+
+        /** Shared default for [flushIntervalSeconds] and [PostHogLogsConfig.flushIntervalSeconds]. */
+        public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
+
         public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"
         public const val DEFAULT_US_ASSETS_HOST: String = "https://us-assets.i.posthog.com"
 

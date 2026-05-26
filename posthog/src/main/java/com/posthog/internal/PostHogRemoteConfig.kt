@@ -944,6 +944,31 @@ public class PostHogRemoteConfig(
         return flags
     }
 
+    /**
+     * Returns the sorted keys of currently-active feature flags, or `null`
+     * if flags haven't loaded. "Active" matches the events-side filter at
+     * [com.posthog.PostHog.buildProperties]: boolean flags are active iff
+     * `true`; non-boolean (multivariant) flags are always active.
+     *
+     * Faster than [getFeatureFlags] for callers that only need the key set
+     * (e.g. log records) — filters inside the existing lock without copying
+     * the value side of the map.
+     */
+    public fun getActiveFeatureFlagKeys(): List<String>? {
+        val keys: MutableList<String> =
+            synchronized(featureFlagsLock) {
+                val flags = featureFlags ?: return null
+                val acc = ArrayList<String>(flags.size)
+                for ((key, value) in flags) {
+                    val active = value as? Boolean ?: true
+                    if (active) acc.add(key)
+                }
+                acc
+            }
+        keys.sort()
+        return keys
+    }
+
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
     /**

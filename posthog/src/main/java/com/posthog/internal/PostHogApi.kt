@@ -127,7 +127,6 @@ public class PostHogApi(
         val request =
             makeRequest(url) {
                 logRequest(payload, url)
-
                 config.serializer.serialize(payload, it.bufferedWriter())
             }
 

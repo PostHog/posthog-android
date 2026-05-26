@@ -217,7 +217,10 @@ internal class EndpointSpecTest {
         val config =
             PostHogConfig(API_KEY, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
-                this.flushAt = 1
+                // EndpointSpec.logs reads its flushAt from logs.flushAt, not the
+                // top-level events flushAt — set the logs config field, not the
+                // events one.
+                this.logs.flushAt = 1
             }
         val api = PostHogApi(config)
         val spec = EndpointSpec.logs(config, api, storagePrefix)
@@ -266,7 +269,7 @@ internal class EndpointSpecTest {
         val config =
             PostHogConfig(API_KEY, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
-                this.flushAt = 1
+                this.logs.flushAt = 1
                 this.context = TestPostHogContext()
             }
         val api = PostHogApi(config)
@@ -296,7 +299,7 @@ internal class EndpointSpecTest {
         val config =
             PostHogConfig(API_KEY, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
-                this.flushAt = 1
+                this.logs.flushAt = 1
                 // context intentionally not set (null)
             }
         val api = PostHogApi(config)

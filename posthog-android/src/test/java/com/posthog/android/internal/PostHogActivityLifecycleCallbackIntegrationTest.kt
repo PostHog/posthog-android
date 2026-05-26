@@ -3,9 +3,9 @@ package com.posthog.android.internal
 import android.app.Application
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.PostHogFake
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.PostHogFake
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockActivityUri
 import com.posthog.android.mockScreenTitle

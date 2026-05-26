@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.logs.PostHogLogger
 import java.util.Date
 import java.util.UUID
 
@@ -7,6 +8,23 @@ import java.util.UUID
  * The PostHog SDK entry point
  */
 public interface PostHogInterface : PostHogCoreInterface {
+    /**
+     * Captures application log records into PostHog's logs product
+     * (separate from product analytics events). Use the severity-specific
+     * helpers ([PostHogLogger.trace], [debug][PostHogLogger.debug],
+     * [info][PostHogLogger.info], [warn][PostHogLogger.warn],
+     * [error][PostHogLogger.error], [fatal][PostHogLogger.fatal]) or the
+     * generic [PostHogLogger.log].
+     *
+     * ```kotlin
+     * posthog.logger.info("checkout opened")
+     * posthog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
+     * ```
+     *
+     * Not to be confused with the internal `config.logger` debug sink.
+     */
+    public val logger: PostHogLogger
+
     /**
      * Captures events
      * @param distinctId the distinctId, the generated [distinctId] is used if not given

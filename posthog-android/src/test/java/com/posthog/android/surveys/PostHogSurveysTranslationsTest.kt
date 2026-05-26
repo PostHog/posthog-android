@@ -3,7 +3,7 @@ package com.posthog.android.surveys
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogConfig
-import com.posthog.android.PostHogFake
+import com.posthog.PostHogFake
 import com.posthog.internal.PostHogSerializer
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse

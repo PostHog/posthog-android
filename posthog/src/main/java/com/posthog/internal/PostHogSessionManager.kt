@@ -56,6 +56,9 @@ public object PostHogSessionManager {
         isAppInBackground = inBackground
     }
 
+    /** Read-only snapshot of the app foreground/background state. */
+    internal fun isAppInBackgroundSnapshot(): Boolean = isAppInBackground
+
     /**
      * Registered by PostHog.setup; invoked after getActiveSessionId rotates the session
      * silently, so the session replay handler can react to the change.
