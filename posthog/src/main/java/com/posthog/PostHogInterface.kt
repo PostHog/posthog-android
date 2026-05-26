@@ -12,14 +12,9 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Public facade for capturing application logs.
      *
      * Use `posthog.logger.info("...")` (or `trace/debug/warn/error/fatal`)
-     * to capture a log record. Kotlin implementers inherit the no-op
-     * default. (Java implementers must implement this explicitly, like
-     * every other method on this interface — see the binary-compatibility
-     * manifest, which shows every method as abstract from Java's
-     * perspective.)
+     * to capture a log record.
      */
     public val logger: PostHogLogger
-        get() = PostHogLogger.NO_OP
 
     /**
      * Captures events

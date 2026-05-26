@@ -1,10 +1,7 @@
-package com.posthog.android
+package com.posthog
 
-import com.posthog.FeatureFlagResult
-import com.posthog.PostHogConfig
-import com.posthog.PostHogInterface
-import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.logs.PostHogLogger
 import java.util.Date
 import java.util.UUID
 
@@ -17,6 +14,11 @@ public class PostHogFake : PostHogInterface {
     public var sessionReplayActive: Boolean = false
     public var startSessionReplayCalls: Int = 0
     public var stopSessionReplayCalls: Int = 0
+
+    // `PostHogLogger`'s constructor is `internal`. Test fixtures live in the
+    // same module, so we can construct a silent no-op here without exposing
+    // anything on the public API.
+    override val logger: PostHogLogger = PostHogLogger { _, _, _ -> }
 
     override fun <T : PostHogConfig> setup(config: T) {
     }

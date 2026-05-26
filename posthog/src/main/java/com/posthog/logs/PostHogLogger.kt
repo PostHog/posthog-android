@@ -168,14 +168,4 @@ public class PostHogLogger internal constructor(
         message: String,
         attributes: Map<String, Any>? = null,
     ): Unit = log(message, PostHogLogSeverity.FATAL, attributes)
-
-    internal companion object {
-        // No-op singleton used by [PostHogInterface]'s default `logger`
-        // getter. The default is compiled into `PostHogInterface$DefaultImpls`,
-        // which lives in this module — so the call to NO_OP is intra-module
-        // and `internal` access is sufficient. Not part of the public API
-        // (iOS doesn't expose an equivalent either).
-        @JvmField
-        internal val NO_OP: PostHogLogger = PostHogLogger { _, _, _ -> }
-    }
 }

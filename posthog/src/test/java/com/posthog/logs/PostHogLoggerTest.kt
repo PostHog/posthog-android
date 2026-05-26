@@ -67,12 +67,13 @@ internal class PostHogLoggerTest {
     }
 
     @Test
-    fun `NO_OP swallows every call without invoking any capture`() {
+    fun `a no-op logger swallows every call without invoking any capture`() {
         // The interface-default logger must not crash and must not invoke
         // SDK plumbing for callers that don't have a configured SDK.
-        PostHogLogger.NO_OP.log("hi")
-        PostHogLogger.NO_OP.info("ok", mapOf("k" to 1))
-        PostHogLogger.NO_OP.fatal("nope")
+        val noOp: PostHogLogger = PostHogLogger { _, _, _ -> }
+        noOp.log("hi")
+        noOp.info("ok", mapOf("k" to 1))
+        noOp.fatal("nope")
         // No assertion needed — survival of the method calls is the contract.
     }
 }

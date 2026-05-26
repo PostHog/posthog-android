@@ -6,6 +6,7 @@ version = properties["coreVersion"].toString()
 
 plugins {
     `java-library`
+    `java-test-fixtures`
     kotlin("jvm")
     id("com.android.lint")
 
