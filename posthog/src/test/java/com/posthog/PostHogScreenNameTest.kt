@@ -150,27 +150,34 @@ internal class PostHogScreenNameTest {
     }
 
     @Test
-    fun `caller-supplied empty screen_name falls back to cached value`() {
+    fun `caller-supplied empty screen_name ships verbatim as explicit unset`() {
+        // Caller passing $screen_name = "" is treated as intentional unset for
+        // that event (e.g. a modal or a screen that doesn't belong to the
+        // cached context). Cache is NOT used as a fallback when the key is
+        // explicitly present in the caller's properties.
         val sut = getSut()
 
         sut.screen("Home")
         sut.captureAndAwait(EVENT, properties = mapOf("\$screen_name" to ""))
 
         val theEvent = captured.first { it.event == EVENT }
-        assertEquals("Home", theEvent.properties!!["\$screen_name"])
+        assertEquals("", theEvent.properties!!["\$screen_name"])
 
         sut.close()
     }
 
     @Test
-    fun `caller-supplied whitespace screen_name falls back to cached value`() {
+    fun `caller-supplied whitespace screen_name ships verbatim`() {
+        // Caller's value goes through putAll without transformation — if a
+        // caller passes "   " they get "   " on the wire. They opted in by
+        // passing the key.
         val sut = getSut()
 
         sut.screen("Home")
         sut.captureAndAwait(EVENT, properties = mapOf("\$screen_name" to "   "))
 
         val theEvent = captured.first { it.event == EVENT }
-        assertEquals("Home", theEvent.properties!!["\$screen_name"])
+        assertEquals("   ", theEvent.properties!!["\$screen_name"])
 
         sut.close()
     }

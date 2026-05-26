@@ -472,6 +472,7 @@ public class PostHog private constructor(
 
             props["\$is_identified"] = isIdentified
             props["\$process_person_profile"] = hasPersonProcessing()
+            stampCachedScreenName(props)
         }
 
         // Session replay should have the SDK info as well
@@ -502,10 +503,6 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        if (appendSharedProps) {
-            stampCachedScreenName(props)
-        }
-
         // only Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
@@ -518,17 +515,15 @@ public class PostHog private constructor(
     }
 
     /**
-     * Stamps `$screen_name = lastScreenName` only when the caller did not
-     * supply a meaningful value. Called from [buildProperties] AFTER
-     * `properties?.putAll` so a real caller value (including
-     * posthog-flutter's `$screen_name` passthrough) still wins. Treats
-     * caller empty/blank as absent — almost always accidental.
+     * Stamps `$screen_name = lastScreenName` into [props]. Called inside
+     * the `appendSharedProps` block in [buildProperties] BEFORE
+     * `properties?.putAll`, so a caller-supplied `$screen_name` (incl.
+     * posthog-flutter's passthrough, explicit empty for intentional
+     * "unset") overwrites this stamp on merge.
      */
     private fun stampCachedScreenName(props: MutableMap<String, Any>) {
-        val cached = lastScreenName ?: return
-        if (cached.isEmpty()) return
-        val callerName = (props["\$screen_name"] as? String)?.trim()
-        if (callerName.isNullOrEmpty()) {
+        val cached = lastScreenName
+        if (!cached.isNullOrEmpty()) {
             props["\$screen_name"] = cached
         }
     }
