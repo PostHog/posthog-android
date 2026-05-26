@@ -44,17 +44,18 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 public class PostHogLogsConfig {
     /**
-     * OpenTelemetry `service.name` resource attribute identifying the app
-     * sending logs.
+     * Name of the application sending logs. Used to group records in the
+     * PostHog UI when multiple apps report to the same project, and to
+     * match values used by other observability tooling.
      *
      * When `null` (the default), falls back to the host app's package id
-     * from `PostHogContext.$app_namespace`, then to `"unknown_service"` per
-     * the OTel spec. Override to disambiguate multiple apps reporting into
-     * the same project, or to match a value used by other observability
-     * tooling.
+     * (typically `applicationId`). Override to use a stable name
+     * independent of the package id, or to align with an existing log
+     * pipeline.
      *
      * Snapshotted at SDK setup; mutations after `PostHog.setup(...)` are
-     * not honored.
+     * not honored. Wire format: serialized as the OpenTelemetry
+     * `service.name` resource attribute.
      *
      * ```kotlin
      * config.logs.serviceName = "checkout-android"
@@ -63,14 +64,16 @@ public class PostHogLogsConfig {
     public var serviceName: String? = null
 
     /**
-     * OpenTelemetry `service.version` resource attribute, typically the
-     * app's release version.
+     * Version of the application sending logs, typically your release
+     * version string. Lets you filter and segment log records by app
+     * version in the PostHog UI.
      *
-     * When `null` (the default), falls back to the host app's version from
-     * `PostHogContext.$app_version` (usually `BuildConfig.VERSION_NAME`).
+     * When `null` (the default), falls back to the host app's version
+     * (usually `BuildConfig.VERSION_NAME`).
      *
      * Snapshotted at SDK setup; mutations after `PostHog.setup(...)` are
-     * not honored.
+     * not honored. Wire format: serialized as the OpenTelemetry
+     * `service.version` resource attribute.
      *
      * ```kotlin
      * config.logs.serviceVersion = "1.4.2"
@@ -79,12 +82,14 @@ public class PostHogLogsConfig {
     public var serviceVersion: String? = null
 
     /**
-     * OpenTelemetry `deployment.environment` resource attribute. Common
+     * Environment the app is running in. Lets you separate production
+     * logs from staging/development noise in the PostHog UI. Common
      * values: `"production"`, `"staging"`, `"development"`. Omitted from
      * the payload entirely when `null`.
      *
      * Snapshotted at SDK setup; mutations after `PostHog.setup(...)` are
-     * not honored.
+     * not honored. Wire format: serialized as the OpenTelemetry
+     * `deployment.environment` resource attribute.
      *
      * ```kotlin
      * config.logs.environment = if (BuildConfig.DEBUG) "development" else "production"
@@ -93,14 +98,18 @@ public class PostHogLogsConfig {
     public var environment: String? = null
 
     /**
-     * Additional OpenTelemetry resource attributes attached to every batch.
+     * Additional metadata attached to every batch of records — anything
+     * you'd want to filter or segment by in the PostHog UI that isn't
+     * record-specific (e.g. region, build flavor, device model).
      *
      * SDK-managed keys (`telemetry.sdk.*`, `os.*`, `service.*`,
-     * `deployment.environment`) win on collision so you can't accidentally
-     * shadow them.
+     * `deployment.environment`) win on collision so you can't
+     * accidentally shadow them.
      *
      * Snapshotted at SDK setup; mutations after `PostHog.setup(...)` are
-     * not honored.
+     * not honored. Wire format: serialized as OpenTelemetry resource
+     * attributes — keys follow OTel dotted convention (e.g. `host.name`,
+     * not `$host_name`).
      *
      * ```kotlin
      * config.logs.resourceAttributes = mapOf(
@@ -115,6 +124,7 @@ public class PostHogLogsConfig {
      * How often the queue checks for records to flush, in seconds.
      *
      * Re-read on every flush cycle — safe to change at runtime if needed.
+     * Defaults to `30`.
      */
     public var flushIntervalSeconds: Int = PostHogConfig.DEFAULT_FLUSH_INTERVAL_SECONDS
 
@@ -125,7 +135,7 @@ public class PostHogLogsConfig {
      * network requests; higher batches them up.
      *
      * Read once at queue construction; mutations after `PostHog.setup(...)`
-     * are not honored.
+     * are not honored. Defaults to `20`.
      */
     public var flushAt: Int = PostHogConfig.DEFAULT_FLUSH_AT
 
@@ -134,7 +144,7 @@ public class PostHogLogsConfig {
      *
      * May be reduced automatically under server backpressure (HTTP 413).
      * Read once at queue construction; mutations after `PostHog.setup(...)`
-     * are not honored.
+     * are not honored. Defaults to `50`.
      */
     public var maxBatchSize: Int = PostHogConfig.DEFAULT_MAX_BATCH_SIZE
 
@@ -144,6 +154,7 @@ public class PostHogLogsConfig {
      *
      * Protects against unbounded growth when the device is offline for an
      * extended period. Re-read on every add — safe to change at runtime.
+     * Defaults to `1000`.
      */
     public var maxBufferSize: Int = PostHogConfig.DEFAULT_MAX_QUEUE_SIZE
 
@@ -156,6 +167,14 @@ public class PostHogLogsConfig {
      * call inside a tight render loop). Set to `0` (or any non-positive
      * value) to disable the cap entirely.
      *
+     * Records dropped by the cap are silently discarded — there is no
+     * callback, retry, or counter exposed to your code. If you need
+     * visibility into drops, register a [PostHogBeforeSendLog] via
+     * [addBeforeSend] and count records there (`beforeSend` runs before
+     * the cap, so it sees every captured record).
+     *
+     * Defaults to `500`.
+     *
      * ```kotlin
      * // Allow up to 100 logs every 5 seconds:
      * config.logs.rateCapMaxLogs = 100
@@ -166,7 +185,10 @@ public class PostHogLogsConfig {
 
     /**
      * Tumbling window in seconds used by [rateCapMaxLogs]. The counter
-     * resets when wall-clock time advances past the window.
+     * resets when wall-clock time advances past the window. Set to `0`
+     * (or any non-positive value) to disable the cap entirely.
+     *
+     * Defaults to `10`.
      */
     public var rateCapWindowSeconds: Int = 10
 
@@ -185,10 +207,12 @@ public class PostHogLogsConfig {
      * they reach the queue.
      *
      * Hooks compose left-to-right; returning `null` from any hook drops
-     * the record and short-circuits the chain. A hook that throws is
-     * treated the same as returning `null` (the record is dropped, the
-     * throwable is logged via the SDK's internal debug logger). Hooks
-     * run synchronously on the caller's thread — keep them fast.
+     * the record and short-circuits the chain. Dropped records are
+     * silently discarded — there is no callback or retry mechanism. A
+     * hook that throws is treated the same as returning `null` (the
+     * record is dropped, the throwable is logged via the SDK's internal
+     * debug logger). Hooks run synchronously on the caller's thread —
+     * keep them fast.
      *
      * Live: added/removed hooks take effect on the next `captureLog` call.
      *

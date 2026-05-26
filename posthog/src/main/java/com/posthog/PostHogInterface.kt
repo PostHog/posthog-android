@@ -9,17 +9,21 @@ import java.util.UUID
  */
 public interface PostHogInterface : PostHogCoreInterface {
     /**
-     * Public facade for capturing application logs.
+     * Captures application log records into PostHog's logs product
+     * (separate from product analytics events). Use the severity-specific
+     * helpers ([PostHogLogger.trace], [debug][PostHogLogger.debug],
+     * [info][PostHogLogger.info], [warn][PostHogLogger.warn],
+     * [error][PostHogLogger.error], [fatal][PostHogLogger.fatal]) or the
+     * generic [PostHogLogger.log].
      *
-     * Use `posthog.logger.info("...")` (or `trace/debug/warn/error/fatal`)
-     * to capture a log record. Kotlin implementers inherit the no-op
-     * default. (Java implementers must implement this explicitly, like
-     * every other method on this interface — see the binary-compatibility
-     * manifest, which shows every method as abstract from Java's
-     * perspective.)
+     * ```kotlin
+     * posthog.logger.info("checkout opened")
+     * posthog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
+     * ```
+     *
+     * Not to be confused with the internal `config.logger` debug sink.
      */
     public val logger: PostHogLogger
-        get() = PostHogLogger.NO_OP
 
     /**
      * Captures events

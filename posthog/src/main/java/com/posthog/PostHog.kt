@@ -75,6 +75,19 @@ public class PostHog private constructor(
 
     private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
 
+    /**
+     * Captures application log records into PostHog's logs product
+     * (separate from product analytics events). Use the severity-specific
+     * helpers (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) or the
+     * generic [PostHogLogger.log].
+     *
+     * ```kotlin
+     * PostHog.logger.info("checkout opened")
+     * PostHog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
+     * ```
+     *
+     * Not to be confused with the internal `config.logger` debug sink.
+     */
     public override val logger: PostHogLogger = PostHogLogger(::captureLog)
 
     @Volatile
@@ -669,7 +682,6 @@ public class PostHog private constructor(
             val cfg = config ?: return
             if (cfg.optOut) return
             if (message.isBlank()) return
-            if (!acquireLogsRateCap(cfg)) return
 
             // Filter + sort done inside PostHogRemoteConfig's existing lock
             // to avoid an unnecessary value-map copy on the hot capture path.
@@ -679,9 +691,10 @@ public class PostHog private constructor(
                 PostHogLogRecord(
                     body = message,
                     level = severity,
-                    // Defensive copy — caller may reuse the map; serializer
-                    // reads it later on the logs executor thread.
-                    attributes = attributes?.let { LinkedHashMap(it) } ?: emptyMap(),
+                    // Defensive deep copy — caller may reuse the map (and any
+                    // nested maps/lists inside it); the serializer reads it
+                    // later on the logs executor thread.
+                    attributes = attributes?.let { deepCopyAttributes(it) } ?: emptyMap(),
                     distinctId = distinctId.takeIf { it.isNotBlank() },
                     sessionId = PostHogSessionManager.getActiveSessionId()?.toString(),
                     screenName = lastScreenName,
@@ -692,13 +705,69 @@ public class PostHog private constructor(
 
             val sendable =
                 cfg.logs.runBeforeSend(record) { e ->
-                    cfg.logger.log("Error in beforeSend function: ${e.javaClass.simpleName}")
+                    safeLog("Error in beforeSend function: ${e.javaClass.simpleName}")
                 } ?: return
+
+            // Rate cap fires after `beforeSend` so records dropped by the
+            // caller don't consume the window budget — the cap reflects what
+            // the SDK would actually send, not what the caller asked us to
+            // try to send.
+            if (!acquireLogsRateCap(cfg)) return
+
             logsQueue?.add(sendable)
         } catch (e: Throwable) {
             // Only the throwable class — a hook's exception message can embed
             // user log bodies / attributes (PII).
-            config?.logger?.log("captureLog failed: ${e.javaClass.simpleName}")
+            safeLog("captureLog failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Recursive shallow-immutable copy of arbitrarily nested log attributes.
+     * Maps, lists, sets, and arrays are duplicated so caller mutations after
+     * `captureLog` returns can't race the serializer on the logs executor.
+     * Leaves (strings, numbers, bools, opaque objects) are shared since they
+     * are either immutable or treated as immutable by the wire format.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun deepCopyAttributes(map: Map<String, Any>): Map<String, Any> {
+        val copy = LinkedHashMap<String, Any>(map.size)
+        for ((k, v) in map) copy[k] = deepCopyValue(v)
+        return copy
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun deepCopyValue(value: Any): Any =
+        when (value) {
+            is Map<*, *> -> deepCopyAttributes(value as Map<String, Any>)
+            is List<*> -> value.map { it?.let(::deepCopyValue) }
+            is Set<*> -> value.map { it?.let(::deepCopyValue) }.toSet()
+            is Array<*> -> value.map { it?.let(::deepCopyValue) }.toTypedArray()
+            else -> value
+        }
+
+    /**
+     * Invokes `config.logger.log` swallowing any throwable — guards against a
+     * user-supplied logger that throws from inside a `catch` block (which
+     * would otherwise escape `captureLog`/`captureLogs` and surface to the
+     * caller). Guaranteed not to throw.
+     */
+    private fun safeLog(message: String) {
+        try {
+            config?.logger?.log(message)
+        } catch (e: Throwable) {
+            // The user-supplied logger threw. Fall back to the JVM's default
+            // stack-trace stream (stderr on JVM, logcat on Android) so the
+            // double-failure is at least visible if anyone goes looking.
+            // `printStackTrace` itself can throw on a broken `Throwable` impl
+            // or a closed stderr — the outer catch makes the contract above
+            // ("guaranteed not to throw") actually hold.
+            try {
+                e.printStackTrace()
+            } catch (_: Throwable) {
+                // Nowhere left to write — give up silently rather than
+                // crash the calling captureLog.
+            }
         }
     }
 
@@ -708,13 +777,17 @@ public class PostHog private constructor(
      * `rateCapMaxLogs` or `rateCapWindowSeconds` disable the cap.
      */
     private fun acquireLogsRateCap(cfg: PostHogConfig): Boolean {
-        val max = cfg.logs.rateCapMaxLogs
-        val windowSeconds = cfg.logs.rateCapWindowSeconds
-        if (max <= 0 || windowSeconds <= 0) return true
-
-        val now = cfg.dateProvider.currentTimeMillis()
-        val windowMillis = windowSeconds * 1000L
         synchronized(logsRateCapLock) {
+            // Reads of the config knobs happen under the same lock that
+            // protects the window state so a `(max, windowSeconds)` pair is
+            // either entirely pre-update or entirely post-update, never a
+            // torn mix if a caller mutates them concurrently.
+            val max = cfg.logs.rateCapMaxLogs
+            val windowSeconds = cfg.logs.rateCapWindowSeconds
+            if (max <= 0 || windowSeconds <= 0) return true
+
+            val now = cfg.dateProvider.currentTimeMillis()
+            val windowMillis = windowSeconds * 1000L
             if (now - logsRateCapWindowStartMillis >= windowMillis) {
                 logsRateCapWindowStartMillis = now
                 logsRateCapWindowCount = 1
@@ -783,6 +856,8 @@ public class PostHog private constructor(
             return
         }
 
+        // Cache for capture-time context snapshot on log records and for the
+        // $screen_name auto-attach on subsequent events (see buildProperties).
         this.lastScreenName = trimmedTitle
 
         val props = mutableMapOf<String, Any>()
@@ -1619,6 +1694,16 @@ public class PostHog private constructor(
 
         private val apiKeys = mutableSetOf<String>()
 
+        /**
+         * Captures application log records into PostHog's logs product
+         * (separate from product analytics events). Forwards to the shared
+         * SDK instance.
+         *
+         * ```kotlin
+         * PostHog.logger.info("checkout opened")
+         * PostHog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
+         * ```
+         */
         public override val logger: PostHogLogger
             get() = shared.logger
 

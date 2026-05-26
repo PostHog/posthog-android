@@ -1,5 +1,19 @@
 ## Next
 
+## 3.46.0
+
+### Minor Changes
+
+- 09f86a6: Add public Logs API: `PostHog.logger.trace/debug/info/warn/error/fatal(message, attrs?)` plus a `PostHogLogsConfig` for serviceName, environment, resourceAttributes, rate cap, and `addBeforeSend` redaction hooks. Logs ship via OTLP/JSON to `/i/v1/logs` and pick up auto-attached attributes (`app.state`, distinctId, sessionId, screen name, feature flags). Matches the equivalent surfaces on posthog-ios and posthog-react-native.
+
+## 3.45.1
+
+### Patch Changes
+
+- 3cd4742: Fix session replay screenshots being dropped on screens with continuous animations (e.g. Lottie).
+  Previously, any `onDraw` callback received while PixelCopy was in flight caused the screenshot to be discarded. Introduces `isOnlyAnimationRedraw` to distinguish animation-driven redraws from structural layout changes.
+  Uses `View.hasTransientState()` on the decor view, which Android propagates up from any animating descendant, as the signal.
+
 ## 3.45.0
 
 ### Minor Changes

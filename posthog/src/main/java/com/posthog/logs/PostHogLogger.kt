@@ -43,8 +43,13 @@ package com.posthog.logs
  * ### Attribute values
  *
  * Attribute values must be JSON-serializable: `String`, `Number`, `Boolean`,
- * `Date`, or lists / maps composed of those types. Other values are coerced
- * to their `toString()` on the wire — keep that in mind for custom classes.
+ * `Date`, or lists / maps composed of those types. Custom types without a
+ * registered serializer may fail to serialize at flush time — stick to the
+ * documented types.
+ *
+ * Nested maps and lists are supported. The attributes map is deep-copied
+ * at capture time, so you can safely mutate the map (and any nested
+ * collections) after the call returns.
  *
  * ### Drop / redact records
  *
@@ -163,19 +168,14 @@ public class PostHogLogger internal constructor(
      * PostHog.logger.fatal("database corrupted")
      * PostHog.flush()
      * ```
+     *
+     * Note: `flush()` schedules the flush on the queue's executor and
+     * returns immediately — on a crash path the executor may not finish
+     * before the process exits. Critical failure data should ideally be
+     * captured before the process is in a terminal state.
      */
     public fun fatal(
         message: String,
         attributes: Map<String, Any>? = null,
     ): Unit = log(message, PostHogLogSeverity.FATAL, attributes)
-
-    internal companion object {
-        // No-op singleton used by [PostHogInterface]'s default `logger`
-        // getter. The default is compiled into `PostHogInterface$DefaultImpls`,
-        // which lives in this module — so the call to NO_OP is intra-module
-        // and `internal` access is sufficient. Not part of the public API
-        // (iOS doesn't expose an equivalent either).
-        @JvmField
-        internal val NO_OP: PostHogLogger = PostHogLogger { _, _, _ -> }
-    }
 }
