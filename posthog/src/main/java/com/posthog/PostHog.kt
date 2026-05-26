@@ -485,6 +485,7 @@ public class PostHog private constructor(
 
             props["\$is_identified"] = isIdentified
             props["\$process_person_profile"] = hasPersonProcessing()
+            stampCachedScreenName(props)
         }
 
         // Session replay should have the SDK info as well
@@ -524,6 +525,20 @@ public class PostHog private constructor(
         }
 
         return props
+    }
+
+    /**
+     * Stamps `$screen_name = lastScreenName` into [props]. Called inside
+     * the `appendSharedProps` block in [buildProperties] BEFORE
+     * `properties?.putAll`, so a caller-supplied `$screen_name` (incl.
+     * posthog-flutter's passthrough, explicit empty for intentional
+     * "unset") overwrites this stamp on merge.
+     */
+    private fun stampCachedScreenName(props: MutableMap<String, Any>) {
+        val cached = lastScreenName
+        if (!cached.isNullOrEmpty()) {
+            props["\$screen_name"] = cached
+        }
     }
 
     public override fun capture(
@@ -816,6 +831,18 @@ public class PostHog private constructor(
         return config?.optOut ?: true
     }
 
+    /**
+     * Records a screen view by capturing a `$screen` event with [screenTitle].
+     *
+     * The title is also cached and automatically attached as `$screen_name` to
+     * every subsequent event (until [reset] or [close] clears it).
+     *
+     * To override the auto-attached value on a specific event, pass `$screen_name`
+     * in that event's `properties` on the next [capture] call.
+     *
+     * @param screenTitle the screen name to record
+     * @param properties additional properties to attach to this `$screen` event
+     */
     public override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
@@ -824,11 +851,17 @@ public class PostHog private constructor(
             return
         }
 
-        // Cache for capture-time context snapshot on log records.
-        this.lastScreenName = screenTitle
+        val trimmedTitle = screenTitle.trim()
+        if (trimmedTitle.isEmpty()) {
+            return
+        }
+
+        // Cache for capture-time context snapshot on log records and for the
+        // $screen_name auto-attach on subsequent events (see buildProperties).
+        this.lastScreenName = trimmedTitle
 
         val props = mutableMapOf<String, Any>()
-        props["\$screen_name"] = screenTitle
+        props["\$screen_name"] = trimmedTitle
 
         properties?.let {
             props.putAll(it)
