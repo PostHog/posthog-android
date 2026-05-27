@@ -124,7 +124,7 @@ public class EndpointSpec<Record> internal constructor(
     }
 }
 
-internal val DEFAULT_EVENTS_RETRYABLE_STATUS_CODES: Set<Int> = setOf(429, 500, 502, 503, 504)
+internal val DEFAULT_EVENTS_RETRYABLE_STATUS_CODES: Set<Int> = setOf(408, 429, 500, 502, 503, 504)
 
 internal fun isEventsRetriableStatusCode(code: Int): Boolean = code in DEFAULT_EVENTS_RETRYABLE_STATUS_CODES
 

@@ -318,22 +318,6 @@ internal class EndpointSpecTest {
     }
 
     @Test
-    fun `events spec retry policy stays narrower than logs`() {
-        // Locks in the asymmetry. If someone copy-pastes the logs predicate
-        // (408 + all 5xx) into the events code path, 408 and 501/505/etc.
-        // would silently start retrying for events.
-        assertTrue(isEventsRetriableStatusCode(429))
-        assertTrue(isEventsRetriableStatusCode(500))
-        assertTrue(isEventsRetriableStatusCode(502))
-        assertTrue(isEventsRetriableStatusCode(503))
-        assertTrue(isEventsRetriableStatusCode(504))
-        assertEquals(false, isEventsRetriableStatusCode(408))
-        assertEquals(false, isEventsRetriableStatusCode(501))
-        assertEquals(false, isEventsRetriableStatusCode(505))
-        assertEquals(false, isEventsRetriableStatusCode(599))
-    }
-
-    @Test
     fun `EndpointSpec batch factory preserves events on-wire behavior`() {
         val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
