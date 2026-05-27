@@ -54,7 +54,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     }
 
     override fun capture(
-        distinctId: String,
+        distinctId: String?,
         event: String,
         properties: Map<String, Any>?,
         userProperties: Map<String, Any>?,
@@ -64,6 +64,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         appendFeatureFlags: Boolean,
         flags: PostHogFeatureFlagEvaluations?,
     ) {
+        val captureContext = PostHogRequestContext.resolveCaptureContext(distinctId, properties)
         val mergedProperties =
             when {
                 flags != null -> {
@@ -73,7 +74,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                                 "using the supplied snapshot and skipping the redundant /flags fetch.",
                         )
                     }
-                    mergeFeatureFlagPropertiesFromSnapshot(properties, flags)
+                    mergeFeatureFlagPropertiesFromSnapshot(captureContext.properties, flags)
                 }
                 appendFeatureFlags -> {
                     getConfig<com.posthog.PostHogConfig>()?.logger?.log(
@@ -84,19 +85,19 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                             "scope which flags to attach via flags.onlyAccessed() or flags.only(...).",
                     )
                     mergeFeatureFlagProperties(
-                        distinctId = distinctId,
+                        distinctId = captureContext.distinctId,
                         groups = groups,
                         userProperties = userProperties,
                         groupProperties = null,
-                        properties = properties,
+                        properties = captureContext.properties,
                     )
                 }
-                else -> properties
+                else -> captureContext.properties
             }
 
         super.captureStateless(
             event,
-            distinctId,
+            captureContext.distinctId,
             mergedProperties,
             userProperties,
             userPropertiesSetOnce,
@@ -116,8 +117,9 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Boolean {
+        val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId) ?: distinctId
         return super.isFeatureEnabledStateless(
-            distinctId,
+            resolvedDistinctId,
             key,
             defaultValue,
             groups,
@@ -137,8 +139,9 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
+        val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId) ?: distinctId
         return super.getFeatureFlagStateless(
-            distinctId,
+            resolvedDistinctId,
             key,
             defaultValue,
             groups,
@@ -158,8 +161,9 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
+        val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId) ?: distinctId
         return super.getFeatureFlagPayloadStateless(
-            distinctId,
+            resolvedDistinctId,
             key,
             defaultValue,
             groups,
@@ -181,8 +185,9 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         groupProperties: Map<String, Map<String, Any?>>?,
         sendFeatureFlagEvent: Boolean?,
     ): FeatureFlagResult? {
+        val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId) ?: distinctId
         return super.getFeatureFlagResultStateless(
-            distinctId,
+            resolvedDistinctId,
             key,
             groups,
             personProperties,
@@ -224,10 +229,20 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         distinctId: String?,
         properties: Map<String, Any>?,
     ) {
+        if (!enabled) {
+            super.captureExceptionStateless(
+                exception,
+                distinctId = distinctId,
+                properties = properties,
+            )
+            return
+        }
+
+        val captureContext = PostHogRequestContext.resolveCaptureContext(distinctId, properties)
         super.captureExceptionStateless(
             exception,
-            distinctId = distinctId,
-            properties = properties,
+            distinctId = captureContext.distinctId,
+            properties = captureContext.properties,
         )
     }
 
@@ -285,7 +300,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     }
 
     override fun evaluateFlags(
-        distinctId: String,
+        distinctId: String?,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
@@ -293,7 +308,8 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         onlyEvaluateLocally: Boolean,
         disableGeoip: Boolean,
     ): PostHogFeatureFlagEvaluations {
-        if (distinctId.isBlank()) {
+        val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId)
+        if (resolvedDistinctId.isNullOrBlank()) {
             return PostHogFeatureFlagEvaluations.empty(evaluationsHost)
         }
 
@@ -303,7 +319,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
 
         val result =
             featureFlagsImpl.evaluateFlags(
-                distinctId = distinctId,
+                distinctId = resolvedDistinctId,
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
@@ -313,7 +329,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             )
 
         return PostHogFeatureFlagEvaluations(
-            distinctId = distinctId,
+            distinctId = resolvedDistinctId,
             flagMap = result.flags,
             locallyEvaluated = result.locallyEvaluated,
             requestId = result.requestId,

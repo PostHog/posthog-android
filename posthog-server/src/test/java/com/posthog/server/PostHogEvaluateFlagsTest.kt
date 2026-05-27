@@ -233,6 +233,50 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `evaluateFlags uses request context distinctId when omitted or null`() {
+        val cases =
+            listOf<Pair<String, (PostHogInterface) -> PostHogFeatureFlagEvaluations>>(
+                "omitted distinctId" to { client -> client.evaluateFlags() },
+                "null distinctId" to { client -> client.evaluateFlags(null) },
+            )
+
+        for ((caseName, evaluateFlags) in cases) {
+            val mockServer = MockWebServer()
+            mockServer.enqueue(jsonResponse(createFlagsResponse("a", enabled = true)))
+            mockServer.start()
+
+            var postHog: PostHogInterface? = null
+            try {
+                postHog =
+                    PostHog.with(
+                        PostHogConfig.builder(TEST_API_KEY)
+                            .host(mockServer.url("/").toString())
+                            .build(),
+                    )
+
+                val snapshot =
+                    PostHogRequestContext.withContext(PostHogRequestContextData(distinctId = "context-user")) {
+                        evaluateFlags(postHog)
+                    }
+
+                assertEquals("context-user", snapshot.distinctId, "case: $caseName")
+                assertTrue(snapshot.isEnabled("a"), "case: $caseName")
+
+                val request = mockServer.takeRequest(2, TimeUnit.SECONDS)
+                assertNotNull(request, "case: $caseName")
+                val body = request.body.unGzip()
+                assertTrue(
+                    body.contains("\"distinct_id\":\"context-user\""),
+                    "expected context distinctId in request body for $caseName, got: $body",
+                )
+            } finally {
+                postHog?.close()
+                mockServer.shutdown()
+            }
+        }
+    }
+
+    @Test
     fun `evaluateFlags with blank distinctId returns an empty snapshot and fires no events on access`() {
         val mockServer = MockWebServer()
         mockServer.start()
