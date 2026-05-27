@@ -1,5 +1,11 @@
 ## Next
 
+## 2.6.0
+
+### Minor Changes
+
+- 1aa4328: Add request-scoped context support for server-side captures, including PostHog tracing headers, session metadata, personless fallback events, and context-aware exception capture.
+
 ## 2.5.3
 
 ### Patch Changes
