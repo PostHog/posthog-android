@@ -12,6 +12,7 @@ internal interface EvaluationsHost {
         key: String,
         value: Any?,
         properties: Map<String, Any>,
+        groups: Map<String, String>? = null,
     )
 
     fun logWarning(message: String)

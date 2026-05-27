@@ -261,6 +261,91 @@ internal class PostHogFeatureFlagCalledCacheTest {
     }
 
     @Test
+    fun `same flag and value with different group contexts are tracked separately`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-a")))
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-b")))
+
+        assertEquals(2, cache.size())
+    }
+
+    @Test
+    fun `same flag and value with same group context dedupe`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-a")))
+        assertFalse(cache.add("user1", "flag1", "value1", mapOf("organization" to "org-a")))
+
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `same flag and value with same groups in different key order dedupe`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(
+            cache.add(
+                "user1",
+                "flag1",
+                "value1",
+                linkedMapOf("organization" to "org-a", "team" to "red"),
+            ),
+        )
+        assertFalse(
+            cache.add(
+                "user1",
+                "flag1",
+                "value1",
+                linkedMapOf("team" to "red", "organization" to "org-a"),
+            ),
+        )
+
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `null and unset groups canonicalize to the same no-group bucket`() {
+        // Independent caches per pair so a returned `false` means the canonical
+        // repr matched, not merely that the prior call inserted the same key.
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1"))
+        assertFalse(cache.add("user1", "flag1", "value1", null))
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `emptyMap and unset groups canonicalize to the same no-group bucket`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1"))
+        assertFalse(cache.add("user1", "flag1", "value1", emptyMap()))
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `null and emptyMap groups canonicalize to the same no-group bucket`() {
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", null))
+        assertFalse(cache.add("user1", "flag1", "value1", emptyMap()))
+        assertEquals(1, cache.size())
+    }
+
+    @Test
+    fun `values containing the entry separators dedupe distinctly from synthetic decompositions`() {
+        // Without escaping, mapOf("a" to "b;c=d", "e" to "f") and
+        // mapOf("a" to "b", "c" to "d", "e" to "f") both serialize to the same
+        // `a=b;c=d;e=f;` string. Verify they hit two different cache entries.
+        val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
+
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("a" to "b;c=d", "e" to "f")))
+        assertTrue(cache.add("user1", "flag1", "value1", mapOf("a" to "b", "c" to "d", "e" to "f")))
+        assertEquals(2, cache.size())
+    }
+
+    @Test
     fun `batch eviction allows cache to grow beyond max before next eviction`() {
         val cache = PostHogFeatureFlagCalledCache(maxSize = 10)
 
