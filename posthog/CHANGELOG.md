@@ -1,5 +1,11 @@
 ## Next
 
+## 6.17.2
+
+### Patch Changes
+
+- 8fa1bfc: Retry event uploads on HTTP 408 (Request Timeout). 408 is transient and retryable, and the logs endpoint already retries it; this aligns the events endpoint with the SDK compliance contract.
+
 ## 6.17.1
 
 ### Patch Changes
