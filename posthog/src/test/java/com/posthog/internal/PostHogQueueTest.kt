@@ -502,6 +502,15 @@ internal class PostHogQueueTest {
     }
 
     @Test
+    fun `retries on 408`() {
+        val e = PostHogApiError(408, "", null)
+        val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
+
+        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
+    }
+
+    @Test
     fun `retries on 500`() {
         val e = PostHogApiError(500, "", null)
         val config = PostHogConfig(API_KEY)
