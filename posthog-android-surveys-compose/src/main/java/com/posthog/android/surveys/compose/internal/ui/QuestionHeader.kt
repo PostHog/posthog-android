@@ -21,7 +21,7 @@ internal fun QuestionHeader(question: PostHogDisplaySurveyQuestion) {
     ) {
         Text(
             text = question.question,
-            color = appearance.textColor,
+            color = appearance.questionTextColor,
             fontWeight = FontWeight.SemiBold,
         )
         val description = question.questionDescription

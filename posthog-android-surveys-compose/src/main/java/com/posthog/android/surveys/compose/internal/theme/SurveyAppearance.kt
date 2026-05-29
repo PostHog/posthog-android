@@ -5,13 +5,14 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
+import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 
 /**
  * Resolved appearance applied to every survey composable in a tree.
  *
  * Built by [PostHogDisplaySurveyAppearance.resolve] which fills in defaults
  * matching the iOS reference (see `SurveySheet.swift` ::
- * `SwiftUISurveyAppearance.getAppearanceWithDefaults`).
+ * `SurveyDisplayAppearance.getAppearanceWithDefaults`).
  */
 internal data class ResolvedSurveyAppearance(
     val backgroundColor: Color,
@@ -20,9 +21,17 @@ internal data class ResolvedSurveyAppearance(
     val submitButtonTextColor: Color,
     val submitButtonText: String,
     val textColor: Color,
+    val questionTextColor: Color,
     val descriptionTextColor: Color,
+    val placeholder: String,
+    val placeholderTextColor: Color,
     val ratingButtonColor: Color,
     val ratingButtonActiveColor: Color,
+    val displayThankYouMessage: Boolean,
+    val thankYouMessageHeader: String,
+    val thankYouMessageDescription: String?,
+    val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType,
+    val thankYouMessageCloseButtonText: String,
 )
 
 internal val LocalSurveyAppearance =
@@ -49,6 +58,10 @@ private val DefaultBorderColor = Color(0xFFE5E5EA)
 private val DefaultRatingBackground = Color(0xFFE5E5EA)
 private val DefaultDescriptionTextColor = Color(0xFF8E8E93)
 
+private const val DEFAULT_PLACEHOLDER = "Start typing..."
+private const val DEFAULT_THANK_YOU_HEADER = "Thank you for your feedback!"
+private const val DEFAULT_THANK_YOU_CLOSE = "Close"
+
 internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance {
     val backgroundColor =
         parseSurveyColorOrDefault(this?.backgroundColor, DefaultBackgroundColor)
@@ -67,6 +80,22 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
     val ratingButtonActiveColor =
         parseSurveyColorOrDefault(this?.ratingButtonActiveColor, submitButtonColor)
     val submitButtonText = this?.submitButtonText?.takeIf { it.isNotBlank() } ?: "Submit"
+    // iOS derives both placeholder and question-header colors at runtime — placeholder uses
+    // the system secondary label, the question header uses the background's contrasting
+    // color. We surface them as explicit fields so each composable can pick the right one
+    // without reaching back into the appearance struct.
+    val questionTextColor = backgroundColor.contrastingTextColor()
+    val placeholderTextColor = textColor.copy(alpha = 0.5f)
+    val placeholder = this?.placeholder?.takeIf { it.isNotBlank() } ?: DEFAULT_PLACEHOLDER
+
+    val displayThankYouMessage = this?.displayThankYouMessage ?: false
+    val thankYouMessageHeader =
+        this?.thankYouMessageHeader?.takeIf { it.isNotBlank() } ?: DEFAULT_THANK_YOU_HEADER
+    val thankYouMessageDescription = this?.thankYouMessageDescription?.takeIf { it.isNotBlank() }
+    val thankYouMessageDescriptionContentType =
+        this?.thankYouMessageDescriptionContentType ?: PostHogDisplaySurveyTextContentType.TEXT
+    val thankYouMessageCloseButtonText =
+        this?.thankYouMessageCloseButtonText?.takeIf { it.isNotBlank() } ?: DEFAULT_THANK_YOU_CLOSE
 
     return ResolvedSurveyAppearance(
         backgroundColor = backgroundColor,
@@ -75,9 +104,17 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
         submitButtonTextColor = submitButtonTextColor,
         submitButtonText = submitButtonText,
         textColor = textColor,
+        questionTextColor = questionTextColor,
         descriptionTextColor = descriptionTextColor,
+        placeholder = placeholder,
+        placeholderTextColor = placeholderTextColor,
         ratingButtonColor = ratingButtonColor,
         ratingButtonActiveColor = ratingButtonActiveColor,
+        displayThankYouMessage = displayThankYouMessage,
+        thankYouMessageHeader = thankYouMessageHeader,
+        thankYouMessageDescription = thankYouMessageDescription,
+        thankYouMessageDescriptionContentType = thankYouMessageDescriptionContentType,
+        thankYouMessageCloseButtonText = thankYouMessageCloseButtonText,
     )
 }
 
