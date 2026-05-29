@@ -73,6 +73,21 @@ data class CaptureResponse(
     val uuid: String,
 )
 
+data class FlagRequest(
+    val key: String,
+    val distinct_id: String? = null,
+    val person_properties: Map<String, Any>? = null,
+    val groups: Map<String, String>? = null,
+    val group_properties: Map<String, Map<String, Any>>? = null,
+    val disable_geoip: Boolean? = null,
+    val force_remote: Boolean? = null,
+)
+
+data class FlagResponse(
+    val success: Boolean,
+    val value: Any?,
+)
+
 data class FlushResponse(
     val success: Boolean,
     val events_flushed: Int,
@@ -303,6 +318,45 @@ fun main() {
                     }
 
                 call.respond(CaptureResponse(success = true, uuid = uuid))
+            }
+
+            post("/get_feature_flag") {
+                val req = call.receive<FlagRequest>()
+
+                val ph =
+                    AdapterContext.lock.withLock {
+                        AdapterContext.postHog
+                    }
+
+                if (ph == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "SDK not initialized"))
+                    return@post
+                }
+
+                // Apply person properties for flag evaluation without reloading yet, so exactly
+                // one /flags request is made below (the harness asserts request counts).
+                req.person_properties?.takeIf { it.isNotEmpty() }?.let {
+                    ph.setPersonPropertiesForFlags(it, reloadFeatureFlags = false)
+                }
+
+                // Register groups (with their properties) so they're included in the /flags body.
+                req.groups?.forEach { (type, key) ->
+                    ph.group(type, key, req.group_properties?.get(type))
+                }
+
+                // Reload flags and wait for the single /flags request to complete.
+                val latch = java.util.concurrent.CountDownLatch(1)
+                ph.reloadFeatureFlags { latch.countDown() }
+                latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
+
+                // Resolve the value, capturing the documented $feature_flag_called side effect.
+                val value = ph.getFeatureFlag(req.key, defaultValue = null, sendFeatureFlagEvent = true)
+
+                // Flush that event and wait so it can't spill into the next test's mock window.
+                ph.flush()
+                Thread.sleep(2000)
+
+                call.respond(FlagResponse(success = true, value = value))
             }
 
             post("/flush") {
