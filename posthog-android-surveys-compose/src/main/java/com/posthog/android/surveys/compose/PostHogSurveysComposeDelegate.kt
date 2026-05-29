@@ -22,11 +22,23 @@ import com.posthog.surveys.PostHogSurveysDelegate
  * PostHogAndroid.setup(applicationContext, config)
  * ```
  *
- * MVP scope: NPS / Number Rating questions, Material 3 [ModalBottomSheet],
- * theming sourced from `PostHogDisplaySurveyAppearance`. Other question types
- * (open text, single/multi choice, link, emoji rating) and the thank-you
- * screen are explicitly out of scope until follow-up releases — they render
- * a placeholder instead of crashing.
+ * ### What's covered
+ *
+ * - All five question types: open text, single choice, multiple choice,
+ *   rating (number + emoji), and link
+ * - Multi-question surveys (naïve "next" advancement; server-driven
+ *   branching is a planned follow-up)
+ * - Thank-you / confirmation screen when the customer has enabled
+ *   `displayThankYouMessage` in PostHog
+ * - Theming from `PostHogDisplaySurveyAppearance` — every default value
+ *   matches the iOS reference so customer appearance config in the PostHog
+ *   UI works on Android without changes
+ *
+ * ### What this delegate doesn't do (yet)
+ *
+ * - Branching logic — see `posthog-android-surveys-compose/CHANGELOG.md` and
+ *   `ARCHITECTURE.md` for the full follow-up list
+ * - HTML descriptions (rendered as plain text only)
  *
  * The constructor accepts any [Context] but treats it as an [Application]
  * context internally; passing an activity context is safe (we always resolve
