@@ -3,3 +3,7 @@ packages:
     - "posthog-android"
     - "posthog-server"
     - "posthog-android-gradle-plugin"
+
+# Wait at least 7 days (10080 minutes) before installing newly published package
+# versions, as a supply-chain guard against malicious or unstable releases.
+minimumReleaseAge: 10080
