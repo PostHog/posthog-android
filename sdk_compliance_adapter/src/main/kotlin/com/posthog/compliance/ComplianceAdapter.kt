@@ -50,6 +50,7 @@ data class HealthResponse(
     val sdk_name: String,
     val sdk_version: String,
     val adapter_version: String,
+    val capabilities: List<String>,
 )
 
 data class InitRequest(
@@ -210,6 +211,9 @@ fun main() {
                         sdk_name = "posthog-android",
                         sdk_version = PostHogConfig(apiKey = "").sdkVersion,
                         adapter_version = "1.0.0",
+                        // Android posts events to /batch (capture_v0) and gzips them, so the
+                        // harness should run the capture suites against it.
+                        capabilities = listOf("capture_v0", "encoding_gzip"),
                     ),
                 )
             }
@@ -242,6 +246,11 @@ fun main() {
                             flushIntervalSeconds = flushIntervalSeconds,
                             debug = true,
                             preloadFeatureFlags = false,
+                            // Don't load remote config on init either — it chains into a /flags
+                            // request, which would add a spurious request to every test's count
+                            // (and bleed across tests). Flags load only via the explicit
+                            // reloadFeatureFlags in /get_feature_flag.
+                            remoteConfig = false,
                         )
 
                     // Create OkHttpClient with tracking and gzip interceptors
