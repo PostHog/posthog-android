@@ -150,7 +150,7 @@ private fun Path.quad(
 ) {
     // Compose's argument order is (control, end); iOS's is (end, control). Wrapping
     // the call lets us keep iOS's parameter order in the call-sites for easier review.
-    quadraticBezierTo(ctrlX, ctrlY, toX, toY)
+    quadraticTo(ctrlX, ctrlY, toX, toY)
 }
 
 private fun Path.addFaceCircle(
