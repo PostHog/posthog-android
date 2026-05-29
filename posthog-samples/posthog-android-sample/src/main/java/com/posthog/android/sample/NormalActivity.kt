@@ -34,6 +34,16 @@ class NormalActivity : ComponentActivity() {
             startActivity(Intent(this, LogsActivity::class.java))
         }
 
+        val triggerSurveyButton = findViewById<Button>(R.id.triggerSurveyButton)
+        triggerSurveyButton.setOnClickListener {
+            PostHog.capture("show_test_survey")
+            Toast.makeText(
+                this,
+                "Captured `show_test_survey` — survey should appear if targeting matches.",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+
         val button = findViewById<Button>(R.id.button)
 //        val editText = findViewById<EditText>(R.id.editText)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)

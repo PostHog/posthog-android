@@ -60,6 +60,8 @@ tasks.withType<DetektCreateBaselineTask>().configureEach {
 
 apiValidation {
     ignoredProjects.add("posthog-android-sample")
+    // Alpha module — public surface will churn until 1.0.0 stable.
+    ignoredProjects.add("posthog-android-surveys-compose")
 }
 
 nexusPublishing.postHogConfig()

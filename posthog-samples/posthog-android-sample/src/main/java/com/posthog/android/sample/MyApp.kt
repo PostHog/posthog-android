@@ -5,6 +5,7 @@ import android.os.StrictMode
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.surveys.compose.PostHogSurveysComposeDelegate
 
 class MyApp : Application() {
     override fun onCreate() {
@@ -41,7 +42,8 @@ class MyApp : Application() {
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true
                 sessionReplayConfig.screenshot = true
-                surveys = false
+                surveys = true
+                surveysConfig.surveysDelegate = PostHogSurveysComposeDelegate(applicationContext)
                 errorTrackingConfig.autoCapture = false
                 logs.serviceName = "posthog-android-sample"
                 logs.environment = "development"

@@ -73,6 +73,7 @@ kotlin {
 
 dependencies {
     implementation(project(mapOf("path" to ":posthog-android")))
+    implementation(project(mapOf("path" to ":posthog-android-surveys-compose")))
 
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

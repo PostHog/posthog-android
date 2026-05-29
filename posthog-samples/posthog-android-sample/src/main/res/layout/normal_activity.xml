@@ -55,6 +55,13 @@
         android:id="@+id/logsButton"
         />
 
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Trigger test survey"
+        android:id="@+id/triggerSurveyButton"
+        />
+
     <!--            &lt;!&ndash;    <View&ndash;&gt;-->
     <!--            &lt;!&ndash;        android:layout_width="match_parent"&ndash;&gt;-->
     <!--            &lt;!&ndash;        android:layout_height="5dp"&ndash;&gt;-->

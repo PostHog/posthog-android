@@ -1,0 +1,5 @@
+[*.{kt,kts}]
+# Jetpack Compose @Composable functions use PascalCase by convention; tell
+# ktlint to skip the standard function-naming rule when the function is
+# annotated as such. Other naming rules still apply.
+ktlint_function_naming_ignore_when_annotated_with = Composable
