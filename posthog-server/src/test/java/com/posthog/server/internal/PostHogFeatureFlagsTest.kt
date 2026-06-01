@@ -19,6 +19,8 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import java.io.StringReader
+import java.io.StringWriter
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1571,6 +1573,80 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `loadFeatureFlagDefinitions falls back to API when provider get throws on cold load`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("get-error-fallback-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                shouldFetch = false,
+                throwOnGet = true,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(1, mockServer.requestCount)
+        assertEquals(1, provider.getCalls)
+        assertEquals(0, provider.onReceivedCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("get-error-fallback-flag", false, "test-user"))
+        assertTrue(logger.containsLog("Error loading feature flag definitions from cache provider"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions keeps existing definitions when provider get throws after load`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("existing-after-get-error-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        provider.shouldFetch = false
+        provider.throwOnGet = true
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(1, mockServer.requestCount)
+        assertEquals(1, provider.getCalls)
+        assertEquals(1, provider.onReceivedCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("existing-after-get-error-flag", false, "test-user"))
+        assertTrue(logger.containsLog("Error loading feature flag definitions from cache provider"))
+        assertTrue(logger.containsLog("keeping existing definitions"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `loadFeatureFlagDefinitions does not store definitions on 304 Not Modified`() {
         val logger = TestLogger()
         val localEvalResponse = createLocalEvaluationResponse("etag-cache-flag")
@@ -1599,6 +1675,280 @@ internal class PostHogFeatureFlagsTest {
 
         assertEquals(2, mockServer.requestCount)
         assertEquals(1, provider.onReceivedCalls)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions picks up updated cached definitions on subsequent polls`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "cached-flag-v1"),
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        provider.cacheData = createFlagDefinitionCacheData(config, "cached-flag-v2")
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(0, mockServer.requestCount)
+        assertEquals(2, provider.shouldFetchCalls)
+        assertEquals(2, provider.getCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("cached-flag-v2", false, "test-user"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `cached group flag uses group type mapping from provider`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "cached-group-flag", aggregationGroupTypeIndex = 2),
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        val result =
+            featureFlags.getFeatureFlag(
+                key = "cached-group-flag",
+                defaultValue = false,
+                distinctId = "user-123",
+                groups = mapOf("organization" to "org-456"),
+                groupProperties = mapOf("org-456" to mapOf("plan" to "enterprise")),
+            )
+
+        assertEquals(true, result)
+        assertEquals(0, mockServer.requestCount)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `cached inactive flag evaluates false without remote fallback`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val inactiveFlagJson = createLocalEvaluationResponse("inactive-cache-flag").replace("\"active\": true", "\"active\": false")
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheDataFromJson(config, inactiveFlagJson),
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        val result = featureFlags.getFeatureFlag("inactive-cache-flag", true, "test-user")
+
+        assertEquals(false, result)
+        assertEquals(0, mockServer.requestCount)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `cached cohort flag uses cohorts from provider`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheDataFromJson(config, createCohortLocalEvaluationResponse()),
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        val result =
+            featureFlags.getFeatureFlag(
+                key = "cohort-member",
+                defaultValue = false,
+                distinctId = "user-123",
+                personProperties = mapOf("email" to "example@example.com"),
+            )
+
+        assertEquals(true, result)
+        assertEquals(0, mockServer.requestCount)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `flag definition cache data round trips through JSON with snake case group mapping`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val writer = StringWriter()
+        config.serializer.serialize(createFlagDefinitionCacheData(config, "roundtrip-cache-flag"), writer)
+        val json = writer.toString()
+        val roundTrippedData =
+            config.serializer.deserialize<PostHogFlagDefinitionCacheData>(
+                StringReader(json),
+            )
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = roundTrippedData,
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertTrue(json.contains("group_type_mapping"))
+        assertEquals("account", roundTrippedData.groupTypeMapping["0"])
+        assertEquals(true, featureFlags.getFeatureFlag("roundtrip-cache-flag", false, "test-user"))
+        assertEquals(0, mockServer.requestCount)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `concurrent cache loads share one provider read`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "concurrent-cache-flag"),
+                shouldFetch = false,
+                delayOnGetMs = 300,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+        val startLatch = CountDownLatch(1)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        val threads =
+            (1..5).map {
+                Thread {
+                    try {
+                        startLatch.await()
+                        featureFlags.loadFeatureFlagDefinitions()
+                    } catch (e: Throwable) {
+                        errors.add(e)
+                    }
+                }
+            }
+
+        threads.forEach { it.start() }
+        startLatch.countDown()
+        threads.forEach { it.join() }
+
+        assertTrue(errors.isEmpty(), "Unexpected errors: $errors")
+        assertEquals(0, mockServer.requestCount)
+        assertEquals(1, provider.shouldFetchCalls)
+        assertEquals(1, provider.getCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("concurrent-cache-flag", false, "test-user"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `shutdown calls provider after definitions loaded from cache`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "shutdown-cache-flag"),
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        featureFlags.shutDown()
+
+        assertEquals(0, mockServer.requestCount)
+        assertEquals(1, provider.shutdownCalls)
 
         mockServer.shutdown()
     }
@@ -1645,10 +1995,20 @@ internal class PostHogFeatureFlagsTest {
     private fun createFlagDefinitionCacheData(
         config: com.posthog.PostHogConfig,
         flagKey: String,
+        aggregationGroupTypeIndex: Int? = null,
+    ): PostHogFlagDefinitionCacheData =
+        createFlagDefinitionCacheDataFromJson(
+            config,
+            createLocalEvaluationResponse(flagKey, aggregationGroupTypeIndex = aggregationGroupTypeIndex),
+        )
+
+    private fun createFlagDefinitionCacheDataFromJson(
+        config: com.posthog.PostHogConfig,
+        json: String,
     ): PostHogFlagDefinitionCacheData {
         val response =
             config.serializer.deserialize<LocalEvaluationResponse>(
-                StringReader(createLocalEvaluationResponse(flagKey)),
+                StringReader(json),
             )
         return PostHogFlagDefinitionCacheData(
             flags = response.flags ?: emptyList(),
@@ -1657,13 +2017,99 @@ internal class PostHogFeatureFlagsTest {
         )
     }
 
+    private fun createCohortLocalEvaluationResponse(): String =
+        """
+        {
+            "flags": [
+                {
+                    "id": 26,
+                    "name": "Cohort Member",
+                    "key": "cohort-member",
+                    "active": true,
+                    "filters": {
+                        "groups": [
+                            {
+                                "properties": [
+                                    {
+                                        "key": "id",
+                                        "value": 2,
+                                        "operator": "in",
+                                        "type": "cohort",
+                                        "negation": false
+                                    }
+                                ],
+                                "rollout_percentage": 100
+                            }
+                        ]
+                    },
+                    "version": 2
+                }
+            ],
+            "group_type_mapping": {},
+            "cohorts": {
+                "2": {
+                    "type": "AND",
+                    "values": [
+                        {
+                            "type": "AND",
+                            "values": [
+                                {
+                                    "key": "email",
+                                    "operator": "not_regex",
+                                    "type": "person",
+                                    "value": "@hedgebox.net$"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "AND",
+                            "values": [
+                                {
+                                    "key": "id",
+                                    "type": "cohort",
+                                    "negation": true,
+                                    "value": 3
+                                },
+                                {
+                                    "key": "email",
+                                    "operator": "is_set",
+                                    "type": "person",
+                                    "negation": false,
+                                    "value": "is_set"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "3": {
+                    "type": "OR",
+                    "values": [
+                        {
+                            "type": "AND",
+                            "values": [
+                                {
+                                    "key": "email",
+                                    "operator": "regex",
+                                    "type": "person",
+                                    "negation": false,
+                                    "value": "@gmail.com"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        """.trimIndent()
+
     private class TestFlagDefinitionCacheProvider(
         var cacheData: PostHogFlagDefinitionCacheData? = null,
         var shouldFetch: Boolean = true,
-        private val throwOnShouldFetch: Boolean = false,
-        private val throwOnGet: Boolean = false,
-        private val throwOnReceived: Boolean = false,
-        private val throwOnShutdown: Boolean = false,
+        var throwOnShouldFetch: Boolean = false,
+        var throwOnGet: Boolean = false,
+        var throwOnReceived: Boolean = false,
+        var throwOnShutdown: Boolean = false,
+        var delayOnGetMs: Long = 0,
     ) : PostHogFlagDefinitionCacheProvider {
         var shouldFetchCalls = 0
         var getCalls = 0
@@ -1673,6 +2119,9 @@ internal class PostHogFeatureFlagsTest {
 
         override fun getFlagDefinitions(): PostHogFlagDefinitionCacheData? {
             getCalls += 1
+            if (delayOnGetMs > 0) {
+                Thread.sleep(delayOnGetMs)
+            }
             if (throwOnGet) {
                 throw IllegalStateException("get failed")
             }
