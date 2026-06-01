@@ -348,9 +348,20 @@ fun main() {
                     ph.setPersonPropertiesForFlags(it, reloadFeatureFlags = false)
                 }
 
-                // Register groups (with their properties) so they're included in the /flags body.
+                // Set group properties via the flags-specific API so we don't fire an extra
+                // reload for them. The /flags `group_properties` field reads from this store.
+                req.group_properties?.forEach { (type, props) ->
+                    if (props.isNotEmpty()) {
+                        ph.setGroupPropertiesForFlags(type, props, reloadFeatureFlags = false)
+                    }
+                }
+
+                // Register the type→key mapping. The /flags `groups` field reads from the
+                // GROUPS preference, which only group() writes — so group() is required here.
+                // It unconditionally emits $groupidentify and reloads on a new group (no
+                // suppression param on the public API), which is unavoidable.
                 req.groups?.forEach { (type, key) ->
-                    ph.group(type, key, req.group_properties?.get(type))
+                    ph.group(type, key, null)
                 }
 
                 // Reload flags and wait for the single /flags request to complete.
