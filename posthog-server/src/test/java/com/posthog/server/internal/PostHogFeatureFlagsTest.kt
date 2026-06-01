@@ -1,6 +1,9 @@
 package com.posthog.server.internal
 
+import com.posthog.internal.LocalEvaluationResponse
 import com.posthog.internal.PostHogApi
+import com.posthog.server.PostHogFlagDefinitionCacheData
+import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.TestLogger
 import com.posthog.server.createEmptyFlagsResponse
 import com.posthog.server.createFlagsResponse
@@ -15,6 +18,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import java.io.StringReader
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1392,5 +1396,310 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(true, result)
 
         mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions uses cached definitions when provider skips fetch`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "cached-flag"),
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(0, mockServer.requestCount)
+        assertEquals(1, provider.shouldFetchCalls)
+        assertEquals(1, provider.getCalls)
+        assertEquals(0, provider.onReceivedCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("cached-flag", false, "test-user"))
+        assertTrue(logger.containsLog("Loaded 1 feature flags from flag definition cache"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions fetches and stores definitions when provider should fetch`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("api-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(1, mockServer.requestCount)
+        assertEquals(1, provider.shouldFetchCalls)
+        assertEquals(0, provider.getCalls)
+        assertEquals(1, provider.onReceivedCalls)
+        assertEquals("api-flag", provider.lastReceivedData?.flags?.single()?.key)
+        assertEquals(true, featureFlags.getFeatureFlag("api-flag", false, "test-user"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions falls back to API on cold cache miss without storing as follower`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("fallback-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = false)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(1, mockServer.requestCount)
+        assertEquals(1, provider.getCalls)
+        assertEquals(0, provider.onReceivedCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("fallback-flag", false, "test-user"))
+        assertTrue(logger.containsLog("falling back to API"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions keeps existing definitions on follower cache miss`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("existing-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        provider.shouldFetch = false
+        provider.cacheData = null
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(1, mockServer.requestCount)
+        assertEquals(2, provider.shouldFetchCalls)
+        assertEquals(1, provider.getCalls)
+        assertEquals(1, provider.onReceivedCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("existing-flag", false, "test-user"))
+        assertTrue(logger.containsLog("keeping existing definitions"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions defaults to API fetch when provider shouldFetch throws`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("api-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(throwOnShouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(1, mockServer.requestCount)
+        assertEquals(1, provider.onReceivedCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("api-flag", false, "test-user"))
+        assertTrue(logger.containsLog("shouldFetchFlagDefinitions"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions does not store definitions on 304 Not Modified`() {
+        val logger = TestLogger()
+        val localEvalResponse = createLocalEvaluationResponse("etag-cache-flag")
+        val mockServer = MockWebServer()
+        mockServer.start()
+        mockServer.enqueue(jsonResponseWithEtag(localEvalResponse, "\"etag-cache\""))
+        mockServer.enqueue(notModifiedResponse("\"etag-cache\""))
+
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(2, mockServer.requestCount)
+        assertEquals(1, provider.onReceivedCalls)
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `provider write and shutdown errors are logged without clearing definitions`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("resilient-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                shouldFetch = true,
+                throwOnReceived = true,
+                throwOnShutdown = true,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        featureFlags.shutDown()
+
+        assertEquals(true, featureFlags.getFeatureFlag("resilient-flag", false, "test-user"))
+        assertEquals(1, provider.onReceivedCalls)
+        assertEquals(1, provider.shutdownCalls)
+        assertTrue(logger.containsLog("Error storing feature flag definitions in cache provider"))
+        assertTrue(logger.containsLog("Error shutting down flag definition cache provider"))
+
+        mockServer.shutdown()
+    }
+
+    private fun createFlagDefinitionCacheData(
+        config: com.posthog.PostHogConfig,
+        flagKey: String,
+    ): PostHogFlagDefinitionCacheData {
+        val response =
+            config.serializer.deserialize<LocalEvaluationResponse>(
+                StringReader(createLocalEvaluationResponse(flagKey)),
+            )
+        return PostHogFlagDefinitionCacheData(
+            flags = response.flags ?: emptyList(),
+            groupTypeMapping = response.groupTypeMapping ?: emptyMap(),
+            cohorts = response.cohorts ?: emptyMap(),
+        )
+    }
+
+    private class TestFlagDefinitionCacheProvider(
+        var cacheData: PostHogFlagDefinitionCacheData? = null,
+        var shouldFetch: Boolean = true,
+        private val throwOnShouldFetch: Boolean = false,
+        private val throwOnGet: Boolean = false,
+        private val throwOnReceived: Boolean = false,
+        private val throwOnShutdown: Boolean = false,
+    ) : PostHogFlagDefinitionCacheProvider {
+        var shouldFetchCalls = 0
+        var getCalls = 0
+        var onReceivedCalls = 0
+        var shutdownCalls = 0
+        var lastReceivedData: PostHogFlagDefinitionCacheData? = null
+
+        override fun getFlagDefinitions(): PostHogFlagDefinitionCacheData? {
+            getCalls += 1
+            if (throwOnGet) {
+                throw IllegalStateException("get failed")
+            }
+            return cacheData
+        }
+
+        override fun shouldFetchFlagDefinitions(): Boolean {
+            shouldFetchCalls += 1
+            if (throwOnShouldFetch) {
+                throw IllegalStateException("should fetch failed")
+            }
+            return shouldFetch
+        }
+
+        override fun onFlagDefinitionsReceived(data: PostHogFlagDefinitionCacheData) {
+            onReceivedCalls += 1
+            lastReceivedData = data
+            if (throwOnReceived) {
+                throw IllegalStateException("write failed")
+            }
+        }
+
+        override fun shutdown() {
+            shutdownCalls += 1
+            if (throwOnShutdown) {
+                throw IllegalStateException("shutdown failed")
+            }
+        }
     }
 }

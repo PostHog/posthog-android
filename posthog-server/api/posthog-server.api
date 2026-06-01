@@ -125,6 +125,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getFeatureFlagCacheMaxAgeMs ()I
 	public final fun getFeatureFlagCacheSize ()I
 	public final fun getFeatureFlagCalledCacheSize ()I
+	public final fun getFlagDefinitionCacheProvider ()Lcom/posthog/server/PostHogFlagDefinitionCacheProvider;
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
@@ -145,6 +146,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun setFeatureFlagCacheMaxAgeMs (I)V
 	public final fun setFeatureFlagCacheSize (I)V
 	public final fun setFeatureFlagCalledCacheSize (I)V
+	public final fun setFlagDefinitionCacheProvider (Lcom/posthog/server/PostHogFlagDefinitionCacheProvider;)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setLocalEvaluation (Z)V
@@ -168,6 +170,7 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun featureFlagCacheMaxAgeMs (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCalledCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun flagDefinitionCacheProvider (Lcom/posthog/server/PostHogFlagDefinitionCacheProvider;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushAt (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun host (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
@@ -314,6 +317,28 @@ public final class com/posthog/server/PostHogFeatureFlagResultOptions$Builder {
 
 public final class com/posthog/server/PostHogFeatureFlagResultOptions$Companion {
 	public final fun builder ()Lcom/posthog/server/PostHogFeatureFlagResultOptions$Builder;
+}
+
+public final class com/posthog/server/PostHogFlagDefinitionCacheData {
+	public fun <init> (Ljava/util/List;Ljava/util/Map;Ljava/util/Map;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun component3 ()Ljava/util/Map;
+	public final fun copy (Ljava/util/List;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/server/PostHogFlagDefinitionCacheData;
+	public static synthetic fun copy$default (Lcom/posthog/server/PostHogFlagDefinitionCacheData;Ljava/util/List;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/server/PostHogFlagDefinitionCacheData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCohorts ()Ljava/util/Map;
+	public final fun getFlags ()Ljava/util/List;
+	public final fun getGroupTypeMapping ()Ljava/util/Map;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/posthog/server/PostHogFlagDefinitionCacheProvider {
+	public abstract fun getFlagDefinitions ()Lcom/posthog/server/PostHogFlagDefinitionCacheData;
+	public abstract fun onFlagDefinitionsReceived (Lcom/posthog/server/PostHogFlagDefinitionCacheData;)V
+	public abstract fun shouldFetchFlagDefinitions ()Z
+	public abstract fun shutdown ()V
 }
 
 public abstract interface class com/posthog/server/PostHogInterface {
