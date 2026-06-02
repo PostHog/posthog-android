@@ -211,8 +211,7 @@ fun main() {
                         sdk_name = "posthog-android",
                         sdk_version = PostHogConfig(apiKey = "").sdkVersion,
                         adapter_version = "1.0.0",
-                        // Android posts events to /batch (capture_v0) and gzips them, so the
-                        // harness should run the capture suites against it.
+                        // Opt into the capture suites (android posts /batch with gzip).
                         capabilities = listOf("capture_v0", "encoding_gzip"),
                     ),
                 )
@@ -246,11 +245,6 @@ fun main() {
                             flushIntervalSeconds = flushIntervalSeconds,
                             debug = true,
                             preloadFeatureFlags = false,
-                            // Don't load remote config on init either — it chains into a /flags
-                            // request, which would add a spurious request to every test's count
-                            // (and bleed across tests). Flags load only via the explicit
-                            // reloadFeatureFlags in /get_feature_flag.
-                            remoteConfig = false,
                         )
 
                     // Create OkHttpClient with tracking and gzip interceptors
@@ -356,10 +350,8 @@ fun main() {
                     }
                 }
 
-                // Register the type→key mapping. The /flags `groups` field reads from the
-                // GROUPS preference, which only group() writes — so group() is required here.
-                // It unconditionally emits $groupidentify and reloads on a new group (no
-                // suppression param on the public API), which is unavoidable.
+                // group() registers the type→key (only writer of the GROUPS pref);
+                // its $groupidentify + reload-on-new-group are unavoidable on the public API.
                 req.groups?.forEach { (type, key) ->
                     ph.group(type, key, null)
                 }
