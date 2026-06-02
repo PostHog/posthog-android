@@ -1,0 +1,9 @@
+{
+  "errorsWhileComputingFlags": false,
+  "featureFlagPayloads": {
+    "4535-funnel-bar-viz": "true"
+  },
+  "featureFlags": {
+    "4535-funnel-bar-viz": true
+  }
+}
