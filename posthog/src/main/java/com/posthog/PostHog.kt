@@ -1251,6 +1251,8 @@ public class PostHog private constructor(
 
     public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
         if (!isEnabled()) {
+            // Still invoke the callback so awaiting callers aren't left hanging.
+            onFeatureFlags?.loaded()
             return
         }
         loadFeatureFlagsRequest(
@@ -1275,6 +1277,8 @@ public class PostHog private constructor(
 
         if (distinctId.isBlank()) {
             config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+            // Still invoke the callback so awaiting callers aren't left hanging.
+            onFeatureFlags?.loaded()
             return
         }
 
