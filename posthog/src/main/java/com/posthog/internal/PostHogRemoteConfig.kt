@@ -83,6 +83,10 @@ public class PostHogRemoteConfig(
     @Volatile
     private var sessionReplayFlagActive = false
 
+    // Last sessionRecording config from /config, kept so /flags reloads can re-evaluate without re-fetching it.
+    @Volatile
+    private var lastSessionRecordingConfig: Map<String, Any?>? = null
+
     @Volatile
     private var hasSurveys = false
 
@@ -398,6 +402,12 @@ public class PostHogRemoteConfig(
         return milliseconds
     }
 
+    // Re-evaluates sessionReplayFlagActive from the cached config + current flags.
+    private fun reevaluateSessionReplayFromLastConfig() {
+        val recordingConfig = lastSessionRecordingConfig ?: return
+        sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), recordingConfig)
+    }
+
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
         when (sessionRecording) {
             is Boolean -> {
@@ -405,6 +415,7 @@ public class PostHogRemoteConfig(
                 // so we don't enable sessionReplayFlagActive here
                 sessionReplayFlagActive = false
                 consoleLogRecordingEnabled = false
+                lastSessionRecordingConfig = null
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -423,6 +434,9 @@ public class PostHogRemoteConfig(
                         ?: config.snapshotEndpoint
 
                     sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+
+                    // Cache so /flags reloads and reset()/identify() can re-evaluate without re-fetching /config.
+                    lastSessionRecordingConfig = it
 
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
@@ -637,8 +651,13 @@ public class PostHogRemoteConfig(
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
-                    // since flags might have changed, we need to check if session recording is active again
-                    processSessionRecordingConfig(it.sessionRecording)
+                    // /flags doesn't carry sessionRecording; re-evaluate from the cached config instead of clobbering it.
+                    val responseSessionRecording = it.sessionRecording
+                    if (responseSessionRecording is Map<*, *>) {
+                        processSessionRecordingConfig(responseSessionRecording)
+                    } else {
+                        reevaluateSessionReplayFromLastConfig()
+                    }
 
                     // TODO: surveys depends on remoteConfig for now
                     // otherwise surveysHandler?.onSurveysLoaded will be called multiple times
@@ -764,6 +783,8 @@ public class PostHogRemoteConfig(
 
                 if (sessionRecording != null) {
                     sessionReplayFlagActive = isRecordingActive(flags ?: mapOf(), sessionRecording)
+
+                    lastSessionRecordingConfig = sessionRecording
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
