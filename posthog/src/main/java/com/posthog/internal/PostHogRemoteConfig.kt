@@ -651,9 +651,10 @@ public class PostHogRemoteConfig(
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
-                    // /flags doesn't carry sessionRecording; re-evaluate from the cached config instead of clobbering it.
+                    // /flags omits sessionRecording (null) -> re-evaluate from the cached config instead of
+                    // clobbering it. An explicit value (e.g. Boolean false when remotely disabled) is still honored.
                     val responseSessionRecording = it.sessionRecording
-                    if (responseSessionRecording is Map<*, *>) {
+                    if (responseSessionRecording != null) {
                         processSessionRecordingConfig(responseSessionRecording)
                     } else {
                         reevaluateSessionReplayFromLastConfig()
