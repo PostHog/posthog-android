@@ -413,7 +413,9 @@ fun main() {
 
             post("/reset") {
                 AdapterContext.lock.withLock {
-                    AdapterContext.postHog?.reset()
+                    // close (not reset) — reset() reloads flags, lands as +1 /flags in the next test.
+                    AdapterContext.postHog?.close()
+                    AdapterContext.postHog = null
 
                     AdapterContext.state.pendingEvents = 0
                     AdapterContext.state.totalEventsCaptured = 0
