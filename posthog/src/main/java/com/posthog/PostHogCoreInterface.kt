@@ -47,6 +47,7 @@ public interface PostHogCoreInterface {
 
     /**
      * Enables or disables the debug mode
+     * @param enable true to enable SDK debug logging, false to disable it.
      */
     public fun debug(enable: Boolean = true)
 }

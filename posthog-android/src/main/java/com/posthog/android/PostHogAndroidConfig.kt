@@ -8,15 +8,19 @@ import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogQueue
 
 /**
- * The SDK Config
- * @property apiKey the PostHog API Key
- * @property captureApplicationLifecycleEvents captures lifecycle events such as app installed, app updated, app opened and backgrounded
- * @property captureDeepLinks captures deep links events
- * @property captureScreenViews automatically captures a `$screen` event whenever a foreground
- * Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most
- * recent screen name is also attached as `$screen_name` to every subsequent event captured by
- * the SDK. To opt out of `$screen_name` stamping entirely, set to `false` AND avoid calling
- * `PostHog.screen(...)` manually. Default: `true`.
+ * Android SDK configuration.
+ *
+ * @param apiKey PostHog project API key. Leading and trailing whitespace is trimmed.
+ * @param host PostHog ingestion host. Defaults to [DEFAULT_HOST].
+ * @property captureApplicationLifecycleEvents Whether to capture application lifecycle events
+ *   automatically, including app installed, app updated, app opened, and app backgrounded.
+ * @property captureDeepLinks Whether to capture `Deep Link Opened` events automatically.
+ * @property captureScreenViews Whether to capture a `$screen` event whenever a foreground
+ *   Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most
+ *   recent screen name is also attached as `$screen_name` to every subsequent event captured by
+ *   the SDK. To opt out of `$screen_name` stamping entirely, set this to `false` and avoid calling
+ *   `PostHog.screen(...)` manually. Default: `true`.
+ * @property sessionReplayConfig Android-specific session replay capture options.
  */
 public open class PostHogAndroidConfig
     @JvmOverloads

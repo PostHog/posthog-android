@@ -629,9 +629,10 @@ public open class PostHogStateless protected constructor(
         }
 
         /**
-         * Set up the SDK and returns an instance that you can hold and pass it around
-         * @param T the type of the Config
-         * @property config the Config
+         * Sets up the stateless SDK and returns an instance that you can hold and pass around.
+         *
+         * @param config SDK configuration.
+         * @return The configured stateless PostHog client instance.
          */
         public fun <T : PostHogConfig> with(config: T): PostHogStatelessInterface {
             val instance = PostHogStateless()

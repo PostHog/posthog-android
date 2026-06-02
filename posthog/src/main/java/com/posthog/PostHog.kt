@@ -1718,9 +1718,10 @@ public class PostHog private constructor(
         }
 
         /**
-         * Set up the SDK and returns an instance that you can hold and pass it around
-         * @param T the type of the Config
-         * @property config the Config
+         * Sets up the SDK and returns an instance that you can hold and pass around.
+         *
+         * @param config SDK configuration.
+         * @return The configured PostHog client instance.
          */
         public fun <T : PostHogConfig> with(config: T): PostHogInterface {
             val instance = PostHog()

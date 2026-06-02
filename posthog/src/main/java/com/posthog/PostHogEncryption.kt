@@ -9,14 +9,16 @@ import java.io.OutputStream
  */
 public interface PostHogEncryption {
     /**
-     * The decrypt method
+     * Decrypts data read from [inputStream].
      * @param inputStream the InputStream that has to be decrypted
+     * @return an InputStream that yields decrypted event data
      */
     public fun decrypt(inputStream: InputStream): InputStream
 
     /**
-     * The decrypt method
+     * Encrypts data written to [outputStream].
      * @param outputStream the OutputStream that has to be encrypted
+     * @return an OutputStream that writes encrypted event data
      */
     public fun encrypt(outputStream: OutputStream): OutputStream
 }

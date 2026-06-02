@@ -21,6 +21,11 @@ import java.util.Collections
  *
  * Filtered clones from [onlyAccessed] / [only] are independent of the parent — accessing flags on
  * the clone does not back-propagate into the parent's "accessed" set.
+ *
+ * @property distinctId The distinct ID the snapshot was evaluated for, or null for an empty snapshot.
+ * @property requestId Request ID returned by the `/flags` API, when available.
+ * @property evaluatedAt Server evaluation timestamp, when available.
+ * @property definitionsLoadedAt Local evaluation definitions timestamp, when available.
  */
 public class PostHogFeatureFlagEvaluations internal constructor(
     public val distinctId: String?,
@@ -41,7 +46,11 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     private val accessLock = Any()
     private val accessed: MutableSet<String> = HashSet(initialAccessed)
 
-    /** Returns the snapshotted flag keys in iteration order of the underlying map. */
+    /**
+     * Returns the snapshotted flag keys in iteration order of the underlying map.
+     *
+     * @return Feature flag keys included in this snapshot.
+     */
     public val keys: List<String>
         get() = flagMap.keys.toList()
 
@@ -58,6 +67,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * Returns whether the flag is enabled. Unknown flags return false. Records access; fires a
      * deduped `$feature_flag_called` event (with `$feature_flag_error: flag_missing` for unknown
      * keys), except when this snapshot has no resolvable distinctId.
+     *
+     * @param key Feature flag key.
+     * @return true when the flag is enabled or has a non-empty variant; false otherwise.
      */
     public fun isEnabled(key: String): Boolean {
         val flag = flagMap[key]
@@ -71,6 +83,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * is unknown. Records access; fires a deduped `$feature_flag_called` event (with
      * `$feature_flag_error: flag_missing` for unknown keys), except when this snapshot has no
      * resolvable distinctId.
+     *
+     * @param key Feature flag key.
+     * @return The variant string, boolean enabled value, or null when unknown.
      */
     public fun getFlag(key: String): Any? {
         val flag = flagMap[key]
@@ -83,6 +98,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * Returns the raw payload string for the flag, or null when the flag is unknown or has no
      * payload. The server returns payloads as JSON-encoded strings; use [getFlagPayloadAs] when
      * you want the deserialized value. Does not fire any event and does not record the access.
+     *
+     * @param key Feature flag key.
+     * @return The raw JSON payload string, or null when absent.
      */
     public fun getFlagPayload(key: String): String? {
         return flagMap[key]?.metadata?.payload
@@ -91,6 +109,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     /**
      * Returns the flag payload deserialized from JSON to type [T], or null when the flag is
      * unknown, has no payload, or deserialization fails.
+     *
+     * @param key Feature flag key.
+     * @return The deserialized payload, or null when absent or invalid.
      */
     public inline fun <reified T> getFlagPayloadAs(key: String): T? = getFlagPayloadAs(key, T::class.java)
 
@@ -98,6 +119,10 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * Returns the flag payload deserialized from JSON to [clazz], or null when the flag is
      * unknown, has no payload, or deserialization fails. The server returns payloads as
      * JSON-encoded strings, so this parses the raw string with Gson.
+     *
+     * @param key Feature flag key.
+     * @param clazz Class to deserialize the payload into.
+     * @return The deserialized payload, or null when absent or invalid.
      */
     public fun <T> getFlagPayloadAs(
         key: String,
@@ -116,6 +141,8 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     /**
      * Returns a filtered snapshot containing only the flags accessed on this instance via
      * [isEnabled] or [getFlag]. Returns an empty snapshot when no flag has been accessed yet.
+     *
+     * @return A new snapshot containing only accessed flags.
      */
     public fun onlyAccessed(): PostHogFeatureFlagEvaluations {
         val accessedKeys =
@@ -126,6 +153,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     /**
      * Returns a filtered snapshot containing only the named flags. Unknown keys are dropped and
      * each one logs a warning so callers notice typos.
+     *
+     * @param keys Feature flag keys to keep.
+     * @return A new snapshot containing only the requested known flags.
      */
     public fun only(keys: Collection<String>): PostHogFeatureFlagEvaluations {
         val resolved = LinkedHashSet<String>()
@@ -142,7 +172,12 @@ public class PostHogFeatureFlagEvaluations internal constructor(
         return cloneWith(resolved)
     }
 
-    /** Java-friendly varargs alias of [only]. */
+    /**
+     * Java-friendly varargs alias of [only].
+     *
+     * @param keys Feature flag keys to keep.
+     * @return A new snapshot containing only the requested known flags.
+     */
     public fun only(vararg keys: String): PostHogFeatureFlagEvaluations = only(keys.toList())
 
     private fun cloneWith(keep: Collection<String>): PostHogFeatureFlagEvaluations {
