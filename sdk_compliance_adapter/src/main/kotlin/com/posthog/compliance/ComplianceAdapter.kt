@@ -18,9 +18,18 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import okhttp3.Interceptor
 import okhttp3.Response
+import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+
+// File-backed event queue; wiped between tests (see /init and /reset).
+private const val QUEUE_STORAGE_PREFIX = "/tmp/posthog-queue"
+
+// Settle window after flush() so events land before the next test (generous for Docker).
+private const val FLUSH_SETTLE_MS = 2000L
 
 /**
  * PostHog Android SDK Compliance Adapter
@@ -80,6 +89,8 @@ data class FlagRequest(
     val person_properties: Map<String, Any>? = null,
     val groups: Map<String, String>? = null,
     val group_properties: Map<String, Map<String, Any>>? = null,
+    // Decoded for harness parity but not applied: no public per-request geoip toggle and
+    // the SDK always loads remotely (known SDK gaps).
     val disable_geoip: Boolean? = null,
     val force_remote: Boolean? = null,
 )
@@ -233,6 +244,9 @@ fun main() {
                     // Close existing instance if any
                     AdapterContext.postHog?.close()
 
+                    // close() leaves queue files on disk; wipe so they don't replay into this test.
+                    File(QUEUE_STORAGE_PREFIX).deleteRecursively()
+
                     // Create new config
                     val flushIntervalMs = req.flush_interval_ms ?: 100
                     val flushIntervalSeconds = maxOf(1, flushIntervalMs / 1000) // Min 1 second
@@ -259,7 +273,7 @@ fun main() {
                     req.max_retries?.let { config.maxRetries = it }
 
                     // Set storage prefix for file-backed queue
-                    config.storagePrefix = "/tmp/posthog-queue"
+                    config.storagePrefix = QUEUE_STORAGE_PREFIX
 
                     // Set minimal context to provide $lib and $lib_version
                     config.context = TestPostHogContext("posthog-android", config.sdkVersion)
@@ -336,8 +350,12 @@ fun main() {
                     return@post
                 }
 
-                // Apply person properties for flag evaluation without reloading yet, so exactly
-                // one /flags request is made below (the harness asserts request counts).
+                // identify() is the only public way to set the distinctId used in /flags
+                // (also fires $identify + a reload, flushed/awaited below).
+                req.distinct_id?.let { ph.identify(it) }
+
+                // Stage person properties without reloading, so the explicit reload below
+                // is the single /flags request we await (the harness counts requests).
                 req.person_properties?.takeIf { it.isNotEmpty() }?.let {
                     ph.setPersonPropertiesForFlags(it, reloadFeatureFlags = false)
                 }
@@ -350,23 +368,27 @@ fun main() {
                     }
                 }
 
-                // group() registers the type→key (only writer of the GROUPS pref);
-                // its $groupidentify + reload-on-new-group are unavoidable on the public API.
+                // group() is the only public writer of the GROUPS pref (needed in the /flags body);
+                // on a fresh SDK the new key also forces a $groupidentify + an extra /flags.
                 req.groups?.forEach { (type, key) ->
                     ph.group(type, key, null)
                 }
 
-                // Reload flags and wait for the single /flags request to complete.
-                val latch = java.util.concurrent.CountDownLatch(1)
+                // Reload flags and wait for the /flags request to complete.
+                val latch = CountDownLatch(1)
                 ph.reloadFeatureFlags { latch.countDown() }
-                latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                val reloaded = latch.await(5, TimeUnit.SECONDS)
+                if (!reloaded) {
+                    // Surface a reload timeout; otherwise it looks like a genuine null flag.
+                    System.err.println("[ADAPTER] /get_feature_flag reload timed out after 5s for key=${req.key}")
+                }
 
                 // Resolve the value, capturing the documented $feature_flag_called side effect.
                 val value = ph.getFeatureFlag(req.key, defaultValue = null, sendFeatureFlagEvent = true)
 
                 // Flush that event and wait so it can't spill into the next test's mock window.
                 ph.flush()
-                Thread.sleep(2000)
+                Thread.sleep(FLUSH_SETTLE_MS)
 
                 call.respond(FlagResponse(success = true, value = value))
             }
@@ -375,7 +397,7 @@ fun main() {
                 AdapterContext.postHog?.flush()
 
                 // Wait for events to be sent (generous timeout for Docker network latency)
-                Thread.sleep(2000)
+                Thread.sleep(FLUSH_SETTLE_MS)
 
                 val eventsFlushed =
                     AdapterContext.lock.withLock {
@@ -408,6 +430,9 @@ fun main() {
                     // close (not reset) — reset() reloads flags, lands as +1 /flags in the next test.
                     AdapterContext.postHog?.close()
                     AdapterContext.postHog = null
+
+                    // close() leaves queue files on disk; wipe so they don't replay next test (matches iOS).
+                    File(QUEUE_STORAGE_PREFIX).deleteRecursively()
 
                     AdapterContext.state.pendingEvents = 0
                     AdapterContext.state.totalEventsCaptured = 0
