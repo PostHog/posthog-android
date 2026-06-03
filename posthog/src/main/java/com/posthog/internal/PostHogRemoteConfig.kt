@@ -228,6 +228,8 @@ public class PostHogRemoteConfig(
 
                 response?.let {
                     synchronized(remoteConfigLock) {
+                        // /config is the only source of these configs; the /flags reload re-arms
+                        // them from the cache (reevaluate*FromCachedConfig). Don't move onto /flags.
                         processSessionRecordingConfig(it.sessionRecording)
                         processSurveys(it.surveys)
                         processErrorTrackingConfig(it.errorTracking)
@@ -400,16 +402,19 @@ public class PostHogRemoteConfig(
 
     // Restores the full recording config from cache (survives reset), re-evaluated against current flags.
     private fun reevaluateSessionReplayFromCachedConfig() {
-        @Suppress("UNCHECKED_CAST")
-        val recordingConfig = config.cachePreferences?.getValue(SESSION_REPLAY) as? Map<String, Any?>
+        val recordingConfig = config.cachePreferences?.getValue(SESSION_REPLAY)
         if (recordingConfig == null) {
             config.logger.log("No cached session replay config to re-evaluate; replay stays disabled.")
             return
         }
-        processSessionRecordingConfig(recordingConfig)
+        // persist = false: just read from the cache, no need to write it back.
+        processSessionRecordingConfig(recordingConfig, persist = false)
     }
 
-    private fun processSessionRecordingConfig(sessionRecording: Any?) {
+    private fun processSessionRecordingConfig(
+        sessionRecording: Any?,
+        persist: Boolean = true,
+    ) {
         when (sessionRecording) {
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
@@ -443,7 +448,9 @@ public class PostHogRemoteConfig(
 
                     sessionRecordingMinimumDurationMs = parseMinimumDurationMs(it["minimumDurationMilliseconds"])
 
-                    config.cachePreferences?.setValue(SESSION_REPLAY, it)
+                    if (persist) {
+                        config.cachePreferences?.setValue(SESSION_REPLAY, it)
+                    }
 
                     // TODO:
                     // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true},
@@ -461,7 +468,10 @@ public class PostHogRemoteConfig(
         config.cachePreferences?.remove(ERROR_TRACKING)
     }
 
-    private fun processErrorTrackingConfig(errorTracking: Any?) {
+    private fun processErrorTrackingConfig(
+        errorTracking: Any?,
+        persist: Boolean = true,
+    ) {
         when (errorTracking) {
             is Boolean -> {
                 // if errorTracking is a Boolean, it's always false (disabled)
@@ -472,7 +482,9 @@ public class PostHogRemoteConfig(
                 (errorTracking as? Map<String, Any>)?.let {
                     val autocaptureExceptions = it["autocaptureExceptions"]
                     autoCaptureExceptions = autocaptureExceptions as? Boolean ?: false
-                    config.cachePreferences?.setValue(ERROR_TRACKING, it)
+                    if (persist) {
+                        config.cachePreferences?.setValue(ERROR_TRACKING, it)
+                    }
                 }
             }
             else -> {
@@ -494,12 +506,26 @@ public class PostHogRemoteConfig(
         }
     }
 
+    // Restores error tracking config from cache (survives reset); re-armed on a /flags reload.
+    private fun reevaluateErrorTrackingFromCachedConfig() {
+        val errorTracking = config.cachePreferences?.getValue(ERROR_TRACKING)
+        if (errorTracking == null) {
+            config.logger.log("No cached error tracking config to re-evaluate; autocapture stays disabled.")
+            return
+        }
+        // persist = false: just read from the cache, no need to write it back.
+        processErrorTrackingConfig(errorTracking, persist = false)
+    }
+
     private fun clearCapturePerformance() {
         captureNetworkTiming = false
         config.cachePreferences?.remove(CAPTURE_PERFORMANCE)
     }
 
-    private fun processCapturePerformanceConfig(capturePerformance: Any?) {
+    private fun processCapturePerformanceConfig(
+        capturePerformance: Any?,
+        persist: Boolean = true,
+    ) {
         when (capturePerformance) {
             is Boolean -> {
                 // if capturePerformance is a Boolean, it's always false (disabled)
@@ -510,7 +536,9 @@ public class PostHogRemoteConfig(
                 (capturePerformance as? Map<String, Any?>)?.let {
                     val networkTiming = it["network_timing"]
                     captureNetworkTiming = networkTiming as? Boolean ?: false
-                    config.cachePreferences?.setValue(CAPTURE_PERFORMANCE, it)
+                    if (persist) {
+                        config.cachePreferences?.setValue(CAPTURE_PERFORMANCE, it)
+                    }
                 }
             }
             else -> {
@@ -530,6 +558,17 @@ public class PostHogRemoteConfig(
                 }
             }
         }
+    }
+
+    // Restores capture performance config from cache (survives reset); re-armed on a /flags reload.
+    private fun reevaluateCapturePerformanceFromCachedConfig() {
+        val capturePerformance = config.cachePreferences?.getValue(CAPTURE_PERFORMANCE)
+        if (capturePerformance == null) {
+            config.logger.log("No cached capture performance config to re-evaluate; network timing stays disabled.")
+            return
+        }
+        // persist = false: just read from the cache, no need to write it back.
+        processCapturePerformanceConfig(capturePerformance, persist = false)
     }
 
     /**
@@ -656,11 +695,10 @@ public class PostHogRemoteConfig(
                     // otherwise surveysHandler?.onSurveysLoaded will be called multiple times
                     // processSurveys(it.surveys)
 
-                    // only process values if not yet processed by remote config
-                    if (notifyRemoteConfigLoaded) {
-                        processCapturePerformanceConfig(it.capturePerformance)
-                        processErrorTrackingConfig(it.errorTracking)
-                    }
+                    // error tracking & capture performance config come from /config, not /flags;
+                    // re-arm from the cached config like session replay above.
+                    reevaluateCapturePerformanceFromCachedConfig()
+                    reevaluateErrorTrackingFromCachedConfig()
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -1191,15 +1229,17 @@ public class PostHogRemoteConfig(
 
         synchronized(remoteConfigLock) {
             clearSurveys()
-            clearErrorTracking()
-            clearCapturePerformance()
+            // Zero the in-memory flags but keep the cached config so a reload can re-arm them
+            // (an explicit `false` from /config still evicts the cache).
+            autoCaptureExceptions = false
+            captureNetworkTiming = false
         }
 
         // Clear person and group properties for flags
         resetPersonPropertiesForFlags()
         resetGroupPropertiesForFlags()
 
-        // SESSION_REPLAY config is intentionally kept (project-level, not user data) so the next
-        // /flags reload can re-arm replay without waiting for an app restart.
+        // SESSION_REPLAY, ERROR_TRACKING, and CAPTURE_PERFORMANCE are intentionally kept (project-level,
+        // not user data) so a reload can re-arm each without an app restart.
     }
 }

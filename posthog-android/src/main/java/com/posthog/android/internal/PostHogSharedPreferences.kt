@@ -122,6 +122,7 @@ internal class PostHogSharedPreferences(
             val it = sharedPreferences.all.iterator()
             while (it.hasNext()) {
                 val entry = it.next()
+                // STRINGIFIED_KEYS is metadata, rebuilt below; never let the data loop remove it.
                 if (entry.key == STRINGIFIED_KEYS || except.contains(entry.key)) {
                     continue
                 }

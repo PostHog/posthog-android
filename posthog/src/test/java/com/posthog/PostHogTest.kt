@@ -3,6 +3,8 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
+import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
@@ -3232,12 +3234,14 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `SESSION_REPLAY config is preserved across reset`() {
+    fun `project-level remote config is preserved across reset`() {
         val http = mockHttp()
         val url = http.url("/")
 
         val cachePreferences = PostHogMemoryPreferences()
         cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+        cachePreferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
+        cachePreferences.setValue(CAPTURE_PERFORMANCE, mapOf("network_timing" to true))
 
         val sut =
             getSut(
@@ -3250,8 +3254,10 @@ internal class PostHogTest {
         sut.identify("user-123")
         sut.reset()
 
-        // reset() keeps the recording config so replay can re-arm on the next /flags reload.
+        // reset() keeps the project-level config so each can re-arm on the next /flags reload.
         assertNotNull(cachePreferences.getValue(SESSION_REPLAY))
+        assertNotNull(cachePreferences.getValue(ERROR_TRACKING))
+        assertNotNull(cachePreferences.getValue(CAPTURE_PERFORMANCE))
 
         sut.close()
     }

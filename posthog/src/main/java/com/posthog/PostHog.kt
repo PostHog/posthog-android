@@ -11,8 +11,10 @@ import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
+import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
@@ -1491,9 +1493,9 @@ public class PostHog private constructor(
         // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
         // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
         // stable feature flag bucketing across identity changes.
-        // Preserve SESSION_REPLAY (project-level recording config, not user data) so replay can re-arm
-        // after an identity change without an app restart.
-        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY)
+        // Preserve SESSION_REPLAY, ERROR_TRACKING, and CAPTURE_PERFORMANCE (project-level config from
+        // /config, not user data) so each can re-arm after an identity change without an app restart.
+        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE)
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
         if (config?.reuseAnonymousId == true) {

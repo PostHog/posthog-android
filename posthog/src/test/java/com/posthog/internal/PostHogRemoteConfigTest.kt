@@ -233,6 +233,85 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `re-arm on reset turns replay off when the new user is outside the linked-flag rollout`() {
+        // /config cached a linkedFlag recording config; replay is gated on the flag per user.
+        preferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
+        // First user is in the rollout (flag true), second is outside it (flag false).
+        val inRollout = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json").readText()
+        val outOfRollout = File("src/test/resources/json/basic-flags-recording-bool-linked-disabled.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(inRollout))
+        http.enqueue(MockResponse().setBody(outOfRollout))
+        val sut = getSut(host = http.url("/").toString())
+
+        val firstLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "user-in-rollout",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+        )
+        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+
+        val secondLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "user-outside-rollout",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+        )
+        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
+
+        // Re-arm must re-evaluate the linked flag against the new user and stay OFF, not blindly true.
+        assertFalse(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `re-arm survives the Gson round-trip for a variant linked flag`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(File("src/test/resources/json/basic-flags-recording-bool-linked-variant-match.json").readText()),
+            )
+        val sut = getSut(host = http.url("/").toString())
+
+        // Mirror the on-disk cache: serialize then read back the way PostHogSharedPreferences does,
+        // so the nested linkedFlag map goes through the real Gson round-trip the device hit.
+        val serializer = config!!.serializer
+        val original =
+            mapOf(
+                "endpoint" to "/b/",
+                "linkedFlag" to mapOf("flag" to "session-replay-flag", "variant" to "variant-1"),
+            )
+
+        @Suppress("UNCHECKED_CAST")
+        val roundTripped = serializer.deserializeString(serializer.serializeObject(original)!!) as Map<String, Any?>
+        preferences.setValue(SESSION_REPLAY, roundTripped)
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // The variant linkedFlag must still match after the JSON round-trip.
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
     fun `returns session replay enabled after remote config API call`() {
         val file = File("src/test/resources/json/basic-remote-config-no-flags.json")
 
@@ -258,6 +337,70 @@ internal class PostHogRemoteConfigTest {
         http.shutdown()
 
         assertFalse(sut.isSessionReplayFlagActive())
+    }
+
+    @Test
+    fun `explicit sessionRecording false from remote config evicts the cached recording config`() {
+        // Stale cache from when the project had replay enabled.
+        preferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+        // basic-remote-config-features-disabled.json carries sessionRecording: false.
+        val disabled = File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(disabled))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isSessionReplayFlagActive())
+        // The cache must be evicted, otherwise a later reset()+reload could re-arm a disabled project.
+        assertNull(preferences.getValue(SESSION_REPLAY))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `explicit errorTracking false from remote config evicts the cached config`() {
+        // Stale cache from when the project had autocapture enabled.
+        preferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
+
+        // basic-remote-config-features-disabled.json carries errorTracking: false.
+        val disabled = File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(disabled))
+        val sut = getSut(host = http.url("/").toString())
+        config!!.errorTrackingConfig.autoCapture = true
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isAutocaptureExceptionsEnabled())
+        // Must evict the cache, else a later reset()+reload could re-arm a disabled project.
+        assertNull(preferences.getValue(ERROR_TRACKING))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `explicit capturePerformance false from remote config evicts the cached config`() {
+        // Stale cache from when the project had network timing enabled.
+        preferences.setValue(CAPTURE_PERFORMANCE, mapOf("network_timing" to true))
+
+        // basic-remote-config-features-disabled.json carries capturePerformance: false.
+        val disabled = File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(disabled))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
+        // Must evict the cache, else a later reset()+reload could re-arm a disabled project.
+        assertNull(preferences.getValue(CAPTURE_PERFORMANCE))
+
+        sut.clear()
+        http.shutdown()
     }
 
     private fun testFlagsCallback(pathname: String) {
@@ -842,7 +985,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `clear removes cached error tracking config`() {
+    fun `clear keeps cached error tracking config so it can re-arm`() {
         val cachedConfig = mapOf("autocaptureExceptions" to true)
         preferences.setValue(ERROR_TRACKING, cachedConfig)
 
@@ -866,8 +1009,9 @@ internal class PostHogRemoteConfigTest {
 
         sut.clear()
 
+        // reset() zeroes the in-memory flag but keeps the project-level config so a reload can re-arm it.
         assertFalse(sut.isAutocaptureExceptionsEnabled())
-        assertEquals(null, preferences.getValue(ERROR_TRACKING))
+        assertEquals(cachedConfig, preferences.getValue(ERROR_TRACKING))
 
         http.shutdown()
     }
@@ -897,7 +1041,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `clear removes cached capture performance config`() {
+    fun `clear keeps cached capture performance config so it can re-arm`() {
         val cachedConfig = mapOf("network_timing" to true)
         preferences.setValue(CAPTURE_PERFORMANCE, cachedConfig)
 
@@ -915,8 +1059,9 @@ internal class PostHogRemoteConfigTest {
 
         sut.clear()
 
+        // reset() zeroes the in-memory flag but keeps the project-level config so a reload can re-arm it.
         assertFalse(sut.isCaptureNetworkTimingEnabled())
-        assertEquals(null, preferences.getValue(CAPTURE_PERFORMANCE))
+        assertEquals(cachedConfig, preferences.getValue(CAPTURE_PERFORMANCE))
 
         http.shutdown()
     }
@@ -1059,26 +1204,39 @@ internal class PostHogRemoteConfigTest {
     // --- Flags-only path tests (loadFeatureFlags -> executeFeatureFlags) ---
 
     @Test
-    fun `loadFeatureFlags processes errorTracking and capturePerformance from flags API`() {
-        val file = File("src/test/resources/json/basic-flags-with-remote-config-features.json")
+    fun `re-arms error tracking and capture performance from cached config after reset`() {
+        // /config cached these; production /flags omits them, so the reload must re-arm from the cache.
+        preferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
+        preferences.setValue(CAPTURE_PERFORMANCE, mapOf("network_timing" to true))
 
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(file.readText()),
-            )
+        val withoutConfig = File("src/test/resources/json/basic-flags-no-session-recording.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(withoutConfig))
+        http.enqueue(MockResponse().setBody(withoutConfig))
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
         config!!.errorTrackingConfig.autoCapture = true
 
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
-
-        executor.shutdownAndAwaitTermination()
-
+        // Preloaded from cache at construction.
         assertTrue(sut.isAutocaptureExceptionsEnabled())
-        assertTrue(sut.isConsoleLogRecordingEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
+
+        // reset() zeroes the in-memory flags but keeps the cached config.
+        sut.clear()
+        assertFalse(sut.isAutocaptureExceptionsEnabled())
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // Re-armed from cache, not clobbered to false by the absent config on /flags.
+        assertTrue(sut.isAutocaptureExceptionsEnabled())
         assertTrue(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
