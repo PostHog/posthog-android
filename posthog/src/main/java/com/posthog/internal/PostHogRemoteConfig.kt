@@ -398,7 +398,7 @@ public class PostHogRemoteConfig(
         return milliseconds
     }
 
-    // Re-evaluates sessionReplayFlagActive from the cached config (survives reset) + current flags.
+    // Restores the full recording config from cache (survives reset), re-evaluated against current flags.
     private fun reevaluateSessionReplayFromCachedConfig() {
         @Suppress("UNCHECKED_CAST")
         val recordingConfig = config.cachePreferences?.getValue(SESSION_REPLAY) as? Map<String, Any?>
@@ -406,7 +406,7 @@ public class PostHogRemoteConfig(
             config.logger.log("No cached session replay config to re-evaluate; replay stays disabled.")
             return
         }
-        sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), recordingConfig)
+        processSessionRecordingConfig(recordingConfig)
     }
 
     private fun processSessionRecordingConfig(sessionRecording: Any?) {
@@ -648,8 +648,7 @@ public class PostHogRemoteConfig(
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
-                    // /flags omits sessionRecording (null) -> re-evaluate from the cached config instead of
-                    // clobbering it. An explicit value (e.g. Boolean false when remotely disabled) is still honored.
+                    // /flags usually omits sessionRecording; re-arm from cached config instead of clobbering it.
                     val responseSessionRecording = it.sessionRecording
                     if (responseSessionRecording != null) {
                         processSessionRecordingConfig(responseSessionRecording)

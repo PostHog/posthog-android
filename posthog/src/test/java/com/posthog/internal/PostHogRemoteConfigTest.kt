@@ -146,9 +146,41 @@ internal class PostHogRemoteConfigTest {
         )
         assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
 
-        // Explicit false turns replay off and drops the cached config.
+        // A response that explicitly carries false turns replay off and drops the cached config.
         assertFalse(sut.isSessionReplayFlagActive())
         assertNull(preferences.getValue(SESSION_REPLAY))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `re-arm on a flags reload restores consoleLogRecordingEnabled from the cached config`() {
+        preferences.setValue(SESSION_REPLAY, mapOf("consoleLogRecordingEnabled" to true))
+
+        // /flags omits sessionRecording, so the reload must re-arm from the cached config.
+        val withoutRecording = File("src/test/resources/json/basic-flags-no-session-recording.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(withoutRecording))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertTrue(sut.isConsoleLogRecordingEnabled())
+
+        sut.clear()
+        assertFalse(sut.isConsoleLogRecordingEnabled())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // Restored from cache, not left clobbered to false.
+        assertTrue(sut.isConsoleLogRecordingEnabled())
 
         sut.clear()
         http.shutdown()
