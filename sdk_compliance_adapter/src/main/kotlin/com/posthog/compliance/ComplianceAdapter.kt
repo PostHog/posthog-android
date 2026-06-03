@@ -22,13 +22,14 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 // File-backed event queue; wiped between tests (see /init and /reset).
 private const val QUEUE_STORAGE_PREFIX = "/tmp/posthog-queue"
 
-// Settle window after flush() so events land before the next test (generous for Docker).
+// Upper bound on the wait for a flush()'d batch to reach the mock (generous for Docker).
 private const val FLUSH_SETTLE_MS = 2000L
 
 /**
@@ -135,6 +136,9 @@ class TestPostHogContext(private val sdkName: String, private val sdkVersion: St
 object AdapterContext {
     val state = AdapterState()
     val lock = ReentrantLock()
+
+    // Signalled by the tracking interceptor when a /batch response lands (see awaitBatch).
+    val batchObserved: Condition = lock.newCondition()
     var postHog: com.posthog.PostHogInterface? = null
     val capturedEvents = mutableListOf<String>() // Store UUIDs of captured events
 }
@@ -197,6 +201,7 @@ class TrackingInterceptor : Interceptor {
                     if (retryCount > 0) {
                         AdapterContext.state.totalRetries++
                     }
+                    AdapterContext.batchObserved.signalAll()
                 }
             } catch (_: Exception) {
                 // Ignore tracking errors
@@ -206,6 +211,19 @@ class TrackingInterceptor : Interceptor {
         return response
     }
 }
+
+// Block until [predicate] holds (signalled as each /batch response lands) or [timeoutMs] elapses.
+private fun awaitBatch(
+    timeoutMs: Long,
+    predicate: () -> Boolean,
+): Boolean =
+    AdapterContext.lock.withLock {
+        var remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        while (!predicate() && remainingNanos > 0) {
+            remainingNanos = AdapterContext.batchObserved.awaitNanos(remainingNanos)
+        }
+        predicate()
+    }
 
 fun main() {
     embeddedServer(Netty, port = 8080) {
@@ -384,20 +402,24 @@ fun main() {
                 }
 
                 // Resolve the value, capturing the documented $feature_flag_called side effect.
+                val requestsBefore = AdapterContext.lock.withLock { AdapterContext.state.requestsMade.size }
                 val value = ph.getFeatureFlag(req.key, defaultValue = null, sendFeatureFlagEvent = true)
 
-                // Flush that event and wait so it can't spill into the next test's mock window.
+                // $feature_flag_called is captured internally, so wait on the request count, not pendingEvents.
                 ph.flush()
-                Thread.sleep(FLUSH_SETTLE_MS)
+                awaitBatch(FLUSH_SETTLE_MS) { AdapterContext.state.requestsMade.size > requestsBefore }
 
                 call.respond(FlagResponse(success = true, value = value))
             }
 
             post("/flush") {
+                val pendingBefore = AdapterContext.lock.withLock { AdapterContext.state.pendingEvents }
                 AdapterContext.postHog?.flush()
 
-                // Wait for events to be sent (generous timeout for Docker network latency)
-                Thread.sleep(FLUSH_SETTLE_MS)
+                // Wait until every pending event's batch is acked; bounded so a no-op flush can't hang.
+                if (pendingBefore > 0) {
+                    awaitBatch(FLUSH_SETTLE_MS) { AdapterContext.state.pendingEvents == 0 }
+                }
 
                 val eventsFlushed =
                     AdapterContext.lock.withLock {
