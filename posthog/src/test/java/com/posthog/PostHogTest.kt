@@ -2235,12 +2235,18 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
+        // Recording config comes from /config (cached); the /flags reload re-arms from the cache and
+        // evaluates the linked flag, which is what fires $feature_flag_called.
+        val cachePreferences = PostHogMemoryPreferences()
+        cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
         val integration = PostHogSessionReplayHandlerFake(true)
         val sut =
             getSut(
                 url.toString(),
                 preloadFeatureFlags = false,
                 integration = integration,
+                cachePreferences = cachePreferences,
             )
 
         sut.reloadFeatureFlags()
@@ -2281,6 +2287,11 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
+        // Recording config comes from /config (cached); the /flags reload re-arms from the cache and
+        // evaluates the linked flag. With sendFeatureFlagEvent = false, no $feature_flag_called fires.
+        val cachePreferences = PostHogMemoryPreferences()
+        cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
         val integration = PostHogSessionReplayHandlerFake(true)
         val sut =
             getSut(
@@ -2288,6 +2299,7 @@ internal class PostHogTest {
                 preloadFeatureFlags = false,
                 integration = integration,
                 sendFeatureFlagEvent = false,
+                cachePreferences = cachePreferences,
             )
 
         sut.reloadFeatureFlags()
