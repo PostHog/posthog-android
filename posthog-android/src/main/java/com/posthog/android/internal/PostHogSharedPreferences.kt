@@ -115,12 +115,23 @@ internal class PostHogSharedPreferences(
         val edit = sharedPreferences.edit()
 
         synchronized(lock) {
+            // Keep STRINGIFIED_KEYS in sync with what survives so preserved serialized values
+            // (e.g. SESSION_REPLAY) still deserialize on read.
+            val survivingStringifiedKeys = getStringifiedKeys().filterTo(mutableSetOf()) { except.contains(it) }
+
             val it = sharedPreferences.all.iterator()
             while (it.hasNext()) {
                 val entry = it.next()
-                if (!except.contains(entry.key)) {
-                    edit.remove(entry.key)
+                if (entry.key == STRINGIFIED_KEYS || except.contains(entry.key)) {
+                    continue
                 }
+                edit.remove(entry.key)
+            }
+
+            if (survivingStringifiedKeys.isEmpty()) {
+                edit.remove(STRINGIFIED_KEYS)
+            } else {
+                edit.putStringSet(STRINGIFIED_KEYS, survivingStringifiedKeys)
             }
 
             edit.apply()

@@ -75,9 +75,8 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `keeps session replay active on a flags reload that omits sessionRecording`() {
-        // The first /flags load carries the recording config; the second omits it,
-        // which is what production /flags responses look like (config comes from /config).
+    fun `re-arms session replay after reset on a flags reload that omits sessionRecording`() {
+        // First load carries the recording config; the second omits it, like production /flags.
         val withRecording = File("src/test/resources/json/basic-flags-recording.json").readText()
         val withoutRecording = File("src/test/resources/json/basic-flags-no-session-recording.json").readText()
 
@@ -94,7 +93,48 @@ internal class PostHogRemoteConfigTest {
             emptyMap(),
             onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
         )
-        firstLatch.await(5, TimeUnit.SECONDS)
+        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        // reset() zeroes the in-memory flag but keeps the cached config.
+        sut.clear()
+        assertFalse(sut.isSessionReplayFlagActive())
+
+        val secondLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+        )
+        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
+
+        // Must re-arm from the cached config, not stay clobbered to false.
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `explicit sessionRecording false on a flags reload disables replay`() {
+        val withRecording = File("src/test/resources/json/basic-flags-recording.json").readText()
+        val withFalse = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+
+        val http = mockHttp(response = MockResponse().setBody(withRecording))
+        http.enqueue(MockResponse().setBody(withFalse))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val firstLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+        )
+        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
         assertTrue(sut.isSessionReplayFlagActive())
 
         val secondLatch = CountDownLatch(1)
@@ -104,11 +144,35 @@ internal class PostHogRemoteConfigTest {
             emptyMap(),
             onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
         )
-        secondLatch.await(5, TimeUnit.SECONDS)
+        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
 
-        // The reload omits sessionRecording: it must re-evaluate from the cached config
-        // instead of clobbering the flag to false.
-        assertTrue(sut.isSessionReplayFlagActive())
+        // Explicit false turns replay off and drops the cached config.
+        assertFalse(sut.isSessionReplayFlagActive())
+        assertNull(preferences.getValue(SESSION_REPLAY))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `flags reload without a cached recording config leaves replay inactive`() {
+        val withoutRecording = File("src/test/resources/json/basic-flags-no-session-recording.json").readText()
+
+        val http = mockHttp(response = MockResponse().setBody(withoutRecording))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        assertFalse(sut.isSessionReplayFlagActive())
 
         sut.clear()
         http.shutdown()

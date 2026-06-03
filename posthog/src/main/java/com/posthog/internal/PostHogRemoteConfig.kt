@@ -398,10 +398,14 @@ public class PostHogRemoteConfig(
         return milliseconds
     }
 
-    // Re-evaluates sessionReplayFlagActive from the persisted config (survives reset) + current flags.
-    private fun reevaluateSessionReplayFromStoredConfig() {
+    // Re-evaluates sessionReplayFlagActive from the cached config (survives reset) + current flags.
+    private fun reevaluateSessionReplayFromCachedConfig() {
         @Suppress("UNCHECKED_CAST")
-        val recordingConfig = config.cachePreferences?.getValue(SESSION_REPLAY) as? Map<String, Any?> ?: return
+        val recordingConfig = config.cachePreferences?.getValue(SESSION_REPLAY) as? Map<String, Any?>
+        if (recordingConfig == null) {
+            config.logger.log("No cached session replay config to re-evaluate; replay stays disabled.")
+            return
+        }
         sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), recordingConfig)
     }
 
@@ -650,7 +654,7 @@ public class PostHogRemoteConfig(
                     if (responseSessionRecording != null) {
                         processSessionRecordingConfig(responseSessionRecording)
                     } else {
-                        reevaluateSessionReplayFromStoredConfig()
+                        reevaluateSessionReplayFromCachedConfig()
                     }
 
                     // TODO: surveys depends on remoteConfig for now

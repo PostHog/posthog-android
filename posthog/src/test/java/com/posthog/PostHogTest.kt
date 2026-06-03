@@ -3232,6 +3232,31 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `SESSION_REPLAY config is preserved across reset`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                cachePreferences = cachePreferences,
+            )
+
+        sut.identify("user-123")
+        sut.reset()
+
+        // reset() keeps the recording config so replay can re-arm on the next /flags reload.
+        assertNotNull(cachePreferences.getValue(SESSION_REPLAY))
+
+        sut.close()
+    }
+
+    @Test
     fun `device_id is sent in flags request`() {
         val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
         val responseFlagsApi = file.readText()

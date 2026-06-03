@@ -152,6 +152,23 @@ internal class PostHogSharedPreferencesTests {
     }
 
     @Test
+    fun `preferences clear keeps a preserved stringified value deserializable`() {
+        val sut = getSut()
+
+        // A Map value is serialized to JSON and tracked in STRINGIFIED_KEYS; when it survives a
+        // partial clear it must still deserialize back to a Map ("sessionReplay" stands in for
+        // SESSION_REPLAY, which is internal to the posthog module).
+        val recordingConfig = mapOf("endpoint" to "/b/")
+        sut.setValue("sessionReplay", recordingConfig)
+        sut.setValue("scratch", mapOf("foo" to "bar"))
+
+        sut.clear(except = listOf("sessionReplay"))
+
+        assertEquals(recordingConfig, sut.getValue("sessionReplay"))
+        assertNull(sut.getValue("scratch"))
+    }
+
+    @Test
     fun `preferences removes item`() {
         val sut = getSut()
 

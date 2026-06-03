@@ -18,7 +18,6 @@ import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
-import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
@@ -1493,8 +1492,8 @@ public class PostHog private constructor(
         // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
         // stable feature flag bucketing across identity changes.
         // Preserve SESSION_REPLAY (project-level recording config, not user data) so replay can re-arm
-        // after an identity change without an app restart; STRINGIFIED_KEYS keeps it deserializable.
-        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY, STRINGIFIED_KEYS)
+        // after an identity change without an app restart.
+        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY)
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
         if (config?.reuseAnonymousId == true) {
