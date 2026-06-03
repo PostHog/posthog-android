@@ -120,6 +120,40 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `re-arms error tracking and capture performance on a quota-limited flags reload`() {
+        // Error tracking & capture performance also come from /config (cached); a flags reload that is
+        // quota-limited for feature_flags must still re-arm them instead of leaving them disabled.
+        preferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
+        preferences.setValue(CAPTURE_PERFORMANCE, mapOf("network_timing" to true))
+
+        val quotaLimited = File("src/test/resources/json/basic-flags-quota-limited.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(quotaLimited))
+        val sut = getSut(host = http.url("/").toString())
+        config!!.errorTrackingConfig.autoCapture = true
+
+        // reset() zeroes the in-memory flags but keeps the cached config.
+        sut.clear()
+        assertFalse(sut.isAutocaptureExceptionsEnabled())
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // Re-armed from the cached config despite the flag quota limit.
+        assertTrue(sut.isAutocaptureExceptionsEnabled())
+        assertTrue(sut.isCaptureNetworkTimingEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
     fun `re-arm on a flags reload restores consoleLogRecordingEnabled from the cached config`() {
         preferences.setValue(SESSION_REPLAY, mapOf("consoleLogRecordingEnabled" to true))
 
