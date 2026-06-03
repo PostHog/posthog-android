@@ -119,8 +119,9 @@ internal class PostHogSharedPreferences(
             // It is itself a stored key, so it is excluded from removal below and rebuilt from the survivors.
             val survivingStringifiedKeys = getStringifiedKeys().filterTo(mutableSetOf()) { except.contains(it) }
 
-            // Snapshot the keys before removing. SharedPreferences.all can be backed by the live map,
-            // so removing entries mid-iteration risks a ConcurrentModificationException.
+            // Read sharedPreferences.all once (each access allocates a fresh snapshot) and build the
+            // removal list up front. STRINGIFIED_KEYS is excluded here because it is rebuilt below from
+            // the survivors rather than removed, so a preserved serialized value still deserializes on read.
             val keysToRemove =
                 sharedPreferences.all.keys.filter {
                     it != STRINGIFIED_KEYS && !except.contains(it)
