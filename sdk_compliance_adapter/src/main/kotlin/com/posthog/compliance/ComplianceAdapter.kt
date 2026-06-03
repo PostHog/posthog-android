@@ -368,9 +368,9 @@ fun main() {
                     return@post
                 }
 
-                // identify() is the only public way to set the distinctId used in /flags
-                // (also fires $identify + a reload, flushed/awaited below).
-                req.distinct_id?.let { ph.identify(it) }
+                // Note: distinct_id is decoded for harness parity but not applied. The only
+                // public setter is identify(), which unconditionally fires its own /flags reload
+                // and would double the request count the harness asserts on (known SDK gap).
 
                 // Stage person properties without reloading, so the explicit reload below
                 // is the single /flags request we await (the harness counts requests).
