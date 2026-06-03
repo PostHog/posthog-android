@@ -22,7 +22,7 @@ SOFTWARE.
 
 ---
 
-Some files in this codebase contain code from getsentry/sentry-android-gradle-plugin by Software, Inc. dba Sentry.
+Some files in this codebase contain code from getsentry/sentry-android-gradle-plugin.
 In such cases it is explicitly stated in the file header. This license only applies to the relevant code in such cases.
 
 MIT License
