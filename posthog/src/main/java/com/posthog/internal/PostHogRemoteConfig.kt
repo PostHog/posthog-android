@@ -228,8 +228,6 @@ public class PostHogRemoteConfig(
 
                 response?.let {
                     synchronized(remoteConfigLock) {
-                        // /config is the only source of these configs; the /flags reload re-arms
-                        // them from the cache (reevaluate*FromCachedConfig). Don't move onto /flags.
                         processSessionRecordingConfig(it.sessionRecording)
                         processSurveys(it.surveys)
                         processErrorTrackingConfig(it.errorTracking)
