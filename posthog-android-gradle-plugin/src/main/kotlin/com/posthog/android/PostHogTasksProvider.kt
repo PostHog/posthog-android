@@ -1,4 +1,6 @@
-// adapted from https://github.com/getsentry/sentry-android-gradle-plugin/blob/0ce926822756c8379e281bed8c33237a400c9582/plugin-build/src/main/kotlin/io/sentry/android/gradle/SentryTasksProvider.kt#L10
+// Portions of this file are derived from getsentry/sentry-android-gradle-plugin
+// Copyright (c) 2020 Sentry
+// Licensed under the MIT License: https://github.com/getsentry/sentry-android-gradle-plugin/blob/main/LICENSE
 
 package com.posthog.android
 
