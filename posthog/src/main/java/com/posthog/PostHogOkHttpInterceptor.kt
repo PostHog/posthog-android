@@ -13,6 +13,9 @@ import okhttp3.Response
  *
  * Install this interceptor on each [okhttp3.OkHttpClient] whose requests should be captured or
  * annotated with tracing headers.
+ *
+ * @param captureNetworkTelemetry Whether to capture network timing telemetry for session replay.
+ * @param postHog Optional SDK instance to use; when omitted, the global [PostHog] singleton is used.
  */
 public class PostHogOkHttpInterceptor(
     private var captureNetworkTelemetry: Boolean = true,

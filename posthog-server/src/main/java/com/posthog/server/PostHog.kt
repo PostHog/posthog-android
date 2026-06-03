@@ -344,9 +344,10 @@ public class PostHog : PostHogStateless(), PostHogInterface {
 
     public companion object {
         /**
-         * Set up the SDK and returns an instance that you can hold and pass it around
-         * @param T the type of the Config
-         * @property config the Config
+         * Sets up the SDK and returns an instance that you can hold and pass around.
+         *
+         * @param config Server SDK configuration.
+         * @return The configured PostHog client instance.
          */
         @JvmStatic
         public fun <T : PostHogConfig> with(config: T): PostHogInterface {

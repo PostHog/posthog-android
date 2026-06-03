@@ -31,7 +31,7 @@ import java.util.concurrent.ExecutorService
  */
 public open class PostHogConfig(
     /**
-     * The PostHog API Key
+     * The PostHog project API key.
      */
     apiKey: String,
     /**
@@ -48,7 +48,7 @@ public open class PostHogConfig(
     public var debug: Boolean = false,
     /**
      * This flag prevents capturing any data if enabled
-     * You can overwrite this value at runtime by calling [PostHog.optIn()]] or PostHog.optOut()
+     * You can overwrite this value at runtime by calling [PostHog.optIn] or [PostHog.optOut]
      * Defaults to false
      */
     @Volatile
@@ -350,7 +350,7 @@ public open class PostHogConfig(
     public var httpClient: OkHttpClient? = null
 
     /**
-     * The PostHog API Key
+     * The PostHog project API key, trimmed of leading and trailing whitespace.
      */
     public val apiKey: String = apiKey.trim()
 

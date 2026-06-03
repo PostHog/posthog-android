@@ -3,6 +3,9 @@ package com.posthog.server
 import com.posthog.FeatureFlagResult
 import java.util.Date
 
+/**
+ * Public server-side SDK client API.
+ */
 public sealed interface PostHogInterface {
     /**
      * Setup the SDK
@@ -65,6 +68,7 @@ public sealed interface PostHogInterface {
 
     /**
      * Enables or disables the debug mode
+     * @param enable true to enable SDK debug logging, false to disable it.
      */
     public fun debug(enable: Boolean)
 
@@ -99,6 +103,15 @@ public sealed interface PostHogInterface {
     /**
      * Captures an event using the current [PostHogRequestContext] distinct ID, or as a personless
      * event when no request context identity is active.
+     *
+     * @param event the event name
+     * @param properties the custom properties
+     * @param userProperties the user properties, set as a "$set" property
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property
+     * @param groups the groups, set as a "$groups" property
+     * @param timestamp the timestamp for the event
+     * @param appendFeatureFlags when true, enriches the event with feature flag properties
+     * @param flags optional pre-resolved snapshot from [evaluateFlags]
      */
     @JvmSynthetic
     public fun capture(
@@ -129,7 +142,8 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
      *   distinct ID is used; if none exists, a personless UUID is generated.
      * @param event the event name
-     * @param options the capture options containing properties, userProperties, userPropertiesSetOnce, groups, and appendFeatureFlags
+     * @param options capture options containing properties, user properties, groups, timestamp,
+     *   and feature flag snapshot settings
      */
     public fun capture(
         distinctId: String?,
@@ -152,6 +166,9 @@ public sealed interface PostHogInterface {
     /**
      * Captures an event using the current [PostHogRequestContext] distinct ID, or as a personless
      * event when no request context identity is active.
+     *
+     * @param event the event name
+     * @param options capture options containing properties, groups, timestamp, and feature flag snapshot settings
      */
     public fun capture(
         event: String,
@@ -190,6 +207,8 @@ public sealed interface PostHogInterface {
     /**
      * Captures an event using the current [PostHogRequestContext] distinct ID, or as a personless
      * event when no request context identity is active.
+     *
+     * @param event the event name
      */
     public fun capture(event: String) {
         capture(
@@ -204,6 +223,10 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return Whether the feature flag is enabled.
      */
     @Deprecated(
         message =
@@ -224,6 +247,7 @@ public sealed interface PostHogInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
+     * @return Whether the feature flag is enabled.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
@@ -249,6 +273,7 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
+     * @return Whether the feature flag is enabled.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
@@ -275,6 +300,7 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     * @return Whether the feature flag is enabled.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
@@ -301,6 +327,10 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return The feature flag value, or [defaultValue] if not found.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
@@ -345,6 +375,7 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     * @return The feature flag value, or the options default value if not found.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
@@ -366,11 +397,12 @@ public sealed interface PostHogInterface {
     }
 
     /**
-     * Returns if a feature flag is enabled, the feature flag must be a Boolean
+     * Returns the feature flags variant if multi-variant, otherwise whether it is enabled or not
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
+     * @return The feature flag value, or [defaultValue] if not found.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
@@ -397,6 +429,10 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return The feature flag payload, or [defaultValue] if not found.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
@@ -441,6 +477,7 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     * @return The feature flag payload, or the options default value if not found.
      */
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
@@ -624,6 +661,7 @@ public sealed interface PostHogInterface {
      * @param onlyEvaluateLocally when true, do not fall back to a `/flags` request if local
      *   evaluation cannot resolve every flag
      * @param disableGeoip when true, send `geoip_disable=true` to the server
+     * @return A feature flag evaluation snapshot for the resolved distinct ID.
      */
     @JvmSynthetic
     public fun evaluateFlags(
@@ -639,6 +677,11 @@ public sealed interface PostHogInterface {
     /**
      * Evaluate every feature flag for [distinctId] using the supplied options object.
      * Java-friendly overload that mirrors the canonical [evaluateFlags] entry point.
+     *
+     * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
+     *   distinct ID is used; if none exists, an empty snapshot is returned.
+     * @param options Evaluation options.
+     * @return A feature flag evaluation snapshot for the resolved distinct ID.
      */
     public fun evaluateFlags(
         distinctId: String?,
@@ -658,6 +701,9 @@ public sealed interface PostHogInterface {
     /**
      * Evaluate every feature flag using the current [PostHogRequestContext] distinct ID and the
      * supplied options object. Returns an empty snapshot when no request context identity is active.
+     *
+     * @param options Evaluation options.
+     * @return A feature flag evaluation snapshot, or an empty snapshot when no identity is active.
      */
     public fun evaluateFlags(options: PostHogEvaluateFlagsOptions): PostHogFeatureFlagEvaluations {
         return evaluateFlags(
@@ -668,6 +714,10 @@ public sealed interface PostHogInterface {
 
     /**
      * Evaluate every feature flag for [distinctId] using default options.
+     *
+     * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
+     *   distinct ID is used; if none exists, an empty snapshot is returned.
+     * @return A feature flag evaluation snapshot for the resolved distinct ID.
      */
     public fun evaluateFlags(distinctId: String?): PostHogFeatureFlagEvaluations {
         return evaluateFlags(
@@ -684,6 +734,8 @@ public sealed interface PostHogInterface {
     /**
      * Evaluate every feature flag using the current [PostHogRequestContext] distinct ID. Returns an
      * empty snapshot when no request context identity is active.
+     *
+     * @return A feature flag evaluation snapshot, or an empty snapshot when no identity is active.
      */
     public fun evaluateFlags(): PostHogFeatureFlagEvaluations {
         return evaluateFlags(distinctId = null)
@@ -715,7 +767,6 @@ public sealed interface PostHogInterface {
      * Captures an exception
      * Docs https://posthog.com/docs/error-tracking
      * @param exception the exception to capture
-     * @param properties the exception properties to add to the event
      * @param distinctId the distinctId
      */
     public fun captureException(
@@ -733,7 +784,6 @@ public sealed interface PostHogInterface {
      * Captures an exception
      * Docs https://posthog.com/docs/error-tracking
      * @param exception the exception to capture
-     * @param distinctId the distinctId
      * @param properties the exception properties to add to the event
      */
     public fun captureException(
@@ -751,8 +801,6 @@ public sealed interface PostHogInterface {
      * Captures an exception
      * Docs https://posthog.com/docs/error-tracking
      * @param exception the exception to capture
-     * @param properties the exception properties to add to the event
-     * @param distinctId the distinctId
      */
     public fun captureException(exception: Throwable) {
         captureException(

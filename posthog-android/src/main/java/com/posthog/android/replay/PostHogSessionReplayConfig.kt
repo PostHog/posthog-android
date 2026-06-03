@@ -1,5 +1,11 @@
 package com.posthog.android.replay
 
+/**
+ * Android session replay capture options.
+ *
+ * Use this as `PostHogAndroidConfig.sessionReplayConfig` when enabling session replay through
+ * `PostHogConfig.sessionReplay`.
+ */
 public class PostHogSessionReplayConfig
     @JvmOverloads
     constructor(
@@ -31,27 +37,26 @@ public class PostHogSessionReplayConfig
          */
         public var screenshot: Boolean = false,
         /**
-         * Deboucer delay used to reduce the number of snapshots captured and reduce performance impact
-         * This is used for capturing the view as a wireframe or screenshot
-         * The lower the number more snapshots will be captured but higher the performance impact
-         * Defaults to 1000ms = 1s
-         * Ps: it was 500ms by default until version 3.8.2
+         * Debouncer delay used to reduce the number of snapshots captured and reduce performance impact.
+         * This is used for capturing the view as a wireframe or screenshot.
+         * The lower the number, the more snapshots are captured and the higher the performance impact.
+         * Defaults to 1000ms = 1s.
+         * Ps: it was 500ms by default until version 3.8.2.
          */
         @Deprecated("Use throttleDelayMs instead")
         public var debouncerDelayMs: Long = 1000,
         /**
-         * Throttling delay used to reduce the number of snapshots captured and reduce performance impact
-         * This is used for capturing the view as a wireframe or screenshot
-         * The lower the number more snapshots will be captured but higher the performance impact
-         * Defaults to 1000ms = 1s
+         * Throttling delay used to reduce the number of snapshots captured and reduce performance impact.
+         * This is used for capturing the view as a wireframe or screenshot.
+         * The lower the number, the more snapshots are captured and the higher the performance impact.
+         * Defaults to 1000ms = 1s.
          */
         public var throttleDelayMs: Long = 1000,
         /**
          * Local sample rate for session recording, a value between 0.0 and 1.0.
          * When set, this takes precedence over the remote config sample rate.
-         * null means no local override (use the remote config value).
-         * This is a convenience property that sets PostHogConfig.sampleRate.
-         * Defaults to null
+         * `null` means no local override, so the SDK uses the remote config value.
+         * Defaults to `null`.
          */
         public var sampleRate: Double? = null,
     ) {

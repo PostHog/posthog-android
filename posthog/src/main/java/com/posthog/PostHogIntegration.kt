@@ -7,6 +7,7 @@ public interface PostHogIntegration {
     /**
      * Install the Integration after the SDK is setup
      * that requires a posthog instance to capture events
+     * @param postHog the configured SDK instance.
      */
     public fun install(postHog: PostHogInterface) {
     }

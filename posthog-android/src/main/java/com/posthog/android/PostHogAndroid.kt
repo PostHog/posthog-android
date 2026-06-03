@@ -29,19 +29,20 @@ import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
 
 /**
- * Main entrypoint for the Android SDK
- * Use the setup method to set a global and singleton instance
- * Or use the with method that returns an instance that you can hold and pass it around
+ * Main entry point for the Android SDK.
+ *
+ * Use [setup] to configure the process-wide singleton, or [with] to create an instance that you
+ * hold and pass around.
  */
 public class PostHogAndroid private constructor() {
     public companion object {
         private val lock = Any()
 
         /**
-         * Setup the SDK and set a global and singleton instance
-         * @param T the type of the Config
-         * @property context the Context
-         * @property config the Config
+         * Sets up the SDK and stores it as the global singleton.
+         *
+         * @param context Android context; the application context is retained internally.
+         * @param config Android SDK configuration.
          */
         public fun <T : PostHogAndroidConfig> setup(
             context: Context,
@@ -55,16 +56,15 @@ public class PostHogAndroid private constructor() {
         }
 
         /**
-         * Setup the SDK and returns an instance that you can hold and pass it around
+         * Creates and returns a configured SDK instance that you can hold and pass around.
          *
-         * All default PostHogIntegration's will only be installed for the very 1st instance,
-         * either that be created with the [setup] or [with] method otherwise they would race each other
-         * and cause issues, so the 1st instance of the SDK that is created on the hosting app
-         * will hold all installed integrations, the order of the setup matters.
+         * Default PostHog integrations are installed only on the first instance created by either
+         * [setup] or [with]. The first instance in the host app owns those integrations, so setup
+         * order matters.
          *
-         * @param T the type of the Config
-         * @property context the Context
-         * @property config the Config
+         * @param context Android context; the application context is retained internally.
+         * @param config Android SDK configuration.
+         * @return The configured PostHog client instance.
          */
         public fun <T : PostHogAndroidConfig> with(
             context: Context,
