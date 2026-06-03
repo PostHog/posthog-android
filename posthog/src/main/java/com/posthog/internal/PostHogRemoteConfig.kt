@@ -83,10 +83,6 @@ public class PostHogRemoteConfig(
     @Volatile
     private var sessionReplayFlagActive = false
 
-    // Last sessionRecording config from /config, kept so /flags reloads can re-evaluate without re-fetching it.
-    @Volatile
-    private var lastSessionRecordingConfig: Map<String, Any?>? = null
-
     @Volatile
     private var hasSurveys = false
 
@@ -402,9 +398,10 @@ public class PostHogRemoteConfig(
         return milliseconds
     }
 
-    // Re-evaluates sessionReplayFlagActive from the cached config + current flags.
-    private fun reevaluateSessionReplayFromLastConfig() {
-        val recordingConfig = lastSessionRecordingConfig ?: return
+    // Re-evaluates sessionReplayFlagActive from the persisted config (survives reset) + current flags.
+    private fun reevaluateSessionReplayFromStoredConfig() {
+        @Suppress("UNCHECKED_CAST")
+        val recordingConfig = config.cachePreferences?.getValue(SESSION_REPLAY) as? Map<String, Any?> ?: return
         sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), recordingConfig)
     }
 
@@ -415,7 +412,6 @@ public class PostHogRemoteConfig(
                 // so we don't enable sessionReplayFlagActive here
                 sessionReplayFlagActive = false
                 consoleLogRecordingEnabled = false
-                lastSessionRecordingConfig = null
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -434,9 +430,6 @@ public class PostHogRemoteConfig(
                         ?: config.snapshotEndpoint
 
                     sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
-
-                    // Cache so /flags reloads and reset()/identify() can re-evaluate without re-fetching /config.
-                    lastSessionRecordingConfig = it
 
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
@@ -657,7 +650,7 @@ public class PostHogRemoteConfig(
                     if (responseSessionRecording != null) {
                         processSessionRecordingConfig(responseSessionRecording)
                     } else {
-                        reevaluateSessionReplayFromLastConfig()
+                        reevaluateSessionReplayFromStoredConfig()
                     }
 
                     // TODO: surveys depends on remoteConfig for now
@@ -784,8 +777,6 @@ public class PostHogRemoteConfig(
 
                 if (sessionRecording != null) {
                     sessionReplayFlagActive = isRecordingActive(flags ?: mapOf(), sessionRecording)
-
-                    lastSessionRecordingConfig = sessionRecording
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
@@ -1209,6 +1200,7 @@ public class PostHogRemoteConfig(
         resetPersonPropertiesForFlags()
         resetGroupPropertiesForFlags()
 
-        config.cachePreferences?.remove(SESSION_REPLAY)
+        // SESSION_REPLAY config is intentionally kept (project-level, not user data) so the next
+        // /flags reload can re-arm replay without waiting for an app restart.
     }
 }
