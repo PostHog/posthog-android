@@ -115,17 +115,17 @@ internal class PostHogSharedPreferences(
         val edit = sharedPreferences.edit()
 
         synchronized(lock) {
+            // Invariant: STRINGIFIED_KEYS must list exactly the serialized (Map/List) keys that survive.
+            // It is itself a stored key, so it is excluded from removal below and rebuilt from the survivors.
             val survivingStringifiedKeys = getStringifiedKeys().filterTo(mutableSetOf()) { except.contains(it) }
 
-            val it = sharedPreferences.all.iterator()
-            while (it.hasNext()) {
-                val entry = it.next()
-                // STRINGIFIED_KEYS is metadata, rebuilt below; never let the data loop remove it.
-                if (entry.key == STRINGIFIED_KEYS || except.contains(entry.key)) {
-                    continue
+            // Snapshot the keys before removing. SharedPreferences.all can be backed by the live map,
+            // so removing entries mid-iteration risks a ConcurrentModificationException.
+            val keysToRemove =
+                sharedPreferences.all.keys.filter {
+                    it != STRINGIFIED_KEYS && !except.contains(it)
                 }
-                edit.remove(entry.key)
-            }
+            keysToRemove.forEach { edit.remove(it) }
 
             if (survivingStringifiedKeys.isEmpty()) {
                 edit.remove(STRINGIFIED_KEYS)

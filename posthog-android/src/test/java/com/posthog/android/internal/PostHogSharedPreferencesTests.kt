@@ -202,6 +202,27 @@ internal class PostHogSharedPreferencesTests {
     }
 
     @Test
+    fun `clear preserves a plain key and a stringified key without cross-contaminating STRINGIFIED_KEYS`() {
+        val sut = getSut()
+
+        // Mirrors the production reset() except-list: a plain string (like DEVICE_ID) alongside a
+        // serialized map (like SESSION_REPLAY). The plain key must NOT leak into STRINGIFIED_KEYS,
+        // or it would later be treated as JSON and corrupt on read.
+        sut.setValue("device", "abc-123") // plain string, not stringified
+        sut.setValue("sessionReplay", mapOf("endpoint" to "/b/")) // serialized, survives
+        sut.setValue("drop", mapOf("x" to "1")) // serialized, removed
+
+        sut.clear(except = listOf("device", "sessionReplay"))
+
+        assertEquals("abc-123", sut.getValue("device"))
+        assertEquals(mapOf("endpoint" to "/b/"), sut.getValue("sessionReplay"))
+        assertNull(sut.getValue("drop"))
+        @Suppress("UNCHECKED_CAST")
+        val stringifiedKeys = sut.getValue(STRINGIFIED_KEYS) as? Set<String>
+        assertEquals(setOf("sessionReplay"), stringifiedKeys)
+    }
+
+    @Test
     fun `preferences removes item`() {
         val sut = getSut()
 
