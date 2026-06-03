@@ -648,13 +648,9 @@ public class PostHogRemoteConfig(
                         this.featureFlagPayloads = normalizedPayloads
                     }
 
-                    // /flags usually omits sessionRecording; re-arm from cached config instead of clobbering it.
-                    val responseSessionRecording = it.sessionRecording
-                    if (responseSessionRecording != null) {
-                        processSessionRecordingConfig(responseSessionRecording)
-                    } else {
-                        reevaluateSessionReplayFromCachedConfig()
-                    }
+                    // /flags carries flag evaluations only; session recording config comes from
+                    // /config. Re-arm from the cached config, re-evaluated against the new flags.
+                    reevaluateSessionReplayFromCachedConfig()
 
                     // TODO: surveys depends on remoteConfig for now
                     // otherwise surveysHandler?.onSurveysLoaded will be called multiple times

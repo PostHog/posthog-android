@@ -48,39 +48,12 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `returns session replay enabled after flags API call`() {
-        val file = File("src/test/resources/json/basic-flags-recording.json")
+    fun `re-arms session replay after reset on a flags reload`() {
+        // /config cached the recording config; production /flags omits it.
+        preferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
 
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(file.readText()),
-            )
-        val url = http.url("/")
-
-        val sut = getSut(host = url.toString())
-
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
-
-        executor.shutdownAndAwaitTermination()
-
-        assertTrue(sut.isSessionReplayFlagActive())
-        assertEquals("/b/", config?.snapshotEndpoint)
-
-        sut.clear()
-        http.shutdown()
-
-        assertFalse(sut.isSessionReplayFlagActive())
-    }
-
-    @Test
-    fun `re-arms session replay after reset on a flags reload that omits sessionRecording`() {
-        // First load carries the recording config; the second omits it, like production /flags.
-        val withRecording = File("src/test/resources/json/basic-flags-recording.json").readText()
         val withoutRecording = File("src/test/resources/json/basic-flags-no-session-recording.json").readText()
-
-        val http = mockHttp(response = MockResponse().setBody(withRecording))
+        val http = mockHttp(response = MockResponse().setBody(withoutRecording))
         http.enqueue(MockResponse().setBody(withoutRecording))
         val url = http.url("/")
 
@@ -111,44 +84,6 @@ internal class PostHogRemoteConfigTest {
 
         // Must re-arm from the cached config, not stay clobbered to false.
         assertTrue(sut.isSessionReplayFlagActive())
-
-        sut.clear()
-        http.shutdown()
-    }
-
-    @Test
-    fun `explicit sessionRecording false on a flags reload disables replay`() {
-        val withRecording = File("src/test/resources/json/basic-flags-recording.json").readText()
-        val withFalse = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
-
-        val http = mockHttp(response = MockResponse().setBody(withRecording))
-        http.enqueue(MockResponse().setBody(withFalse))
-        val url = http.url("/")
-
-        val sut = getSut(host = url.toString())
-
-        val firstLatch = CountDownLatch(1)
-        sut.loadFeatureFlags(
-            "my_identify",
-            anonymousId = "anonId",
-            emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
-        )
-        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
-        assertTrue(sut.isSessionReplayFlagActive())
-
-        val secondLatch = CountDownLatch(1)
-        sut.loadFeatureFlags(
-            "my_identify",
-            anonymousId = "anonId",
-            emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
-        )
-        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
-
-        // A response that explicitly carries false turns replay off and drops the cached config.
-        assertFalse(sut.isSessionReplayFlagActive())
-        assertNull(preferences.getValue(SESSION_REPLAY))
 
         sut.clear()
         http.shutdown()
@@ -232,100 +167,69 @@ internal class PostHogRemoteConfigTest {
         http.shutdown()
     }
 
-    @Test
-    fun `returns isSessionReplayFlagActive true if bool linked flag is enabled`() {
-        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
+    // The linkedFlag config comes from /config (cached); a /flags reload re-evaluates it against the
+    // new flags. Seed the cache, then load the flags fixture so reevaluate runs over those flags.
+    private fun assertReplayActiveForLinkedFlag(
+        cachedRecording: Map<String, Any?>,
+        flagsFixture: String,
+        expectedActive: Boolean,
+    ) {
+        preferences.setValue(SESSION_REPLAY, cachedRecording)
 
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(file.readText()),
-            )
-        val url = http.url("/")
-
-        val sut = getSut(host = url.toString())
+        val http = mockHttp(response = MockResponse().setBody(File(flagsFixture).readText()))
+        val sut = getSut(host = http.url("/").toString())
 
         sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
-
         executor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.isSessionReplayFlagActive())
+        assertEquals(expectedActive, sut.isSessionReplayFlagActive())
 
         sut.clear()
         http.shutdown()
+    }
+
+    @Test
+    fun `returns isSessionReplayFlagActive true if bool linked flag is enabled`() {
+        assertReplayActiveForLinkedFlag(
+            cachedRecording = mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"),
+            flagsFixture = "src/test/resources/json/basic-flags-recording-bool-linked-enabled.json",
+            expectedActive = true,
+        )
     }
 
     @Test
     fun `returns isSessionReplayFlagActive false if bool linked flag is disabled`() {
-        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-disabled.json")
-
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(file.readText()),
-            )
-        val url = http.url("/")
-
-        val sut = getSut(host = url.toString())
-
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
-
-        executor.shutdownAndAwaitTermination()
-
-        assertFalse(sut.isSessionReplayFlagActive())
-
-        sut.clear()
-        http.shutdown()
+        assertReplayActiveForLinkedFlag(
+            cachedRecording = mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"),
+            flagsFixture = "src/test/resources/json/basic-flags-recording-bool-linked-disabled.json",
+            expectedActive = false,
+        )
     }
 
     @Test
     fun `returns isSessionReplayFlagActive true if multi variant linked flag is a match`() {
-        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-match.json")
-
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(file.readText()),
-            )
-        val url = http.url("/")
-
-        val sut = getSut(host = url.toString())
-
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
-
-        executor.shutdownAndAwaitTermination()
-
-        assertTrue(sut.isSessionReplayFlagActive())
-
-        sut.clear()
-        http.shutdown()
+        assertReplayActiveForLinkedFlag(
+            cachedRecording =
+                mapOf(
+                    "endpoint" to "/b/",
+                    "linkedFlag" to mapOf("flag" to "session-replay-flag", "variant" to "variant-1"),
+                ),
+            flagsFixture = "src/test/resources/json/basic-flags-recording-bool-linked-variant-match.json",
+            expectedActive = true,
+        )
     }
 
     @Test
     fun `returns isSessionReplayFlagActive false if multi variant linked flag is not a match`() {
-        val file = File("src/test/resources/json/basic-flags-recording-bool-linked-variant-not-match.json")
-
-        val http =
-            mockHttp(
-                response =
-                    MockResponse()
-                        .setBody(file.readText()),
-            )
-        val url = http.url("/")
-
-        val sut = getSut(host = url.toString())
-
-        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
-
-        executor.shutdownAndAwaitTermination()
-
-        assertFalse(sut.isSessionReplayFlagActive())
-
-        sut.clear()
-        http.shutdown()
+        assertReplayActiveForLinkedFlag(
+            cachedRecording =
+                mapOf(
+                    "endpoint" to "/b/",
+                    "linkedFlag" to mapOf("flag" to "session-replay-flag", "variant" to "variant-1"),
+                ),
+            flagsFixture = "src/test/resources/json/basic-flags-recording-bool-linked-variant-not-match.json",
+            expectedActive = false,
+        )
     }
 
     @Test
