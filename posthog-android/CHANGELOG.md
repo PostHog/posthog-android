@@ -1,5 +1,11 @@
 ## Next
 
+## 3.47.1
+
+### Patch Changes
+
+- 875e972: Improve public API KDoc coverage.
+
 ## 3.47.0
 
 ### Minor Changes

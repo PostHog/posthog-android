@@ -1,5 +1,11 @@
 ## Next
 
+## 2.6.2
+
+### Patch Changes
+
+- 875e972: Improve public API KDoc coverage.
+
 ## 2.6.1
 
 ### Patch Changes
