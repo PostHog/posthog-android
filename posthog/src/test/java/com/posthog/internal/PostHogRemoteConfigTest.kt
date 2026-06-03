@@ -90,6 +90,36 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `re-arms session replay on a quota-limited flags reload`() {
+        // Project config lives in /config (cached); a flags reload that is quota-limited for
+        // feature_flags must still re-arm replay instead of leaving it disabled until app restart.
+        preferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+        val quotaLimited = File("src/test/resources/json/basic-flags-quota-limited.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(quotaLimited))
+        val sut = getSut(host = http.url("/").toString())
+
+        // reset() zeroes the in-memory flag but keeps the cached config.
+        sut.clear()
+        assertFalse(sut.isSessionReplayFlagActive())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // Re-armed from the cached config despite the flag quota limit.
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
     fun `re-arm on a flags reload restores consoleLogRecordingEnabled from the cached config`() {
         preferences.setValue(SESSION_REPLAY, mapOf("consoleLogRecordingEnabled" to true))
 
@@ -1238,6 +1268,40 @@ internal class PostHogRemoteConfigTest {
         // Re-armed from cache, not clobbered to false by the absent config on /flags.
         assertTrue(sut.isAutocaptureExceptionsEnabled())
         assertTrue(sut.isCaptureNetworkTimingEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `flags reload with no cached error tracking or capture performance does not re-arm them`() {
+        // Nothing cached, so the reevaluate* null-cache early-return must be a no-op: a reload after
+        // reset() leaves both flags zeroed instead of re-arming them from a non-existent cache.
+        val withoutConfig = File("src/test/resources/json/basic-flags-no-session-recording.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(withoutConfig))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+        // Local autocapture is on, so a true result could only come from the (absent) remote config.
+        config!!.errorTrackingConfig.autoCapture = true
+
+        // reset() zeroes both in-memory flags (captureNetworkTiming defaults to true, so this matters).
+        sut.clear()
+        assertFalse(sut.isAutocaptureExceptionsEnabled())
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // Still off: the empty cache means there is nothing to re-arm.
+        assertFalse(sut.isAutocaptureExceptionsEnabled())
+        assertFalse(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
         http.shutdown()

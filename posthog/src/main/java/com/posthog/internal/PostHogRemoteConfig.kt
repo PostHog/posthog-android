@@ -405,12 +405,13 @@ public class PostHogRemoteConfig(
             config.logger.log("No cached session replay config to re-evaluate; replay stays disabled.")
             return
         }
-        // persist = false: just read from the cache, no need to write it back.
         processSessionRecordingConfig(recordingConfig, persist = false)
     }
 
     private fun processSessionRecordingConfig(
         sessionRecording: Any?,
+        // persist=true writes the config to the cache (the /config path); false only evaluates it
+        // in-memory (the /flags re-arm path, which just read it from that same cache).
         persist: Boolean = true,
     ) {
         when (sessionRecording) {
@@ -511,7 +512,6 @@ public class PostHogRemoteConfig(
             config.logger.log("No cached error tracking config to re-evaluate; autocapture stays disabled.")
             return
         }
-        // persist = false: just read from the cache, no need to write it back.
         processErrorTrackingConfig(errorTracking, persist = false)
     }
 
@@ -565,7 +565,6 @@ public class PostHogRemoteConfig(
             config.logger.log("No cached capture performance config to re-evaluate; network timing stays disabled.")
             return
         }
-        // persist = false: just read from the cache, no need to write it back.
         processCapturePerformanceConfig(capturePerformance, persist = false)
     }
 
@@ -647,6 +646,12 @@ public class PostHogRemoteConfig(
                             """Feature flags are quota limited, flags could not be updated.
                                     Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
                         )
+                        // Flags are quota limited, but session replay / error tracking / capture
+                        // performance config come from /config (not flags), so still re-arm them from
+                        // the cache against the flags we already have, instead of leaving them disabled.
+                        reevaluateSessionReplayFromCachedConfig()
+                        reevaluateCapturePerformanceFromCachedConfig()
+                        reevaluateErrorTrackingFromCachedConfig()
                         return@let
                     }
 
@@ -1227,8 +1232,9 @@ public class PostHogRemoteConfig(
 
         synchronized(remoteConfigLock) {
             clearSurveys()
-            // Zero the in-memory flags but keep the cached config so a reload can re-arm them
-            // (an explicit `false` from /config still evicts the cache).
+            // Zero the in-memory flags but keep the cached config so a reload can re-arm them.
+            // Deliberately NOT clearErrorTracking()/clearCapturePerformance(): those also evict the
+            // cache. An explicit `false` from /config is the only path that evicts.
             autoCaptureExceptions = false
             captureNetworkTiming = false
         }
