@@ -1,32 +1,5 @@
 package com.posthog.server
 
-import com.google.gson.annotations.SerializedName
-import com.posthog.internal.FlagDefinition
-import com.posthog.internal.PropertyGroup
-
-/**
- * Feature flag definitions that can be shared between PostHog server SDK instances.
- *
- * Cache providers can store this data in a shared cache so only one process needs to
- * fetch local-evaluation flag definitions from PostHog while other processes read the
- * latest definitions from the cache.
- */
-public data class PostHogFlagDefinitionCacheData(
-    /**
-     * Feature flag definitions returned by the local-evaluation definitions endpoint.
-     */
-    public val flags: List<FlagDefinition>,
-    /**
-     * Mapping of group type indexes to group names used by group-based flags.
-     */
-    @SerializedName("group_type_mapping")
-    public val groupTypeMapping: Map<String, String>,
-    /**
-     * Cohort definitions used while evaluating flags locally.
-     */
-    public val cohorts: Map<String, PropertyGroup>,
-)
-
 /**
  * Shared cache provider for local-evaluation feature flag definitions.
  *
@@ -41,9 +14,12 @@ public data class PostHogFlagDefinitionCacheData(
  */
 public interface PostHogFlagDefinitionCacheProvider {
     /**
-     * Return cached flag definitions, or null when the cache is empty or unavailable.
+     * Return cached flag definitions as a JSON string, or null when the cache is empty or unavailable.
+     *
+     * The JSON string should use the shared local-evaluation definitions shape returned by PostHog's
+     * `/flags/definitions` endpoint: `flags`, `group_type_mapping`, and `cohorts`.
      */
-    public fun getFlagDefinitions(): PostHogFlagDefinitionCacheData?
+    public fun getFlagDefinitions(): String?
 
     /**
      * Return true when this SDK instance should fetch definitions from PostHog.
@@ -51,9 +27,12 @@ public interface PostHogFlagDefinitionCacheProvider {
     public fun shouldFetchFlagDefinitions(): Boolean
 
     /**
-     * Called after this SDK instance successfully fetches fresh definitions from PostHog.
+     * Called with cached flag definitions JSON after this SDK instance successfully fetches fresh definitions from PostHog.
+     *
+     * Implementations should store this string as an opaque blob to keep cache contents shareable
+     * across PostHog server SDKs.
      */
-    public fun onFlagDefinitionsReceived(data: PostHogFlagDefinitionCacheData): Unit
+    public fun onFlagDefinitionsReceived(data: String): Unit
 
     /**
      * Clean up any resources held by the provider, such as distributed locks.

@@ -5,14 +5,16 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.FeatureFlag
 import com.posthog.internal.FlagDefinition
+import com.posthog.internal.LocalEvaluationResponse
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogFlagsResponse
 import com.posthog.internal.PropertyGroup
-import com.posthog.server.PostHogFlagDefinitionCacheData
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import java.io.IOException
+import java.io.StringReader
+import java.io.StringWriter
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -477,12 +479,7 @@ internal class PostHogFeatureFlags(
             // Success: update ETag (or clear if server stopped sending one)
             etag = response.etag
 
-            val cacheData =
-                PostHogFlagDefinitionCacheData(
-                    flags = apiResponse.flags ?: emptyList(),
-                    groupTypeMapping = apiResponse.groupTypeMapping ?: emptyMap(),
-                    cohorts = apiResponse.cohorts ?: emptyMap(),
-                )
+            val cacheData = serializeFlagDefinitionCacheData(apiResponse)
             applyFlagDefinitions(
                 flags = apiResponse.flags,
                 groupTypeMapping = apiResponse.groupTypeMapping,
@@ -491,7 +488,7 @@ internal class PostHogFeatureFlags(
 
             config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
 
-            if (shouldFetch) {
+            if (shouldFetch && cacheData != null) {
                 storeFlagDefinitionsInCache(cacheData)
             }
 
@@ -529,12 +526,13 @@ internal class PostHogFeatureFlags(
         val provider = flagDefinitionCacheProvider ?: return false
         return try {
             val cachedData = provider.getFlagDefinitions() ?: return false
+            val response = config.serializer.deserialize<com.posthog.internal.LocalEvaluationResponse>(StringReader(cachedData))
             applyFlagDefinitions(
-                flags = cachedData.flags,
-                groupTypeMapping = cachedData.groupTypeMapping,
-                cohorts = cachedData.cohorts,
+                flags = response.flags,
+                groupTypeMapping = response.groupTypeMapping,
+                cohorts = response.cohorts,
             )
-            config.logger.log("Loaded ${cachedData.flags.size} feature flags from flag definition cache")
+            config.logger.log("Loaded ${response.flags?.size ?: 0} feature flags from flag definition cache")
             notifyFeatureFlagsLoaded()
             true
         } catch (e: Throwable) {
@@ -543,7 +541,24 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun storeFlagDefinitionsInCache(data: PostHogFlagDefinitionCacheData) {
+    private fun serializeFlagDefinitionCacheData(response: LocalEvaluationResponse): String? {
+        return try {
+            val cacheData: Map<String, Any?> =
+                mapOf(
+                    "flags" to (response.flags ?: emptyList<FlagDefinition>()),
+                    "group_type_mapping" to (response.groupTypeMapping ?: emptyMap<String, String>()),
+                    "cohorts" to (response.cohorts ?: emptyMap<String, PropertyGroup>()),
+                )
+            val writer = StringWriter()
+            config.serializer.serialize(cacheData, writer)
+            writer.toString()
+        } catch (e: Throwable) {
+            config.logger.log("Error serializing flag definitions for cache provider: ${e.message}")
+            null
+        }
+    }
+
+    private fun storeFlagDefinitionsInCache(data: String) {
         val provider = flagDefinitionCacheProvider ?: return
         try {
             provider.onFlagDefinitionsReceived(data)

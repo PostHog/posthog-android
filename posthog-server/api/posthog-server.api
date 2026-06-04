@@ -319,24 +319,9 @@ public final class com/posthog/server/PostHogFeatureFlagResultOptions$Companion 
 	public final fun builder ()Lcom/posthog/server/PostHogFeatureFlagResultOptions$Builder;
 }
 
-public final class com/posthog/server/PostHogFlagDefinitionCacheData {
-	public fun <init> (Ljava/util/List;Ljava/util/Map;Ljava/util/Map;)V
-	public final fun component1 ()Ljava/util/List;
-	public final fun component2 ()Ljava/util/Map;
-	public final fun component3 ()Ljava/util/Map;
-	public final fun copy (Ljava/util/List;Ljava/util/Map;Ljava/util/Map;)Lcom/posthog/server/PostHogFlagDefinitionCacheData;
-	public static synthetic fun copy$default (Lcom/posthog/server/PostHogFlagDefinitionCacheData;Ljava/util/List;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lcom/posthog/server/PostHogFlagDefinitionCacheData;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getCohorts ()Ljava/util/Map;
-	public final fun getFlags ()Ljava/util/List;
-	public final fun getGroupTypeMapping ()Ljava/util/Map;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
 public abstract interface class com/posthog/server/PostHogFlagDefinitionCacheProvider {
-	public abstract fun getFlagDefinitions ()Lcom/posthog/server/PostHogFlagDefinitionCacheData;
-	public abstract fun onFlagDefinitionsReceived (Lcom/posthog/server/PostHogFlagDefinitionCacheData;)V
+	public abstract fun getFlagDefinitions ()Ljava/lang/String;
+	public abstract fun onFlagDefinitionsReceived (Ljava/lang/String;)V
 	public abstract fun shouldFetchFlagDefinitions ()Z
 	public abstract fun shutdown ()V
 }
