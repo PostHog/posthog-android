@@ -320,8 +320,8 @@ public final class com/posthog/server/PostHogFeatureFlagResultOptions$Companion 
 }
 
 public abstract interface class com/posthog/server/PostHogFlagDefinitionCacheProvider {
-	public abstract fun getFlagDefinitions ()Ljava/lang/String;
-	public abstract fun onFlagDefinitionsReceived (Ljava/lang/String;)V
+	public abstract fun getFlagDefinitions ()Ljava/util/Map;
+	public abstract fun onFlagDefinitionsReceived (Ljava/util/Map;)V
 	public abstract fun shouldFetchFlagDefinitions ()Z
 	public abstract fun shutdown ()V
 }

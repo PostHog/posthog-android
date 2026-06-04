@@ -642,11 +642,11 @@ internal class PostHogConfigTest {
     }
 
     private class NoOpFlagDefinitionCacheProvider : PostHogFlagDefinitionCacheProvider {
-        override fun getFlagDefinitions(): String? = null
+        override fun getFlagDefinitions(): Map<String, Any?>? = null
 
         override fun shouldFetchFlagDefinitions(): Boolean = true
 
-        override fun onFlagDefinitionsReceived(data: String) = Unit
+        override fun onFlagDefinitionsReceived(data: Map<String, Any?>) = Unit
 
         override fun shutdown() = Unit
     }

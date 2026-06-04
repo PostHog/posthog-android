@@ -479,7 +479,7 @@ internal class PostHogFeatureFlags(
             // Success: update ETag (or clear if server stopped sending one)
             etag = response.etag
 
-            val cacheData = serializeFlagDefinitionCacheData(apiResponse)
+            val cacheData = buildFlagDefinitionCacheData(apiResponse)
             applyFlagDefinitions(
                 flags = apiResponse.flags,
                 groupTypeMapping = apiResponse.groupTypeMapping,
@@ -526,7 +526,7 @@ internal class PostHogFeatureFlags(
         val provider = flagDefinitionCacheProvider ?: return false
         return try {
             val cachedData = provider.getFlagDefinitions() ?: return false
-            val response = config.serializer.deserialize<com.posthog.internal.LocalEvaluationResponse>(StringReader(cachedData))
+            val response = parseFlagDefinitionCacheData(cachedData)
             applyFlagDefinitions(
                 flags = response.flags,
                 groupTypeMapping = response.groupTypeMapping,
@@ -541,7 +541,13 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun serializeFlagDefinitionCacheData(response: LocalEvaluationResponse): String? {
+    private fun parseFlagDefinitionCacheData(data: Map<String, Any?>): LocalEvaluationResponse {
+        val writer = StringWriter()
+        config.serializer.serialize(data, writer)
+        return config.serializer.deserialize(StringReader(writer.toString()))
+    }
+
+    private fun buildFlagDefinitionCacheData(response: LocalEvaluationResponse): Map<String, Any?>? {
         return try {
             val cacheData: Map<String, Any?> =
                 mapOf(
@@ -551,14 +557,14 @@ internal class PostHogFeatureFlags(
                 )
             val writer = StringWriter()
             config.serializer.serialize(cacheData, writer)
-            writer.toString()
+            config.serializer.deserialize<Map<String, Any?>>(StringReader(writer.toString()))
         } catch (e: Throwable) {
-            config.logger.log("Error serializing flag definitions for cache provider: ${e.message}")
+            config.logger.log("Error preparing flag definitions for cache provider: ${e.message}")
             null
         }
     }
 
-    private fun storeFlagDefinitionsInCache(data: String) {
+    private fun storeFlagDefinitionsInCache(data: Map<String, Any?>) {
         val provider = flagDefinitionCacheProvider ?: return
         try {
             provider.onFlagDefinitionsReceived(data)

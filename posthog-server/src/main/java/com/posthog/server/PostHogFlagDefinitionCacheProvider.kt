@@ -14,12 +14,12 @@ package com.posthog.server
  */
 public interface PostHogFlagDefinitionCacheProvider {
     /**
-     * Return cached flag definitions as a JSON string, or null when the cache is empty or unavailable.
+     * Return cached flag definitions, or null when the cache is empty or unavailable.
      *
-     * The JSON string should use the shared local-evaluation definitions shape returned by PostHog's
+     * The data should use the shared local-evaluation definitions shape returned by PostHog's
      * `/flags/definitions` endpoint: `flags`, `group_type_mapping`, and `cohorts`.
      */
-    public fun getFlagDefinitions(): String?
+    public fun getFlagDefinitions(): Map<String, Any?>?
 
     /**
      * Return true when this SDK instance should fetch definitions from PostHog.
@@ -27,12 +27,11 @@ public interface PostHogFlagDefinitionCacheProvider {
     public fun shouldFetchFlagDefinitions(): Boolean
 
     /**
-     * Called with cached flag definitions JSON after this SDK instance successfully fetches fresh definitions from PostHog.
+     * Called with flag definitions after this SDK instance successfully fetches fresh definitions from PostHog.
      *
-     * Implementations should store this string as an opaque blob to keep cache contents shareable
-     * across PostHog server SDKs.
+     * Implementations are responsible for serializing and storing this data in their cache backend.
      */
-    public fun onFlagDefinitionsReceived(data: String): Unit
+    public fun onFlagDefinitionsReceived(data: Map<String, Any?>): Unit
 
     /**
      * Clean up any resources held by the provider, such as distributed locks.

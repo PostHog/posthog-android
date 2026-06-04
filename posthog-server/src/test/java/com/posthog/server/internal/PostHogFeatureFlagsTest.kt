@@ -16,6 +16,8 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import java.io.StringReader
+import java.io.StringWriter
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
@@ -1460,7 +1462,7 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(1, provider.shouldFetchCalls)
         assertEquals(0, provider.getCalls)
         assertEquals(1, provider.onReceivedCalls)
-        assertTrue(provider.lastReceivedData?.contains("\"key\":\"api-flag\"") == true)
+        assertTrue(serializeFlagDefinitionCacheData(config, provider.lastReceivedData).contains("\"key\":\"api-flag\""))
         assertEquals(true, featureFlags.getFeatureFlag("api-flag", false, "test-user"))
 
         mockServer.shutdown()
@@ -1845,7 +1847,8 @@ internal class PostHogFeatureFlagsTest {
 
         featureFlags.loadFeatureFlagDefinitions()
 
-        val cachedJson = provider.lastReceivedData ?: ""
+        val cachedData = provider.lastReceivedData
+        val cachedJson = serializeFlagDefinitionCacheData(config, cachedData)
         assertTrue(cachedJson.contains("\"group_type_mapping\":"))
         assertTrue(cachedJson.contains("\"operator\":\"not_regex\""))
         assertTrue(cachedJson.contains("\"type\":\"person\""))
@@ -1855,7 +1858,7 @@ internal class PostHogFeatureFlagsTest {
 
         val cacheProvider =
             TestFlagDefinitionCacheProvider(
-                cacheData = cachedJson,
+                cacheData = roundTripFlagDefinitionCacheData(config, cachedData),
                 shouldFetch = false,
             )
         val cacheFeatureFlags =
@@ -1891,11 +1894,12 @@ internal class PostHogFeatureFlagsTest {
         val mockServer = MockWebServer()
         mockServer.start()
         val config = createTestConfig(logger, mockServer.url("/").toString())
-        val json = createFlagDefinitionCacheData(config, "roundtrip-cache-flag")
+        val data = createFlagDefinitionCacheData(config, "roundtrip-cache-flag")
+        val json = serializeFlagDefinitionCacheData(config, data)
         val api = PostHogApi(config)
         val provider =
             TestFlagDefinitionCacheProvider(
-                cacheData = json,
+                cacheData = data,
                 shouldFetch = false,
             )
         val featureFlags =
@@ -2047,7 +2051,7 @@ internal class PostHogFeatureFlagsTest {
         config: com.posthog.PostHogConfig,
         flagKey: String,
         aggregationGroupTypeIndex: Int? = null,
-    ): String =
+    ): Map<String, Any?> =
         createFlagDefinitionCacheDataFromJson(
             config,
             createLocalEvaluationResponse(flagKey, aggregationGroupTypeIndex = aggregationGroupTypeIndex),
@@ -2056,7 +2060,21 @@ internal class PostHogFeatureFlagsTest {
     private fun createFlagDefinitionCacheDataFromJson(
         config: com.posthog.PostHogConfig,
         json: String,
-    ): String = json
+    ): Map<String, Any?> = config.serializer.deserialize(StringReader(json))
+
+    private fun serializeFlagDefinitionCacheData(
+        config: com.posthog.PostHogConfig,
+        data: Map<String, Any?>?,
+    ): String {
+        val writer = StringWriter()
+        config.serializer.serialize(data ?: emptyMap<String, Any?>(), writer)
+        return writer.toString()
+    }
+
+    private fun roundTripFlagDefinitionCacheData(
+        config: com.posthog.PostHogConfig,
+        data: Map<String, Any?>?,
+    ): Map<String, Any?> = config.serializer.deserialize(StringReader(serializeFlagDefinitionCacheData(config, data)))
 
     private fun createCohortLocalEvaluationResponse(): String =
         """
@@ -2144,7 +2162,7 @@ internal class PostHogFeatureFlagsTest {
         """.trimIndent()
 
     private class TestFlagDefinitionCacheProvider(
-        var cacheData: String? = null,
+        var cacheData: Map<String, Any?>? = null,
         var shouldFetch: Boolean = true,
         var throwOnShouldFetch: Boolean = false,
         var throwOnGet: Boolean = false,
@@ -2156,9 +2174,9 @@ internal class PostHogFeatureFlagsTest {
         var getCalls = 0
         var onReceivedCalls = 0
         var shutdownCalls = 0
-        var lastReceivedData: String? = null
+        var lastReceivedData: Map<String, Any?>? = null
 
-        override fun getFlagDefinitions(): String? {
+        override fun getFlagDefinitions(): Map<String, Any?>? {
             getCalls += 1
             if (delayOnGetMs > 0) {
                 Thread.sleep(delayOnGetMs)
@@ -2177,7 +2195,7 @@ internal class PostHogFeatureFlagsTest {
             return shouldFetch
         }
 
-        override fun onFlagDefinitionsReceived(data: String) {
+        override fun onFlagDefinitionsReceived(data: Map<String, Any?>) {
             onReceivedCalls += 1
             lastReceivedData = data
             if (throwOnReceived) {
