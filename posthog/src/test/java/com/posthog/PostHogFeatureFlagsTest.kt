@@ -14,6 +14,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 internal class PostHogFeatureFlagsTest {
     @get:Rule
@@ -373,5 +374,20 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(defaultValue, theEvent?.properties!!["\$feature_flag_response"])
         assertEquals("nonExistentFlag", theEvent.properties!!["\$feature_flag"])
         sut.close()
+    }
+
+    @Test
+    fun `reloadFeatureFlags invokes callback when not enabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        sut.close()
+
+        var called = false
+        sut.reloadFeatureFlags { called = true }
+
+        // isEnabled() is false after close(), so reloadFeatureFlags early-returns. The
+        // callback must still fire (synchronously) rather than leave awaiting callers hanging.
+        assertTrue(called)
     }
 }

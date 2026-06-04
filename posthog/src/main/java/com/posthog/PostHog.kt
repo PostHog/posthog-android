@@ -1252,8 +1252,19 @@ public class PostHog private constructor(
         }
     }
 
+    // Invokes the feature flags callback, swallowing exceptions like runOnFeatureFlagsCallbacks.
+    private fun notifyFeatureFlagsCallback(onFeatureFlags: PostHogOnFeatureFlags?) {
+        try {
+            onFeatureFlags?.loaded()
+        } catch (e: Throwable) {
+            config?.logger?.log("Executing the feature flags callback failed: $e")
+        }
+    }
+
     public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
         if (!isEnabled()) {
+            // Still invoke the callback so awaiting callers aren't left hanging.
+            notifyFeatureFlagsCallback(onFeatureFlags)
             return
         }
         loadFeatureFlagsRequest(
@@ -1278,6 +1289,8 @@ public class PostHog private constructor(
 
         if (distinctId.isBlank()) {
             config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+            // Still invoke the callback so awaiting callers aren't left hanging.
+            notifyFeatureFlagsCallback(onFeatureFlags)
             return
         }
 
