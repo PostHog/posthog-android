@@ -65,15 +65,7 @@ public class PostHogApi(
                 config.serializer.serialize(batch, it.bufferedWriter())
             }
 
-        logRequestHeaders(request)
-
-        client.newCall(request).execute().use {
-            val response = logResponse(it)
-
-            if (!response.isSuccessful) {
-                throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
-            }
-        }
+        executeNoBody(request)
     }
 
     @Throws(PostHogApiError::class, IOException::class)
@@ -91,15 +83,7 @@ public class PostHogApi(
                 config.serializer.serialize(events, it.bufferedWriter())
             }
 
-        logRequestHeaders(request)
-
-        client.newCall(request).execute().use {
-            val response = logResponse(it)
-
-            if (!response.isSuccessful) {
-                throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
-            }
-        }
+        executeNoBody(request)
     }
 
     /**
@@ -130,6 +114,11 @@ public class PostHogApi(
                 config.serializer.serialize(payload, it.bufferedWriter())
             }
 
+        executeNoBody(request)
+    }
+
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun executeNoBody(request: Request) {
         logRequestHeaders(request)
 
         client.newCall(request).execute().use {

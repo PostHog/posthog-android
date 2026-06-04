@@ -22,6 +22,7 @@ public class ThrowableCoercer {
         return false
     }
 
+    @Suppress("DEPRECATION")
     public fun fromThrowableToPostHogProperties(
         throwable: Throwable,
         inAppIncludes: List<String> = listOf(),

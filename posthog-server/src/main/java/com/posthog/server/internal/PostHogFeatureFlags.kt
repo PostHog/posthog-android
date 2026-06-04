@@ -638,19 +638,7 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-    ): String? {
-        if (distinctId == null) {
-            return null
-        }
-        val cacheKey =
-            FeatureFlagCacheKey(
-                distinctId = distinctId,
-                groups = groups,
-                personProperties = personProperties,
-                groupProperties = groupProperties,
-            )
-        return cache.getEntry(cacheKey)?.requestId
-    }
+    ): String? = getCacheEntry(distinctId, groups, personProperties, groupProperties)?.requestId
 
     /**
      * Get the evaluatedAt from the cache for the given distinctId and groups
@@ -660,7 +648,14 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-    ): Long? {
+    ): Long? = getCacheEntry(distinctId, groups, personProperties, groupProperties)?.evaluatedAt
+
+    private fun getCacheEntry(
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): FeatureFlagCacheEntry? {
         if (distinctId == null) {
             return null
         }
@@ -671,7 +666,7 @@ internal class PostHogFeatureFlags(
                 personProperties = personProperties,
                 groupProperties = groupProperties,
             )
-        return cache.getEntry(cacheKey)?.evaluatedAt
+        return cache.getEntry(cacheKey)
     }
 
     /**

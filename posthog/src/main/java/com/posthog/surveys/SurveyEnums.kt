@@ -1,5 +1,11 @@
 package com.posthog.surveys
 
+private fun <T> enumFromValue(
+    value: String,
+    values: Array<T>,
+    enumValue: (T) -> String,
+): T? where T : Enum<T> = values.firstOrNull { enumValue(it) == value }
+
 public enum class SurveyType(public val value: String) {
     POPOVER("popover"),
     API("api"),
@@ -7,14 +13,7 @@ public enum class SurveyType(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyType? {
-            return when (value) {
-                "popover" -> POPOVER
-                "api" -> API
-                "widget" -> WIDGET
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyType? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -27,16 +26,7 @@ public enum class SurveyQuestionType(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyQuestionType? {
-            return when (value) {
-                "open" -> OPEN
-                "link" -> LINK
-                "rating" -> RATING
-                "multiple_choice" -> MULTIPLE_CHOICE
-                "single_choice" -> SINGLE_CHOICE
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyQuestionType? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -46,13 +36,7 @@ public enum class SurveyTextContentType(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyTextContentType? {
-            return when (value) {
-                "html" -> HTML
-                "text" -> TEXT
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyTextContentType? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -68,19 +52,7 @@ public enum class SurveyMatchType(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyMatchType? {
-            return when (value) {
-                "regex" -> REGEX
-                "not_regex" -> NOT_REGEX
-                "exact" -> EXACT
-                "is_not" -> IS_NOT
-                "icontains" -> I_CONTAINS
-                "not_icontains" -> NOT_I_CONTAINS
-                "gt" -> GT
-                "lt" -> LT
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyMatchType? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -91,14 +63,7 @@ public enum class SurveyAppearancePosition(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyAppearancePosition? {
-            return when (value) {
-                "left" -> LEFT
-                "right" -> RIGHT
-                "center" -> CENTER
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyAppearancePosition? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -109,14 +74,7 @@ public enum class SurveyAppearanceWidgetType(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyAppearanceWidgetType? {
-            return when (value) {
-                "button" -> BUTTON
-                "tab" -> TAB
-                "selector" -> SELECTOR
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyAppearanceWidgetType? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -126,13 +84,7 @@ public enum class SurveyRatingDisplayType(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyRatingDisplayType? {
-            return when (value) {
-                "number" -> NUMBER
-                "emoji" -> EMOJI
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyRatingDisplayType? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -144,15 +96,7 @@ public enum class SurveyQuestionBranchingType(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveyQuestionBranchingType? {
-            return when (value) {
-                "next_question" -> NEXT_QUESTION
-                "end" -> END
-                "response_based" -> RESPONSE_BASED
-                "specific_question" -> SPECIFIC_QUESTION
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveyQuestionBranchingType? = enumFromValue(value, values()) { it.value }
     }
 }
 
@@ -163,13 +107,6 @@ public enum class SurveySchedule(public val value: String) {
     ;
 
     public companion object {
-        public fun fromValue(value: String): SurveySchedule? {
-            return when (value) {
-                "once" -> ONCE
-                "recurring" -> RECURRING
-                "always" -> ALWAYS
-                else -> null
-            }
-        }
+        public fun fromValue(value: String): SurveySchedule? = enumFromValue(value, values()) { it.value }
     }
 }
