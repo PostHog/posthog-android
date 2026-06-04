@@ -1,5 +1,11 @@
 ## Next
 
+## 3.47.2
+
+### Patch Changes
+
+- 1a60d00: Keep session replay, error tracking, and network performance capture active after an in-session `identify()`/`reset()` instead of disabling them until the next app restart.
+
 ## 3.47.1
 
 ### Patch Changes

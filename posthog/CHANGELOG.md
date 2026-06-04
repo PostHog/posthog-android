@@ -1,5 +1,12 @@
 ## Next
 
+## 6.17.4
+
+### Patch Changes
+
+- ea18b31: `reloadFeatureFlags` now always invokes its completion callback, including when the SDK is disabled/opted-out or the distinct ID is blank. Previously these early-returns skipped the callback, which could leave callers that await it (e.g. the Flutter SDK's `reloadFeatureFlags`) hanging indefinitely.
+- 1a60d00: Keep session replay, error tracking, and network performance capture active after an in-session `identify()`/`reset()` instead of disabling them until the next app restart.
+
 ## 6.17.3
 
 ### Patch Changes
