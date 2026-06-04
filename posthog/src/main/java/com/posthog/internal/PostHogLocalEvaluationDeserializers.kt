@@ -3,6 +3,8 @@ package com.posthog.internal
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
+import com.google.gson.JsonSerializationContext
+import com.google.gson.JsonSerializer
 import com.google.gson.stream.MalformedJsonException
 import com.posthog.PostHogInternal
 import java.lang.reflect.Type
@@ -154,5 +156,27 @@ public class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
             negation = negation,
             dependencyChain = dependencyChain,
         )
+    }
+}
+
+internal class GsonPropertyValueAdapter : JsonDeserializer<PropertyValue>, JsonSerializer<PropertyValue> {
+    private val deserializer = PropertyValueDeserializer()
+
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type,
+        context: JsonDeserializationContext,
+    ): PropertyValue? = deserializer.deserialize(json, typeOfT, context)
+
+    override fun serialize(
+        src: PropertyValue?,
+        typeOfSrc: Type,
+        context: JsonSerializationContext,
+    ): JsonElement? {
+        return when (src) {
+            is PropertyValue.FlagProperties -> context.serialize(src.values)
+            is PropertyValue.PropertyGroups -> context.serialize(src.values)
+            null -> null
+        }
     }
 }

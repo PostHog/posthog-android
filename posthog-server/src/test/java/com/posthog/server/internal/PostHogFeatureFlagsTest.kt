@@ -1825,6 +1825,67 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `stored flag definition cache JSON preserves complex endpoint shape`() {
+        val logger = TestLogger()
+        val mockServer = createMockHttp(jsonResponse(createCohortLocalEvaluationResponse()))
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        val cachedJson = provider.lastReceivedData ?: ""
+        assertTrue(cachedJson.contains("\"group_type_mapping\":"))
+        assertTrue(cachedJson.contains("\"operator\":\"not_regex\""))
+        assertTrue(cachedJson.contains("\"type\":\"person\""))
+        assertTrue(cachedJson.contains("\"type\":\"cohort\""))
+        assertFalse(cachedJson.contains("NOT_REGEX"))
+        assertFalse(cachedJson.contains("\"values\":{\"values\""))
+
+        val cacheProvider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = cachedJson,
+                shouldFetch = false,
+            )
+        val cacheFeatureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = cacheProvider,
+            )
+
+        cacheFeatureFlags.loadFeatureFlagDefinitions()
+        val cachedResult =
+            cacheFeatureFlags.getFeatureFlag(
+                key = "cohort-member",
+                defaultValue = false,
+                distinctId = "user-123",
+                personProperties = mapOf("email" to "example@example.com"),
+            )
+
+        assertEquals(true, cachedResult)
+        assertEquals(1, mockServer.requestCount)
+
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `flag definition cache data uses endpoint JSON with snake case group mapping`() {
         val logger = TestLogger()
         val mockServer = MockWebServer()
