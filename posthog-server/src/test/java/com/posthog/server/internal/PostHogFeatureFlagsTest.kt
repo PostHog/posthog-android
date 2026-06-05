@@ -1543,179 +1543,80 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `loadFeatureFlagDefinitions falls back to API on cold cache miss without storing as follower`() {
-        val logger = TestLogger()
-        val mockServer =
-            createMockHttp(
-                jsonResponse(createLocalEvaluationResponse("fallback-flag")),
-            )
-        val config = createTestConfig(logger, mockServer.url("/").toString())
-        val api = PostHogApi(config)
-        val provider = TestFlagDefinitionCacheProvider(shouldFetch = false)
-        val featureFlags =
-            PostHogFeatureFlags(
-                config,
-                api,
-                60000,
-                100,
-                localEvaluation = true,
-                personalApiKey = "test-personal-key",
-                pollerEnabled = false,
-                flagDefinitionCacheProvider = provider,
-            )
+    fun `loadFeatureFlagDefinitions API fallback cases keep local evaluation available`() {
+        flagDefinitionCacheApiFallbackCases.forEach { testCase ->
+            val logger = TestLogger()
+            val mockServer =
+                createMockHttp(
+                    jsonResponse(createLocalEvaluationResponse(testCase.flagKey)),
+                )
+            val config = createTestConfig(logger, mockServer.url("/").toString())
+            val api = PostHogApi(config)
+            val provider = TestFlagDefinitionCacheProvider().apply(testCase.configureProvider)
+            val featureFlags =
+                PostHogFeatureFlags(
+                    config,
+                    api,
+                    60000,
+                    100,
+                    localEvaluation = true,
+                    personalApiKey = "test-personal-key",
+                    pollerEnabled = false,
+                    flagDefinitionCacheProvider = provider,
+                )
 
-        featureFlags.loadFeatureFlagDefinitions()
+            featureFlags.loadFeatureFlagDefinitions()
 
-        assertEquals(1, mockServer.requestCount)
-        assertEquals(1, provider.getCalls)
-        assertEquals(0, provider.onReceivedCalls)
-        assertEquals(true, featureFlags.getFeatureFlag("fallback-flag", false, "test-user"))
-        assertTrue(logger.containsLog("falling back to API"))
+            assertEquals(1, mockServer.requestCount, "${testCase.name}: request count")
+            assertEquals(1, provider.shouldFetchCalls, "${testCase.name}: shouldFetch calls")
+            assertEquals(testCase.expectedGetCalls, provider.getCalls, "${testCase.name}: get calls")
+            assertEquals(testCase.expectedOnReceivedCalls, provider.onReceivedCalls, "${testCase.name}: onReceived calls")
+            assertEquals(true, featureFlags.getFeatureFlag(testCase.flagKey, false, "test-user"), "${testCase.name}: flag result")
+            assertTrue(logger.containsLog(testCase.expectedLog), "${testCase.name}: expected log")
 
-        mockServer.shutdown()
+            mockServer.shutdown()
+        }
     }
 
     @Test
-    fun `loadFeatureFlagDefinitions keeps existing definitions on follower cache miss`() {
-        val logger = TestLogger()
-        val mockServer =
-            createMockHttp(
-                jsonResponse(createLocalEvaluationResponse("existing-flag")),
-            )
-        val config = createTestConfig(logger, mockServer.url("/").toString())
-        val api = PostHogApi(config)
-        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
-        val featureFlags =
-            PostHogFeatureFlags(
-                config,
-                api,
-                60000,
-                100,
-                localEvaluation = true,
-                personalApiKey = "test-personal-key",
-                pollerEnabled = false,
-                flagDefinitionCacheProvider = provider,
-            )
+    fun `loadFeatureFlagDefinitions keeps existing definitions when follower cache is unavailable`() {
+        flagDefinitionCacheKeepExistingCases.forEach { testCase ->
+            val logger = TestLogger()
+            val mockServer =
+                createMockHttp(
+                    jsonResponse(createLocalEvaluationResponse(testCase.flagKey)),
+                )
+            val config = createTestConfig(logger, mockServer.url("/").toString())
+            val api = PostHogApi(config)
+            val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+            val featureFlags =
+                PostHogFeatureFlags(
+                    config,
+                    api,
+                    60000,
+                    100,
+                    localEvaluation = true,
+                    personalApiKey = "test-personal-key",
+                    pollerEnabled = false,
+                    flagDefinitionCacheProvider = provider,
+                )
 
-        featureFlags.loadFeatureFlagDefinitions()
-        provider.shouldFetch = false
-        provider.cacheData = null
-        featureFlags.loadFeatureFlagDefinitions()
+            featureFlags.loadFeatureFlagDefinitions()
+            provider.apply(testCase.configureProviderAfterWarmLoad)
+            featureFlags.loadFeatureFlagDefinitions()
 
-        assertEquals(1, mockServer.requestCount)
-        assertEquals(2, provider.shouldFetchCalls)
-        assertEquals(1, provider.getCalls)
-        assertEquals(1, provider.onReceivedCalls)
-        assertEquals(true, featureFlags.getFeatureFlag("existing-flag", false, "test-user"))
-        assertTrue(logger.containsLog("keeping existing definitions"))
+            assertEquals(1, mockServer.requestCount, "${testCase.name}: request count")
+            assertEquals(2, provider.shouldFetchCalls, "${testCase.name}: shouldFetch calls")
+            assertEquals(1, provider.getCalls, "${testCase.name}: get calls")
+            assertEquals(1, provider.onReceivedCalls, "${testCase.name}: onReceived calls")
+            assertEquals(true, featureFlags.getFeatureFlag(testCase.flagKey, false, "test-user"), "${testCase.name}: flag result")
+            assertTrue(logger.containsLog("keeping existing definitions"), "${testCase.name}: expected stale-definition log")
+            testCase.expectedAdditionalLog?.let {
+                assertTrue(logger.containsLog(it), "${testCase.name}: expected additional log")
+            }
 
-        mockServer.shutdown()
-    }
-
-    @Test
-    fun `loadFeatureFlagDefinitions defaults to API fetch when provider shouldFetch throws`() {
-        val logger = TestLogger()
-        val mockServer =
-            createMockHttp(
-                jsonResponse(createLocalEvaluationResponse("api-flag")),
-            )
-        val config = createTestConfig(logger, mockServer.url("/").toString())
-        val api = PostHogApi(config)
-        val provider = TestFlagDefinitionCacheProvider(throwOnShouldFetch = true)
-        val featureFlags =
-            PostHogFeatureFlags(
-                config,
-                api,
-                60000,
-                100,
-                localEvaluation = true,
-                personalApiKey = "test-personal-key",
-                pollerEnabled = false,
-                flagDefinitionCacheProvider = provider,
-            )
-
-        featureFlags.loadFeatureFlagDefinitions()
-
-        assertEquals(1, mockServer.requestCount)
-        assertEquals(1, provider.onReceivedCalls)
-        assertEquals(true, featureFlags.getFeatureFlag("api-flag", false, "test-user"))
-        assertTrue(logger.containsLog("shouldFetchFlagDefinitions"))
-
-        mockServer.shutdown()
-    }
-
-    @Test
-    fun `loadFeatureFlagDefinitions falls back to API when provider get throws on cold load`() {
-        val logger = TestLogger()
-        val mockServer =
-            createMockHttp(
-                jsonResponse(createLocalEvaluationResponse("get-error-fallback-flag")),
-            )
-        val config = createTestConfig(logger, mockServer.url("/").toString())
-        val api = PostHogApi(config)
-        val provider =
-            TestFlagDefinitionCacheProvider(
-                shouldFetch = false,
-                throwOnGet = true,
-            )
-        val featureFlags =
-            PostHogFeatureFlags(
-                config,
-                api,
-                60000,
-                100,
-                localEvaluation = true,
-                personalApiKey = "test-personal-key",
-                pollerEnabled = false,
-                flagDefinitionCacheProvider = provider,
-            )
-
-        featureFlags.loadFeatureFlagDefinitions()
-
-        assertEquals(1, mockServer.requestCount)
-        assertEquals(1, provider.getCalls)
-        assertEquals(0, provider.onReceivedCalls)
-        assertEquals(true, featureFlags.getFeatureFlag("get-error-fallback-flag", false, "test-user"))
-        assertTrue(logger.containsLog("Error loading feature flag definitions from cache provider"))
-
-        mockServer.shutdown()
-    }
-
-    @Test
-    fun `loadFeatureFlagDefinitions keeps existing definitions when provider get throws after load`() {
-        val logger = TestLogger()
-        val mockServer =
-            createMockHttp(
-                jsonResponse(createLocalEvaluationResponse("existing-after-get-error-flag")),
-            )
-        val config = createTestConfig(logger, mockServer.url("/").toString())
-        val api = PostHogApi(config)
-        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
-        val featureFlags =
-            PostHogFeatureFlags(
-                config,
-                api,
-                60000,
-                100,
-                localEvaluation = true,
-                personalApiKey = "test-personal-key",
-                pollerEnabled = false,
-                flagDefinitionCacheProvider = provider,
-            )
-
-        featureFlags.loadFeatureFlagDefinitions()
-        provider.shouldFetch = false
-        provider.throwOnGet = true
-        featureFlags.loadFeatureFlagDefinitions()
-
-        assertEquals(1, mockServer.requestCount)
-        assertEquals(1, provider.getCalls)
-        assertEquals(1, provider.onReceivedCalls)
-        assertEquals(true, featureFlags.getFeatureFlag("existing-after-get-error-flag", false, "test-user"))
-        assertTrue(logger.containsLog("Error loading feature flag definitions from cache provider"))
-        assertTrue(logger.containsLog("keeping existing definitions"))
-
-        mockServer.shutdown()
+            mockServer.shutdown()
+        }
     }
 
     @Test
@@ -2234,6 +2135,74 @@ internal class PostHogFeatureFlagsTest {
             }
         }
         """.trimIndent()
+
+    private data class FlagDefinitionCacheApiFallbackCase(
+        val name: String,
+        val flagKey: String,
+        val configureProvider: TestFlagDefinitionCacheProvider.() -> Unit,
+        val expectedGetCalls: Int,
+        val expectedOnReceivedCalls: Int,
+        val expectedLog: String,
+    )
+
+    private data class FlagDefinitionCacheKeepExistingCase(
+        val name: String,
+        val flagKey: String,
+        val configureProviderAfterWarmLoad: TestFlagDefinitionCacheProvider.() -> Unit,
+        val expectedAdditionalLog: String? = null,
+    )
+
+    private val flagDefinitionCacheApiFallbackCases =
+        listOf(
+            FlagDefinitionCacheApiFallbackCase(
+                name = "cold cache miss",
+                flagKey = "fallback-flag",
+                configureProvider = { shouldFetch = false },
+                expectedGetCalls = 1,
+                expectedOnReceivedCalls = 0,
+                expectedLog = "falling back to API",
+            ),
+            FlagDefinitionCacheApiFallbackCase(
+                name = "shouldFetch throws",
+                flagKey = "api-flag",
+                configureProvider = { throwOnShouldFetch = true },
+                expectedGetCalls = 0,
+                expectedOnReceivedCalls = 1,
+                expectedLog = "shouldFetchFlagDefinitions",
+            ),
+            FlagDefinitionCacheApiFallbackCase(
+                name = "cache read throws on cold load",
+                flagKey = "get-error-fallback-flag",
+                configureProvider = {
+                    shouldFetch = false
+                    throwOnGet = true
+                },
+                expectedGetCalls = 1,
+                expectedOnReceivedCalls = 0,
+                expectedLog = "Error loading feature flag definitions from cache provider",
+            ),
+        )
+
+    private val flagDefinitionCacheKeepExistingCases =
+        listOf(
+            FlagDefinitionCacheKeepExistingCase(
+                name = "cache miss after warm load",
+                flagKey = "existing-flag",
+                configureProviderAfterWarmLoad = {
+                    shouldFetch = false
+                    cacheData = null
+                },
+            ),
+            FlagDefinitionCacheKeepExistingCase(
+                name = "cache read throws after warm load",
+                flagKey = "existing-after-get-error-flag",
+                configureProviderAfterWarmLoad = {
+                    shouldFetch = false
+                    throwOnGet = true
+                },
+                expectedAdditionalLog = "Error loading feature flag definitions from cache provider",
+            ),
+        )
 
     private class AsyncTestFlagDefinitionCacheProvider(
         private val delegate: TestFlagDefinitionCacheProvider,
