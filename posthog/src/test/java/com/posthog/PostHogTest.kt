@@ -9,6 +9,7 @@ import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
+import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
@@ -58,6 +59,7 @@ internal class PostHogTest {
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
+        surveys: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
@@ -82,6 +84,7 @@ internal class PostHogTest {
                 this.propertiesSanitizer = propertiesSanitizer
                 this.evaluationContexts = evaluationContexts
                 this.remoteConfig = remoteConfig
+                this.surveys = surveys
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
@@ -3254,12 +3257,17 @@ internal class PostHogTest {
         cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
         cachePreferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
         cachePreferences.setValue(CAPTURE_PERFORMANCE, mapOf("network_timing" to true))
+        cachePreferences.setValue(
+            SURVEYS,
+            listOf(mapOf("id" to "s1", "name" to "Test Survey", "type" to "popover", "questions" to emptyList<Any>())),
+        )
 
         val sut =
             getSut(
                 url.toString(),
                 preloadFeatureFlags = false,
                 reloadFeatureFlags = false,
+                surveys = true,
                 cachePreferences = cachePreferences,
             )
 
@@ -3270,6 +3278,7 @@ internal class PostHogTest {
         assertNotNull(cachePreferences.getValue(SESSION_REPLAY))
         assertNotNull(cachePreferences.getValue(ERROR_TRACKING))
         assertNotNull(cachePreferences.getValue(CAPTURE_PERFORMANCE))
+        assertNotNull(cachePreferences.getValue(SURVEYS))
 
         sut.close()
     }
