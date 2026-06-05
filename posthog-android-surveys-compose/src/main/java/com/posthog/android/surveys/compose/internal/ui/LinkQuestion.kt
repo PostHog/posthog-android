@@ -2,7 +2,6 @@ package com.posthog.android.surveys.compose.internal.ui
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.posthog.android.surveys.compose.internal.theme.LocalSurveyAppearance
 import com.posthog.android.surveys.compose.internal.theme.localAppearance
 import com.posthog.android.surveys.compose.internal.theme.resolve
@@ -55,7 +55,7 @@ internal fun openLink(
     if (url.isNullOrBlank()) return
     runCatching {
         val intent =
-            Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         context.startActivity(intent)

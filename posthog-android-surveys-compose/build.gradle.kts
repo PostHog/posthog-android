@@ -72,6 +72,8 @@ dependencies {
     implementation(kotlin("stdlib-jdk8", PosthogBuildConfig.Kotlin.KOTLIN))
 
     implementation("androidx.lifecycle:lifecycle-process:${PosthogBuildConfig.Dependencies.LIFECYCLE}")
+    // ComponentDialog — hosts the survey sheet in its own window above the host activity.
+    implementation("androidx.activity:activity:${PosthogBuildConfig.Dependencies.ANDROIDX_ACTIVITY}")
 
     // Compose
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

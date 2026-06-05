@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
@@ -59,7 +58,7 @@ internal fun OpenText(
                 .fillMaxWidth()
                 .height(150.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color.White)
+                .background(appearance.inputBackgroundColor)
                 .border(1.dp, appearance.borderColor, RoundedCornerShape(6.dp))
                 .padding(8.dp),
     ) {
@@ -73,8 +72,8 @@ internal fun OpenText(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxSize(),
-            textStyle = TextStyle(color = Color.Black),
-            cursorBrush = SolidColor(Color.Black),
+            textStyle = TextStyle(color = appearance.inputTextColor),
+            cursorBrush = SolidColor(appearance.inputTextColor),
         )
     }
 }
@@ -120,6 +119,8 @@ private fun PreviewOpenTextThemed() {
                 submitButtonColor = "#FF6B35",
                 borderColor = "#F4C28C",
                 placeholder = "Tell us more...",
+                inputBackground = "#3A2A1A",
+                inputTextColor = "#FFF3E0",
             ).resolve()
         }
     var text by remember { mutableStateOf("This is a sample response.") }

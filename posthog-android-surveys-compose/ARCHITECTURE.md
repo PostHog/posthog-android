@@ -42,33 +42,45 @@ We deliberately did **not** make the delegate a Composable — it's a
 pre-existing core-SDK interface that runs from the SDK's background event
 loop, so it must work on any thread and outside any Compose hierarchy.
 
-## ComposeView injection
+## Presentation: a separate window (`ComponentDialog`)
 
 When `renderSurvey` is called we need to render a `ModalBottomSheet` over
-whatever Activity is currently in the foreground. The customer hasn't
-necessarily set up Compose anywhere in their app, so we can't reuse an
-existing composition. Instead:
+whatever Activity is currently in the foreground, **without** participating in
+the host's view hierarchy, focus order, or navigation. On iOS this is a
+dedicated `UIWindow`; the Android equivalent of "a separate window" is a
+`Dialog`.
 
 1. `ActivityProvider` (registered as an `Application.ActivityLifecycleCallbacks`)
    tracks the foreground Activity. This is the standard Android way to find
    the activity without holding stale references.
-2. `PostHogSurveyHost.show(...)` builds a fresh `ComposeView` and adds it as
-   a child of `android.R.id.content`. The view is configured with
-   `DisposeOnViewTreeLifecycleDestroyed` so it dies cleanly if the host
-   Activity finishes.
-3. `cleanup()` / dismissal removes the view from its parent and disposes the
-   composition.
+2. `PostHogSurveyHost.show(...)` builds a fresh `ComposeView` and hosts it in a
+   `ComponentDialog` — a separate window layered above the activity. We use
+   `ComponentDialog` (not a raw `Dialog`) because it provides a `LifecycleOwner`,
+   `SavedStateRegistryOwner`, and `OnBackPressedDispatcher` — exactly the
+   `ViewTree*Owner`s a `ComposeView` needs — so Compose runs even when the host
+   activity is plain XML / AppCompat with no Compose of its own. The view uses
+   `DisposeOnViewTreeLifecycleDestroyed` so it dies cleanly with the dialog.
+3. The dialog window is transparent, full-screen, and undimmed; the
+   `ModalBottomSheet` inside draws its own scrim, so the host app stays visible
+   behind the sheet. `setCancelable(false)` + `setCanceledOnTouchOutside(false)`
+   give X-button-only dismissal, mirroring iOS `interactiveDismissDisabled()`.
+4. `cleanup()` / dismissal disposes the composition and dismisses the dialog.
 
-This is essentially what Material 3's own `ModalBottomSheet` expects when
-hosted by Compose — we're just wiring it up from the outside. The
-`ModalBottomSheet`'s scrim and animation work without further setup.
+Because the dialog is its own window, the same code path works identically over
+XML and Compose hosts, and it never interferes with the host app's back press
+or navigation.
+
+`PostHogSurveyHost` also honors the configured popup delay
+(`surveyPopupDelaySeconds`): it posts the presentation to the main thread after
+the delay and re-resolves the foreground activity at fire time.
 
 ## State ownership in `SurveySheet`
 
 `SurveySheet` is the only stateful composable in the module. It owns:
 
-- `currentQuestionIndex` — advances on each submit until the host reports
-  completion.
+- `currentQuestionIndex` — set on each submit to the next-question index the
+  host SDK returns (`PostHogNextSurveyQuestion.questionIndex`), so server-driven
+  branching is honored rather than blindly incrementing.
 - `showingConfirmation` — flips to `true` when a survey completes *and*
   `displayThankYouMessage` is enabled.
 
@@ -103,12 +115,16 @@ parameter chain.
 
 ## EmojiRating SVG paths
 
-The 5 face shapes are direct ports of the iOS `Shape` paths in
-`Resources.swift` — same normalized coordinate space, same fill-mode
-(`EvenOdd` for the face ring), same vertical translation to map the
-`[-1, 0]` Y range into the drawing rect. We chose not to use Unicode
-emoji because OEM emoji rendering varies dramatically across Android
-devices and would break visual parity with iOS.
+The 5 face shapes use the same SVG artwork posthog-js ships
+(`packages/browser/src/extensions/surveys/icons.tsx`). The verbatim `d` path
+strings are embedded in `EmojiRating.kt` and parsed at draw time by a small
+SVG-path parser (`parseSvgPath`) into a Compose `Path`. They share the
+Material-Symbols viewBox `0 -960 960 960`, so the parser scales by `size / 960`
+and shifts the negative-y range into the drawing rect. Keeping the raw path
+strings (rather than hand-transcribing them into `moveTo`/`cubicTo` calls)
+means the artwork stays trivially verifiable against the web source. We chose
+not to use Unicode emoji because OEM emoji rendering varies dramatically across
+Android devices and would break visual parity.
 
 ## Question-type dispatch
 
@@ -129,8 +145,8 @@ to follow.
 
 - **Event dispatch** (`survey shown` / `survey sent` / `survey dismissed`):
   the host SDK fires these from the lifecycle callbacks our delegate calls.
-- **Branching logic**: deferred — we always advance to the next question
-  until the SDK reports completion.
+- **Branching decisions**: the host SDK computes the next question (and survey
+  completion); the sheet just navigates to the index it returns.
 - **Response submission**: the host SDK takes the `PostHogSurveyResponse`
   and sends it to the PostHog API. We just produce the value.
 

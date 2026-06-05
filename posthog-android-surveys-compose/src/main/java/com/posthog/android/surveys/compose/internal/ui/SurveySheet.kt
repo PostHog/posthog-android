@@ -44,6 +44,7 @@ import com.posthog.surveys.PostHogDisplayRatingQuestion
 import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogDisplaySurveyQuestion
 import com.posthog.surveys.PostHogDisplaySurveyRatingType
+import com.posthog.surveys.PostHogNextSurveyQuestion
 import com.posthog.surveys.PostHogSurveyResponse
 import kotlinx.coroutines.launch
 
@@ -59,17 +60,19 @@ import kotlinx.coroutines.launch
  * a [ConfirmationScreen] is shown before dismissal. Otherwise the sheet
  * dismisses immediately.
  *
- * Branching logic is intentionally naïve — we always advance to
- * `currentQuestionIndex + 1` until the host reports the survey complete.
- * Server-driven branching is tracked as a follow-up in
- * `posthog-android-surveys-compose/CHANGELOG.md`.
+ * Navigation honors the host SDK's branching: [onSubmit] returns a
+ * [PostHogNextSurveyQuestion] describing the next question index and whether
+ * the survey is complete, mirroring iOS `SurveyDisplayController.onNextQuestion`.
+ * We advance to `next.questionIndex` rather than blindly incrementing, so
+ * server-driven branching works. A `null` return is treated as an abort and
+ * dismisses the sheet (matching iOS's `guard let next ... else { return }`).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SurveySheet(
     survey: PostHogDisplaySurvey,
     onSurveyShown: () -> Unit,
-    onSubmit: (questionIndex: Int, response: PostHogSurveyResponse) -> Boolean,
+    onSubmit: (questionIndex: Int, response: PostHogSurveyResponse) -> PostHogNextSurveyQuestion?,
     onClose: () -> Unit,
 ) {
     val appearance = remember(survey) { survey.appearance.resolve() }
@@ -107,15 +110,18 @@ internal fun SurveySheet(
     }
 
     val onSubmitResponse: (PostHogSurveyResponse) -> Unit = { response ->
-        val completed = onSubmit(currentQuestionIndex, response)
-        if (completed) {
-            if (appearance.displayThankYouMessage) {
-                showingConfirmation = true
-            } else {
-                dismissSheet()
-            }
-        } else {
-            currentQuestionIndex += 1
+        // The host SDK computes the next step (server-driven branching) and
+        // returns it; null means "abort". Mirrors iOS onNextQuestion.
+        val next = onSubmit(currentQuestionIndex, response)
+        when {
+            next == null -> dismissSheet()
+            next.isSurveyCompleted ->
+                if (appearance.displayThankYouMessage) {
+                    showingConfirmation = true
+                } else {
+                    dismissSheet()
+                }
+            else -> currentQuestionIndex = next.questionIndex
         }
     }
 

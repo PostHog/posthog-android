@@ -13,36 +13,54 @@ import com.posthog.surveys.PostHogSurveysDelegate
 /**
  * Default Compose-based UI for PostHog surveys on Android.
  *
- * Opt-in by setting on PostHog SDK init:
+ * > ⚠️ **Experimental (alpha).** This module ships as `1.0.0-alpha01`. Its
+ * > public surface may change between alpha releases and it is excluded from
+ * > binary-compatibility validation. Surveys are also disabled by default
+ * > (`PostHogConfig.surveys = false`) and require enabling in your PostHog
+ * > project settings.
+ *
+ * ### Recommended: zero-wiring opt-in
+ *
+ * Add this module to your dependencies and enable surveys — the core SDK
+ * auto-discovers this delegate from the classpath, so you do **not** need to
+ * set `surveysConfig.surveysDelegate` yourself:
  * ```
- * val config = PostHogAndroidConfig(apiKey).apply {
- *     surveys = true
- *     surveysConfig.surveysDelegate = PostHogSurveysComposeDelegate(applicationContext)
- * }
+ * // build.gradle.kts
+ * implementation("com.posthog:posthog-android-surveys-compose:<version>")
+ *
+ * // app init
+ * val config = PostHogAndroidConfig(apiKey).apply { surveys = true }
  * PostHogAndroid.setup(applicationContext, config)
+ * ```
+ *
+ * You can still construct and assign it explicitly if you want to control the
+ * lifecycle yourself:
+ * ```
+ * config.surveysConfig.surveysDelegate = PostHogSurveysComposeDelegate(applicationContext)
  * ```
  *
  * ### What's covered
  *
- * - All five question types: open text, single choice, multiple choice,
- *   rating (number + emoji), and link
- * - Multi-question surveys (naïve "next" advancement; server-driven
- *   branching is a planned follow-up)
+ * - All seven question / screen types: open text, single choice, multiple
+ *   choice, number rating (NPS), emoji rating, link, and the thank-you screen
+ * - Multi-question surveys with **server-driven branching** — navigation
+ *   follows the next-question index the host SDK returns
  * - Thank-you / confirmation screen when the customer has enabled
  *   `displayThankYouMessage` in PostHog
+ * - The configured popup delay (`surveyPopupDelaySeconds`) before the sheet
+ *   is shown
  * - Theming from `PostHogDisplaySurveyAppearance` — every default value
  *   matches the iOS reference so customer appearance config in the PostHog
  *   UI works on Android without changes
  *
- * ### What this delegate doesn't do (yet)
+ * ### Known gaps (tracked follow-ups)
  *
- * - Branching logic — see `posthog-android-surveys-compose/CHANGELOG.md` and
- *   `ARCHITECTURE.md` for the full follow-up list
- * - HTML descriptions (rendered as plain text only)
+ * - HTML question / thank-you descriptions (rendered as plain text only,
+ *   matching iOS)
+ * - Dark-mode polish; see `CHANGELOG.md` / `ARCHITECTURE.md`
  *
- * The constructor accepts any [Context] but treats it as an [Application]
- * context internally; passing an activity context is safe (we always resolve
- * the application from it).
+ * The constructor accepts any [Context] and resolves the [Application] from
+ * it, so passing an activity context is safe.
  */
 public class PostHogSurveysComposeDelegate(context: Context) : PostHogSurveysDelegate {
     private val application: Application = context.applicationContext as Application

@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber", "LongMethod")
+@file:Suppress("MagicNumber")
 
 package com.posthog.android.surveys.compose.internal.ui
 
@@ -24,9 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.posthog.android.surveys.compose.internal.theme.LocalSurveyAppearance
@@ -42,10 +40,15 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * [PostHogDisplayRatingQuestion.ratingType] equal to
  * [PostHogDisplaySurveyRatingType.EMOJI].
  *
- * Renders 3 or 5 face shapes (Dissatisfied/Neutral/Satisfied for scale 3,
- * VeryDissatisfied → VerySatisfied for scale 5) as a 1:1 port of the iOS
- * shapes in `Resources.swift`. Same SVG paths, same normalised
- * coordinate space, same fill mode — selected emojis are tinted
+ * Renders 3 or 5 face shapes (Dissatisfied / Neutral / Satisfied for scale 3,
+ * VeryDissatisfied → VerySatisfied for scale 5). The face artwork is the same
+ * SVG used by the web product (posthog-js
+ * `packages/browser/src/extensions/surveys/icons.tsx`) — the exact `d` path
+ * strings are embedded verbatim in [PostHogEmoji] and parsed at draw time by
+ * `parseSvgPath`. Unicode emoji is deliberately avoided because OEM rendering
+ * varies dramatically across Android devices.
+ *
+ * Selected emojis are tinted
  * [com.posthog.android.surveys.compose.internal.theme.ResolvedSurveyAppearance.ratingButtonActiveColor],
  * unselected use `ratingButtonColor`.
  */
@@ -58,6 +61,9 @@ internal fun EmojiRating(
     val appearance = localAppearance()
     val emojis = emojisForScale(question.scaleUpperBound - question.scaleLowerBound + 1)
     val values = (1..emojis.size).toList()
+    // Thumbs up/down (a 2-point emoji scale) hides the bound labels, matching the
+    // web/iOS `isThumbSurvey` behavior — thumbs don't need "lower/upper" captions.
+    val showBoundLabels = emojis.size > 2
 
     Column {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -75,10 +81,8 @@ internal fun EmojiRating(
                             },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Canvas(modifier = Modifier.size(48.dp)) {
-                        val w = size.width
-                        val h = size.height
-                        drawPath(emojis[index].buildPath(w, h), color = tint)
+                    Canvas(modifier = Modifier.size(40.dp)) {
+                        drawPath(emojis[index].buildPath(size.width, size.height), color = tint)
                     }
                 }
                 if (index != values.lastIndex) {
@@ -89,7 +93,7 @@ internal fun EmojiRating(
 
         val lower = question.lowerBoundLabel
         val upper = question.upperBoundLabel
-        if (lower.isNotBlank() || upper.isNotBlank()) {
+        if (showBoundLabels && (lower.isNotBlank() || upper.isNotBlank())) {
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Text(text = lower, color = appearance.descriptionTextColor)
                 Spacer(modifier = Modifier.weight(1f))
@@ -101,6 +105,7 @@ internal fun EmojiRating(
 
 private fun emojisForScale(scale: Int): List<PostHogEmoji> =
     when (scale) {
+        2 -> listOf(PostHogEmoji.ThumbsUp, PostHogEmoji.ThumbsDown)
         3 -> listOf(PostHogEmoji.Dissatisfied, PostHogEmoji.Neutral, PostHogEmoji.Satisfied)
         else ->
             listOf(
@@ -112,281 +117,275 @@ private fun emojisForScale(scale: Int): List<PostHogEmoji> =
             )
     }
 
-private enum class PostHogEmoji {
-    VeryDissatisfied,
-    Dissatisfied,
-    Neutral,
-    Satisfied,
-    VerySatisfied,
+/**
+ * The emoji glyphs used by the rating control, each carrying the verbatim SVG
+ * `d` path string from posthog-js.
+ *
+ * The five faces share the Material-Symbols viewBox `0 -960 960 960` (x in
+ * `[0, 960]`, y in `[-960, 0]`), so they pass `viewBox = 960` and `viewBoxY = 960`
+ * to shift the negative y-range into the draw rect. The thumbs glyphs use the
+ * standard `0 0 24 24` viewBox (`viewBox = 24`, `viewBoxY = 0`). [buildPath]
+ * scales `size / viewBox` accordingly.
+ */
+private enum class PostHogEmoji(
+    val svgPath: String,
+    val viewBox: Float = 960f,
+    val viewBoxY: Float = 960f,
+) {
+    // https://github.com/PostHog/posthog-js — packages/browser/src/extensions/surveys/icons.tsx
+    VeryDissatisfied(
+        "M480-417q-67 0-121.5 37.5T278-280h404q-25-63-80-100t-122-37Zm-183-72 50-45 45 45 31-36-45-45 " +
+            "45-45-31-36-45 45-50-45-31 36 45 45-45 45 31 36Zm272 0 44-45 51 45 31-36-45-45 45-45-31-36-51 " +
+            "45-44-45-31 36 44 45-44 45 31 36ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 " +
+            "31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 " +
+            "156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 340q142 0 241-99t99-241q0-142-99-241t-241-99q-142 " +
+            "0-241 99t-99 241q0 142 99 241t241 99Z",
+    ),
+    Dissatisfied(
+        "M626-533q22.5 0 38.25-15.75T680-587q0-22.5-15.75-38.25T626-641q-22.5 0-38.25 15.75T572-587q0 22.5 " +
+            "15.75 38.25T626-533Zm-292 0q22.5 0 38.25-15.75T388-587q0-22.5-15.75-38.25T334-641q-22.5 0-38.25 " +
+            "15.75T280-587q0 22.5 15.75 38.25T334-533Zm146.174 116Q413-417 358.5-379.5T278-280h53q22-42 " +
+            "62.173-65t87.5-23Q528-368 567.5-344.5T630-280h52q-25-63-79.826-100-54.826-37-122-37ZM480-80q-83 " +
+            "0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 " +
+            "31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 " +
+            "340q142.375 0 241.188-98.812Q820-337.625 820-480t-98.812-241.188Q622.375-820 480-820t-241.188 " +
+            "98.812Q140-622.375 140-480t98.812 241.188Q337.625-140 480-140Z",
+    ),
+    Neutral(
+        "M626-533q22.5 0 38.25-15.75T680-587q0-22.5-15.75-38.25T626-641q-22.5 0-38.25 15.75T572-587q0 22.5 " +
+            "15.75 38.25T626-533Zm-292 0q22.5 0 38.25-15.75T388-587q0-22.5-15.75-38.25T334-641q-22.5 0-38.25 " +
+            "15.75T280-587q0 22.5 15.75 38.25T334-533Zm20 194h253v-49H354v49ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 " +
+            "31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 " +
+            "156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 340q142.375 0 241.188-98.812Q820-337.625 " +
+            "820-480t-98.812-241.188Q622.375-820 480-820t-241.188 98.812Q140-622.375 140-480t98.812 " +
+            "241.188Q337.625-140 480-140Z",
+    ),
+    Satisfied(
+        "M626-533q22.5 0 38.25-15.75T680-587q0-22.5-15.75-38.25T626-641q-22.5 0-38.25 15.75T572-587q0 22.5 " +
+            "15.75 38.25T626-533Zm-292 0q22.5 0 38.25-15.75T388-587q0-22.5-15.75-38.25T334-641q-22.5 0-38.25 " +
+            "15.75T280-587q0 22.5 15.75 38.25T334-533Zm146 272q66 0 121.5-35.5T682-393h-52q-23 40-63 " +
+            "61.5T480.5-310q-46.5 0-87-21T331-393h-53q26 61 81 96.5T480-261Zm0 181q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 " +
+            "31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 " +
+            "156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 340q142.375 0 241.188-98.812Q820-337.625 " +
+            "820-480t-98.812-241.188Q622.375-820 480-820t-241.188 98.812Q140-622.375 140-480t98.812 " +
+            "241.188Q337.625-140 480-140Z",
+    ),
+    VerySatisfied(
+        "M479.504-261Q537-261 585.5-287q48.5-26 78.5-72.4 6-11.6-.75-22.6-6.75-11-20.25-11H316.918Q303-393 " +
+            "296.5-382t-.5 22.6q30 46.4 78.5 72.4 48.5 26 105.004 26ZM347-578l27 27q7.636 8 17.818 8Q402-543 " +
+            "410-551q8-8 8-18t-8-18l-42-42q-8.8-9-20.9-9-12.1 0-21.1 9l-42 42q-8 7.636-8 17.818Q276-559 " +
+            "284-551q8 8 18 8t18-8l27-27Zm267 0 27 27q7.714 8 18 8t18-8q8-7.636 8-17.818Q685-579 677-587l-42-42q-8.8-9-20.9-9-12.1 " +
+            "0-21.1 9l-42 42q-8 7.714-8 18t8 18q7.636 8 17.818 8Q579-543 587-551l27-27ZM480-80q-83 " +
+            "0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 " +
+            "31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 " +
+            "156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 340q142.375 0 241.188-98.812Q820-337.625 " +
+            "820-480t-98.812-241.188Q622.375-820 480-820t-241.188 98.812Q140-622.375 140-480t98.812 " +
+            "241.188Q337.625-140 480-140Z",
+    ),
+    ThumbsUp(
+        "M2 20h2c.55 0 1-.45 1-1v-9c0-.55-.45-1-1-1H2v11zm19.83-7.12c.11-.25.17-.52.17-.8V11c0-1.1-.9-2-2-2h-5.5l" +
+            ".92-4.65c.05-.22.02-.46-.08-.66-.23-.45-.52-.86-.88-1.22L14 2 7.59 8.41C7.21 8.79 7 9.3 7 9.83v7.84C7 " +
+            "18.95 8.05 20 9.34 20h8.11c.7 0 1.36-.37 1.72-.97l2.66-6.15z",
+        viewBox = 24f,
+        viewBoxY = 0f,
+    ),
+    ThumbsDown(
+        "M22 4h-2c-.55 0-1 .45-1 1v9c0 .55.45 1 1 1h2V4zM2.17 11.12c-.11.25-.17.52-.17.8V13c0 1.1.9 2 2 2h5.5l-.92 " +
+            "4.65c-.05.22-.02.46.08.66.23.45.52.86.88 1.22L10 22l6.41-6.41c.38-.38.59-.89.59-1.42V6.34C17 5.05 " +
+            "15.95 4 14.66 4H6.55c-.7 0-1.36.37-1.72.97l-2.66 6.15z",
+        viewBox = 24f,
+        viewBoxY = 0f,
+    ),
     ;
 
+    /**
+     * Parses the SVG path and scales it from the glyph's [viewBox] into a
+     * `[0, w] x [0, h]` rect. For the faces (viewBox `0 -960 960 960`) the
+     * y-axis is shifted up by one viewbox height so the negative SVG y-range
+     * lands inside the rect; thumbs (`0 0 24 24`) use no shift.
+     */
     fun buildPath(
         w: Float,
         h: Float,
-    ): Path {
-        val path = Path().apply { fillType = PathFillType.EvenOdd }
-        when (this) {
-            VeryDissatisfied -> path.veryDissatisfied(w, h)
-            Dissatisfied -> path.dissatisfied(w, h)
-            Neutral -> path.neutral(w, h)
-            Satisfied -> path.satisfied(w, h)
-            VerySatisfied -> path.verySatisfied(w, h)
+    ): Path = parseSvgPath(svgPath, scaleX = w / viewBox, scaleY = h / viewBox, translateY = viewBoxY)
+}
+
+/**
+ * Minimal SVG path-data parser sufficient for the Material-Symbols emoji glyphs
+ * above. Supports the commands those glyphs use: M/m, L/l, H/h, V/v, Q/q, T/t,
+ * Z/z (and tolerates C/c, S/s for safety). Coordinates are transformed by
+ * `(x*scaleX, (y+translateY)*scaleY)` so the caller can map the SVG viewBox into
+ * the Compose drawing rect.
+ */
+@Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth")
+private fun parseSvgPath(
+    d: String,
+    scaleX: Float,
+    scaleY: Float,
+    translateY: Float,
+): Path {
+    val path = Path()
+    val tokens = tokenizeSvgPath(d)
+    var i = 0
+
+    // Current point and sub-path start, in SVG user units.
+    var curX = 0f
+    var curY = 0f
+    var startX = 0f
+    var startY = 0f
+    // Reflection point for smooth quad (T/t).
+    var lastCtrlX = 0f
+    var lastCtrlY = 0f
+    var prevWasQuad = false
+
+    fun tx(x: Float) = x * scaleX
+
+    fun ty(y: Float) = (y + translateY) * scaleY
+
+    fun nextNum(): Float = tokens[i++].toFloat()
+
+    var command = ' '
+    while (i < tokens.size) {
+        val token = tokens[i]
+        command =
+            if (token.length == 1 && token[0].isLetter()) {
+                i++
+                token[0]
+            } else {
+                // Implicit repeat of the previous command (e.g. repeated L after L).
+                command
+            }
+
+        val relative = command.isLowerCase()
+        when (command.uppercaseChar()) {
+            'M' -> {
+                val x = (if (relative) curX else 0f) + nextNum()
+                val y = (if (relative) curY else 0f) + nextNum()
+                curX = x
+                curY = y
+                startX = x
+                startY = y
+                path.moveTo(tx(x), ty(y))
+                // Subsequent implicit pairs after M are treated as L (SVG spec).
+                command = if (relative) 'l' else 'L'
+                prevWasQuad = false
+            }
+            'L' -> {
+                val x = (if (relative) curX else 0f) + nextNum()
+                val y = (if (relative) curY else 0f) + nextNum()
+                curX = x
+                curY = y
+                path.lineTo(tx(x), ty(y))
+                prevWasQuad = false
+            }
+            'H' -> {
+                val x = (if (relative) curX else 0f) + nextNum()
+                curX = x
+                path.lineTo(tx(x), ty(curY))
+                prevWasQuad = false
+            }
+            'V' -> {
+                val y = (if (relative) curY else 0f) + nextNum()
+                curY = y
+                path.lineTo(tx(curX), ty(y))
+                prevWasQuad = false
+            }
+            'Q' -> {
+                val cx = (if (relative) curX else 0f) + nextNum()
+                val cy = (if (relative) curY else 0f) + nextNum()
+                val x = (if (relative) curX else 0f) + nextNum()
+                val y = (if (relative) curY else 0f) + nextNum()
+                path.quadraticTo(tx(cx), ty(cy), tx(x), ty(y))
+                lastCtrlX = cx
+                lastCtrlY = cy
+                curX = x
+                curY = y
+                prevWasQuad = true
+            }
+            'T' -> {
+                val cx = if (prevWasQuad) 2 * curX - lastCtrlX else curX
+                val cy = if (prevWasQuad) 2 * curY - lastCtrlY else curY
+                val x = (if (relative) curX else 0f) + nextNum()
+                val y = (if (relative) curY else 0f) + nextNum()
+                path.quadraticTo(tx(cx), ty(cy), tx(x), ty(y))
+                lastCtrlX = cx
+                lastCtrlY = cy
+                curX = x
+                curY = y
+                prevWasQuad = true
+            }
+            'C' -> {
+                val c1x = (if (relative) curX else 0f) + nextNum()
+                val c1y = (if (relative) curY else 0f) + nextNum()
+                val c2x = (if (relative) curX else 0f) + nextNum()
+                val c2y = (if (relative) curY else 0f) + nextNum()
+                val x = (if (relative) curX else 0f) + nextNum()
+                val y = (if (relative) curY else 0f) + nextNum()
+                path.cubicTo(tx(c1x), ty(c1y), tx(c2x), ty(c2y), tx(x), ty(y))
+                curX = x
+                curY = y
+                prevWasQuad = false
+            }
+            'Z' -> {
+                path.close()
+                curX = startX
+                curY = startY
+                prevWasQuad = false
+            }
+            else -> i++ // unknown command — skip defensively
         }
-        // Mirrors iOS `path.offsetBy(dx: 0, dy: height)` — the original SVG paths use
-        // y values in [-1, 0] so the trailing translate shifts them into the [0, 1]
-        // drawing rect.
-        path.translate(Offset(0f, h))
-        return path
     }
+    return path
 }
 
-// region path helpers
+/**
+ * Splits an SVG `d` string into command letters and numbers. Handles signs as
+ * number delimiters (`-` and `+`), the implicit `+`/`-` after exponent or
+ * decimal, and the fact that a second `.` starts a new number (e.g. `.5.5`).
+ */
+private fun tokenizeSvgPath(d: String): List<String> {
+    val tokens = mutableListOf<String>()
+    val number = StringBuilder()
+    var seenDot = false
 
-private fun Path.quad(
-    toX: Float,
-    toY: Float,
-    ctrlX: Float,
-    ctrlY: Float,
-) {
-    // Compose's argument order is (control, end); iOS's is (end, control). Wrapping
-    // the call lets us keep iOS's parameter order in the call-sites for easier review.
-    quadraticTo(ctrlX, ctrlY, toX, toY)
+    fun flush() {
+        if (number.isNotEmpty()) {
+            tokens.add(number.toString())
+            number.clear()
+            seenDot = false
+        }
+    }
+
+    for (c in d) {
+        when {
+            c.isLetter() -> {
+                flush()
+                tokens.add(c.toString())
+            }
+            c == '-' || c == '+' -> {
+                // A sign starts a new number unless it directly follows an exponent.
+                val prev = number.lastOrNull()
+                if (prev == 'e' || prev == 'E') {
+                    number.append(c)
+                } else {
+                    flush()
+                    number.append(c)
+                }
+            }
+            c == '.' -> {
+                if (seenDot) {
+                    flush()
+                }
+                seenDot = true
+                number.append(c)
+            }
+            c == ',' || c.isWhitespace() -> flush()
+            else -> number.append(c)
+        }
+    }
+    flush()
+    return tokens
 }
-
-private fun Path.addFaceCircle(
-    w: Float,
-    h: Float,
-) {
-    // Outer circle
-    moveTo(0.5f * w, -0.08333f * h)
-    quad(0.3375f * w, -0.11615f * h, 0.41354f * w, -0.08333f * h)
-    quad(0.20521f * w, -0.20521f * h, 0.26146f * w, -0.14896f * h)
-    quad(0.11615f * w, -0.3375f * h, 0.14896f * w, -0.26146f * h)
-    quad(0.08333f * w, -0.5f * h, 0.08333f * w, -0.41354f * h)
-    quad(0.11615f * w, -0.6625f * h, 0.08333f * w, -0.58646f * h)
-    quad(0.20521f * w, -0.79479f * h, 0.14896f * w, -0.73854f * h)
-    quad(0.3375f * w, -0.88385f * h, 0.26146f * w, -0.85104f * h)
-    quad(0.5f * w, -0.91667f * h, 0.41354f * w, -0.91667f * h)
-    quad(0.6625f * w, -0.88385f * h, 0.58646f * w, -0.91667f * h)
-    quad(0.79479f * w, -0.79479f * h, 0.73854f * w, -0.85104f * h)
-    quad(0.88385f * w, -0.6625f * h, 0.85104f * w, -0.73854f * h)
-    quad(0.91667f * w, -0.5f * h, 0.91667f * w, -0.58646f * h)
-    quad(0.88385f * w, -0.3375f * h, 0.91667f * w, -0.41354f * h)
-    quad(0.79479f * w, -0.20521f * h, 0.85104f * w, -0.26146f * h)
-    quad(0.6625f * w, -0.11615f * h, 0.73854f * w, -0.14896f * h)
-    quad(0.5f * w, -0.08333f * h, 0.58646f * w, -0.08333f * h)
-    close()
-    // Inner-stroke (EvenOdd fill mode means the area between these two ovals becomes
-    // the visible ring).
-    moveTo(0.5f * w, -0.5f * h)
-    close()
-    moveTo(0.5f * w, -0.14583f * h)
-    quad(0.75124f * w, -0.24876f * h, 0.64831f * w, -0.14583f * h)
-    quad(0.85417f * w, -0.5f * h, 0.85417f * w, -0.35169f * h)
-    quad(0.75124f * w, -0.75124f * h, 0.85417f * w, -0.64831f * h)
-    quad(0.5f * w, -0.85417f * h, 0.64831f * w, -0.85417f * h)
-    quad(0.24876f * w, -0.75124f * h, 0.35169f * w, -0.85417f * h)
-    quad(0.14583f * w, -0.5f * h, 0.14583f * w, -0.64831f * h)
-    quad(0.24876f * w, -0.24876f * h, 0.14583f * w, -0.35169f * h)
-    quad(0.5f * w, -0.14583f * h, 0.35169f * w, -0.14583f * h)
-    close()
-}
-
-private fun Path.addRightDotEye(
-    w: Float,
-    h: Float,
-) {
-    moveTo(0.65208f * w, -0.55521f * h)
-    quad(0.69193f * w, -0.57161f * h, 0.67552f * w, -0.55521f * h)
-    quad(0.70833f * w, -0.61146f * h, 0.70833f * w, -0.58802f * h)
-    quad(0.69193f * w, -0.6513f * h, 0.70833f * w, -0.6349f * h)
-    quad(0.65208f * w, -0.66771f * h, 0.67552f * w, -0.66771f * h)
-    quad(0.61224f * w, -0.6513f * h, 0.62865f * w, -0.66771f * h)
-    quad(0.59583f * w, -0.61146f * h, 0.59583f * w, -0.6349f * h)
-    quad(0.61224f * w, -0.57161f * h, 0.59583f * w, -0.58802f * h)
-    quad(0.65208f * w, -0.55521f * h, 0.62865f * w, -0.55521f * h)
-    close()
-}
-
-private fun Path.addLeftDotEye(
-    w: Float,
-    h: Float,
-) {
-    moveTo(0.34792f * w, -0.55521f * h)
-    quad(0.38776f * w, -0.57161f * h, 0.37135f * w, -0.55521f * h)
-    quad(0.40417f * w, -0.61146f * h, 0.40417f * w, -0.58802f * h)
-    quad(0.38776f * w, -0.6513f * h, 0.40417f * w, -0.6349f * h)
-    quad(0.34792f * w, -0.66771f * h, 0.37135f * w, -0.66771f * h)
-    quad(0.30807f * w, -0.6513f * h, 0.32448f * w, -0.66771f * h)
-    quad(0.29167f * w, -0.61146f * h, 0.29167f * w, -0.6349f * h)
-    quad(0.30807f * w, -0.57161f * h, 0.29167f * w, -0.58802f * h)
-    quad(0.34792f * w, -0.55521f * h, 0.32448f * w, -0.55521f * h)
-    close()
-}
-
-// endregion
-
-// region per-emoji paths
-
-private fun Path.veryDissatisfied(
-    w: Float,
-    h: Float,
-) {
-    // Frown mouth
-    moveTo(0.5f * w, -0.43438f * h)
-    quad(0.37344f * w, -0.39531f * h, 0.43021f * w, -0.43438f * h)
-    quad(0.28958f * w, -0.29167f * h, 0.31667f * w, -0.35625f * h)
-    lineTo(0.71042f * w, -0.29167f * h)
-    quad(0.62708f * w, -0.39583f * h, 0.68437f * w, -0.35729f * h)
-    quad(0.5f * w, -0.43438f * h, 0.56979f * w, -0.43438f * h)
-    close()
-    // Left X-eye
-    moveTo(0.30938f * w, -0.50938f * h)
-    lineTo(0.36146f * w, -0.55625f * h)
-    lineTo(0.40833f * w, -0.50938f * h)
-    lineTo(0.44062f * w, -0.54688f * h)
-    lineTo(0.39375f * w, -0.59375f * h)
-    lineTo(0.44062f * w, -0.64063f * h)
-    lineTo(0.40833f * w, -0.67812f * h)
-    lineTo(0.36146f * w, -0.63125f * h)
-    lineTo(0.30938f * w, -0.67812f * h)
-    lineTo(0.27708f * w, -0.64063f * h)
-    lineTo(0.32396f * w, -0.59375f * h)
-    lineTo(0.27708f * w, -0.54688f * h)
-    lineTo(0.30938f * w, -0.50938f * h)
-    close()
-    // Right X-eye
-    moveTo(0.59271f * w, -0.50938f * h)
-    lineTo(0.63854f * w, -0.55625f * h)
-    lineTo(0.69167f * w, -0.50938f * h)
-    lineTo(0.72396f * w, -0.54688f * h)
-    lineTo(0.67708f * w, -0.59375f * h)
-    lineTo(0.72396f * w, -0.64063f * h)
-    lineTo(0.69167f * w, -0.67812f * h)
-    lineTo(0.63854f * w, -0.63125f * h)
-    lineTo(0.59271f * w, -0.67812f * h)
-    lineTo(0.56042f * w, -0.64063f * h)
-    lineTo(0.60625f * w, -0.59375f * h)
-    lineTo(0.56042f * w, -0.54688f * h)
-    lineTo(0.59271f * w, -0.50938f * h)
-    close()
-    addFaceCircle(w, h)
-}
-
-private fun Path.dissatisfied(
-    w: Float,
-    h: Float,
-) {
-    addRightDotEye(w, h)
-    addLeftDotEye(w, h)
-    // Frown mouth (slightly different from VeryDissatisfied — it has an inner arc)
-    moveTo(0.50018f * w, -0.43438f * h)
-    quad(0.37344f * w, -0.39531f * h, 0.43021f * w, -0.43438f * h)
-    quad(0.28958f * w, -0.29167f * h, 0.31667f * w, -0.35625f * h)
-    lineTo(0.34479f * w, -0.29167f * h)
-    quad(0.40956f * w, -0.35938f * h, 0.36771f * w, -0.33542f * h)
-    quad(0.5007f * w, -0.38333f * h, 0.4514f * w, -0.38333f * h)
-    quad(0.59115f * w, -0.35885f * h, 0.55f * w, -0.38333f * h)
-    quad(0.65625f * w, -0.29167f * h, 0.63229f * w, -0.33437f * h)
-    lineTo(0.71042f * w, -0.29167f * h)
-    quad(0.62726f * w, -0.39583f * h, 0.68437f * w, -0.35729f * h)
-    quad(0.50018f * w, -0.43438f * h, 0.57015f * w, -0.43438f * h)
-    close()
-    addFaceCircle(w, h)
-}
-
-private fun Path.neutral(
-    w: Float,
-    h: Float,
-) {
-    addRightDotEye(w, h)
-    addLeftDotEye(w, h)
-    // Flat mouth (rectangle drawn with line segments)
-    moveTo(0.36875f * w, -0.35313f * h)
-    lineTo(0.63229f * w, -0.35313f * h)
-    lineTo(0.63229f * w, -0.40417f * h)
-    lineTo(0.36875f * w, -0.40417f * h)
-    lineTo(0.36875f * w, -0.35313f * h)
-    close()
-    addFaceCircle(w, h)
-}
-
-private fun Path.satisfied(
-    w: Float,
-    h: Float,
-) {
-    addRightDotEye(w, h)
-    addLeftDotEye(w, h)
-    // Smile mouth
-    moveTo(0.5f * w, -0.27187f * h)
-    quad(0.62656f * w, -0.30885f * h, 0.56875f * w, -0.27187f * h)
-    quad(0.71042f * w, -0.40937f * h, 0.68437f * w, -0.34583f * h)
-    lineTo(0.65625f * w, -0.40937f * h)
-    quad(0.59062f * w, -0.34531f * h, 0.63229f * w, -0.36771f * h)
-    quad(0.50052f * w, -0.32292f * h, 0.54896f * w, -0.32292f * h)
-    quad(0.4099f * w, -0.34479f * h, 0.45208f * w, -0.32292f * h)
-    quad(0.34479f * w, -0.40937f * h, 0.36771f * w, -0.36667f * h)
-    lineTo(0.28958f * w, -0.40937f * h)
-    quad(0.37396f * w, -0.30885f * h, 0.31667f * w, -0.34583f * h)
-    quad(0.5f * w, -0.27187f * h, 0.43125f * w, -0.27187f * h)
-    close()
-    addFaceCircle(w, h)
-}
-
-private fun Path.verySatisfied(
-    w: Float,
-    h: Float,
-) {
-    // Wide smile
-    moveTo(0.49948f * w, -0.27187f * h)
-    quad(0.6099f * w, -0.29896f * h, 0.55937f * w, -0.27187f * h)
-    quad(0.69167f * w, -0.37437f * h, 0.66042f * w, -0.32604f * h)
-    quad(0.69089f * w, -0.39792f * h, 0.69792f * w, -0.38646f * h)
-    quad(0.66979f * w, -0.40937f * h, 0.68385f * w, -0.40937f * h)
-    lineTo(0.33012f * w, -0.40937f * h)
-    quad(0.30885f * w, -0.39792f * h, 0.31562f * w, -0.40937f * h)
-    quad(0.30833f * w, -0.37437f * h, 0.30208f * w, -0.38646f * h)
-    quad(0.3901f * w, -0.29896f * h, 0.33958f * w, -0.32604f * h)
-    quad(0.49948f * w, -0.27187f * h, 0.44062f * w, -0.27187f * h)
-    close()
-    // Left "smile-line" eye
-    moveTo(0.36146f * w, -0.60208f * h)
-    lineTo(0.38958f * w, -0.57396f * h)
-    quad(0.40814f * w, -0.56563f * h, 0.39754f * w, -0.56563f * h)
-    quad(0.42708f * w, -0.57396f * h, 0.41875f * w, -0.56563f * h)
-    quad(0.43542f * w, -0.59271f * h, 0.43542f * w, -0.58229f * h)
-    quad(0.42708f * w, -0.61146f * h, 0.43542f * w, -0.60313f * h)
-    lineTo(0.38333f * w, -0.65521f * h)
-    quad(0.36156f * w, -0.66458f * h, 0.37417f * w, -0.66458f * h)
-    quad(0.33958f * w, -0.65521f * h, 0.34896f * w, -0.66458f * h)
-    lineTo(0.29583f * w, -0.61146f * h)
-    quad(0.2875f * w, -0.5929f * h, 0.2875f * w, -0.6035f * h)
-    quad(0.29583f * w, -0.57396f * h, 0.2875f * w, -0.58229f * h)
-    quad(0.31458f * w, -0.56563f * h, 0.30417f * w, -0.56563f * h)
-    quad(0.33333f * w, -0.57396f * h, 0.325f * w, -0.56563f * h)
-    lineTo(0.36146f * w, -0.60208f * h)
-    close()
-    // Right "smile-line" eye
-    moveTo(0.63958f * w, -0.60208f * h)
-    lineTo(0.66771f * w, -0.57396f * h)
-    quad(0.68646f * w, -0.56563f * h, 0.67574f * w, -0.56563f * h)
-    quad(0.70521f * w, -0.57396f * h, 0.69717f * w, -0.56563f * h)
-    quad(0.71354f * w, -0.59252f * h, 0.71354f * w, -0.58191f * h)
-    quad(0.70521f * w, -0.61146f * h, 0.71354f * w, -0.60313f * h)
-    lineTo(0.66146f * w, -0.65521f * h)
-    quad(0.63969f * w, -0.66458f * h, 0.65229f * w, -0.66458f * h)
-    quad(0.61771f * w, -0.65521f * h, 0.62708f * w, -0.66458f * h)
-    lineTo(0.57396f * w, -0.61146f * h)
-    quad(0.56563f * w, -0.59271f * h, 0.56563f * w, -0.60342f * h)
-    quad(0.57396f * w, -0.57396f * h, 0.56563f * w, -0.58199f * h)
-    quad(0.59252f * w, -0.56563f * h, 0.58191f * w, -0.56563f * h)
-    quad(0.61146f * w, -0.57396f * h, 0.60313f * w, -0.56563f * h)
-    lineTo(0.63958f * w, -0.60208f * h)
-    close()
-    addFaceCircle(w, h)
-}
-
-// endregion
 
 private val previewEmojiQuestion =
     PostHogDisplayRatingQuestion(
@@ -473,6 +472,47 @@ private fun PreviewEmojiRatingThemed() {
                 onSelect = { rating = it },
             )
             BottomSection(label = "Send", enabled = rating != null) { }
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, name = "Thumbs up/down")
+@Composable
+private fun PreviewEmojiRatingThumbs() {
+    val appearance = remember { (null as PostHogDisplaySurveyAppearance?).resolve() }
+    val thumbsQuestion =
+        remember {
+            PostHogDisplayRatingQuestion(
+                id = "preview-thumbs",
+                question = "Did this answer your question?",
+                questionDescription = null,
+                questionDescriptionContentType = PostHogDisplaySurveyTextContentType.TEXT,
+                isOptional = false,
+                buttonText = "Submit",
+                ratingType = PostHogDisplaySurveyRatingType.EMOJI,
+                scaleLowerBound = 1,
+                scaleUpperBound = 2,
+                lowerBoundLabel = "",
+                upperBoundLabel = "",
+            )
+        }
+    var rating by remember { mutableStateOf<Int?>(null) }
+    CompositionLocalProvider(LocalSurveyAppearance provides appearance) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(appearance.backgroundColor)
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            QuestionHeader(thumbsQuestion)
+            EmojiRating(
+                question = thumbsQuestion,
+                selectedValue = rating,
+                onSelect = { rating = it },
+            )
+            BottomSection(label = "Submit", enabled = rating != null) { }
         }
     }
 }

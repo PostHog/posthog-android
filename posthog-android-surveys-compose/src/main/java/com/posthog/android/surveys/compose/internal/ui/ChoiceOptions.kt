@@ -22,11 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.posthog.android.surveys.compose.internal.theme.localAppearance
 
 /**
  * Shared list-of-choices renderer for [SingleChoice] and [MultipleChoice].
@@ -79,10 +79,13 @@ private fun ChoiceOption(
     onOpenChoiceInputChange: (String) -> Unit,
     onClick: () -> Unit,
 ) {
-    // iOS uses literal black / black.opacity(0.5) for the option borders + text — not
-    // appearance-driven. Mirror that exactly so themed surveys look identical across
-    // platforms.
-    val color = if (isSelected) Color.Black else Color.Black.copy(alpha = 0.5f)
+    // iOS derives the option label, border, and check color from the input text color
+    // (`appearance.effectiveInputTextColor`), full opacity when selected and 0.5 when not —
+    // see `MultipleChoiceOptions.swift`. This keeps option chrome readable on dark / custom
+    // input backgrounds instead of forcing black.
+    val appearance = localAppearance()
+    val color =
+        if (isSelected) appearance.inputTextColor else appearance.inputTextColor.copy(alpha = 0.5f)
     val fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
     Box(
         modifier =
@@ -109,8 +112,8 @@ private fun ChoiceOption(
                     BasicTextField(
                         value = openChoiceInput,
                         onValueChange = onOpenChoiceInputChange,
-                        textStyle = TextStyle(color = Color.Black),
-                        cursorBrush = SolidColor(Color.Black),
+                        textStyle = TextStyle(color = appearance.inputTextColor),
+                        cursorBrush = SolidColor(appearance.inputTextColor),
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -125,7 +128,7 @@ private fun ChoiceOption(
                 Icon(
                     imageVector = Icons.Filled.Check,
                     contentDescription = null,
-                    tint = Color.Black,
+                    tint = color,
                     modifier = Modifier.size(width = 16.dp, height = 12.dp),
                 )
             }

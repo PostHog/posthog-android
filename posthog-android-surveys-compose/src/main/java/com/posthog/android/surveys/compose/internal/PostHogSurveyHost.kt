@@ -1,10 +1,14 @@
 package com.posthog.android.surveys.compose.internal
 
-import android.app.Activity
-import android.view.ViewGroup
-import android.widget.FrameLayout
+import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.view.Window
+import android.view.WindowManager
+import androidx.activity.ComponentDialog
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.graphics.drawable.toDrawable
 import com.posthog.android.surveys.compose.internal.ui.SurveySheet
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
@@ -12,19 +16,39 @@ import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
 
 /**
- * Singleton coordinator that attaches a [ComposeView] hosting the survey sheet
- * to the foreground activity, and tears it down on dismiss / cleanup.
+ * Coordinator that presents the survey sheet in its **own window**, on top of
+ * the foreground activity, and tears it down on dismiss / cleanup.
  *
- * All UI mutation goes through the activity's UI thread because activities
- * always dispatch lifecycle callbacks there; the public API surface is
- * therefore safe to call from any thread that already holds a stable
- * reference to the host activity.
+ * ## Why a [ComponentDialog] (a separate window) rather than a child view?
+ *
+ * On iOS the survey renders in a dedicated `UIWindow` layered above the host
+ * app so it never participates in the host's view hierarchy, focus order, or
+ * navigation. The Android equivalent of "a separate window" is a [android.app.Dialog]:
+ * it owns its own [Window] token and is layered above the activity. We use
+ * [ComponentDialog] specifically because it provides a `LifecycleOwner`,
+ * `SavedStateRegistryOwner` and `OnBackPressedDispatcher` out of the box — the
+ * `ViewTree*Owner`s a [ComposeView] needs to run — so Compose works even when
+ * the host activity is a plain XML / AppCompat activity that never set up
+ * Compose itself.
+ *
+ * The dialog window is transparent and undimmed; the `ModalBottomSheet` inside
+ * supplies its own scrim, so the host app remains visible behind the sheet.
+ * Only the explicit close button dismisses (touch-outside and back are
+ * disabled), matching iOS `interactiveDismissDisabled()` semantics.
+ *
+ * All UI mutation happens on the main thread; the public API is safe to call
+ * from the SDK's survey thread.
  */
 internal class PostHogSurveyHost(private val activityProvider: ActivityProvider) {
-    private var attachedView: ComposeView? = null
-    private var attachedActivity: Activity? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private var dialog: ComponentDialog? = null
+    private var composeView: ComposeView? = null
     private var onClosedCallback: OnPostHogSurveyClosed? = null
     private var currentSurvey: PostHogDisplaySurvey? = null
+
+    // A pending delayed-show runnable (popup delay), so cleanup can cancel it.
+    private var pendingShow: Runnable? = null
 
     fun show(
         survey: PostHogDisplaySurvey,
@@ -32,77 +56,129 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         onSurveyResponse: OnPostHogSurveyResponse,
         onSurveyClosed: OnPostHogSurveyClosed,
     ) {
-        val activity = activityProvider.foregroundActivity
-        if (activity == null) {
-            // No foreground activity to host the sheet — let the SDK know this
-            // was effectively a dismiss so it can fire `survey dismissed`.
-            onSurveyClosed(survey)
-            return
-        }
+        val delayMillis =
+            ((survey.appearance?.surveyPopupDelaySeconds ?: 0.0).coerceAtLeast(0.0) * 1000).toLong()
 
-        // Replace any in-flight survey first.
-        dismiss(notifyClosed = true)
+        runOnMain {
+            // Replace any in-flight survey first (notify the SDK it was closed).
+            dismissInternal(notifyClosed = true)
 
-        currentSurvey = survey
-        onClosedCallback = onSurveyClosed
-
-        activity.runOnUiThread {
-            val composeView =
-                ComposeView(activity).apply {
-                    setViewCompositionStrategy(
-                        ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
-                    )
-                    setContent {
-                        SurveySheet(
-                            survey = survey,
-                            onSurveyShown = { onSurveyShown(survey) },
-                            onSubmit = { questionIndex, response ->
-                                val next = onSurveyResponse(survey, questionIndex, response)
-                                next?.isSurveyCompleted == true
-                            },
-                            onClose = {
-                                dismiss(notifyClosed = true)
-                            },
-                        )
-                    }
+            val present =
+                Runnable {
+                    pendingShow = null
+                    present(survey, onSurveyShown, onSurveyResponse, onSurveyClosed)
                 }
-            val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@runOnUiThread
-            root.addView(
-                composeView,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            attachedView = composeView
-            attachedActivity = activity
+
+            if (delayMillis > 0L) {
+                pendingShow = present
+                mainHandler.postDelayed(present, delayMillis)
+            } else {
+                present.run()
+            }
         }
     }
 
     fun cleanup() {
-        dismiss(notifyClosed = false)
+        runOnMain { dismissInternal(notifyClosed = false) }
     }
 
-    private fun dismiss(notifyClosed: Boolean) {
-        val view = attachedView
-        val activity = attachedActivity
+    private fun present(
+        survey: PostHogDisplaySurvey,
+        onSurveyShown: OnPostHogSurveyShown,
+        onSurveyResponse: OnPostHogSurveyResponse,
+        onSurveyClosed: OnPostHogSurveyClosed,
+    ) {
+        // Re-resolve the foreground activity at present time — it may have
+        // changed during the popup delay.
+        val activity = activityProvider.foregroundActivity
+        if (activity == null || activity.isFinishing) {
+            // Nothing to host the sheet on — report a dismiss so the SDK can
+            // fire `survey dismissed` and move on.
+            onSurveyClosed(survey)
+            return
+        }
+
+        currentSurvey = survey
+        onClosedCallback = onSurveyClosed
+
+        val composeView =
+            ComposeView(activity).apply {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                setContent {
+                    SurveySheet(
+                        survey = survey,
+                        onSurveyShown = { onSurveyShown(survey) },
+                        onSubmit = { questionIndex, response ->
+                            onSurveyResponse(survey, questionIndex, response)
+                        },
+                        onClose = { dismissInternal(notifyClosed = true) },
+                    )
+                }
+            }
+
+        val componentDialog =
+            ComponentDialog(activity).apply {
+                setContentView(composeView)
+                // X-button-only dismissal (parity with iOS interactiveDismissDisabled).
+                setCancelable(false)
+                setCanceledOnTouchOutside(false)
+                configureWindow(window)
+            }
+
+        dialog = componentDialog
+        this.composeView = composeView
+        componentDialog.show()
+    }
+
+    /**
+     * Makes the dialog window a transparent, full-screen, undimmed overlay so
+     * the `ModalBottomSheet`'s own scrim shows through to the host app and the
+     * sheet anchors to the bottom of the screen.
+     */
+    private fun configureWindow(window: Window?) {
+        window ?: return
+        window.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+        window.setLayout(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+        )
+        // No system dim — the sheet draws its own scrim.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+    }
+
+    private fun dismissInternal(notifyClosed: Boolean) {
+        pendingShow?.let {
+            mainHandler.removeCallbacks(it)
+            pendingShow = null
+        }
+
+        val activeDialog = dialog
+        val activeView = composeView
         val survey = currentSurvey
         val onClosed = onClosedCallback
 
-        attachedView = null
-        attachedActivity = null
+        dialog = null
+        composeView = null
         currentSurvey = null
         onClosedCallback = null
 
-        if (view != null && activity != null) {
-            activity.runOnUiThread {
-                (view.parent as? ViewGroup)?.removeView(view)
-                view.disposeComposition()
+        activeView?.disposeComposition()
+        activeDialog?.let { d ->
+            if (d.isShowing) {
+                d.dismiss()
             }
         }
 
         if (notifyClosed && survey != null && onClosed != null) {
             onClosed(survey)
+        }
+    }
+
+    private fun runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            mainHandler.post(block)
         }
     }
 }

@@ -69,6 +69,9 @@ object PosthogBuildConfig {
         val ANDROIDX_CORE = "1.5.0"
         val ANDROIDX_COMPOSE = "1.0.0"
 
+        // Provides ComponentDialog (LifecycleOwner + OnBackPressedDispatcher) for the surveys-compose UI.
+        val ANDROIDX_ACTIVITY = "1.8.2"
+
         // tests
         val ANDROIDX_JUNIT = "1.2.1"
         val ANDROIDX_RUNNER = "1.6.2"

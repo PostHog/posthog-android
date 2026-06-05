@@ -36,9 +36,15 @@ internal fun parseSurveyColor(input: String?): Color {
  * Returns black or white text that meets WCAG-ish contrast against the
  * receiver. Threshold matches the iOS reference (luminance < 0.6 → white).
  */
-internal fun Color.contrastingTextColor(): Color {
+internal fun Color.contrastingTextColor(): Color = if (isLight()) Color.Black else Color.White
+
+/**
+ * Whether the color reads as "light" (luminance ≥ 0.6, the threshold the iOS
+ * reference uses for picking contrasting text).
+ */
+internal fun Color.isLight(): Boolean {
     val luminance = 0.2126f * red + 0.7152f * green + 0.0722f * blue
-    return if (luminance < 0.6f) Color.White else Color.Black
+    return luminance >= 0.6f
 }
 
 private fun isHexDigit(c: Char): Boolean = c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F'

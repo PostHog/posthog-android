@@ -25,6 +25,8 @@ internal data class ResolvedSurveyAppearance(
     val descriptionTextColor: Color,
     val placeholder: String,
     val placeholderTextColor: Color,
+    val inputBackgroundColor: Color,
+    val inputTextColor: Color,
     val ratingButtonColor: Color,
     val ratingButtonActiveColor: Color,
     val displayThankYouMessage: Boolean,
@@ -58,6 +60,10 @@ private val DefaultBorderColor = Color(0xFFE5E5EA)
 private val DefaultRatingBackground = Color(0xFFE5E5EA)
 private val DefaultDescriptionTextColor = Color(0xFF8E8E93)
 
+// iOS uses #f8f8f8 for the input field when the survey background is white-ish,
+// otherwise white — so the field stays visible against the survey background.
+private val DefaultInputBackgroundOnLight = Color(0xFFF8F8F8)
+
 private const val DEFAULT_PLACEHOLDER = "Start typing..."
 private const val DEFAULT_THANK_YOU_HEADER = "Thank you for your feedback!"
 private const val DEFAULT_THANK_YOU_CLOSE = "Close"
@@ -85,7 +91,18 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
     // color. We surface them as explicit fields so each composable can pick the right one
     // without reaching back into the appearance struct.
     val questionTextColor = backgroundColor.contrastingTextColor()
-    val placeholderTextColor = textColor.copy(alpha = 0.5f)
+
+    // Input field colors mirror iOS `effectiveInputBackground` / `effectiveInputTextColor`:
+    // when unset, the input background is a subtle gray on a light survey background (so the
+    // field stays visible) and white otherwise; the input text color contrasts that background.
+    val inputBackgroundColor =
+        parseSurveyColorOrDefault(
+            this?.inputBackground,
+            if (backgroundColor.isLight()) DefaultInputBackgroundOnLight else Color.White,
+        )
+    val inputTextColor =
+        parseSurveyColorOrDefault(this?.inputTextColor, inputBackgroundColor.contrastingTextColor())
+    val placeholderTextColor = inputTextColor.copy(alpha = 0.5f)
     val placeholder = this?.placeholder?.takeIf { it.isNotBlank() } ?: DEFAULT_PLACEHOLDER
 
     val displayThankYouMessage = this?.displayThankYouMessage ?: false
@@ -108,6 +125,8 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
         descriptionTextColor = descriptionTextColor,
         placeholder = placeholder,
         placeholderTextColor = placeholderTextColor,
+        inputBackgroundColor = inputBackgroundColor,
+        inputTextColor = inputTextColor,
         ratingButtonColor = ratingButtonColor,
         ratingButtonActiveColor = ratingButtonActiveColor,
         displayThankYouMessage = displayThankYouMessage,

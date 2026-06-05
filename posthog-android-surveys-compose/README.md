@@ -1,20 +1,33 @@
 # posthog-android-surveys-compose
 
+> ⚠️ **Experimental (alpha).** Ships as `1.0.0-alpha01`; the public surface may
+> change between alpha releases and the module is excluded from binary
+> compatibility validation. Surveys are disabled by default and must also be
+> enabled in your PostHog project settings.
+
 Optional, drop-in Jetpack Compose UI for [PostHog Android](https://github.com/PostHog/posthog-android)
-surveys. Opt in by adding this module alongside `com.posthog:posthog-android`
-and wiring the delegate once at SDK init:
+surveys. Add this module alongside `com.posthog:posthog-android` and enable
+surveys — the core SDK **auto-discovers** this delegate from the classpath, so
+no delegate wiring is required:
 
 ```kotlin
+// build.gradle.kts
+implementation("com.posthog:posthog-android-surveys-compose:<version>")
+
+// app init
 val config = PostHogAndroidConfig(apiKey).apply {
     surveys = true
-    surveysConfig.surveysDelegate = PostHogSurveysComposeDelegate(applicationContext)
 }
 PostHogAndroid.setup(applicationContext, config)
 ```
 
 That's it — surveys created in PostHog with appearance, branching, and
-multi-question flows will render in a Material 3 modal bottom sheet on top of
-your foreground activity.
+multi-question flows render in a Material 3 modal bottom sheet, in its own
+window on top of your foreground activity (so it never interferes with your
+app's navigation).
+
+If you'd rather manage the delegate yourself, you can still assign it
+explicitly: `config.surveysConfig.surveysDelegate = PostHogSurveysComposeDelegate(applicationContext)`.
 
 ## Supported question types
 
@@ -24,7 +37,7 @@ your foreground activity.
 | Single choice       | `SingleChoice.kt`       | iOS `SingleChoiceQuestionView` + `MultipleChoiceOptions` |
 | Multiple choice     | `MultipleChoice.kt`     | iOS `MultipleChoiceQuestionView` + `MultipleChoiceOptions` |
 | Number rating (NPS) | `NumberRating.kt`       | iOS `NumberRating`                                    |
-| Emoji rating        | `EmojiRating.kt`        | iOS `EmojiRating` + `Resources.swift` SVG paths       |
+| Emoji rating        | `EmojiRating.kt`        | posthog-js `icons.tsx` SVG paths (web parity)         |
 | Link                | `LinkQuestion.kt`       | iOS `LinkQuestionView`                                |
 | Thank-you screen    | `ConfirmationScreen.kt` | iOS `ConfirmationMessage`                             |
 
@@ -38,17 +51,15 @@ reference (`SurveyDisplayAppearance.getAppearanceWithDefaults` in
 
 The following are tracked as follow-ups in `CHANGELOG.md`:
 
-- Server-driven **branching logic** — the sheet always advances to
-  `currentQuestionIndex + 1` until the host SDK reports completion.
-- **Event dispatch from the delegate** — `survey shown`, `survey sent`, and
-  `survey dismissed` are wired through the host SDK callbacks but the
-  delegate does not yet emit them itself; if you swap in a different delegate
-  you'll need to fire these events.
 - **HTML descriptions** — both question and thank-you descriptions render as
   plain text only. HTML is skipped for parity with iOS.
 - **Compose UI tests** — visual verification is via emulator + `@Preview`
   composables only at this stage.
 - **Dark-mode polish** — defaults are tuned for light backgrounds.
+
+Server-driven branching, the configured popup delay, and the
+`survey shown` / `survey sent` / `survey dismissed` events (fired by the host
+SDK from the delegate callbacks) are all supported.
 
 If you need any of the above before they ship, you can write a custom
 `PostHogSurveysDelegate` (see `posthog/src/main/java/com/posthog/surveys/`)
