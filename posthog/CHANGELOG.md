@@ -1,5 +1,11 @@
 ## Next
 
+## 6.17.5
+
+### Patch Changes
+
+- 43dd856: Add QueueFile regression coverage for endian-safe header and element persistence.
+
 ## 6.17.4
 
 ### Patch Changes
