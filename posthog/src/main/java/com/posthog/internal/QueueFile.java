@@ -217,18 +217,12 @@ final class QueueFile implements Closeable, Iterable<byte[]> {
      * {@link RandomAccessFile#writeInt}.
      */
     private static void writeInt(byte[] buffer, int offset, int value) {
-        buffer[offset    ] = (byte) (value >> 24);
-        buffer[offset + 1] = (byte) (value >> 16);
-        buffer[offset + 2] = (byte) (value >> 8);
-        buffer[offset + 3] = (byte) value;
+        writeBigEndian(buffer, offset, value, Integer.BYTES);
     }
 
     /** Reads an {@code int} from the {@code byte[]}. */
     private static int readInt(byte[] buffer, int offset) {
-        return ((buffer[offset    ] & 0xff) << 24)
-                +  ((buffer[offset + 1] & 0xff) << 16)
-                +  ((buffer[offset + 2] & 0xff) << 8)
-                +   (buffer[offset + 3] & 0xff);
+        return (int) readBigEndian(buffer, offset, Integer.BYTES);
     }
 
     /**
@@ -236,26 +230,26 @@ final class QueueFile implements Closeable, Iterable<byte[]> {
      * {@link RandomAccessFile#writeLong}.
      */
     private static void writeLong(byte[] buffer, int offset, long value) {
-        buffer[offset    ] = (byte) (value >> 56);
-        buffer[offset + 1] = (byte) (value >> 48);
-        buffer[offset + 2] = (byte) (value >> 40);
-        buffer[offset + 3] = (byte) (value >> 32);
-        buffer[offset + 4] = (byte) (value >> 24);
-        buffer[offset + 5] = (byte) (value >> 16);
-        buffer[offset + 6] = (byte) (value >> 8);
-        buffer[offset + 7] = (byte) value;
+        writeBigEndian(buffer, offset, value, Long.BYTES);
     }
 
     /** Reads an {@code long} from the {@code byte[]}. */
     private static long readLong(byte[] buffer, int offset) {
-        return ((buffer[offset    ] & 0xffL) << 56)
-                +  ((buffer[offset + 1] & 0xffL) << 48)
-                +  ((buffer[offset + 2] & 0xffL) << 40)
-                +  ((buffer[offset + 3] & 0xffL) << 32)
-                +  ((buffer[offset + 4] & 0xffL) << 24)
-                +  ((buffer[offset + 5] & 0xffL) << 16)
-                +  ((buffer[offset + 6] & 0xffL) << 8)
-                +   (buffer[offset + 7] & 0xffL);
+        return readBigEndian(buffer, offset, Long.BYTES);
+    }
+
+    private static void writeBigEndian(byte[] buffer, int offset, long value, int byteCount) {
+        for (int i = byteCount - 1; i >= 0; i--) {
+            buffer[offset + byteCount - 1 - i] = (byte) (value >> (i * 8));
+        }
+    }
+
+    private static long readBigEndian(byte[] buffer, int offset, int byteCount) {
+        long value = 0;
+        for (int i = 0; i < byteCount; i++) {
+            value = (value << 8) + (buffer[offset + i] & 0xffL);
+        }
+        return value;
     }
 
     /**
@@ -308,19 +302,7 @@ final class QueueFile implements Closeable, Iterable<byte[]> {
      * @param count # of bytes to write
      */
     private void ringWrite(long position, byte[] buffer, int offset, int count) throws IOException {
-        position = wrapPosition(position);
-        if (position + count <= fileLength) {
-            raf.seek(position);
-            raf.write(buffer, offset, count);
-        } else {
-            // The write overlaps the EOF.
-            // # of bytes to write before the EOF. Guaranteed to be less than Integer.MAX_VALUE.
-            int beforeEof = (int) (fileLength - position);
-            raf.seek(position);
-            raf.write(buffer, offset, beforeEof);
-            raf.seek(headerLength);
-            raf.write(buffer, offset + beforeEof, count - beforeEof);
-        }
+        ringTransfer(position, buffer, offset, count, true);
     }
 
     private void ringErase(long position, long length) throws IOException {
@@ -340,18 +322,30 @@ final class QueueFile implements Closeable, Iterable<byte[]> {
      * @param count # of bytes to read
      */
     void ringRead(long position, byte[] buffer, int offset, int count) throws IOException {
+        ringTransfer(position, buffer, offset, count, false);
+    }
+
+    private void ringTransfer(long position, byte[] buffer, int offset, int count, boolean write)
+            throws IOException {
         position = wrapPosition(position);
         if (position + count <= fileLength) {
-            raf.seek(position);
-            raf.readFully(buffer, offset, count);
+            transfer(position, buffer, offset, count, write);
+            return;
+        }
+
+        // The transfer overlaps the EOF.
+        // # of bytes to transfer before the EOF. Guaranteed to be less than Integer.MAX_VALUE.
+        int beforeEof = (int) (fileLength - position);
+        transfer(position, buffer, offset, beforeEof, write);
+        transfer(headerLength, buffer, offset + beforeEof, count - beforeEof, write);
+    }
+
+    private void transfer(long position, byte[] buffer, int offset, int count, boolean write) throws IOException {
+        raf.seek(position);
+        if (write) {
+            raf.write(buffer, offset, count);
         } else {
-            // The read overlaps the EOF.
-            // # of bytes to read before the EOF. Guaranteed to be less than Integer.MAX_VALUE.
-            int beforeEof = (int) (fileLength - position);
-            raf.seek(position);
-            raf.readFully(buffer, offset, beforeEof);
-            raf.seek(headerLength);
-            raf.readFully(buffer, offset + beforeEof, count - beforeEof);
+            raf.readFully(buffer, offset, count);
         }
     }
 

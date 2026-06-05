@@ -22,6 +22,9 @@ public class ThrowableCoercer {
         return false
     }
 
+    @Suppress("DEPRECATION")
+    private fun getThreadId(thread: Thread): Long = thread.id
+
     public fun fromThrowableToPostHogProperties(
         throwable: Throwable,
         inAppIncludes: List<String> = listOf(),
@@ -43,9 +46,9 @@ public class ThrowableCoercer {
             isFatal = throwable.isFatal
             mechanismType = throwable.mechanism
             currentThrowable = throwable.cause
-            threadId = throwable.thread.id
+            threadId = getThreadId(throwable.thread)
         } else {
-            threadId = Thread.currentThread().id
+            threadId = getThreadId(Thread.currentThread())
         }
 
         while (currentThrowable != null && circularDetector.add(currentThrowable)) {
