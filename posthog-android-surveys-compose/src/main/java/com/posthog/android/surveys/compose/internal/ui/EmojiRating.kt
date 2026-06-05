@@ -61,8 +61,8 @@ internal fun EmojiRating(
     val appearance = localAppearance()
     val emojis = emojisForScale(question.scaleUpperBound - question.scaleLowerBound + 1)
     val values = (1..emojis.size).toList()
-    // Thumbs up/down (a 2-point emoji scale) hides the bound labels, matching the
-    // web/iOS `isThumbSurvey` behavior — thumbs don't need "lower/upper" captions.
+    // Thumbs up/down (a 2-point emoji scale) hides the bound labels — thumbs
+    // don't need "lower/upper" captions.
     val showBoundLabels = emojis.size > 2
 
     Column {

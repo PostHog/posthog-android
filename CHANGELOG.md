@@ -6,5 +6,6 @@ Changelogs can be found in the individual packages:
 
 - [posthog](./posthog/CHANGELOG.md)
 - [posthog-android](./posthog-android/CHANGELOG.md)
+- [posthog-android-surveys-compose](./posthog-android-surveys-compose/CHANGELOG.md)
 - [posthog-server](./posthog-server/CHANGELOG.md)
 - [posthog-android-gradle-plugin](./posthog-android-gradle-plugin/CHANGELOG.md)

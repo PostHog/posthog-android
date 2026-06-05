@@ -24,8 +24,8 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * Multi-select list renderer for [PostHogDisplayChoiceQuestion]s where
  * [PostHogDisplayChoiceQuestion.isMultipleChoice] is `true`.
  *
- * Visual port of iOS `MultipleChoiceQuestionView` — delegates to the shared
- * [ChoiceOptions] composable with multi-selection semantics.
+ * Delegates to the shared [ChoiceOptions] composable with multi-selection
+ * semantics.
  */
 @Composable
 internal fun MultipleChoice(

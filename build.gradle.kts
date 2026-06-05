@@ -60,7 +60,7 @@ tasks.withType<DetektCreateBaselineTask>().configureEach {
 
 apiValidation {
     ignoredProjects.add("posthog-android-sample")
-    // Alpha module — public surface will churn until 1.0.0 stable.
+    // Pre-1.0 (0.x) module — public surface may change between minor versions until 1.0.0.
     ignoredProjects.add("posthog-android-surveys-compose")
 }
 

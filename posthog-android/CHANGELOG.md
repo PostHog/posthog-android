@@ -1,15 +1,5 @@
 ## Next
 
-### Minor Changes
-
-- New optional companion artifact `com.posthog:posthog-android-surveys-compose:1.0.0-alpha01`
-  ships a default Jetpack Compose UI for surveys (Material 3 `ModalBottomSheet`).
-  Opt in by adding the dependency and setting
-  `config.surveysConfig.surveysDelegate = PostHogSurveysComposeDelegate(applicationContext)`.
-  MVP renders NPS / Number Rating questions; other question types and the
-  thank-you screen are planned follow-ups. No changes to the core SDK or to
-  the existing `PostHogSurveysDelegate` contract.
-
 ## 3.47.0
 
 ### Minor Changes

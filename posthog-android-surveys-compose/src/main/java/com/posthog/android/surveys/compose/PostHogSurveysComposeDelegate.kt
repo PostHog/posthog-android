@@ -13,9 +13,9 @@ import com.posthog.surveys.PostHogSurveysDelegate
 /**
  * Default Compose-based UI for PostHog surveys on Android.
  *
- * > ⚠️ **Experimental (alpha).** This module ships as `1.0.0-alpha01`. Its
- * > public surface may change between alpha releases and it is excluded from
- * > binary-compatibility validation. Surveys are also disabled by default
+ * > ⚠️ **Pre-1.0 (`0.x`).** This module's public surface may change between
+ * > minor versions until `1.0.0`, and it is excluded from binary-compatibility
+ * > validation. Surveys are also disabled by default
  * > (`PostHogConfig.surveys = false`) and require enabling in your PostHog
  * > project settings.
  *
@@ -49,14 +49,13 @@ import com.posthog.surveys.PostHogSurveysDelegate
  *   `displayThankYouMessage` in PostHog
  * - The configured popup delay (`surveyPopupDelaySeconds`) before the sheet
  *   is shown
- * - Theming from `PostHogDisplaySurveyAppearance` — every default value
- *   matches the iOS reference so customer appearance config in the PostHog
- *   UI works on Android without changes
+ * - Theming from `PostHogDisplaySurveyAppearance` — customer appearance config
+ *   from the PostHog UI applies directly, with sensible defaults for anything
+ *   left unset
  *
  * ### Known gaps (tracked follow-ups)
  *
- * - HTML question / thank-you descriptions (rendered as plain text only,
- *   matching iOS)
+ * - HTML question / thank-you descriptions (rendered as plain text only)
  * - Dark-mode polish; see `CHANGELOG.md` / `ARCHITECTURE.md`
  *
  * The constructor accepts any [Context] and resolves the [Application] from

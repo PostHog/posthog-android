@@ -31,9 +31,8 @@ import com.posthog.android.surveys.compose.internal.theme.localAppearance
 /**
  * Shared list-of-choices renderer for [SingleChoice] and [MultipleChoice].
  *
- * Visual port of the iOS `MultipleChoiceOptions` view: each option is a
- * rounded bordered button that turns bold + checkmark-decorated when
- * selected. When [hasOpenChoice] is true the last option is treated as an
+ * Each option is a rounded bordered button that turns bold + checkmark-decorated
+ * when selected. When [hasOpenChoice] is true the last option is treated as an
  * "other"-style free-text input that becomes editable while selected.
  */
 @Composable
@@ -79,10 +78,9 @@ private fun ChoiceOption(
     onOpenChoiceInputChange: (String) -> Unit,
     onClick: () -> Unit,
 ) {
-    // iOS derives the option label, border, and check color from the input text color
-    // (`appearance.effectiveInputTextColor`), full opacity when selected and 0.5 when not —
-    // see `MultipleChoiceOptions.swift`. This keeps option chrome readable on dark / custom
-    // input backgrounds instead of forcing black.
+    // The option label, border, and check derive from the input text color — full opacity when
+    // selected, 0.5 when not. Using the input text color (rather than forcing black) keeps the
+    // option chrome readable on dark / custom input backgrounds.
     val appearance = localAppearance()
     val color =
         if (isSelected) appearance.inputTextColor else appearance.inputTextColor.copy(alpha = 0.5f)
@@ -122,9 +120,8 @@ private fun ChoiceOption(
                 }
             }
             if (isSelected) {
-                // iOS draws a custom check path (`CheckIcon` in `Resources.swift`).
-                // Material's Icons.Filled.Check is visually equivalent and avoids
-                // bundling another vector path purely for the check shape.
+                // Material's Icons.Filled.Check avoids bundling a custom vector path purely
+                // for the check shape.
                 Icon(
                     imageVector = Icons.Filled.Check,
                     contentDescription = null,

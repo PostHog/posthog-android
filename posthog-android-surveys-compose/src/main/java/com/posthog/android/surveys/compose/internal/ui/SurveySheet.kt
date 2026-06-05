@@ -62,10 +62,9 @@ import kotlinx.coroutines.launch
  *
  * Navigation honors the host SDK's branching: [onSubmit] returns a
  * [PostHogNextSurveyQuestion] describing the next question index and whether
- * the survey is complete, mirroring iOS `SurveyDisplayController.onNextQuestion`.
- * We advance to `next.questionIndex` rather than blindly incrementing, so
- * server-driven branching works. A `null` return is treated as an abort and
- * dismisses the sheet (matching iOS's `guard let next ... else { return }`).
+ * the survey is complete. We advance to `next.questionIndex` rather than blindly
+ * incrementing, so server-driven branching works. A `null` return is treated as
+ * an abort and dismisses the sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,8 +78,7 @@ internal fun SurveySheet(
     val coroutineScope = rememberCoroutineScope()
 
     // ModalBottomSheet is auto-presented; we intercept Hidden swipe-down so
-    // dismissal only happens through the explicit X button. This matches the
-    // iOS implementation's `interactiveDismissDisabled()` semantics.
+    // dismissal only happens through the explicit X button.
     val sheetState =
         rememberModalBottomSheetState(
             skipPartiallyExpanded = true,
@@ -111,7 +109,7 @@ internal fun SurveySheet(
 
     val onSubmitResponse: (PostHogSurveyResponse) -> Unit = { response ->
         // The host SDK computes the next step (server-driven branching) and
-        // returns it; null means "abort". Mirrors iOS onNextQuestion.
+        // returns it; null means "abort".
         val next = onSubmit(currentQuestionIndex, response)
         when {
             next == null -> dismissSheet()

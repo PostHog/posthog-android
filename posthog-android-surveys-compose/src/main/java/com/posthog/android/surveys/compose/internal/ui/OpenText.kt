@@ -38,8 +38,7 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * changes through [onValueChange]; deciding when a response is valid for
  * submission is the caller's responsibility (see `SurveySheet.kt`).
  *
- * Visual port of iOS `OpenTextQuestionView` in `QuestionTypes.swift`:
- * a 150 dp fixed-height bordered card with a placeholder rendered behind the
+ * A 150 dp fixed-height bordered card with a placeholder rendered behind the
  * input while empty.
  */
 @Composable

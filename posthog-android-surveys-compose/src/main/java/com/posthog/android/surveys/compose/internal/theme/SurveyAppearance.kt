@@ -10,9 +10,8 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 /**
  * Resolved appearance applied to every survey composable in a tree.
  *
- * Built by [PostHogDisplaySurveyAppearance.resolve] which fills in defaults
- * matching the iOS reference (see `SurveySheet.swift` ::
- * `SurveyDisplayAppearance.getAppearanceWithDefaults`).
+ * Built by [PostHogDisplaySurveyAppearance.resolve], which fills in a default
+ * for every field the customer left unset.
  */
 internal data class ResolvedSurveyAppearance(
     val backgroundColor: Color,
@@ -51,17 +50,16 @@ internal fun localAppearance(): ResolvedSurveyAppearance = LocalSurveyAppearance
 /**
  * Default light-mode background when the survey did not specify one.
  *
- * iOS uses `Color(.tertiarySystemBackground)`. We pick a slightly off-white
- * value that reads well in light mode without forcing a Material theme on the
- * host app. Dark-mode polish is explicitly deferred to a follow-up.
+ * A slightly off-white value that reads well in light mode without forcing a
+ * Material theme on the host app. Dark-mode polish is deferred to a follow-up.
  */
 private val DefaultBackgroundColor = Color(0xFFF2F2F7)
 private val DefaultBorderColor = Color(0xFFE5E5EA)
 private val DefaultRatingBackground = Color(0xFFE5E5EA)
 private val DefaultDescriptionTextColor = Color(0xFF8E8E93)
 
-// iOS uses #f8f8f8 for the input field when the survey background is white-ish,
-// otherwise white — so the field stays visible against the survey background.
+// On a light survey background the input field uses a subtle gray (rather than
+// white) so it stays visible against the survey background; see resolve().
 private val DefaultInputBackgroundOnLight = Color(0xFFF8F8F8)
 
 private const val DEFAULT_PLACEHOLDER = "Start typing..."
@@ -86,15 +84,13 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
     val ratingButtonActiveColor =
         parseSurveyColorOrDefault(this?.ratingButtonActiveColor, submitButtonColor)
     val submitButtonText = this?.submitButtonText?.takeIf { it.isNotBlank() } ?: "Submit"
-    // iOS derives both placeholder and question-header colors at runtime — placeholder uses
-    // the system secondary label, the question header uses the background's contrasting
-    // color. We surface them as explicit fields so each composable can pick the right one
-    // without reaching back into the appearance struct.
+    // The question header uses the background's contrasting color. We surface it as an explicit
+    // field so each composable can read it without reaching back into the appearance struct.
     val questionTextColor = backgroundColor.contrastingTextColor()
 
-    // Input field colors mirror iOS `effectiveInputBackground` / `effectiveInputTextColor`:
-    // when unset, the input background is a subtle gray on a light survey background (so the
-    // field stays visible) and white otherwise; the input text color contrasts that background.
+    // Input field colors, when unset: the input background is a subtle gray on a light survey
+    // background (so the field stays visible) and white otherwise; the input text color
+    // contrasts that background.
     val inputBackgroundColor =
         parseSurveyColorOrDefault(
             this?.inputBackground,

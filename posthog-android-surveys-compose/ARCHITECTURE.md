@@ -46,9 +46,8 @@ loop, so it must work on any thread and outside any Compose hierarchy.
 
 When `renderSurvey` is called we need to render a `ModalBottomSheet` over
 whatever Activity is currently in the foreground, **without** participating in
-the host's view hierarchy, focus order, or navigation. On iOS this is a
-dedicated `UIWindow`; the Android equivalent of "a separate window" is a
-`Dialog`.
+the host's view hierarchy, focus order, or navigation. The way to get a
+"separate window" that floats above the activity on Android is a `Dialog`.
 
 1. `ActivityProvider` (registered as an `Application.ActivityLifecycleCallbacks`)
    tracks the foreground Activity. This is the standard Android way to find
@@ -63,7 +62,7 @@ dedicated `UIWindow`; the Android equivalent of "a separate window" is a
 3. The dialog window is transparent, full-screen, and undimmed; the
    `ModalBottomSheet` inside draws its own scrim, so the host app stays visible
    behind the sheet. `setCancelable(false)` + `setCanceledOnTouchOutside(false)`
-   give X-button-only dismissal, mirroring iOS `interactiveDismissDisabled()`.
+   give X-button-only dismissal (swipe-down, touch-outside, and back are ignored).
 4. `cleanup()` / dismissal disposes the composition and dismisses the dialog.
 
 Because the dialog is its own window, the same code path works identically over
@@ -99,15 +98,14 @@ makes them easy to preview, test, and reuse.
 `PostHogDisplaySurveyAppearance` (in the core SDK) is the contract surface;
 each field is nullable because customers may leave them blank in the PostHog
 UI. `SurveyAppearance.kt::resolve()` translates that nullable surface into a
-non-null `ResolvedSurveyAppearance` with iOS-matching defaults:
+non-null `ResolvedSurveyAppearance` with sensible defaults:
 
-- Colors flow through `parseSurveyColor` (CSS hex / named colors), with iOS's
-  same default fallbacks (`tertiarySystemBackground`, `secondaryLabel`,
-  `systemFill`).
-- Strings fall back to iOS's default copy ("Submit", "Thank you for your
-  feedback!", "Close", "Start typing...").
-- `questionTextColor` and `placeholderTextColor` are derived from the
-  background and primary text colors — iOS does the same at draw time.
+- Colors flow through `parseSurveyColor` (CSS hex / named colors), with default
+  fallbacks for the background, description, and border colors.
+- Strings fall back to default copy ("Submit", "Thank you for your feedback!",
+  "Close", "Start typing...").
+- `questionTextColor` and `placeholderTextColor` are derived at resolve time
+  from the background and primary text colors.
 
 The resolved appearance is provided via `LocalSurveyAppearance` so every
 question composable reads it through `localAppearance()` rather than a

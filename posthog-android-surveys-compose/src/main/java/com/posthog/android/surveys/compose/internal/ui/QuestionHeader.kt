@@ -25,7 +25,7 @@ internal fun QuestionHeader(question: PostHogDisplaySurveyQuestion) {
             fontWeight = FontWeight.SemiBold,
         )
         val description = question.questionDescription
-        // HTML descriptions are deferred to a follow-up — iOS skips them too.
+        // HTML descriptions are deferred to a follow-up; only plain text renders.
         if (!description.isNullOrBlank() &&
             question.questionDescriptionContentType == PostHogDisplaySurveyTextContentType.TEXT
         ) {

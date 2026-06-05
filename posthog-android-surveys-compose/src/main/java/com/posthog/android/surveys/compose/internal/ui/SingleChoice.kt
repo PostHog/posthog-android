@@ -24,8 +24,8 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * Single-choice list renderer for [PostHogDisplayChoiceQuestion]s where
  * [PostHogDisplayChoiceQuestion.isMultipleChoice] is `false`.
  *
- * Visual port of iOS `SingleChoiceQuestionView` — delegates to the shared
- * [ChoiceOptions] composable with single-selection semantics.
+ * Delegates to the shared [ChoiceOptions] composable with single-selection
+ * semantics.
  *
  * State is hoisted: callers own [selectedChoice] and the optional
  * [openChoiceInput] string. When [PostHogDisplayChoiceQuestion.hasOpenChoice]

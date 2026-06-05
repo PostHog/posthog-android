@@ -25,10 +25,8 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 /**
  * Body content for [PostHogDisplayLinkQuestion]s.
  *
- * Visual port of iOS `LinkQuestionView` — link questions render no body
- * between the question header and the submit button on iOS. We surface the
- * destination URL as small description-coloured text so users have context
- * for the action; the iOS-mirrored response payload is unaffected.
+ * We surface the destination URL as small description-coloured text so users
+ * have context for the action.
  *
  * The submit action itself lives in `SurveySheet.kt`, which calls [openLink]
  * with [PostHogDisplayLinkQuestion.link] when the user presses the button.

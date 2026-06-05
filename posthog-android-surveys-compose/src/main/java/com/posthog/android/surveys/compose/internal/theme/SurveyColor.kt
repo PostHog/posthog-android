@@ -5,11 +5,10 @@ import androidx.compose.ui.graphics.Color
 /**
  * Parses a survey-appearance color string into a Compose [Color].
  *
- * Supports the same input forms as the iOS implementation
- * ([PostHog/posthog-ios] `Survey+Util.swift`): named CSS colors
- * (`"red"`, `"transparent"`), `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, and the
- * same forms without the leading `#`. Returns [Color.Transparent] when the
- * input is null, blank, or unrecognized.
+ * Supports the web color forms PostHog appearance settings produce: named CSS
+ * colors (`"red"`, `"transparent"`), `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`,
+ * and the same forms without the leading `#`. Returns [Color.Transparent] when
+ * the input is null, blank, or unrecognized.
  */
 internal fun parseSurveyColor(input: String?): Color {
     val raw = input?.trim()?.takeIf { it.isNotEmpty() } ?: return Color.Transparent
@@ -34,13 +33,13 @@ internal fun parseSurveyColor(input: String?): Color {
 
 /**
  * Returns black or white text that meets WCAG-ish contrast against the
- * receiver. Threshold matches the iOS reference (luminance < 0.6 → white).
+ * receiver (luminance < 0.6 → white).
  */
 internal fun Color.contrastingTextColor(): Color = if (isLight()) Color.Black else Color.White
 
 /**
- * Whether the color reads as "light" (luminance ≥ 0.6, the threshold the iOS
- * reference uses for picking contrasting text).
+ * Whether the color reads as "light" (luminance ≥ 0.6, the threshold used for
+ * picking contrasting text).
  */
 internal fun Color.isLight(): Boolean {
     val luminance = 0.2126f * red + 0.7152f * green + 0.0722f * blue

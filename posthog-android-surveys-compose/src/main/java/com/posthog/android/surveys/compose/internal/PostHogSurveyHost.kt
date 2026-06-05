@@ -21,20 +21,19 @@ import com.posthog.surveys.PostHogDisplaySurvey
  *
  * ## Why a [ComponentDialog] (a separate window) rather than a child view?
  *
- * On iOS the survey renders in a dedicated `UIWindow` layered above the host
- * app so it never participates in the host's view hierarchy, focus order, or
- * navigation. The Android equivalent of "a separate window" is a [android.app.Dialog]:
- * it owns its own [Window] token and is layered above the activity. We use
- * [ComponentDialog] specifically because it provides a `LifecycleOwner`,
- * `SavedStateRegistryOwner` and `OnBackPressedDispatcher` out of the box — the
- * `ViewTree*Owner`s a [ComposeView] needs to run — so Compose works even when
- * the host activity is a plain XML / AppCompat activity that never set up
- * Compose itself.
+ * The survey must render above the host app without participating in its view
+ * hierarchy, focus order, or navigation — so it gets its own window. A
+ * [android.app.Dialog] owns its own [Window] token and is layered above the
+ * activity. We use [ComponentDialog] specifically because it provides a
+ * `LifecycleOwner`, `SavedStateRegistryOwner` and `OnBackPressedDispatcher` out
+ * of the box — the `ViewTree*Owner`s a [ComposeView] needs to run — so Compose
+ * works even when the host activity is a plain XML / AppCompat activity that
+ * never set up Compose itself.
  *
  * The dialog window is transparent and undimmed; the `ModalBottomSheet` inside
  * supplies its own scrim, so the host app remains visible behind the sheet.
  * Only the explicit close button dismisses (touch-outside and back are
- * disabled), matching iOS `interactiveDismissDisabled()` semantics.
+ * disabled).
  *
  * All UI mutation happens on the main thread; the public API is safe to call
  * from the SDK's survey thread.
@@ -119,7 +118,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         val componentDialog =
             ComponentDialog(activity).apply {
                 setContentView(composeView)
-                // X-button-only dismissal (parity with iOS interactiveDismissDisabled).
+                // X-button-only dismissal (swipe-down / touch-outside / back are ignored).
                 setCancelable(false)
                 setCanceledOnTouchOutside(false)
                 configureWindow(window)

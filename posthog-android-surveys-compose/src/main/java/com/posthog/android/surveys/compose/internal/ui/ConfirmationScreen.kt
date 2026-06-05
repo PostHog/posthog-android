@@ -26,9 +26,8 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * [com.posthog.android.surveys.compose.internal.theme.ResolvedSurveyAppearance.displayThankYouMessage]
  * is true.
  *
- * Visual port of iOS `ConfirmationMessage`. Renders the configured header,
- * an optional plain-text description (HTML descriptions are deferred to a
- * follow-up — iOS skips them here too), and a close button.
+ * Renders the configured header, an optional plain-text description (HTML
+ * descriptions are deferred to a follow-up), and a close button.
  */
 @Composable
 internal fun ConfirmationScreen(onClose: () -> Unit) {
