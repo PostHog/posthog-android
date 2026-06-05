@@ -1,5 +1,11 @@
 ## Next
 
+## 6.17.6
+
+### Patch Changes
+
+- 27f8f5f: Refactor duplicated internal code paths without changing SDK behavior.
+
 ## 6.17.5
 
 ### Patch Changes
