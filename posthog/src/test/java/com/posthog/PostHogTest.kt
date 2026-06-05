@@ -47,6 +47,9 @@ internal class PostHogTest {
     private val responseFlagsApi = file.readText()
 
     @Suppress("DEPRECATION")
+    private fun getThreadId(thread: Thread): Long = thread.id
+
+    @Suppress("DEPRECATION")
     fun getSut(
         host: String,
         flushAt: Int = 1,
@@ -2405,7 +2408,7 @@ internal class PostHogTest {
         assertEquals("Exception", causeExceptionData["type"])
         assertEquals("I am the cause", causeExceptionData["value"])
 
-        val threadId = Thread.currentThread().id
+        val threadId = getThreadId(Thread.currentThread())
         // Verify both exceptions have the required structure
         // Check main exception structure
         assertEquals("RuntimeException", mainException["type"])
@@ -2504,7 +2507,7 @@ internal class PostHogTest {
         assertEquals("RuntimeException", mainException["type"])
         assertEquals("Test exception message", mainException["value"])
 
-        assertEquals(thread.id, (mainException["thread_id"] as Number).toLong())
+        assertEquals(getThreadId(thread), (mainException["thread_id"] as Number).toLong())
 
         // Verify mechanism structure for main exception
         val mechanism = mainException["mechanism"] as Map<*, *>
