@@ -214,20 +214,28 @@ public fun Bitmap.isValid(): Boolean {
         height > 0
 }
 
+private fun webpLossyFormat(): Bitmap.CompressFormat =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        Bitmap.CompressFormat.WEBP_LOSSY
+    } else {
+        Bitmap.CompressFormat.WEBP
+    }
+
+private fun webpLosslessFormat(): Bitmap.CompressFormat =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        Bitmap.CompressFormat.WEBP_LOSSLESS
+    } else {
+        Bitmap.CompressFormat.WEBP
+    }
+
 @PostHogInternal
 @Suppress("DEPRECATION")
 public fun Bitmap.webpBase64(quality: Int = 30): String? {
     if (!isValid()) {
         return null
     }
-    val format =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Bitmap.CompressFormat.WEBP_LOSSY
-        } else {
-            Bitmap.CompressFormat.WEBP
-        }
 
-    return base64(format, quality)
+    return base64(webpLossyFormat(), quality)
 }
 
 @PostHogInternal
@@ -240,19 +248,8 @@ public fun Bitmap.base64(
         return null
     }
 
-    val lossyFormat =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Bitmap.CompressFormat.WEBP_LOSSY
-        } else {
-            Bitmap.CompressFormat.WEBP
-        }
-
-    val losslessFormat =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Bitmap.CompressFormat.WEBP_LOSSLESS
-        } else {
-            Bitmap.CompressFormat.WEBP
-        }
+    val lossyFormat = webpLossyFormat()
+    val losslessFormat = webpLosslessFormat()
 
     val htmlFormat =
         when (format) {

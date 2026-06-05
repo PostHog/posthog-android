@@ -2361,6 +2361,7 @@ internal class PostHogTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `captureException captures exception with correct properties`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -2463,6 +2464,7 @@ internal class PostHogTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `captureException unwraps and captures exception with correct properties`() {
         val http = mockHttp()
         val url = http.url("/")

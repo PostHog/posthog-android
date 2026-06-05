@@ -530,6 +530,15 @@ internal class FlagEvaluator(
         return part.toIntOrNull()
     }
 
+    @Throws(InconclusiveMatchException::class)
+    private fun parseFlagConditionSemver(propertyValue: String): SemverVersion {
+        return try {
+            parseSemver(propertyValue)
+        } catch (e: InconclusiveMatchException) {
+            throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
+        }
+    }
+
     /**
      * Compare two semver versions using the specified operator
      */
@@ -556,12 +565,7 @@ internal class FlagEvaluator(
             PropertyOperator.SEMVER_LT,
             PropertyOperator.SEMVER_LTE,
             -> {
-                val conditionVersion =
-                    try {
-                        parseSemver(propertyString)
-                    } catch (e: InconclusiveMatchException) {
-                        throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
-                    }
+                val conditionVersion = parseFlagConditionSemver(propertyString)
                 compareSemverVersions(overrideVersion, conditionVersion, propertyOperator)
             }
 
@@ -614,12 +618,7 @@ internal class FlagEvaluator(
      */
     @Throws(InconclusiveMatchException::class)
     private fun computeTildeBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
-        val version =
-            try {
-                parseSemver(propertyValue)
-            } catch (e: InconclusiveMatchException) {
-                throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
-            }
+        val version = parseFlagConditionSemver(propertyValue)
         val lower = version
         val upper = SemverVersion(version.major, version.minor + 1, 0)
         return Pair(lower, upper)
@@ -634,12 +633,7 @@ internal class FlagEvaluator(
      */
     @Throws(InconclusiveMatchException::class)
     private fun computeCaretBounds(propertyValue: String): Pair<SemverVersion, SemverVersion> {
-        val version =
-            try {
-                parseSemver(propertyValue)
-            } catch (e: InconclusiveMatchException) {
-                throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
-            }
+        val version = parseFlagConditionSemver(propertyValue)
         val lower = version
         val upper =
             when {

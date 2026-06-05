@@ -53,7 +53,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
             type: String,
             key: String,
         ): Builder {
-            this.groups = (groups ?: mutableMapOf()).apply { put(type, key) }
+            this.groups = groups.putBuilderValue(type, key)
             return this
         }
 
@@ -64,7 +64,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
          * @return This builder.
          */
         public fun groups(groups: Map<String, String>): Builder {
-            this.groups = (this.groups ?: mutableMapOf()).apply { putAll(groups) }
+            this.groups = this.groups.putBuilderValues(groups)
             return this
         }
 
@@ -79,7 +79,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
             key: String,
             value: Any?,
         ): Builder {
-            this.personProperties = (personProperties ?: mutableMapOf()).apply { put(key, value) }
+            this.personProperties = personProperties.putBuilderValue(key, value)
             return this
         }
 
@@ -90,7 +90,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
          * @return This builder.
          */
         public fun personProperties(personProperties: Map<String, Any?>): Builder {
-            this.personProperties = (this.personProperties ?: mutableMapOf()).apply { putAll(personProperties) }
+            this.personProperties = this.personProperties.putBuilderValues(personProperties)
             return this
         }
 
@@ -107,9 +107,8 @@ public class PostHogEvaluateFlagsOptions private constructor(
             key: String,
             value: Any?,
         ): Builder {
-            val existing = groupProperties?.get(type)?.toMutableMap() ?: mutableMapOf()
-            existing[key] = value
-            this.groupProperties = (groupProperties ?: mutableMapOf()).apply { put(type, existing) }
+            val existing = groupProperties?.get(type)?.toMutableMap().putBuilderValue(key, value)
+            this.groupProperties = groupProperties.putBuilderValue(type, existing)
             return this
         }
 
@@ -120,7 +119,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
          * @return This builder.
          */
         public fun groupProperties(groupProperties: Map<String, Map<String, Any?>>): Builder {
-            this.groupProperties = (this.groupProperties ?: mutableMapOf()).apply { putAll(groupProperties) }
+            this.groupProperties = this.groupProperties.putBuilderValues(groupProperties)
             return this
         }
 
@@ -134,7 +133,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
          * @return This builder.
          */
         public fun flagKeys(flagKeys: List<String>): Builder {
-            this.flagKeys = (this.flagKeys ?: mutableListOf()).apply { addAll(flagKeys) }
+            this.flagKeys = this.flagKeys.addBuilderValues(flagKeys)
             return this
         }
 

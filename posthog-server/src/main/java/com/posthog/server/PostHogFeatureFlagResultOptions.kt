@@ -57,10 +57,7 @@ public class PostHogFeatureFlagResultOptions private constructor(
             key: String,
             propValue: String,
         ): Builder {
-            groups =
-                (groups ?: mutableMapOf()).apply {
-                    put(key, propValue)
-                }
+            groups = groups.putBuilderValue(key, propValue)
             return this
         }
 
@@ -71,10 +68,7 @@ public class PostHogFeatureFlagResultOptions private constructor(
          * @return This builder.
          */
         public fun groups(groups: Map<String, String>): Builder {
-            this.groups =
-                (this.groups ?: mutableMapOf()).apply {
-                    putAll(groups)
-                }
+            this.groups = this.groups.putBuilderValues(groups)
             return this
         }
 
@@ -90,10 +84,7 @@ public class PostHogFeatureFlagResultOptions private constructor(
             key: String,
             propValue: Any?,
         ): Builder {
-            personProperties =
-                (personProperties ?: mutableMapOf()).apply {
-                    put(key, propValue)
-                }
+            personProperties = personProperties.putBuilderValue(key, propValue)
             return this
         }
 
@@ -105,10 +96,7 @@ public class PostHogFeatureFlagResultOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun personProperties(userProperties: Map<String, Any?>): Builder {
-            this.personProperties =
-                (this.personProperties ?: mutableMapOf()).apply {
-                    putAll(userProperties)
-                }
+            this.personProperties = this.personProperties.putBuilderValues(userProperties)
             return this
         }
 
@@ -125,10 +113,7 @@ public class PostHogFeatureFlagResultOptions private constructor(
             key: String,
             propValue: Any?,
         ): Builder {
-            groupProperties =
-                (groupProperties ?: mutableMapOf()).apply {
-                    getOrPut(group) { mutableMapOf() }[key] = propValue
-                }
+            groupProperties = groupProperties.putBuilderGroupProperty(group, key, propValue)
             return this
         }
 
@@ -139,12 +124,7 @@ public class PostHogFeatureFlagResultOptions private constructor(
          * @return This builder.
          */
         public fun groupProperties(groupProperties: Map<String, Map<String, Any?>>): Builder {
-            this.groupProperties =
-                (this.groupProperties ?: mutableMapOf()).apply {
-                    groupProperties.forEach { (group, properties) ->
-                        getOrPut(group) { mutableMapOf() }.putAll(properties)
-                    }
-                }
+            this.groupProperties = this.groupProperties.putBuilderGroupProperties(groupProperties)
             return this
         }
 

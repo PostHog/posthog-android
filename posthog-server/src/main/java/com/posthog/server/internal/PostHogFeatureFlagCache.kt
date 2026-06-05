@@ -24,29 +24,16 @@ internal class PostHogFeatureFlagCache(
      * Get feature flags from cache if present and not expired
      */
     @Synchronized
-    fun get(key: FeatureFlagCacheKey): Map<String, FeatureFlag>? {
-        val entry = cache[key]
-        if (entry == null) {
-            return null
-        }
-
-        if (entry.isExpired()) {
-            cache.remove(key)
-            return null
-        }
-
-        return entry.flags
-    }
+    fun get(key: FeatureFlagCacheKey): Map<String, FeatureFlag>? = getValidEntry(key)?.flags
 
     /**
      * Get full cache entry (including requestId and evaluatedAt) if present and not expired
      */
     @Synchronized
-    fun getEntry(key: FeatureFlagCacheKey): FeatureFlagCacheEntry? {
-        val entry = cache[key]
-        if (entry == null) {
-            return null
-        }
+    fun getEntry(key: FeatureFlagCacheKey): FeatureFlagCacheEntry? = getValidEntry(key)
+
+    private fun getValidEntry(key: FeatureFlagCacheKey): FeatureFlagCacheEntry? {
+        val entry = cache[key] ?: return null
 
         if (entry.isExpired()) {
             cache.remove(key)

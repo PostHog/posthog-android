@@ -64,10 +64,7 @@ public class PostHogCaptureOptions private constructor(
             key: String,
             value: Any,
         ): Builder {
-            properties =
-                (properties ?: mutableMapOf()).apply {
-                    put(key, value)
-                }
+            properties = properties.putBuilderValue(key, value)
             return this
         }
 
@@ -78,10 +75,7 @@ public class PostHogCaptureOptions private constructor(
          * @return This builder.
          */
         public fun properties(properties: Map<String, Any>): Builder {
-            this.properties =
-                (this.properties ?: mutableMapOf()).apply {
-                    putAll(properties)
-                }
+            this.properties = this.properties.putBuilderValues(properties)
             return this
         }
 
@@ -97,10 +91,7 @@ public class PostHogCaptureOptions private constructor(
             key: String,
             value: Any,
         ): Builder {
-            this.userProperties =
-                (this.userProperties ?: mutableMapOf()).apply {
-                    put(key, value)
-                }
+            this.userProperties = this.userProperties.putBuilderValue(key, value)
             return this
         }
 
@@ -112,10 +103,7 @@ public class PostHogCaptureOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun userProperties(userProperties: Map<String, Any>): Builder {
-            this.userProperties =
-                (this.userProperties ?: mutableMapOf()).apply {
-                    putAll(userProperties)
-                }
+            this.userProperties = this.userProperties.putBuilderValues(userProperties)
             return this
         }
 
@@ -131,10 +119,7 @@ public class PostHogCaptureOptions private constructor(
             key: String,
             value: Any,
         ): Builder {
-            this.userPropertiesSetOnce =
-                (this.userPropertiesSetOnce ?: mutableMapOf()).apply {
-                    put(key, value)
-                }
+            this.userPropertiesSetOnce = this.userPropertiesSetOnce.putBuilderValue(key, value)
             return this
         }
 
@@ -146,10 +131,7 @@ public class PostHogCaptureOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/user-properties">Documentation: User Properties</a>
          */
         public fun userPropertiesSetOnce(userPropertiesSetOnce: Map<String, Any>): Builder {
-            this.userPropertiesSetOnce =
-                (this.userPropertiesSetOnce ?: mutableMapOf()).apply {
-                    putAll(userPropertiesSetOnce)
-                }
+            this.userPropertiesSetOnce = this.userPropertiesSetOnce.putBuilderValues(userPropertiesSetOnce)
             return this
         }
 
@@ -165,10 +147,7 @@ public class PostHogCaptureOptions private constructor(
             type: String,
             key: String,
         ): Builder {
-            this.groups =
-                (this.groups ?: mutableMapOf()).apply {
-                    put(type, key)
-                }
+            this.groups = this.groups.putBuilderValue(type, key)
             return this
         }
 
@@ -180,10 +159,7 @@ public class PostHogCaptureOptions private constructor(
          * @see <a href="https://posthog.com/docs/product-analytics/group-analytics">Documentation: Group Analytics</a>
          */
         public fun groups(groups: Map<String, String>): Builder {
-            this.groups =
-                (this.groups ?: mutableMapOf()).apply {
-                    putAll(groups)
-                }
+            this.groups = this.groups.putBuilderValues(groups)
             return this
         }
 
