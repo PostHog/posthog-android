@@ -2,4 +2,6 @@
 "posthog-server": minor
 ---
 
-Add a new `PostHogFlagDefinitionCacheProvider` public API to customize feature flag definition cache behavior in the server SDK.
+Add the ability to integrate custom caching for feature flag definitions in the server SDK.
+
+This introduces an async-capable `PostHogFlagDefinitionCacheProvider` public API and a `PostHogBlockingFlagDefinitionCacheProvider` base class for synchronous cache backends.

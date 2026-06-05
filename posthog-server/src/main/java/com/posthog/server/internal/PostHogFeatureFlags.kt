@@ -18,6 +18,10 @@ import java.io.StringWriter
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.CompletionStage
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
@@ -514,18 +518,23 @@ internal class PostHogFeatureFlags(
 
     private fun shouldFetchFlagDefinitions(): Boolean {
         val provider = flagDefinitionCacheProvider ?: return true
-        return try {
+        return awaitFlagDefinitionCacheProvider(
+            errorDescription = "Error in flag definition cache provider shouldFetchFlagDefinitions",
+        ) {
             provider.shouldFetchFlagDefinitions()
-        } catch (e: Throwable) {
-            config.logger.log("Error in flag definition cache provider shouldFetchFlagDefinitions: ${e.message}")
-            true
-        }
+        } ?: true
     }
 
     private fun loadFeatureFlagDefinitionsFromCache(): Boolean {
         val provider = flagDefinitionCacheProvider ?: return false
+        val cachedData =
+            awaitFlagDefinitionCacheProvider(
+                errorDescription = "Error loading feature flag definitions from cache provider",
+            ) {
+                provider.getFlagDefinitions()
+            } ?: return false
+
         return try {
-            val cachedData = provider.getFlagDefinitions() ?: return false
             val response = parseFlagDefinitionCacheData(cachedData)
             applyFlagDefinitions(
                 flags = response.flags,
@@ -538,6 +547,37 @@ internal class PostHogFeatureFlags(
         } catch (e: Throwable) {
             config.logger.log("Error loading feature flag definitions from cache provider: ${e.message}")
             false
+        }
+    }
+
+    private fun <T> awaitFlagDefinitionCacheProvider(
+        errorDescription: String,
+        call: () -> CompletionStage<T>,
+    ): T? {
+        val future =
+            try {
+                call().toCompletableFuture()
+            } catch (e: Throwable) {
+                config.logger.log("$errorDescription: ${e.message}")
+                return null
+            }
+
+        return try {
+            future.get(FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            config.logger.log("$errorDescription: interrupted")
+            null
+        } catch (e: TimeoutException) {
+            future.cancel(true)
+            config.logger.log("$errorDescription: timed out after ${FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS}ms")
+            null
+        } catch (e: ExecutionException) {
+            config.logger.log("$errorDescription: ${e.cause?.message ?: e.message}")
+            null
+        } catch (e: Throwable) {
+            config.logger.log("$errorDescription: ${e.message}")
+            null
         }
     }
 
@@ -566,10 +606,10 @@ internal class PostHogFeatureFlags(
 
     private fun storeFlagDefinitionsInCache(data: Map<String, Any?>) {
         val provider = flagDefinitionCacheProvider ?: return
-        try {
+        awaitFlagDefinitionCacheProvider(
+            errorDescription = "Error storing feature flag definitions in cache provider",
+        ) {
             provider.onFlagDefinitionsReceived(data)
-        } catch (e: Throwable) {
-            config.logger.log("Error storing feature flag definitions in cache provider: ${e.message}")
         }
     }
 
@@ -675,10 +715,10 @@ internal class PostHogFeatureFlags(
 
     private fun shutdownFlagDefinitionCacheProvider() {
         val provider = flagDefinitionCacheProvider ?: return
-        try {
+        awaitFlagDefinitionCacheProvider(
+            errorDescription = "Error shutting down flag definition cache provider",
+        ) {
             provider.shutdown()
-        } catch (e: Throwable) {
-            config.logger.log("Error shutting down flag definition cache provider: ${e.message}")
         }
     }
 
@@ -957,6 +997,7 @@ internal class PostHogFeatureFlags(
     internal companion object {
         internal const val LOCAL_EVALUATION_REASON_CODE: String = "local_evaluation"
         internal const val LOCAL_EVALUATION_REASON_DESCRIPTION: String = "Evaluated locally"
+        private const val FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS: Long = 10_000
 
         private val EMPTY_PROPERTIES: Map<String, Any?> = emptyMap()
         private val EMPTY_COHORT_PROPERTIES: Map<String, PropertyGroup> = emptyMap()

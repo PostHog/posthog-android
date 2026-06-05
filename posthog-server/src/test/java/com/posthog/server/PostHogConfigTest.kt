@@ -641,13 +641,13 @@ internal class PostHogConfigTest {
         assertEquals(provider, config.flagDefinitionCacheProvider)
     }
 
-    private class NoOpFlagDefinitionCacheProvider : PostHogFlagDefinitionCacheProvider {
-        override fun getFlagDefinitions(): Map<String, Any?>? = null
+    private class NoOpFlagDefinitionCacheProvider : PostHogBlockingFlagDefinitionCacheProvider() {
+        override fun getFlagDefinitionsBlocking(): Map<String, Any?>? = null
 
-        override fun shouldFetchFlagDefinitions(): Boolean = true
+        override fun shouldFetchFlagDefinitionsBlocking(): Boolean = true
 
-        override fun onFlagDefinitionsReceived(data: Map<String, Any?>) = Unit
+        override fun onFlagDefinitionsReceivedBlocking(data: Map<String, Any?>) = Unit
 
-        override fun shutdown() = Unit
+        override fun shutdownBlocking() = Unit
     }
 }

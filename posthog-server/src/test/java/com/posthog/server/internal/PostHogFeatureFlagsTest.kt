@@ -1,6 +1,7 @@
 package com.posthog.server.internal
 
 import com.posthog.internal.PostHogApi
+import com.posthog.server.PostHogBlockingFlagDefinitionCacheProvider
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.TestLogger
 import com.posthog.server.createEmptyFlagsResponse
@@ -19,6 +20,8 @@ import okhttp3.mockwebserver.RecordedRequest
 import java.io.StringReader
 import java.io.StringWriter
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1435,6 +1438,77 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `loadFeatureFlagDefinitions awaits async cached definitions when provider skips fetch`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val delegate =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "async-cached-flag"),
+                shouldFetch = false,
+                delayOnGetMs = 50,
+            )
+        val provider = AsyncTestFlagDefinitionCacheProvider(delegate)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(0, mockServer.requestCount)
+        assertEquals(1, delegate.shouldFetchCalls)
+        assertEquals(1, delegate.getCalls)
+        assertEquals(true, featureFlags.getFeatureFlag("async-cached-flag", false, "test-user"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions awaits async store when provider should fetch`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("async-api-flag")),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val delegate = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val provider = AsyncTestFlagDefinitionCacheProvider(delegate)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(1, mockServer.requestCount)
+        assertEquals(1, delegate.shouldFetchCalls)
+        assertEquals(0, delegate.getCalls)
+        assertEquals(1, delegate.onReceivedCalls)
+        assertTrue(serializeFlagDefinitionCacheData(config, delegate.lastReceivedData).contains("\"key\":\"async-api-flag\""))
+        assertEquals(true, featureFlags.getFeatureFlag("async-api-flag", false, "test-user"))
+
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `loadFeatureFlagDefinitions fetches and stores definitions when provider should fetch`() {
         val logger = TestLogger()
         val mockServer =
@@ -2161,6 +2235,32 @@ internal class PostHogFeatureFlagsTest {
         }
         """.trimIndent()
 
+    private class AsyncTestFlagDefinitionCacheProvider(
+        private val delegate: TestFlagDefinitionCacheProvider,
+    ) : PostHogFlagDefinitionCacheProvider {
+        override fun getFlagDefinitions(): CompletionStage<Map<String, Any?>?> =
+            CompletableFuture.supplyAsync<Map<String, Any?>?> {
+                delegate.getFlagDefinitionsBlocking()
+            }
+
+        override fun shouldFetchFlagDefinitions(): CompletionStage<Boolean> =
+            CompletableFuture.supplyAsync<Boolean> {
+                delegate.shouldFetchFlagDefinitionsBlocking()
+            }
+
+        override fun onFlagDefinitionsReceived(data: Map<String, Any?>): CompletionStage<Void?> =
+            CompletableFuture.supplyAsync<Void?> {
+                delegate.onFlagDefinitionsReceivedBlocking(data)
+                null
+            }
+
+        override fun shutdown(): CompletionStage<Void?> =
+            CompletableFuture.supplyAsync<Void?> {
+                delegate.shutdownBlocking()
+                null
+            }
+    }
+
     private class TestFlagDefinitionCacheProvider(
         var cacheData: Map<String, Any?>? = null,
         var shouldFetch: Boolean = true,
@@ -2169,14 +2269,14 @@ internal class PostHogFeatureFlagsTest {
         var throwOnReceived: Boolean = false,
         var throwOnShutdown: Boolean = false,
         var delayOnGetMs: Long = 0,
-    ) : PostHogFlagDefinitionCacheProvider {
+    ) : PostHogBlockingFlagDefinitionCacheProvider() {
         var shouldFetchCalls = 0
         var getCalls = 0
         var onReceivedCalls = 0
         var shutdownCalls = 0
         var lastReceivedData: Map<String, Any?>? = null
 
-        override fun getFlagDefinitions(): Map<String, Any?>? {
+        override fun getFlagDefinitionsBlocking(): Map<String, Any?>? {
             getCalls += 1
             if (delayOnGetMs > 0) {
                 Thread.sleep(delayOnGetMs)
@@ -2187,7 +2287,7 @@ internal class PostHogFeatureFlagsTest {
             return cacheData
         }
 
-        override fun shouldFetchFlagDefinitions(): Boolean {
+        override fun shouldFetchFlagDefinitionsBlocking(): Boolean {
             shouldFetchCalls += 1
             if (throwOnShouldFetch) {
                 throw IllegalStateException("should fetch failed")
@@ -2195,7 +2295,7 @@ internal class PostHogFeatureFlagsTest {
             return shouldFetch
         }
 
-        override fun onFlagDefinitionsReceived(data: Map<String, Any?>) {
+        override fun onFlagDefinitionsReceivedBlocking(data: Map<String, Any?>) {
             onReceivedCalls += 1
             lastReceivedData = data
             if (throwOnReceived) {
@@ -2203,7 +2303,7 @@ internal class PostHogFeatureFlagsTest {
             }
         }
 
-        override fun shutdown() {
+        override fun shutdownBlocking() {
             shutdownCalls += 1
             if (throwOnShutdown) {
                 throw IllegalStateException("shutdown failed")

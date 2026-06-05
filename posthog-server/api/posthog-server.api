@@ -49,6 +49,18 @@ public final class com/posthog/server/PostHog$Companion {
 	public final fun with (Lcom/posthog/server/PostHogConfig;)Lcom/posthog/server/PostHogInterface;
 }
 
+public abstract class com/posthog/server/PostHogBlockingFlagDefinitionCacheProvider : com/posthog/server/PostHogFlagDefinitionCacheProvider {
+	public fun <init> ()V
+	public final fun getFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun getFlagDefinitionsBlocking ()Ljava/util/Map;
+	public final fun onFlagDefinitionsReceived (Ljava/util/Map;)Ljava/util/concurrent/CompletionStage;
+	public abstract fun onFlagDefinitionsReceivedBlocking (Ljava/util/Map;)V
+	public final fun shouldFetchFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun shouldFetchFlagDefinitionsBlocking ()Z
+	public final fun shutdown ()Ljava/util/concurrent/CompletionStage;
+	public fun shutdownBlocking ()V
+}
+
 public final class com/posthog/server/PostHogCaptureOptions {
 	public static final field Companion Lcom/posthog/server/PostHogCaptureOptions$Companion;
 	public synthetic fun <init> (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ZLcom/posthog/server/PostHogFeatureFlagEvaluations;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -320,10 +332,10 @@ public final class com/posthog/server/PostHogFeatureFlagResultOptions$Companion 
 }
 
 public abstract interface class com/posthog/server/PostHogFlagDefinitionCacheProvider {
-	public abstract fun getFlagDefinitions ()Ljava/util/Map;
-	public abstract fun onFlagDefinitionsReceived (Ljava/util/Map;)V
-	public abstract fun shouldFetchFlagDefinitions ()Z
-	public abstract fun shutdown ()V
+	public abstract fun getFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun onFlagDefinitionsReceived (Ljava/util/Map;)Ljava/util/concurrent/CompletionStage;
+	public abstract fun shouldFetchFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun shutdown ()Ljava/util/concurrent/CompletionStage;
 }
 
 public abstract interface class com/posthog/server/PostHogInterface {
