@@ -1,0 +1,22 @@
+{
+  "token": "phc_QFbR1y41s5sxnNTZoyKG2NJo2RlsCIWkUfdpawgb40D",
+  "supportedCompression": [
+    "gzip",
+    "gzip-js"
+  ],
+  "hasFeatureFlags": false,
+  "analytics": {
+    "endpoint": "/i/v0/e/"
+  },
+  "heatmaps": false,
+  "surveys": [
+    {
+      "id": "s1",
+      "name": "Test Survey",
+      "type": "popover",
+      "questions": []
+    }
+  ],
+  "defaultIdentifiedOnly": true,
+  "siteApps": []
+}

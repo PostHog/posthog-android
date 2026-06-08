@@ -6,6 +6,7 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
+import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
@@ -17,6 +18,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -32,10 +34,12 @@ internal class PostHogRemoteConfigTest {
     private fun getSut(
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
+        surveys: Boolean = false,
     ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
                 this.networkStatus = networkStatus
+                this.surveys = surveys
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
@@ -1338,6 +1342,47 @@ internal class PostHogRemoteConfigTest {
         assertFalse(sut.isCaptureNetworkTimingEnabled())
 
         sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `surveys survive reset and stay in memory and cache`() {
+        preferences.setValue(
+            SURVEYS,
+            listOf(
+                mapOf(
+                    "id" to "s1",
+                    "name" to "Test Survey",
+                    "type" to "popover",
+                    "questions" to emptyList<Any>(),
+                ),
+            ),
+        )
+
+        val sut = getSut(host = "https://localhost", surveys = true)
+        assertEquals("s1", sut.getSurveys()?.single()?.id)
+
+        sut.clear()
+        assertEquals("s1", sut.getSurveys()?.single()?.id)
+        assertNotNull(preferences.getValue(SURVEYS))
+    }
+
+    @Test
+    fun `surveys loaded from remote config survive reset`() {
+        val file = File("src/test/resources/json/basic-remote-config-with-surveys.json")
+        val http = mockHttp(response = MockResponse().setBody(file.readText()))
+        val sut = getSut(host = http.url("/").toString(), surveys = true)
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals("s1", sut.getSurveys()?.single()?.id)
+        assertNotNull(preferences.getValue(SURVEYS))
+
+        sut.clear()
+        assertEquals("s1", sut.getSurveys()?.single()?.id)
+        assertNotNull(preferences.getValue(SURVEYS))
+
         http.shutdown()
     }
 
