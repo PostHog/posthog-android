@@ -2,6 +2,7 @@ package com.posthog.android.surveys.compose.internal.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
@@ -21,6 +22,9 @@ internal fun BottomSection(
     Button(
         onClick = onClick,
         enabled = enabled,
+        // Rounded rect rather than the Material 3 default capsule, to stay consistent with the
+        // survey's input / rating / choice corners.
+        shape = RoundedCornerShape(8.dp),
         modifier =
             modifier
                 .fillMaxWidth()
