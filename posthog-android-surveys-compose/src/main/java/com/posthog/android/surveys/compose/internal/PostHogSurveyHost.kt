@@ -1,5 +1,6 @@
 package com.posthog.android.surveys.compose.internal
 
+import android.app.Activity
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -43,11 +44,26 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
 
     private var dialog: ComponentDialog? = null
     private var composeView: ComposeView? = null
+
+    // The activity hosting the current dialog. Kept so we can tear the survey down
+    // if that activity is destroyed (rotation, finish) before the dialog leaks.
+    private var hostActivity: Activity? = null
     private var onClosedCallback: OnPostHogSurveyClosed? = null
     private var currentSurvey: PostHogDisplaySurvey? = null
 
     // A pending delayed-show runnable (popup delay), so cleanup can cancel it.
     private var pendingShow: Runnable? = null
+
+    init {
+        // When the hosting activity is destroyed (e.g. configuration change /
+        // rotation, or the activity finishing), dismiss the survey so its dialog
+        // window doesn't leak. Lifecycle callbacks arrive on the main thread.
+        activityProvider.onActivityDestroyedListener = { destroyed ->
+            if (destroyed === hostActivity) {
+                dismissInternal(notifyClosed = true)
+            }
+        }
+    }
 
     fun show(
         survey: PostHogDisplaySurvey,
@@ -99,6 +115,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
 
         currentSurvey = survey
         onClosedCallback = onSurveyClosed
+        hostActivity = activity
 
         val composeView =
             ComposeView(activity).apply {
@@ -158,6 +175,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
 
         dialog = null
         composeView = null
+        hostActivity = null
         currentSurvey = null
         onClosedCallback = null
 

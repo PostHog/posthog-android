@@ -16,6 +16,12 @@ internal class ActivityProvider : Application.ActivityLifecycleCallbacks {
     @Volatile
     private var foreground: WeakReference<Activity>? = null
 
+    /**
+     * Invoked on the main thread when an activity is destroyed, so a survey
+     * hosted on it can be torn down before its dialog window leaks.
+     */
+    var onActivityDestroyedListener: ((Activity) -> Unit)? = null
+
     val foregroundActivity: Activity?
         get() = foreground?.get()
 
@@ -49,5 +55,6 @@ internal class ActivityProvider : Application.ActivityLifecycleCallbacks {
         if (foreground?.get() === activity) {
             foreground = null
         }
+        onActivityDestroyedListener?.invoke(activity)
     }
 }
