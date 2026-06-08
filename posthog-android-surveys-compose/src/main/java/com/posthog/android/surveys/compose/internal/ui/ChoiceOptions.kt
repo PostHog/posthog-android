@@ -19,9 +19,13 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -107,6 +111,14 @@ private fun ChoiceOption(
                     fontWeight = fontWeight,
                 )
                 if (isOpenChoice && isSelected) {
+                    // Focus the "other" field as soon as it's selected (and raise the
+                    // keyboard) so the user can type immediately. The field is only
+                    // composed while selected, so this effect fires exactly once per
+                    // selection.
+                    val focusRequester = remember { FocusRequester() }
+                    LaunchedEffect(Unit) {
+                        focusRequester.requestFocus()
+                    }
                     BasicTextField(
                         value = openChoiceInput,
                         onValueChange = onOpenChoiceInputChange,
@@ -115,7 +127,8 @@ private fun ChoiceOption(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .height(24.dp),
+                                .height(24.dp)
+                                .focusRequester(focusRequester),
                     )
                 }
             }
