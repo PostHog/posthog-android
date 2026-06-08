@@ -264,7 +264,6 @@ private fun LinkQuestionDispatch(
 ) {
     val context = LocalContext.current
     QuestionHeader(question)
-    LinkQuestion(question = question)
     BottomSection(
         label = question.buttonText ?: localAppearance().submitButtonText,
         enabled = true,

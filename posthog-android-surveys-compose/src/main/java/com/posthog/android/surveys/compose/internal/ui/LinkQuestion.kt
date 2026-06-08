@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -16,35 +15,20 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.posthog.android.surveys.compose.internal.theme.LocalSurveyAppearance
-import com.posthog.android.surveys.compose.internal.theme.localAppearance
 import com.posthog.android.surveys.compose.internal.theme.resolve
 import com.posthog.surveys.PostHogDisplayLinkQuestion
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 
 /**
- * Body content for [PostHogDisplayLinkQuestion]s.
+ * Link questions render only the question header and the action button — the
+ * destination URL itself is not shown. The submit action lives in
+ * `SurveySheet.kt`, which calls [openLink] with [PostHogDisplayLinkQuestion.link]
+ * when the user presses the button.
  *
- * We surface the destination URL as small description-coloured text so users
- * have context for the action.
- *
- * The submit action itself lives in `SurveySheet.kt`, which calls [openLink]
- * with [PostHogDisplayLinkQuestion.link] when the user presses the button.
- */
-@Composable
-internal fun LinkQuestion(question: PostHogDisplayLinkQuestion) {
-    val appearance = localAppearance()
-    val link = question.link
-    if (!link.isNullOrBlank()) {
-        Text(text = link, color = appearance.descriptionTextColor)
-    }
-}
-
-/**
- * Opens [url] in the device's default browser.
- *
- * No-ops for blank / null URLs and swallows [android.content.ActivityNotFoundException]
- * for devices without a browser installed — the survey flow continues either way.
+ * Opens [url] in the device's default browser. No-ops for blank / null URLs and
+ * swallows [android.content.ActivityNotFoundException] for devices without a
+ * browser installed — the survey flow continues either way.
  */
 internal fun openLink(
     context: Context,
@@ -85,7 +69,6 @@ private fun PreviewLinkQuestionDefault() {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             QuestionHeader(previewLinkQuestion)
-            LinkQuestion(question = previewLinkQuestion)
             BottomSection(label = "Open", enabled = true) { }
         }
     }
@@ -112,7 +95,6 @@ private fun PreviewLinkQuestionThemed() {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             QuestionHeader(previewLinkQuestion)
-            LinkQuestion(question = previewLinkQuestion)
             BottomSection(label = "Open docs", enabled = true) { }
         }
     }
