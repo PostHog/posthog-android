@@ -26,28 +26,6 @@
     <issue
         id="ComposableNaming"
         message="Composable functions that return Unit should start with an uppercase letter"
-        errorLine1="fun greeting("
-        errorLine2="    ~~~~~~~~">
-        <location
-            file="src/main/java/com/posthog/android/sample/MainActivity.kt"
-            line="42"
-            column="5"/>
-    </issue>
-
-    <issue
-        id="ComposableNaming"
-        message="Composable functions that return Unit should start with an uppercase letter"
-        errorLine1="fun greetingPreview() {"
-        errorLine2="    ~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/posthog/android/sample/MainActivity.kt"
-            line="59"
-            column="5"/>
-    </issue>
-
-    <issue
-        id="ComposableNaming"
-        message="Composable functions that return Unit should start with an uppercase letter"
         errorLine1="fun postHogAndroidSampleTheme("
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
