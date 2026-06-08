@@ -1,5 +1,11 @@
 ## Next
 
+## 6.17.8
+
+### Patch Changes
+
+- 1965fd1: Update core local-evaluation serialization so cached flag definitions round-trip using endpoint-compatible JSON for nested property values, property operators, and property types.
+
 ## 6.17.7
 
 ### Patch Changes
