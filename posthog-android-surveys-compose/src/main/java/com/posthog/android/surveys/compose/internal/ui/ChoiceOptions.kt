@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -119,10 +118,10 @@ private fun ChoiceOption(
                 )
                 if (isOpenChoice) {
                     // Always render the "other" field so the cell keeps a consistent height
-                    // whether or not it's selected (matching iOS). It's only editable while
-                    // selected, single-line, and grabs focus + raises the keyboard the moment
-                    // the option is selected so the user can type immediately. While unselected
-                    // the field shows nothing (the typed value is hidden, not cleared).
+                    // whether or not it's selected. It's only editable while selected,
+                    // single-line, and grabs focus + raises the keyboard the moment the option
+                    // is selected so the user can type immediately. While unselected the field
+                    // shows nothing (the typed value is hidden, not cleared).
                     val focusRequester = remember { FocusRequester() }
                     // Local TextFieldValue lets us place the cursor at the end of any existing
                     // text on (re)selection, rather than at the start.
@@ -161,7 +160,7 @@ private fun ChoiceOption(
                     imageVector = Icons.Filled.Check,
                     contentDescription = null,
                     tint = color,
-                    modifier = Modifier.size(width = 16.dp, height = 12.dp),
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }

@@ -140,11 +140,11 @@ internal fun SurveySheet(
             ),
     ) {
         // Base survey body size. Without a MaterialTheme the default Text size is 14sp, which
-        // reads small; 16sp matches the iOS "body" scale. Components inherit this unless they
+        // reads small; 15sp is the survey body scale. Components inherit this unless they
         // override (e.g. the question header).
         CompositionLocalProvider(
             LocalSurveyAppearance provides appearance,
-            LocalTextStyle provides LocalTextStyle.current.copy(fontSize = 16.sp),
+            LocalTextStyle provides LocalTextStyle.current.copy(fontSize = 15.sp),
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Column(

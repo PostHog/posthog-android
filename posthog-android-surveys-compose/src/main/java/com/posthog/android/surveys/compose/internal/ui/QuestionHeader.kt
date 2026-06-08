@@ -23,7 +23,7 @@ internal fun QuestionHeader(question: PostHogDisplaySurveyQuestion) {
         Text(
             text = question.question,
             color = appearance.questionTextColor,
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
         )
         val description = question.questionDescription
@@ -34,7 +34,7 @@ internal fun QuestionHeader(question: PostHogDisplaySurveyQuestion) {
             Text(
                 text = description,
                 color = appearance.descriptionTextColor,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
             )
         }
     }

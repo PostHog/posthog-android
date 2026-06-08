@@ -66,11 +66,25 @@ internal fun EmojiRating(
     val showBoundLabels = emojis.size > 2
 
     Column {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Thumbs (2-point) are centered with even spacing on both ends; 3/5-face scales
+        // span edge-to-edge.
+        val arrangement =
+            if (emojis.size == 2) Arrangement.SpaceEvenly else Arrangement.SpaceBetween
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = arrangement,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             values.forEachIndexed { index, value ->
                 val isSelected = selectedValue == value
+                // Non-selected emojis use a muted version of the input text color (a gray on a
+                // light background); selected ones use the active rating color.
                 val tint =
-                    if (isSelected) appearance.ratingButtonActiveColor else appearance.ratingButtonColor
+                    if (isSelected) {
+                        appearance.ratingButtonActiveColor
+                    } else {
+                        appearance.inputTextColor.copy(alpha = 0.5f)
+                    }
                 Box(
                     modifier =
                         Modifier
@@ -84,9 +98,6 @@ internal fun EmojiRating(
                     Canvas(modifier = Modifier.size(40.dp)) {
                         drawPath(emojis[index].buildPath(size.width, size.height), color = tint)
                     }
-                }
-                if (index != values.lastIndex) {
-                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
