@@ -79,11 +79,11 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     private var shownReported = false
 
     // The live registry backing the sheet's `rememberSaveable` state, plus the
-    // snapshot taken across a configuration change. `pendingRepresent` marks that
-    // the window was dropped for a config change and should be rebuilt on resume.
+    // snapshot taken across a configuration change. A non-null snapshot means a
+    // re-present is armed: the window was dropped for a config change and should be
+    // rebuilt on the next foreground activity.
     private var saveableRegistry: SaveableStateRegistry? = null
     private var savedSurveyState: Map<String, List<Any?>>? = null
-    private var pendingRepresent = false
 
     init {
         activityProvider.onActivityDestroyedListener = { destroyed ->
@@ -99,8 +99,9 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
             }
         }
         activityProvider.onActivityResumedListener = { resumed ->
-            if (pendingRepresent && currentSurvey != null) {
-                pendingRepresent = false
+            // A retained snapshot means the window was dropped for a config change;
+            // rebuild it on the recreated activity (present() consumes the snapshot).
+            if (savedSurveyState != null && currentSurvey != null) {
                 present(resumed)
             }
         }
@@ -230,10 +231,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
      * next foreground activity. No close event is fired.
      */
     private fun preserveForConfigChange() {
-        pendingShow?.let {
-            mainHandler.removeCallbacks(it)
-            pendingShow = null
-        }
+        cancelPendingShow()
 
         // Snapshot before disposing — providers unregister on disposal.
         savedSurveyState = saveableRegistry?.performSave()
@@ -245,14 +243,10 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         dialog = null
         composeView = null
         hostActivity = null
-        pendingRepresent = true
     }
 
     private fun dismissInternal(notifyClosed: Boolean) {
-        pendingShow?.let {
-            mainHandler.removeCallbacks(it)
-            pendingShow = null
-        }
+        cancelPendingShow()
 
         val activeDialog = dialog
         val activeView = composeView
@@ -269,7 +263,6 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         shownReported = false
         saveableRegistry = null
         savedSurveyState = null
-        pendingRepresent = false
 
         activeView?.disposeComposition()
         activeDialog?.let { d ->
@@ -280,6 +273,13 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
 
         if (notifyClosed && survey != null && onClosed != null) {
             onClosed(survey)
+        }
+    }
+
+    private fun cancelPendingShow() {
+        pendingShow?.let {
+            mainHandler.removeCallbacks(it)
+            pendingShow = null
         }
     }
 
