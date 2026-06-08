@@ -49,6 +49,18 @@ public final class com/posthog/server/PostHog$Companion {
 	public final fun with (Lcom/posthog/server/PostHogConfig;)Lcom/posthog/server/PostHogInterface;
 }
 
+public abstract class com/posthog/server/PostHogBlockingFlagDefinitionCacheProvider : com/posthog/server/PostHogFlagDefinitionCacheProvider {
+	public fun <init> ()V
+	public final fun getFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun getFlagDefinitionsBlocking ()Ljava/util/Map;
+	public final fun onFlagDefinitionsReceived (Ljava/util/Map;)Ljava/util/concurrent/CompletionStage;
+	public abstract fun onFlagDefinitionsReceivedBlocking (Ljava/util/Map;)V
+	public final fun shouldFetchFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun shouldFetchFlagDefinitionsBlocking ()Z
+	public final fun shutdown ()Ljava/util/concurrent/CompletionStage;
+	public fun shutdownBlocking ()V
+}
+
 public final class com/posthog/server/PostHogCaptureOptions {
 	public static final field Companion Lcom/posthog/server/PostHogCaptureOptions$Companion;
 	public synthetic fun <init> (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;ZLcom/posthog/server/PostHogFeatureFlagEvaluations;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -125,6 +137,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getFeatureFlagCacheMaxAgeMs ()I
 	public final fun getFeatureFlagCacheSize ()I
 	public final fun getFeatureFlagCalledCacheSize ()I
+	public final fun getFlagDefinitionCacheProvider ()Lcom/posthog/server/PostHogFlagDefinitionCacheProvider;
 	public final fun getFlushAt ()I
 	public final fun getFlushIntervalSeconds ()I
 	public final fun getHost ()Ljava/lang/String;
@@ -145,6 +158,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun setFeatureFlagCacheMaxAgeMs (I)V
 	public final fun setFeatureFlagCacheSize (I)V
 	public final fun setFeatureFlagCalledCacheSize (I)V
+	public final fun setFlagDefinitionCacheProvider (Lcom/posthog/server/PostHogFlagDefinitionCacheProvider;)V
 	public final fun setFlushAt (I)V
 	public final fun setFlushIntervalSeconds (I)V
 	public final fun setLocalEvaluation (Z)V
@@ -168,6 +182,7 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun featureFlagCacheMaxAgeMs (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun featureFlagCalledCacheSize (I)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun flagDefinitionCacheProvider (Lcom/posthog/server/PostHogFlagDefinitionCacheProvider;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushAt (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun flushIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun host (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
@@ -314,6 +329,13 @@ public final class com/posthog/server/PostHogFeatureFlagResultOptions$Builder {
 
 public final class com/posthog/server/PostHogFeatureFlagResultOptions$Companion {
 	public final fun builder ()Lcom/posthog/server/PostHogFeatureFlagResultOptions$Builder;
+}
+
+public abstract interface class com/posthog/server/PostHogFlagDefinitionCacheProvider {
+	public abstract fun getFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun onFlagDefinitionsReceived (Ljava/util/Map;)Ljava/util/concurrent/CompletionStage;
+	public abstract fun shouldFetchFlagDefinitions ()Ljava/util/concurrent/CompletionStage;
+	public abstract fun shutdown ()Ljava/util/concurrent/CompletionStage;
 }
 
 public abstract interface class com/posthog/server/PostHogInterface {

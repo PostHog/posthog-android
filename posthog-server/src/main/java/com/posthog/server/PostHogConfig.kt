@@ -159,6 +159,14 @@ public open class PostHogConfig constructor(
      */
     public var personalApiKey: String? = personalApiKey?.trim()?.ifBlank { null }
 
+    /**
+     * Shared cache provider for local-evaluation feature flag definitions.
+     *
+     * This can reduce duplicate definition fetches when multiple SDK instances run in
+     * the same service. Defaults to null.
+     */
+    public var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
+
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
 
@@ -217,6 +225,7 @@ public open class PostHogConfig constructor(
                         personalApiKey = personalApiKey,
                         pollIntervalSeconds = pollIntervalSeconds,
                         onFeatureFlags = onFeatureFlags,
+                        flagDefinitionCacheProvider = flagDefinitionCacheProvider,
                     )
                 },
                 queueProvider = { config, api, endpoint, _, executor ->
@@ -295,6 +304,7 @@ public open class PostHogConfig constructor(
         private var personalApiKey: String? = null
         private var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS
         private var evaluationContexts: List<String>? = null
+        private var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
 
         /**
          * Sets the PostHog ingestion host.
@@ -467,33 +477,46 @@ public open class PostHogConfig constructor(
         public fun evaluationContexts(evaluationContexts: List<String>?): Builder = apply { this.evaluationContexts = evaluationContexts }
 
         /**
+         * Sets the provider for caching feature flag definitions.
+         *
+         * @param flagDefinitionCacheProvider The cache provider, or null to use the default.
+         * @return This builder.
+         */
+        public fun flagDefinitionCacheProvider(flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider?): Builder =
+            apply { this.flagDefinitionCacheProvider = flagDefinitionCacheProvider }
+
+        /**
          * Builds a [PostHogConfig] from the accumulated values.
          *
          * @return The configured server SDK config.
          */
         @Suppress("DEPRECATION")
-        public fun build(): PostHogConfig =
-            PostHogConfig(
-                apiKey = apiKey,
-                host = host,
-                debug = debug,
-                sendFeatureFlagEvent = sendFeatureFlagEvent,
-                preloadFeatureFlags = preloadFeatureFlags,
-                remoteConfig = remoteConfig,
-                flushAt = flushAt,
-                maxQueueSize = maxQueueSize,
-                maxBatchSize = maxBatchSize,
-                flushIntervalSeconds = flushIntervalSeconds,
-                encryption = encryption,
-                onFeatureFlags = onFeatureFlags,
-                proxy = proxy,
-                featureFlagCacheSize = featureFlagCacheSize,
-                featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs,
-                featureFlagCalledCacheSize = featureFlagCalledCacheSize,
-                localEvaluation = localEvaluation ?: false,
-                personalApiKey = personalApiKey,
-                pollIntervalSeconds = pollIntervalSeconds,
-                evaluationContexts = evaluationContexts,
-            )
+        public fun build(): PostHogConfig {
+            val config =
+                PostHogConfig(
+                    apiKey = apiKey,
+                    host = host,
+                    debug = debug,
+                    sendFeatureFlagEvent = sendFeatureFlagEvent,
+                    preloadFeatureFlags = preloadFeatureFlags,
+                    remoteConfig = remoteConfig,
+                    flushAt = flushAt,
+                    maxQueueSize = maxQueueSize,
+                    maxBatchSize = maxBatchSize,
+                    flushIntervalSeconds = flushIntervalSeconds,
+                    encryption = encryption,
+                    onFeatureFlags = onFeatureFlags,
+                    proxy = proxy,
+                    featureFlagCacheSize = featureFlagCacheSize,
+                    featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs,
+                    featureFlagCalledCacheSize = featureFlagCalledCacheSize,
+                    localEvaluation = localEvaluation ?: false,
+                    personalApiKey = personalApiKey,
+                    pollIntervalSeconds = pollIntervalSeconds,
+                    evaluationContexts = evaluationContexts,
+                )
+            config.flagDefinitionCacheProvider = flagDefinitionCacheProvider
+            return config
+        }
     }
 }

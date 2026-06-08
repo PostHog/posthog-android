@@ -78,7 +78,7 @@ public class PostHogSerializer(private val config: PostHogConfig) {
             registerTypeAdapter(SurveyQuestionBranching::class.java, GsonSurveyQuestionBranchingAdapter(config))
             // local evaluation
             registerTypeAdapter(PropertyGroup::class.java, PropertyGroupDeserializer())
-            registerTypeAdapter(PropertyValue::class.java, PropertyValueDeserializer())
+            registerTypeAdapter(PropertyValue::class.java, GsonPropertyValueAdapter())
             registerTypeAdapter(PropertyOperator::class.java, GsonPropertyOperatorAdapter())
             registerTypeAdapter(PropertyType::class.java, GsonPropertyTypeAdapter())
         }.create()
