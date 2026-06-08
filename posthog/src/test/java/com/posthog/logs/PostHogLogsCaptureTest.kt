@@ -88,6 +88,76 @@ internal class PostHogLogsCaptureTest {
     }
 
     @Test
+    fun `captureLog emits traceId spanId and flags on the wire`() {
+        val http = mockHttp()
+        val sut = getSut(http)
+
+        sut.captureLog(
+            "traced log",
+            severity = PostHogLogSeverity.ERROR,
+            attributes = mapOf("code" to "PAY_3001"),
+            traceId = "4bf92f3577b34da6a3ce929d0e0e4736",
+            spanId = "00f067aa0ba902b7",
+            traceFlags = 1,
+        )
+
+        logsExecutor.shutdown()
+        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+
+        val unzipped = http.takeRequest().body.unGzip()
+        // trace_flags is renamed to `flags` on the OTLP wire.
+        assertTrue(unzipped.contains("\"traceId\":\"4bf92f3577b34da6a3ce929d0e0e4736\""), unzipped)
+        assertTrue(unzipped.contains("\"spanId\":\"00f067aa0ba902b7\""), unzipped)
+        assertTrue(unzipped.contains("\"flags\":1"), unzipped)
+        // error → severityNumber 17
+        assertTrue(unzipped.contains("\"severityNumber\":17"), unzipped)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `captureLog with explicit traceFlags zero still emits flags 0`() {
+        val http = mockHttp()
+        val sut = getSut(http)
+
+        // 0x00 is a valid W3C trace-flags value (sampled = false). It must be
+        // emitted, not treated as "absent" — guards the null-vs-zero trap on
+        // the three `traceFlags?.let` sites.
+        sut.captureLog("zero flags", traceFlags = 0)
+
+        logsExecutor.shutdown()
+        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+
+        val unzipped = http.takeRequest().body.unGzip()
+        assertTrue(unzipped.contains("\"flags\":0"), unzipped)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `captureLog without trace fields omits traceId spanId and flags`() {
+        val http = mockHttp()
+        val sut = getSut(http)
+
+        sut.captureLog("plain log")
+
+        logsExecutor.shutdown()
+        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+
+        val unzipped = http.takeRequest().body.unGzip()
+        assertEquals(false, unzipped.contains("\"traceId\""), unzipped)
+        assertEquals(false, unzipped.contains("\"spanId\""), unzipped)
+        assertEquals(false, unzipped.contains("\"flags\""), unzipped)
+        // missing level defaults to info → severityNumber 9
+        assertTrue(unzipped.contains("\"severityNumber\":9"), unzipped)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `logger info with blank message is a no-op`() {
         val http = mockHttp()
         val sut = getSut(http)

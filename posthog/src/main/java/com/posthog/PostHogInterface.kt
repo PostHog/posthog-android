@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.logs.PostHogLogSeverity
 import com.posthog.logs.PostHogLogger
 import java.util.Date
 import java.util.UUID
@@ -24,6 +25,46 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Not to be confused with the internal `config.logger` debug sink.
      */
     public val logger: PostHogLogger
+
+    /**
+     * Captures a single log record into PostHog's logs product, with optional
+     * W3C distributed-tracing correlation.
+     *
+     * Prefer the [logger] facade ([logger].info, .error, …) for everyday
+     * logging. Reach for this entry point when you need to correlate a log
+     * with a distributed trace by attaching [traceId] / [spanId] / [traceFlags].
+     *
+     * ```kotlin
+     * posthog.captureLog(
+     *     "payment failed",
+     *     severity = PostHogLogSeverity.ERROR,
+     *     attributes = mapOf("code" to "PAY_3001"),
+     *     traceId = "4bf92f3577b34da6a3ce929d0e0e4736",
+     *     spanId = "00f067aa0ba902b7",
+     *     traceFlags = 0x01,
+     * )
+     * ```
+     *
+     * @param message the log message body; blank messages are dropped
+     * @param severity the log severity, defaults to [PostHogLogSeverity.INFO]
+     * @param attributes optional structured attributes; values must be
+     *   JSON-serializable (`String`, `Number`, `Boolean`, `Date`, lists or
+     *   maps of the same)
+     * @param traceId optional 32-character lowercase hex W3C trace id. The
+     *   ingestion service zeroes ids that are not exactly 16 bytes.
+     * @param spanId optional 16-character lowercase hex W3C span id. The
+     *   ingestion service zeroes ids that are not exactly 8 bytes.
+     * @param traceFlags optional W3C trace flags bitfield (bit 0 is the
+     *   `sampled` flag); emitted on the wire as `flags`.
+     */
+    public fun captureLog(
+        message: String,
+        severity: PostHogLogSeverity = PostHogLogSeverity.INFO,
+        attributes: Map<String, Any>? = null,
+        traceId: String? = null,
+        spanId: String? = null,
+        traceFlags: Int? = null,
+    )
 
     /**
      * Captures events
