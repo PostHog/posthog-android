@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.logs.PostHogLogSeverity
 import com.posthog.logs.PostHogLogger
 import java.util.Date
 import java.util.UUID
@@ -38,6 +39,16 @@ public class PostHogFake : PostHogInterface {
         this.event = event
         this.properties = properties
         captures++
+    }
+
+    override fun captureLog(
+        message: String,
+        severity: PostHogLogSeverity,
+        attributes: Map<String, Any>?,
+        traceId: String?,
+        spanId: String?,
+        traceFlags: Int?,
+    ) {
     }
 
     override fun captureException(
