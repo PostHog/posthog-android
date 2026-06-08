@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.posthog.android.surveys.compose.internal.theme.localAppearance
 import com.posthog.surveys.PostHogDisplaySurveyQuestion
 import com.posthog.surveys.PostHogDisplaySurveyTextContentType
@@ -22,7 +23,8 @@ internal fun QuestionHeader(question: PostHogDisplaySurveyQuestion) {
         Text(
             text = question.question,
             color = appearance.questionTextColor,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
         )
         val description = question.questionDescription
         // HTML descriptions are deferred to a follow-up; only plain text renders.
@@ -32,6 +34,7 @@ internal fun QuestionHeader(question: PostHogDisplaySurveyQuestion) {
             Text(
                 text = description,
                 color = appearance.descriptionTextColor,
+                fontSize = 14.sp,
             )
         }
     }

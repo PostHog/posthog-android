@@ -1,6 +1,5 @@
 package com.posthog.android.surveys.compose.internal.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +15,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.SheetValue
@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.posthog.android.surveys.compose.internal.theme.LocalSurveyAppearance
 import com.posthog.android.surveys.compose.internal.theme.localAppearance
 import com.posthog.android.surveys.compose.internal.theme.resolve
@@ -129,12 +130,22 @@ internal fun SurveySheet(
         containerColor = appearance.backgroundColor,
         contentColor = appearance.textColor,
         contentWindowInsets = { WindowInsets.navigationBars },
+        // No drag handle: swipe-to-dismiss is disabled (X-button only), so a handle would
+        // be a misleading "drag to dismiss" affordance. Removing it also pulls the close
+        // button up to the sheet's top edge.
+        dragHandle = null,
         properties =
             ModalBottomSheetProperties(
                 shouldDismissOnBackPress = false,
             ),
     ) {
-        CompositionLocalProvider(LocalSurveyAppearance provides appearance) {
+        // Base survey body size. Without a MaterialTheme the default Text size is 14sp, which
+        // reads small; 16sp matches the iOS "body" scale. Components inherit this unless they
+        // override (e.g. the question header).
+        CompositionLocalProvider(
+            LocalSurveyAppearance provides appearance,
+            LocalTextStyle provides LocalTextStyle.current.copy(fontSize = 16.sp),
+        ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier =
@@ -165,8 +176,7 @@ internal fun SurveySheet(
                     modifier =
                         Modifier
                             .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .background(appearance.backgroundColor),
+                            .padding(top = 4.dp, end = 4.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Close,
