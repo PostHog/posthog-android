@@ -25,10 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,6 +79,12 @@ internal fun SurveySheet(
     val appearance = remember(survey) { survey.appearance.resolve() }
     val coroutineScope = rememberCoroutineScope()
 
+    // ModalBottomSheet hosts its content in a separate window with its own
+    // SaveableStateRegistry, which would shadow the host-owned one. Capture the
+    // host registry here (in the parent composition) and re-provide it inside the
+    // sheet so question state is snapshotted across configuration changes too.
+    val hostSaveableRegistry = LocalSaveableStateRegistry.current
+
     // ModalBottomSheet is auto-presented; we intercept Hidden swipe-down so
     // dismissal only happens through the explicit X button.
     val sheetState =
@@ -86,8 +93,8 @@ internal fun SurveySheet(
             confirmValueChange = { it != SheetValue.Hidden },
         )
 
-    var currentQuestionIndex by remember { mutableIntStateOf(0) }
-    var showingConfirmation by remember { mutableStateOf(false) }
+    var currentQuestionIndex by rememberSaveable { mutableStateOf(0) }
+    var showingConfirmation by rememberSaveable { mutableStateOf(false) }
     val question = survey.questions.getOrNull(currentQuestionIndex)
 
     LaunchedEffect(survey.id) {
@@ -145,6 +152,7 @@ internal fun SurveySheet(
         CompositionLocalProvider(
             LocalSurveyAppearance provides appearance,
             LocalTextStyle provides LocalTextStyle.current.copy(fontSize = 15.sp),
+            LocalSaveableStateRegistry provides hostSaveableRegistry,
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -213,7 +221,7 @@ private fun RatingQuestionDispatch(
     question: PostHogDisplayRatingQuestion,
     onSubmit: (PostHogSurveyResponse) -> Unit,
 ) {
-    var rating by remember(question.id) { mutableStateOf<Int?>(null) }
+    var rating by rememberSaveable(question.id) { mutableStateOf<Int?>(null) }
     val canSubmit = question.isOptional || rating != null
 
     QuestionHeader(question)
@@ -242,7 +250,7 @@ private fun OpenTextQuestionDispatch(
     question: PostHogDisplayOpenQuestion,
     onSubmit: (PostHogSurveyResponse) -> Unit,
 ) {
-    var text by remember(question.id) { mutableStateOf("") }
+    var text by rememberSaveable(question.id) { mutableStateOf("") }
     val canSubmit = question.isOptional || text.isNotBlank()
 
     QuestionHeader(question)
@@ -279,8 +287,8 @@ private fun SingleChoiceQuestionDispatch(
     question: PostHogDisplayChoiceQuestion,
     onSubmit: (PostHogSurveyResponse) -> Unit,
 ) {
-    var selected by remember(question.id) { mutableStateOf<String?>(null) }
-    var openInput by remember(question.id) { mutableStateOf("") }
+    var selected by rememberSaveable(question.id) { mutableStateOf<String?>(null) }
+    var openInput by rememberSaveable(question.id) { mutableStateOf("") }
     val openChoice = question.choices.lastOrNull()?.takeIf { question.hasOpenChoice }
     val hasOpenChoiceSelected = openChoice != null && selected == openChoice
     val canSubmit =
@@ -310,8 +318,8 @@ private fun MultipleChoiceQuestionDispatch(
     question: PostHogDisplayChoiceQuestion,
     onSubmit: (PostHogSurveyResponse) -> Unit,
 ) {
-    var selected by remember(question.id) { mutableStateOf<Set<String>>(emptySet()) }
-    var openInput by remember(question.id) { mutableStateOf("") }
+    var selected by rememberSaveable(question.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var openInput by rememberSaveable(question.id) { mutableStateOf("") }
     val openChoice = question.choices.lastOrNull()?.takeIf { question.hasOpenChoice }
     val hasOpenChoiceSelected = openChoice != null && openChoice in selected
     val canSubmit =

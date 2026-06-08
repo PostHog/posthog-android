@@ -15,12 +15,17 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -51,6 +56,22 @@ internal fun OpenText(
     // OpenText itself doesn't need any of its fields today (placeholder + appearance
     // come from the resolved appearance, validation lives in the dispatcher).
     val appearance = localAppearance()
+
+    // Restore focus across a configuration change: `rememberSaveable` brings back
+    // the text but not the focus, so we persist whether the field was focused and
+    // re-request it on re-entry. Initial display stays unfocused.
+    //
+    // Capture the restored flag once, before the field's `onFocusChanged` fires its
+    // initial `Inactive` callback and resets it — otherwise the re-request never runs.
+    val focusRequester = remember { FocusRequester() }
+    var wasFocused by rememberSaveable { mutableStateOf(false) }
+    val restoreFocus = remember { wasFocused }
+    LaunchedEffect(Unit) {
+        if (restoreFocus) {
+            focusRequester.requestFocus()
+        }
+    }
+
     Box(
         modifier =
             Modifier
@@ -70,7 +91,11 @@ internal fun OpenText(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { wasFocused = it.isFocused },
             textStyle = LocalTextStyle.current.copy(color = appearance.inputTextColor),
             cursorBrush = SolidColor(appearance.inputTextColor),
         )

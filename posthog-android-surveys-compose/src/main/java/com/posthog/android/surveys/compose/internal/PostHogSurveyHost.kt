@@ -7,6 +7,9 @@ import android.os.Looper
 import android.view.Window
 import android.view.WindowManager
 import androidx.activity.ComponentDialog
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
+import androidx.compose.runtime.saveable.SaveableStateRegistry
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.drawable.toDrawable
@@ -36,6 +39,18 @@ import com.posthog.surveys.PostHogDisplaySurvey
  * Only the explicit close button dismisses (touch-outside and back are
  * disabled).
  *
+ * ## Surviving configuration changes
+ *
+ * A dialog window is bound to its host activity's token, so it must come down
+ * when that activity is destroyed. To avoid losing the survey (and emitting a
+ * spurious `survey dismissed`) on a rotation / dark-mode / font-size change, we
+ * distinguish a configuration change from a genuine finish:
+ * - **Configuration change** ([Activity.isChangingConfigurations]): snapshot the
+ *   sheet's `rememberSaveable` state into a host-owned [SaveableStateRegistry],
+ *   drop the window, and re-present on the recreated activity with that state
+ *   restored verbatim. The survey stays active; no close event is fired.
+ * - **Genuine finish**: dismiss and notify the SDK as usual.
+ *
  * All UI mutation happens on the main thread; the public API is safe to call
  * from the SDK's survey thread.
  */
@@ -45,22 +60,48 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     private var dialog: ComponentDialog? = null
     private var composeView: ComposeView? = null
 
-    // The activity hosting the current dialog. Kept so we can tear the survey down
-    // if that activity is destroyed (rotation, finish) before the dialog leaks.
+    // The activity hosting the current dialog. Kept so we can react when that
+    // specific activity is destroyed (vs. some other activity in the app).
     private var hostActivity: Activity? = null
-    private var onClosedCallback: OnPostHogSurveyClosed? = null
+
+    // Callbacks + survey for the active survey, retained so we can re-present it
+    // on the recreated activity after a configuration change.
     private var currentSurvey: PostHogDisplaySurvey? = null
+    private var onShownCallback: OnPostHogSurveyShown? = null
+    private var onResponseCallback: OnPostHogSurveyResponse? = null
+    private var onClosedCallback: OnPostHogSurveyClosed? = null
 
     // A pending delayed-show runnable (popup delay), so cleanup can cancel it.
     private var pendingShow: Runnable? = null
 
+    // Whether `survey shown` has already been reported for the current survey,
+    // so a re-present after a configuration change doesn't double-fire it.
+    private var shownReported = false
+
+    // The live registry backing the sheet's `rememberSaveable` state, plus the
+    // snapshot taken across a configuration change. `pendingRepresent` marks that
+    // the window was dropped for a config change and should be rebuilt on resume.
+    private var saveableRegistry: SaveableStateRegistry? = null
+    private var savedSurveyState: Map<String, List<Any?>>? = null
+    private var pendingRepresent = false
+
     init {
-        // When the hosting activity is destroyed (e.g. configuration change /
-        // rotation, or the activity finishing), dismiss the survey so its dialog
-        // window doesn't leak. Lifecycle callbacks arrive on the main thread.
         activityProvider.onActivityDestroyedListener = { destroyed ->
             if (destroyed === hostActivity) {
-                dismissInternal(notifyClosed = true)
+                if (destroyed.isChangingConfigurations) {
+                    // Rotation / dark-mode / font-size / locale / fold: keep the
+                    // survey alive and rebuild it on the recreated activity.
+                    preserveForConfigChange()
+                } else {
+                    // Genuine finish: tear down and notify the SDK.
+                    dismissInternal(notifyClosed = true)
+                }
+            }
+        }
+        activityProvider.onActivityResumedListener = { resumed ->
+            if (pendingRepresent && currentSurvey != null) {
+                pendingRepresent = false
+                present(resumed)
             }
         }
     }
@@ -78,10 +119,15 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
             // Replace any in-flight survey first (notify the SDK it was closed).
             dismissInternal(notifyClosed = true)
 
+            currentSurvey = survey
+            onShownCallback = onSurveyShown
+            onResponseCallback = onSurveyResponse
+            onClosedCallback = onSurveyClosed
+
             val present =
                 Runnable {
                     pendingShow = null
-                    present(survey, onSurveyShown, onSurveyResponse, onSurveyClosed)
+                    present(activityProvider.foregroundActivity)
                 }
 
             if (delayMillis > 0L) {
@@ -97,38 +143,43 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         runOnMain { dismissInternal(notifyClosed = false) }
     }
 
-    private fun present(
-        survey: PostHogDisplaySurvey,
-        onSurveyShown: OnPostHogSurveyShown,
-        onSurveyResponse: OnPostHogSurveyResponse,
-        onSurveyClosed: OnPostHogSurveyClosed,
-    ) {
-        // Re-resolve the foreground activity at present time — it may have
-        // changed during the popup delay.
-        val activity = activityProvider.foregroundActivity
+    private fun present(activity: Activity?) {
+        val survey = currentSurvey ?: return
+
         if (activity == null || activity.isFinishing) {
             // Nothing to host the sheet on — report a dismiss so the SDK can
             // fire `survey dismissed` and move on.
-            onSurveyClosed(survey)
+            dismissInternal(notifyClosed = true)
             return
         }
 
-        currentSurvey = survey
-        onClosedCallback = onSurveyClosed
         hostActivity = activity
+
+        // Host-owned registry so the sheet's `rememberSaveable` state survives the
+        // ComposeView being recreated across a configuration change. Seeded with
+        // any snapshot taken before the previous window was dropped.
+        val registry =
+            SaveableStateRegistry(
+                restoredValues = savedSurveyState,
+                canBeSaved = { true },
+            )
+        saveableRegistry = registry
+        savedSurveyState = null
 
         val composeView =
             ComposeView(activity).apply {
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                 setContent {
-                    SurveySheet(
-                        survey = survey,
-                        onSurveyShown = { onSurveyShown(survey) },
-                        onSubmit = { questionIndex, response ->
-                            onSurveyResponse(survey, questionIndex, response)
-                        },
-                        onClose = { dismissInternal(notifyClosed = true) },
-                    )
+                    CompositionLocalProvider(LocalSaveableStateRegistry provides registry) {
+                        SurveySheet(
+                            survey = survey,
+                            onSurveyShown = { reportShownOnce() },
+                            onSubmit = { questionIndex, response ->
+                                onResponseCallback?.invoke(survey, questionIndex, response)
+                            },
+                            onClose = { dismissInternal(notifyClosed = true) },
+                        )
+                    }
                 }
             }
 
@@ -147,6 +198,17 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     }
 
     /**
+     * Forwards `survey shown` to the SDK at most once per survey, so re-presenting
+     * after a configuration change doesn't emit a duplicate event.
+     */
+    private fun reportShownOnce() {
+        if (shownReported) return
+        val survey = currentSurvey ?: return
+        shownReported = true
+        onShownCallback?.invoke(survey)
+    }
+
+    /**
      * Makes the dialog window a transparent, full-screen, undimmed overlay so
      * the `ModalBottomSheet`'s own scrim shows through to the host app and the
      * sheet anchors to the bottom of the screen.
@@ -160,6 +222,30 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         )
         // No system dim — the sheet draws its own scrim.
         window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+    }
+
+    /**
+     * Drops the dialog window for a configuration change while keeping the survey
+     * active: snapshots the sheet's saveable state and arms a re-present on the
+     * next foreground activity. No close event is fired.
+     */
+    private fun preserveForConfigChange() {
+        pendingShow?.let {
+            mainHandler.removeCallbacks(it)
+            pendingShow = null
+        }
+
+        // Snapshot before disposing — providers unregister on disposal.
+        savedSurveyState = saveableRegistry?.performSave()
+        saveableRegistry = null
+
+        composeView?.disposeComposition()
+        dialog?.let { if (it.isShowing) it.dismiss() }
+
+        dialog = null
+        composeView = null
+        hostActivity = null
+        pendingRepresent = true
     }
 
     private fun dismissInternal(notifyClosed: Boolean) {
@@ -177,7 +263,13 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         composeView = null
         hostActivity = null
         currentSurvey = null
+        onShownCallback = null
+        onResponseCallback = null
         onClosedCallback = null
+        shownReported = false
+        saveableRegistry = null
+        savedSurveyState = null
+        pendingRepresent = false
 
         activeView?.disposeComposition()
         activeDialog?.let { d ->
