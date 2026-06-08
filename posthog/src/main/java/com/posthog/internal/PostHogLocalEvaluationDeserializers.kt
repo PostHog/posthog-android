@@ -64,15 +64,7 @@ public class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
         // If first element has both "type" AND "values" fields (but no "key"), it's nested PropertyGroups
         return if (firstObject.has("key")) {
             // FlagProperties
-            val properties =
-                array.mapNotNull { element ->
-                    if (element.isJsonObject) {
-                        deserializeFlagProperty(element.asJsonObject)
-                    } else {
-                        null
-                    }
-                }
-            PropertyValue.FlagProperties(properties)
+            PropertyValue.FlagProperties(deserializeFlagProperties(array))
         } else if (firstObject.has("type") && firstObject.has("values")) {
             // Nested PropertyGroups
             val groups =
@@ -82,17 +74,18 @@ public class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
             PropertyValue.PropertyGroups(groups)
         } else {
             // Otherwise treat as FlagProperties
-            val properties =
-                array.mapNotNull { element ->
-                    if (element.isJsonObject) {
-                        deserializeFlagProperty(element.asJsonObject)
-                    } else {
-                        null
-                    }
-                }
-            PropertyValue.FlagProperties(properties)
+            PropertyValue.FlagProperties(deserializeFlagProperties(array))
         }
     }
+
+    private fun deserializeFlagProperties(array: com.google.gson.JsonArray): List<FlagProperty> =
+        array.mapNotNull { element ->
+            if (element.isJsonObject) {
+                deserializeFlagProperty(element.asJsonObject)
+            } else {
+                null
+            }
+        }
 
     private fun deserializeFlagProperty(jsonObject: com.google.gson.JsonObject): FlagProperty? {
         val key = jsonObject.get("key")?.asString ?: return null

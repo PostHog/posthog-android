@@ -152,6 +152,77 @@ internal class PostHogSharedPreferencesTests {
     }
 
     @Test
+    fun `preferences clear keeps a preserved stringified value deserializable`() {
+        val sut = getSut()
+
+        // A Map value is serialized to JSON and tracked in STRINGIFIED_KEYS; when it survives a
+        // partial clear it must still deserialize back to a Map ("sessionReplay" stands in for
+        // SESSION_REPLAY, which is internal to the posthog module).
+        val recordingConfig = mapOf("endpoint" to "/b/")
+        sut.setValue("sessionReplay", recordingConfig)
+        sut.setValue("scratch", mapOf("foo" to "bar"))
+
+        sut.clear(except = listOf("sessionReplay"))
+
+        assertEquals(recordingConfig, sut.getValue("sessionReplay"))
+        assertNull(sut.getValue("scratch"))
+    }
+
+    @Test
+    fun `clear without surviving stringified keys removes the STRINGIFIED_KEYS entry`() {
+        val sut = getSut()
+
+        sut.setValue("scratch", mapOf("foo" to "bar")) // serialized, tracked in STRINGIFIED_KEYS
+        sut.setValue("plain", "keep-me") // a plain string, not stringified
+
+        sut.clear(except = listOf("plain"))
+
+        assertEquals("keep-me", sut.getValue("plain"))
+        assertNull(sut.getValue("scratch"))
+        // No stringified value survived, so the metadata entry must be removed entirely.
+        assertNull(sut.getValue(STRINGIFIED_KEYS))
+    }
+
+    @Test
+    fun `clear prunes STRINGIFIED_KEYS to only the surviving stringified keys`() {
+        val sut = getSut()
+
+        sut.setValue("keep", mapOf("a" to "1")) // serialized, survives
+        sut.setValue("drop", mapOf("b" to "2")) // serialized, removed
+
+        sut.clear(except = listOf("keep"))
+
+        // Survivor still deserializes back to a Map; the dropped key is gone.
+        assertEquals(mapOf("a" to "1"), sut.getValue("keep"))
+        assertNull(sut.getValue("drop"))
+        // STRINGIFIED_KEYS must list only the survivor, not a stale entry for the removed "drop".
+        @Suppress("UNCHECKED_CAST")
+        val stringifiedKeys = sut.getValue(STRINGIFIED_KEYS) as? Set<String>
+        assertEquals(setOf("keep"), stringifiedKeys)
+    }
+
+    @Test
+    fun `clear preserves a plain key and a stringified key without cross-contaminating STRINGIFIED_KEYS`() {
+        val sut = getSut()
+
+        // Mirrors the production reset() except-list: a plain string (like DEVICE_ID) alongside a
+        // serialized map (like SESSION_REPLAY). The plain key must NOT leak into STRINGIFIED_KEYS,
+        // or it would later be treated as JSON and corrupt on read.
+        sut.setValue("device", "abc-123") // plain string, not stringified
+        sut.setValue("sessionReplay", mapOf("endpoint" to "/b/")) // serialized, survives
+        sut.setValue("drop", mapOf("x" to "1")) // serialized, removed
+
+        sut.clear(except = listOf("device", "sessionReplay"))
+
+        assertEquals("abc-123", sut.getValue("device"))
+        assertEquals(mapOf("endpoint" to "/b/"), sut.getValue("sessionReplay"))
+        assertNull(sut.getValue("drop"))
+        @Suppress("UNCHECKED_CAST")
+        val stringifiedKeys = sut.getValue(STRINGIFIED_KEYS) as? Set<String>
+        assertEquals(setOf("sessionReplay"), stringifiedKeys)
+    }
+
+    @Test
     fun `preferences removes item`() {
         val sut = getSut()
 

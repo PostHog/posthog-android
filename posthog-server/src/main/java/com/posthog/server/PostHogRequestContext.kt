@@ -26,6 +26,8 @@ public class PostHogRequestContext private constructor() {
 
         /**
          * Returns the context active on the current thread, or null when no scope is active.
+         *
+         * @return The current request context, or null.
          */
         @JvmStatic
         public fun current(): PostHogRequestContextData? = currentContext.get()
@@ -34,12 +36,19 @@ public class PostHogRequestContext private constructor() {
          * Starts a request context scope and returns an [AutoCloseable] that restores the previous context.
          *
          * Nested scopes inherit the current context by default. Pass [fresh] to start from an empty context.
+         *
+         * @param data Context data to apply within the scope.
+         * @return A scope that restores the previous context when closed.
          */
         @JvmStatic
         public fun beginScope(data: PostHogRequestContextData): Scope = beginScope(data, fresh = false)
 
         /**
          * Starts a request context scope and returns an [AutoCloseable] that restores the previous context.
+         *
+         * @param data Context data to apply within the scope.
+         * @param fresh Whether to ignore any existing context instead of inheriting it.
+         * @return A scope that restores the previous context when closed.
          */
         @JvmStatic
         public fun beginScope(
@@ -54,6 +63,10 @@ public class PostHogRequestContext private constructor() {
 
         /**
          * Runs [block] inside a request context scope and restores the previous context afterwards.
+         *
+         * @param data Context data to apply while running [block].
+         * @param block Work to run inside the scope.
+         * @return The value returned by [block].
          */
         public fun <T> withContext(
             data: PostHogRequestContextData,
@@ -62,6 +75,11 @@ public class PostHogRequestContext private constructor() {
 
         /**
          * Runs [block] inside a request context scope and restores the previous context afterwards.
+         *
+         * @param data Context data to apply while running [block].
+         * @param fresh Whether to ignore any existing context instead of inheriting it.
+         * @param block Work to run inside the scope.
+         * @return The value returned by [block].
          */
         public fun <T> withContext(
             data: PostHogRequestContextData,
@@ -79,6 +97,11 @@ public class PostHogRequestContext private constructor() {
          * Header names are matched case-insensitively. Values are trimmed, control characters are
          * removed, empty values are ignored, and long values are capped. When [captureTracingHeaders]
          * is false, tracing headers are ignored but [properties] are still preserved.
+         *
+         * @param headers Headers to inspect. Values may be strings, arrays, or iterables.
+         * @param captureTracingHeaders Whether to read PostHog tracing headers from [headers].
+         * @param properties Request properties to attach to captures inside the scope.
+         * @return Context data resolved from the supplied headers and properties.
          */
         @JvmStatic
         @JvmOverloads
@@ -241,6 +264,10 @@ public class PostHogRequestContext private constructor() {
 
 /**
  * Values applied to captures made inside a [PostHogRequestContext] scope.
+ *
+ * @property distinctId Distinct ID to use for captures and feature flag evaluation.
+ * @property sessionId Session ID to attach as `$session_id` when available.
+ * @property properties Common properties to merge into captures inside the scope.
  */
 public class PostHogRequestContextData public constructor(
     public val distinctId: String? = null,

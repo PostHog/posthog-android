@@ -11,12 +11,15 @@ import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
+import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
 import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
+import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
+import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
@@ -1249,8 +1252,19 @@ public class PostHog private constructor(
         }
     }
 
+    // Invokes the feature flags callback, swallowing exceptions like runOnFeatureFlagsCallbacks.
+    private fun notifyFeatureFlagsCallback(onFeatureFlags: PostHogOnFeatureFlags?) {
+        try {
+            onFeatureFlags?.loaded()
+        } catch (e: Throwable) {
+            config?.logger?.log("Executing the feature flags callback failed: $e")
+        }
+    }
+
     public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
         if (!isEnabled()) {
+            // Still invoke the callback so awaiting callers aren't left hanging.
+            notifyFeatureFlagsCallback(onFeatureFlags)
             return
         }
         loadFeatureFlagsRequest(
@@ -1275,6 +1289,8 @@ public class PostHog private constructor(
 
         if (distinctId.isBlank()) {
             config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
+            // Still invoke the callback so awaiting callers aren't left hanging.
+            notifyFeatureFlagsCallback(onFeatureFlags)
             return
         }
 
@@ -1490,7 +1506,9 @@ public class PostHog private constructor(
         // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
         // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
         // stable feature flag bucketing across identity changes.
-        val except = mutableListOf(VERSION, BUILD, DEVICE_ID)
+        // Preserve SESSION_REPLAY, ERROR_TRACKING, and CAPTURE_PERFORMANCE (project-level config from
+        // /config, not user data) so each can re-arm after an identity change without an app restart.
+        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE)
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
         if (config?.reuseAnonymousId == true) {
@@ -1718,9 +1736,10 @@ public class PostHog private constructor(
         }
 
         /**
-         * Set up the SDK and returns an instance that you can hold and pass it around
-         * @param T the type of the Config
-         * @property config the Config
+         * Sets up the SDK and returns an instance that you can hold and pass around.
+         *
+         * @param config SDK configuration.
+         * @return The configured PostHog client instance.
          */
         public fun <T : PostHogConfig> with(config: T): PostHogInterface {
             val instance = PostHog()

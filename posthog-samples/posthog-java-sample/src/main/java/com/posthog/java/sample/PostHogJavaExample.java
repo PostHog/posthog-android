@@ -136,13 +136,26 @@ public class PostHogJavaExample {
         }
     }
 
-    private static void runCaptureExamples(PostHogInterface posthog) {
+    private static void printSectionHeader(String title) {
         System.out.println("\n" + "=".repeat(60));
-        System.out.println("CAPTURE EVENTS");
+        System.out.println(title);
         System.out.println("=".repeat(60));
+    }
 
+    private static String startUserExample(String title) {
+        printSectionHeader(title);
         String distinctId = "user_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         System.out.println("\nUsing distinct ID: " + distinctId);
+        return distinctId;
+    }
+
+    private static void flushEvents(PostHogInterface posthog) {
+        posthog.flush();
+        System.out.println("   Events sent to PostHog");
+    }
+
+    private static void runCaptureExamples(PostHogInterface posthog) {
+        String distinctId = startUserExample("CAPTURE EVENTS");
 
         // Simple capture
         System.out.println("\nCapturing 'page_view' event...");
@@ -165,17 +178,11 @@ public class PostHogJavaExample {
 
         // Flush to ensure events are sent
         System.out.println("\nFlushing events...");
-        posthog.flush();
-        System.out.println("   Events sent to PostHog");
+        flushEvents(posthog);
     }
 
     private static void runIdentifyExamples(PostHogInterface posthog) {
-        System.out.println("\n" + "=".repeat(60));
-        System.out.println("IDENTIFY USERS");
-        System.out.println("=".repeat(60));
-
-        String distinctId = "user_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        System.out.println("\nUsing distinct ID: " + distinctId);
+        String distinctId = startUserExample("IDENTIFY USERS");
 
         // Identify with properties
         System.out.println("\nIdentifying user with properties...");
@@ -199,17 +206,11 @@ public class PostHogJavaExample {
         posthog.alias(distinctId, "user_alias_" + distinctId.substring(5));
         System.out.println("   Alias created");
 
-        posthog.flush();
-        System.out.println("   Events sent to PostHog");
+        flushEvents(posthog);
     }
 
     private static void runFeatureFlagExamples(PostHogInterface posthog) {
-        System.out.println("\n" + "=".repeat(60));
-        System.out.println("FEATURE FLAGS (Remote Evaluation)");
-        System.out.println("=".repeat(60));
-
-        String distinctId = "user_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        System.out.println("\nUsing distinct ID: " + distinctId);
+        String distinctId = startUserExample("FEATURE FLAGS (Remote Evaluation)");
 
         // Check a simple boolean flag
         System.out.println("\nChecking feature flag 'beta-feature'...");
@@ -240,9 +241,7 @@ public class PostHogJavaExample {
     }
 
     private static void runLocalEvaluationExample(PostHogInterface posthog, boolean hasPersonalApiKey) {
-        System.out.println("\n" + "=".repeat(60));
-        System.out.println("LOCAL EVALUATION WITH ETAG POLLING");
-        System.out.println("=".repeat(60));
+        printSectionHeader("LOCAL EVALUATION WITH ETAG POLLING");
 
         if (!hasPersonalApiKey) {
             System.out.println("\nThis example requires a Personal API Key to be set.");
@@ -291,12 +290,7 @@ public class PostHogJavaExample {
     }
 
     private static void runErrorTrackingExample(PostHogInterface posthog) {
-        System.out.println("\n" + "=".repeat(60));
-        System.out.println("ERROR TRACKING");
-        System.out.println("=".repeat(60));
-
-        String distinctId = "user_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        System.out.println("\nUsing distinct ID: " + distinctId);
+        String distinctId = startUserExample("ERROR TRACKING");
 
         System.out.println("\nCapturing an exception...");
         try {
@@ -309,8 +303,7 @@ public class PostHogJavaExample {
             System.out.println("   Exception captured: " + e.getMessage());
         }
 
-        posthog.flush();
-        System.out.println("   Events sent to PostHog");
+        flushEvents(posthog);
     }
 
     private static void runAllExamples(PostHogInterface posthog, boolean hasPersonalApiKey) {

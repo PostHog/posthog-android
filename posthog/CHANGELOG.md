@@ -1,5 +1,30 @@
 ## Next
 
+## 6.17.6
+
+### Patch Changes
+
+- 27f8f5f: Refactor duplicated internal code paths without changing SDK behavior.
+
+## 6.17.5
+
+### Patch Changes
+
+- 43dd856: Add QueueFile regression coverage for endian-safe header and element persistence.
+
+## 6.17.4
+
+### Patch Changes
+
+- ea18b31: `reloadFeatureFlags` now always invokes its completion callback, including when the SDK is disabled/opted-out or the distinct ID is blank. Previously these early-returns skipped the callback, which could leave callers that await it (e.g. the Flutter SDK's `reloadFeatureFlags`) hanging indefinitely.
+- 1a60d00: Keep session replay, error tracking, and network performance capture active after an in-session `identify()`/`reset()` instead of disabling them until the next app restart.
+
+## 6.17.3
+
+### Patch Changes
+
+- 875e972: Improve public API KDoc coverage.
+
 ## 6.17.2
 
 ### Patch Changes

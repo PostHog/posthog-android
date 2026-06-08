@@ -8,6 +8,7 @@ import java.util.Date
 public interface PostHogStatelessInterface : PostHogCoreInterface {
     /**
      * Captures events
+     * @param event the event name
      * @param distinctId the distinctId of the user performing the event
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
@@ -31,6 +32,10 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return Whether the feature flag is enabled.
      */
     public fun isFeatureEnabledStateless(
         distinctId: String,
@@ -47,6 +52,10 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return The feature flag value, or [defaultValue] if not found.
      */
     public fun getFeatureFlagStateless(
         distinctId: String,
@@ -63,6 +72,10 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
+     * @param groups groups for group-based flags
+     * @param personProperties person properties for flag evaluation
+     * @param groupProperties group properties for flag evaluation
+     * @return The feature flag payload, or [defaultValue] if not found.
      */
     public fun getFeatureFlagPayloadStateless(
         distinctId: String,
@@ -81,6 +94,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param groups the groups for group-based flags
      * @param personProperties person properties for flag evaluation
      * @param groupProperties group properties for flag evaluation
+     * @param sendFeatureFlagEvent whether to send the $feature_flag_called event, or null to use config default
      * @return FeatureFlagResult if the flag exists, null otherwise
      */
     public fun getFeatureFlagResultStateless(

@@ -3,6 +3,8 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
+import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
@@ -43,6 +45,9 @@ internal class PostHogTest {
 
     private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
     private val responseFlagsApi = file.readText()
+
+    @Suppress("DEPRECATION")
+    private fun getThreadId(thread: Thread): Long = thread.id
 
     @Suppress("DEPRECATION")
     fun getSut(
@@ -2233,12 +2238,18 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
+        // Recording config comes from /config (cached); the /flags reload re-arms from the cache and
+        // evaluates the linked flag, which is what fires $feature_flag_called.
+        val cachePreferences = PostHogMemoryPreferences()
+        cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
         val integration = PostHogSessionReplayHandlerFake(true)
         val sut =
             getSut(
                 url.toString(),
                 preloadFeatureFlags = false,
                 integration = integration,
+                cachePreferences = cachePreferences,
             )
 
         sut.reloadFeatureFlags()
@@ -2279,6 +2290,11 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
+        // Recording config comes from /config (cached); the /flags reload re-arms from the cache and
+        // evaluates the linked flag. With sendFeatureFlagEvent = false, no $feature_flag_called fires.
+        val cachePreferences = PostHogMemoryPreferences()
+        cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
         val integration = PostHogSessionReplayHandlerFake(true)
         val sut =
             getSut(
@@ -2286,6 +2302,7 @@ internal class PostHogTest {
                 preloadFeatureFlags = false,
                 integration = integration,
                 sendFeatureFlagEvent = false,
+                cachePreferences = cachePreferences,
             )
 
         sut.reloadFeatureFlags()
@@ -2344,6 +2361,7 @@ internal class PostHogTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `captureException captures exception with correct properties`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -2390,7 +2408,7 @@ internal class PostHogTest {
         assertEquals("Exception", causeExceptionData["type"])
         assertEquals("I am the cause", causeExceptionData["value"])
 
-        val threadId = Thread.currentThread().id
+        val threadId = getThreadId(Thread.currentThread())
         // Verify both exceptions have the required structure
         // Check main exception structure
         assertEquals("RuntimeException", mainException["type"])
@@ -2446,6 +2464,7 @@ internal class PostHogTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `captureException unwraps and captures exception with correct properties`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -2488,7 +2507,7 @@ internal class PostHogTest {
         assertEquals("RuntimeException", mainException["type"])
         assertEquals("Test exception message", mainException["value"])
 
-        assertEquals(thread.id, (mainException["thread_id"] as Number).toLong())
+        assertEquals(getThreadId(thread), (mainException["thread_id"] as Number).toLong())
 
         // Verify mechanism structure for main exception
         val mechanism = mainException["mechanism"] as Map<*, *>
@@ -3227,6 +3246,35 @@ internal class PostHogTest {
         assertEquals(originalDeviceId, sut.getDeviceId())
         // distinct_id should have changed after reset
         assertNotEquals("user-123", sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `project-level remote config is preserved across reset`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        cachePreferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+        cachePreferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
+        cachePreferences.setValue(CAPTURE_PERFORMANCE, mapOf("network_timing" to true))
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                cachePreferences = cachePreferences,
+            )
+
+        sut.identify("user-123")
+        sut.reset()
+
+        // reset() keeps the project-level config so each can re-arm on the next /flags reload.
+        assertNotNull(cachePreferences.getValue(SESSION_REPLAY))
+        assertNotNull(cachePreferences.getValue(ERROR_TRACKING))
+        assertNotNull(cachePreferences.getValue(CAPTURE_PERFORMANCE))
 
         sut.close()
     }

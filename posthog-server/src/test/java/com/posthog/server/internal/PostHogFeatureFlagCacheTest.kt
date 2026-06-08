@@ -42,6 +42,34 @@ internal class PostHogFeatureFlagCacheTest {
     }
 
     @Test
+    fun `getEntry returns metadata for non-expired entry`() {
+        val cache = PostHogFeatureFlagCache(maxSize = 10, maxAgeMs = 60000)
+        val key = createTestKey()
+        val flags = createTestFlags()
+
+        cache.put(key, flags, requestId = "req-123", evaluatedAt = 1234L, error = "flag_missing")
+        val entry = cache.getEntry(key)
+
+        assertNotNull(entry)
+        assertEquals(flags, entry.flags)
+        assertEquals("req-123", entry.requestId)
+        assertEquals(1234L, entry.evaluatedAt)
+        assertEquals("flag_missing", entry.error)
+    }
+
+    @Test
+    fun `getEntry returns null and removes expired entries`() {
+        val cache = PostHogFeatureFlagCache(maxSize = 10, maxAgeMs = 1)
+        val key = createTestKey()
+
+        cache.put(key, createTestFlags(), requestId = "req-123")
+        Thread.sleep(10)
+
+        assertNull(cache.getEntry(key))
+        assertEquals(0, cache.size())
+    }
+
+    @Test
     fun `get returns null for non-existent key`() {
         val cache = PostHogFeatureFlagCache(maxSize = 10, maxAgeMs = 60000)
         val key = createTestKey()

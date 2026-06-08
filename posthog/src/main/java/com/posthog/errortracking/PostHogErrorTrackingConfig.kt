@@ -2,6 +2,9 @@ package com.posthog.errortracking
 
 import com.posthog.PostHog
 
+/**
+ * Configuration for PostHog error tracking.
+ */
 public class PostHogErrorTrackingConfig
     @JvmOverloads
     public constructor(

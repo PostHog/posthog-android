@@ -27,6 +27,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Captures events
+     * @param event the event name
      * @param distinctId the distinctId, the generated [distinctId] is used if not given
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
@@ -65,7 +66,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
-     * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_call event to PostHog.
+     * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_called event to PostHog.
+     * @return Whether the feature flag is enabled.
      */
     public fun isFeatureEnabled(
         key: String,
@@ -78,7 +80,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found
-     * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_call event to PostHog.
+     * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_called event to PostHog.
+     * @return The feature flag value, or [defaultValue] if not found.
      */
     public fun getFeatureFlag(
         key: String,
@@ -89,6 +92,7 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns list of all feature flag result containing both value and payload.
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     * @return The currently loaded feature flag results, or null when flags are unavailable.
      */
     public fun getAllFeatureFlags(): List<FeatureFlagResult>?
 
@@ -97,6 +101,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found
+     * @return The feature flag payload, or [defaultValue] if not found.
      */
     public fun getFeatureFlagPayload(
         key: String,
@@ -175,6 +180,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Returns the registered [distinctId] property
+     * @return The current distinct ID.
      */
     public fun distinctId(): String
 
@@ -204,12 +210,14 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Returns if a session is active
+     * @return Whether a session is currently active.
      */
     public fun isSessionActive(): Boolean
 
     /**
      * Returns if Session Replay is Active
      * Android only.
+     * @return Whether session replay is currently active.
      */
     public fun isSessionReplayActive(): Boolean
 
@@ -236,6 +244,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Returns the session Id if a session is active
+     * @return The current session ID, or null if no session is active.
      */
     public fun getSessionId(): UUID?
 
@@ -261,7 +270,7 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Sets person properties that will be included in feature flag evaluation requests.
      *
-     * @param properties Dictionary of person properties to include in flag evaluation
+     * @param userProperties Dictionary of person properties to include in flag evaluation
      * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
      */
     public fun setPersonPropertiesForFlags(
@@ -279,7 +288,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Sets properties for a specific group type to include when evaluating feature flags.
      *
      * @param type The group type identifier (e.g., "organization", "team")
-     * @param properties Dictionary of properties to set for this group type
+     * @param groupProperties Dictionary of properties to set for this group type
      * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
      */
     public fun setGroupPropertiesForFlags(
