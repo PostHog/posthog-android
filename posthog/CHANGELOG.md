@@ -1,5 +1,11 @@
 ## Next
 
+## 6.17.7
+
+### Patch Changes
+
+- 0bde688: Keep surveys loaded after an in-session `identify()`/`reset()` instead of clearing them until the next app restart.
+
 ## 6.17.6
 
 ### Patch Changes
