@@ -14,6 +14,7 @@ import com.posthog.android.surveys.compose.internal.theme.localAppearance
 internal fun BottomSection(
     label: String,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val appearance = localAppearance()
@@ -21,7 +22,7 @@ internal fun BottomSection(
         onClick = onClick,
         enabled = enabled,
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
         colors =

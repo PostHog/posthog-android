@@ -3,18 +3,19 @@ package com.posthog.android.surveys.compose.internal.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.posthog.android.surveys.compose.internal.theme.LocalSurveyAppearance
 import com.posthog.android.surveys.compose.internal.theme.localAppearance
 import com.posthog.android.surveys.compose.internal.theme.resolve
@@ -34,23 +35,30 @@ internal fun ConfirmationScreen(onClose: () -> Unit) {
     val appearance = localAppearance()
     Column(
         modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             text = appearance.thankYouMessageHeader,
             color = appearance.questionTextColor,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
         )
         val description = appearance.thankYouMessageDescription
         if (!description.isNullOrBlank() &&
             appearance.thankYouMessageDescriptionContentType == PostHogDisplaySurveyTextContentType.TEXT
         ) {
-            Text(text = description, color = appearance.questionTextColor)
+            Text(
+                text = description,
+                color = appearance.questionTextColor,
+                textAlign = TextAlign.Center,
+            )
         }
-        Spacer(modifier = Modifier.height(20.dp))
         BottomSection(
             label = appearance.thankYouMessageCloseButtonText,
             enabled = true,
+            modifier = Modifier.padding(top = 20.dp),
             onClick = onClose,
         )
     }
