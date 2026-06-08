@@ -1,5 +1,11 @@
 ## Next
 
+## 3.48.0
+
+### Minor Changes
+
+- 3203bda: Add a public `captureLog()` API for capturing logs with optional W3C trace correlation (`traceId`/`spanId`/`traceFlags`), matching iOS, web, and React Native. The `logger` facade is unchanged.
+
 ## 3.47.4
 
 ### Patch Changes
