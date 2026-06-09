@@ -5,15 +5,23 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.FeatureFlag
 import com.posthog.internal.FlagDefinition
+import com.posthog.internal.LocalEvaluationResponse
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogFlagsResponse
 import com.posthog.internal.PropertyGroup
+import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import java.io.IOException
+import java.io.StringReader
+import java.io.StringWriter
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.CompletionStage
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 internal class PostHogFeatureFlags(
     private val config: PostHogConfig,
@@ -25,6 +33,7 @@ internal class PostHogFeatureFlags(
     private val pollIntervalSeconds: Int = 30,
     private val onFeatureFlags: PostHogOnFeatureFlags? = null,
     private val pollerEnabled: Boolean = true,
+    private val flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null,
 ) : PostHogFeatureFlagsInterface {
     private val cache =
         PostHogFeatureFlagCache(
@@ -398,10 +407,11 @@ internal class PostHogFeatureFlags(
 
     override fun shutDown() {
         stopPoller()
+        shutdownFlagDefinitionCacheProvider()
     }
 
     /**
-     * Load feature flag definitions from the API for local evaluation.
+     * Load feature flag definitions from a shared cache or from the API for local evaluation.
      * Uses ETag for conditional requests to reduce bandwidth when flags haven't changed.
      */
     public fun loadFeatureFlagDefinitions() {
@@ -435,7 +445,25 @@ internal class PostHogFeatureFlags(
             isLoading = true
         }
 
+        var shouldFetch = true
+
         try {
+            shouldFetch = shouldFetchFlagDefinitions()
+
+            if (!shouldFetch) {
+                val loadedFromCache = loadFeatureFlagDefinitionsFromCache()
+                if (loadedFromCache) {
+                    return
+                }
+
+                if (definitionsLoaded) {
+                    config.logger.log("Flag definition cache empty, keeping existing definitions")
+                    return
+                }
+
+                config.logger.log("Flag definition cache empty before initial load, falling back to API")
+            }
+
             config.logger.log("Loading feature flags for local evaluation")
             val response = api.localEvaluation(personalApiKey, etag)
 
@@ -455,22 +483,20 @@ internal class PostHogFeatureFlags(
             // Success: update ETag (or clear if server stopped sending one)
             etag = response.etag
 
-            synchronized(loadLock) {
-                featureFlags = apiResponse.flags
-                flagDefinitions = apiResponse.flags?.associateBy { it.key }
-                cohorts = apiResponse.cohorts
-                groupTypeMapping = apiResponse.groupTypeMapping
-                definitionsLoaded = true
-                definitionsLoadedAt = System.currentTimeMillis()
-            }
+            val cacheData = buildFlagDefinitionCacheData(apiResponse)
+            applyFlagDefinitions(
+                flags = apiResponse.flags,
+                groupTypeMapping = apiResponse.groupTypeMapping,
+                cohorts = apiResponse.cohorts,
+            )
 
             config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
 
-            try {
-                onFeatureFlags?.loaded()
-            } catch (e: Throwable) {
-                config.logger.log("Error in onFeatureFlags callback: ${e.message}")
+            if (shouldFetch && cacheData != null) {
+                storeFlagDefinitionsInCache(cacheData)
             }
+
+            notifyFeatureFlagsLoaded()
         } catch (e: PostHogApiError) {
             // Clear ETag on API errors (4xx/5xx) so next request starts fresh
             etag = null
@@ -487,6 +513,126 @@ internal class PostHogFeatureFlags(
                 isLoading = false
                 loadLock.notifyAll()
             }
+        }
+    }
+
+    private fun shouldFetchFlagDefinitions(): Boolean {
+        val provider = flagDefinitionCacheProvider ?: return true
+        return awaitFlagDefinitionCacheProvider(
+            errorDescription = "Error in flag definition cache provider shouldFetchFlagDefinitions",
+        ) {
+            provider.shouldFetchFlagDefinitions()
+        } ?: true
+    }
+
+    private fun loadFeatureFlagDefinitionsFromCache(): Boolean {
+        val provider = flagDefinitionCacheProvider ?: return false
+        val cachedData =
+            awaitFlagDefinitionCacheProvider(
+                errorDescription = "Error loading feature flag definitions from cache provider",
+            ) {
+                provider.getFlagDefinitions()
+            } ?: return false
+
+        return try {
+            val response = parseFlagDefinitionCacheData(cachedData)
+            applyFlagDefinitions(
+                flags = response.flags,
+                groupTypeMapping = response.groupTypeMapping,
+                cohorts = response.cohorts,
+            )
+            config.logger.log("Loaded ${response.flags?.size ?: 0} feature flags from flag definition cache")
+            notifyFeatureFlagsLoaded()
+            true
+        } catch (e: Throwable) {
+            config.logger.log("Error loading feature flag definitions from cache provider: ${e.message}")
+            false
+        }
+    }
+
+    private fun <T> awaitFlagDefinitionCacheProvider(
+        errorDescription: String,
+        call: () -> CompletionStage<T>,
+    ): T? {
+        val future =
+            try {
+                call().toCompletableFuture()
+            } catch (e: Throwable) {
+                config.logger.log("$errorDescription: ${e.message}")
+                return null
+            }
+
+        return try {
+            future.get(FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            config.logger.log("$errorDescription: interrupted")
+            null
+        } catch (e: TimeoutException) {
+            future.cancel(true)
+            config.logger.log("$errorDescription: timed out after ${FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS}ms")
+            null
+        } catch (e: ExecutionException) {
+            config.logger.log("$errorDescription: ${e.cause?.message ?: e.message}")
+            null
+        } catch (e: Throwable) {
+            config.logger.log("$errorDescription: ${e.message}")
+            null
+        }
+    }
+
+    private fun parseFlagDefinitionCacheData(data: Map<String, Any?>): LocalEvaluationResponse {
+        val writer = StringWriter()
+        config.serializer.serialize(data, writer)
+        return config.serializer.deserialize(StringReader(writer.toString()))
+    }
+
+    private fun buildFlagDefinitionCacheData(response: LocalEvaluationResponse): Map<String, Any?>? {
+        return try {
+            val cacheData: Map<String, Any?> =
+                mapOf(
+                    "flags" to (response.flags ?: emptyList<FlagDefinition>()),
+                    "group_type_mapping" to (response.groupTypeMapping ?: emptyMap<String, String>()),
+                    "cohorts" to (response.cohorts ?: emptyMap<String, PropertyGroup>()),
+                )
+            val writer = StringWriter()
+            config.serializer.serialize(cacheData, writer)
+            config.serializer.deserialize<Map<String, Any?>>(StringReader(writer.toString()))
+        } catch (e: Throwable) {
+            config.logger.log("Error preparing flag definitions for cache provider: ${e.message}")
+            null
+        }
+    }
+
+    private fun storeFlagDefinitionsInCache(data: Map<String, Any?>) {
+        val provider = flagDefinitionCacheProvider ?: return
+        awaitFlagDefinitionCacheProvider(
+            errorDescription = "Error storing feature flag definitions in cache provider",
+        ) {
+            provider.onFlagDefinitionsReceived(data)
+        }
+    }
+
+    private fun applyFlagDefinitions(
+        flags: List<FlagDefinition>?,
+        groupTypeMapping: Map<String, String>?,
+        cohorts: Map<String, PropertyGroup>?,
+    ) {
+        synchronized(loadLock) {
+            featureFlags = flags
+            flagDefinitions = flags?.associateBy { it.key }
+            this.cohorts = cohorts
+            this.groupTypeMapping = groupTypeMapping
+            definitionsLoaded = true
+            definitionsLoadedAt = System.currentTimeMillis()
+        }
+    }
+
+    private fun notifyFeatureFlagsLoaded() {
+        try {
+            onFeatureFlags?.loaded()
+        } catch (e: Throwable) {
+            config.logger.log("Error in onFeatureFlags callback: ${e.message}")
         }
     }
 
@@ -564,6 +710,15 @@ internal class PostHogFeatureFlags(
         synchronized(this) {
             poller?.stop()
             poller = null
+        }
+    }
+
+    private fun shutdownFlagDefinitionCacheProvider() {
+        val provider = flagDefinitionCacheProvider ?: return
+        awaitFlagDefinitionCacheProvider(
+            errorDescription = "Error shutting down flag definition cache provider",
+        ) {
+            provider.shutdown()
         }
     }
 
@@ -842,6 +997,7 @@ internal class PostHogFeatureFlags(
     internal companion object {
         internal const val LOCAL_EVALUATION_REASON_CODE: String = "local_evaluation"
         internal const val LOCAL_EVALUATION_REASON_DESCRIPTION: String = "Evaluated locally"
+        private const val FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS: Long = 10_000
 
         private val EMPTY_PROPERTIES: Map<String, Any?> = emptyMap()
         private val EMPTY_COHORT_PROPERTIES: Map<String, PropertyGroup> = emptyMap()

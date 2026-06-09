@@ -105,6 +105,28 @@ internal class PostHogLogRecordTest {
     }
 
     @Test
+    fun `storage round-trip through serializer preserves traceFlags zero`() {
+        // The null-vs-zero boundary: 0x00 is a valid trace-flags value (sampled
+        // = false) and must survive persist->reload as 0, not collapse to null.
+        // Goes through the real codec to catch a JSON Number (Double/Long) that
+        // `fromStorageMap` must coerce back to Int 0.
+        val config = PostHogConfig(API_KEY)
+        val original = PostHogLogRecord(body = "zero", traceFlags = 0)
+        // The key must be present after toStorageMap — a `?.let` that ever became
+        // a falsy check (`takeIf { it != 0 }`) would silently drop it here.
+        assertTrue(original.toStorageMap().containsKey("traceFlags"))
+
+        val buf = ByteArrayOutputStream()
+        config.serializer.serialize(original.toStorageMap(), buf.writer().buffered())
+        val map: Map<String, Any> =
+            config.serializer.deserialize(
+                ByteArrayInputStream(buf.toByteArray()).reader().buffered(),
+            )!!
+        val restored = PostHogLogRecord.fromStorageMap(map)!!
+        assertEquals(0, restored.traceFlags)
+    }
+
+    @Test
     fun `storage map omits null optionals`() {
         val record = PostHogLogRecord(body = "minimal")
         val map = record.toStorageMap()

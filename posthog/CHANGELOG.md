@@ -1,5 +1,23 @@
 ## Next
 
+## 6.18.0
+
+### Minor Changes
+
+- 3203bda: Add a public `captureLog()` API for capturing logs with optional W3C trace correlation (`traceId`/`spanId`/`traceFlags`), matching iOS, web, and React Native. The `logger` facade is unchanged.
+
+## 6.17.8
+
+### Patch Changes
+
+- 1965fd1: Update core local-evaluation serialization so cached flag definitions round-trip using endpoint-compatible JSON for nested property values, property operators, and property types.
+
+## 6.17.7
+
+### Patch Changes
+
+- 0bde688: Keep surveys loaded after an in-session `identify()`/`reset()` instead of clearing them until the next app restart.
+
 ## 6.17.6
 
 ### Patch Changes

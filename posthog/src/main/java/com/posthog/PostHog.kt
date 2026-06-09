@@ -20,6 +20,7 @@ import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
+import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueue
@@ -91,7 +92,10 @@ public class PostHog private constructor(
      *
      * Not to be confused with the internal `config.logger` debug sink.
      */
-    public override val logger: PostHogLogger = PostHogLogger(::captureLog)
+    public override val logger: PostHogLogger =
+        PostHogLogger { message, severity, attributes ->
+            captureLogInternal(message, severity, attributes, traceId = null, spanId = null, traceFlags = null)
+        }
 
     @Volatile
     private var lastScreenName: String? = null
@@ -667,18 +671,32 @@ public class PostHog private constructor(
         }
     }
 
-    /**
-     * Internal entry point invoked by [PostHogLogger]. Builds a record from
-     * the call-site arguments + capture-time context (distinctId, sessionId,
-     * screenName, app state, active feature flag keys), runs the `beforeSend`
-     * chain, and enqueues to the logs queue.
-     *
-     * No-ops when the SDK is disabled or opted-out.
-     */
-    internal fun captureLog(
+    public override fun captureLog(
         message: String,
         severity: PostHogLogSeverity,
         attributes: Map<String, Any>?,
+        traceId: String?,
+        spanId: String?,
+        traceFlags: Int?,
+    ) {
+        captureLogInternal(message, severity, attributes, traceId, spanId, traceFlags)
+    }
+
+    /**
+     * Shared implementation behind [captureLog] and the [logger] facade.
+     * Builds a record from the call-site arguments + capture-time context
+     * (distinctId, sessionId, screenName, app state, active feature flag
+     * keys), runs the `beforeSend` chain, and enqueues to the logs queue.
+     *
+     * No-ops when the SDK is disabled or opted-out.
+     */
+    private fun captureLogInternal(
+        message: String,
+        severity: PostHogLogSeverity,
+        attributes: Map<String, Any>?,
+        traceId: String?,
+        spanId: String?,
+        traceFlags: Int?,
     ) {
         try {
             if (!isEnabled()) return
@@ -698,6 +716,9 @@ public class PostHog private constructor(
                     // nested maps/lists inside it); the serializer reads it
                     // later on the logs executor thread.
                     attributes = attributes?.let { deepCopyAttributes(it) } ?: emptyMap(),
+                    traceId = traceId,
+                    spanId = spanId,
+                    traceFlags = traceFlags,
                     distinctId = distinctId.takeIf { it.isNotBlank() },
                     sessionId = PostHogSessionManager.getActiveSessionId()?.toString(),
                     screenName = lastScreenName,
@@ -1506,9 +1527,9 @@ public class PostHog private constructor(
         // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
         // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
         // stable feature flag bucketing across identity changes.
-        // Preserve SESSION_REPLAY, ERROR_TRACKING, and CAPTURE_PERFORMANCE (project-level config from
-        // /config, not user data) so each can re-arm after an identity change without an app restart.
-        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE)
+        // Preserve SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, and SURVEYS (project-level config
+        // from /config, not user data) so each survives an identity change without an app restart.
+        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, SURVEYS)
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
         if (config?.reuseAnonymousId == true) {
@@ -1724,6 +1745,17 @@ public class PostHog private constructor(
          */
         public override val logger: PostHogLogger
             get() = shared.logger
+
+        public override fun captureLog(
+            message: String,
+            severity: PostHogLogSeverity,
+            attributes: Map<String, Any>?,
+            traceId: String?,
+            spanId: String?,
+            traceFlags: Int?,
+        ) {
+            shared.captureLog(message, severity, attributes, traceId, spanId, traceFlags)
+        }
 
         @PostHogVisibleForTesting
         public fun overrideSharedInstance(postHog: PostHogInterface) {

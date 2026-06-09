@@ -1231,10 +1231,8 @@ public class PostHogRemoteConfig(
         }
 
         synchronized(remoteConfigLock) {
-            clearSurveys()
-            // Zero the in-memory flags but keep the cached config so a reload can re-arm them.
-            // Deliberately NOT clearErrorTracking()/clearCapturePerformance(): those also evict the
-            // cache. An explicit `false` from /config is the only path that evicts.
+            // Zero error tracking / capture performance in memory (cache kept so a reload re-arms them).
+            // Surveys are kept entirely — they don't depend on flags, so no re-arm is needed.
             autoCaptureExceptions = false
             captureNetworkTiming = false
         }
@@ -1243,7 +1241,7 @@ public class PostHogRemoteConfig(
         resetPersonPropertiesForFlags()
         resetGroupPropertiesForFlags()
 
-        // SESSION_REPLAY, ERROR_TRACKING, and CAPTURE_PERFORMANCE are intentionally kept (project-level,
-        // not user data) so a reload can re-arm each without an app restart.
+        // SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, and SURVEYS are intentionally kept
+        // (project-level, not user data) so each survives a reset without an app restart.
     }
 }
