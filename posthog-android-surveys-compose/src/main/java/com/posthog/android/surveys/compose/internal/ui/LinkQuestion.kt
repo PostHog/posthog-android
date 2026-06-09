@@ -29,23 +29,19 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * Opens [url] in the device's default browser. No-ops for blank / null URLs and
  * swallows [android.content.ActivityNotFoundException] for devices without a
  * browser installed — the survey flow continues either way.
- *
- * @return `true` if the browser was actually launched; `false` for a blank URL or
- *   when no app could handle the intent. Callers use this for the `clicked` flag so
- *   a click that never opened anything isn't reported as one.
  */
 internal fun openLink(
     context: Context,
     url: String?,
-): Boolean {
-    if (url.isNullOrBlank()) return false
-    return runCatching {
+) {
+    if (url.isNullOrBlank()) return
+    runCatching {
         val intent =
             Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         context.startActivity(intent)
-    }.isSuccess
+    }
 }
 
 private val previewLinkQuestion =
