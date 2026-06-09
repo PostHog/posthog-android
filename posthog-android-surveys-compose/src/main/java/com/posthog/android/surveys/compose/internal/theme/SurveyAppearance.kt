@@ -137,6 +137,10 @@ private fun parseSurveyColorOrDefault(
     input: String?,
     default: Color,
 ): Color {
+    if (input.isNullOrBlank()) return default
+    // parseSurveyColor returns Transparent as its "couldn't parse" sentinel, so an
+    // unrecognized value (e.g. a typo or an unsupported CSS format) falls back to the
+    // default rather than rendering an invisible color.
     val parsed = parseSurveyColor(input)
-    return if (parsed == Color.Transparent && input.isNullOrBlank()) default else parsed
+    return if (parsed == Color.Transparent) default else parsed
 }

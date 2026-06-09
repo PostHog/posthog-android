@@ -176,6 +176,7 @@ internal fun SurveySheet(
                         QuestionContent(
                             question = question,
                             onSubmit = onSubmitResponse,
+                            onClose = dismissSheet,
                         )
                     }
                 }
@@ -201,6 +202,7 @@ internal fun SurveySheet(
 private fun QuestionContent(
     question: PostHogDisplaySurveyQuestion,
     onSubmit: (PostHogSurveyResponse) -> Unit,
+    onClose: () -> Unit,
 ) {
     when (question) {
         is PostHogDisplayRatingQuestion -> RatingQuestionDispatch(question, onSubmit)
@@ -212,7 +214,7 @@ private fun QuestionContent(
             } else {
                 SingleChoiceQuestionDispatch(question, onSubmit)
             }
-        else -> UnsupportedQuestionPlaceholder(buttonLabel = question.buttonText ?: "Close")
+        else -> UnsupportedQuestionPlaceholder(buttonLabel = question.buttonText ?: "Close", onClose = onClose)
     }
 }
 
@@ -260,7 +262,7 @@ private fun OpenTextQuestionDispatch(
         enabled = canSubmit,
         onClick = {
             val trimmed = text.trim()
-            onSubmit(PostHogSurveyResponse.Text(if (trimmed.isEmpty()) null else text))
+            onSubmit(PostHogSurveyResponse.Text(if (trimmed.isEmpty()) null else trimmed))
         },
     )
 }
@@ -348,7 +350,10 @@ private fun MultipleChoiceQuestionDispatch(
 }
 
 @Composable
-private fun UnsupportedQuestionPlaceholder(buttonLabel: String) {
+private fun UnsupportedQuestionPlaceholder(
+    buttonLabel: String,
+    onClose: () -> Unit,
+) {
     val appearance = localAppearance()
     Text(
         text =
@@ -356,5 +361,5 @@ private fun UnsupportedQuestionPlaceholder(buttonLabel: String) {
                 "Implement a custom PostHogSurveysDelegate or wait for a follow-up release.",
         color = appearance.textColor,
     )
-    BottomSection(label = buttonLabel, enabled = true, onClick = { /* host handles dismiss */ })
+    BottomSection(label = buttonLabel, enabled = true, onClick = onClose)
 }

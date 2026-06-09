@@ -6,8 +6,9 @@ import android.os.Bundle
 import java.lang.ref.WeakReference
 
 /**
- * Tracks the foreground activity so the surveys host can attach its
- * [android.view.ViewGroup] to whichever activity is on top at render time.
+ * Tracks the foreground activity so the surveys host can present its
+ * [androidx.activity.ComponentDialog] over whichever activity is on top at
+ * render time.
  *
  * Registered against the [Application] passed in
  * [com.posthog.android.surveys.compose.PostHogSurveysComposeDelegate].
