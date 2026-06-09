@@ -54,8 +54,8 @@ run_smoke() {
         ./gradlew \
             --project-dir "$project_dir" \
             --no-daemon \
+            --no-parallel \
             --rerun-tasks \
-            -Dkotlin.compiler.execution.strategy=in-process \
             -PposthogDependencyMode="$dependency_mode" \
             -PposthogDependencyPath="$REPO_ROOT" \
             -PposthogVersion="$version" \

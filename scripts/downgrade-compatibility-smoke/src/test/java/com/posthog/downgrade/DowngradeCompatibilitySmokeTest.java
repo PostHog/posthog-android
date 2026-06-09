@@ -115,13 +115,11 @@ public class DowngradeCompatibilitySmokeTest {
             );
         }
 
-        boolean capturedLogs = captureLogsIfAvailable();
+        captureLogsRequired();
 
         waitForFileCount("analytics event queue", eventsDir(), 5);
         waitForFileCount("replay snapshot queue", replayDir(), 2);
-        if (capturedLogs) {
-            waitForFileCount("logs queue", logsDir(), 2);
-        }
+        waitForFileCount("logs queue", logsDir(), 2);
 
         FileBackedPreferences preferences = new FileBackedPreferences(preferencesFile());
         assertEquals(WRITER_DISTINCT_ID, preferences.getValue("distinctId", null));
@@ -146,10 +144,7 @@ public class DowngradeCompatibilitySmokeTest {
         );
         invokePostHog("flush");
 
-        // Give queue executors a chance to load, decode, and flush cached files. Real downgrade
-        // crashes generally surface on these daemon threads rather than on the test thread.
-        Thread.sleep(1_000);
-        assertNoUncaughtExceptions();
+        waitForBackgroundQueueExceptions();
         System.out.println("Downgraded SDK started against state in " + stateDir().getAbsolutePath());
     }
 
@@ -209,7 +204,7 @@ public class DowngradeCompatibilitySmokeTest {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static boolean captureLogsIfAvailable() throws Exception {
+    private static void captureLogsRequired() throws Exception {
         try {
             Class<?> severityClass = Class.forName("com.posthog.logs.PostHogLogSeverity");
             Object warn = Enum.valueOf((Class<Enum>) severityClass.asSubclass(Enum.class), "WARN");
@@ -233,9 +228,8 @@ public class DowngradeCompatibilitySmokeTest {
                 null,
                 null
             );
-            return true;
-        } catch (ClassNotFoundException | NoSuchMethodException ignored) {
-            return false;
+        } catch (ClassNotFoundException | NoSuchMethodException e) {
+            throw new AssertionError("Current SDK did not expose the expected captureLog API", e);
         }
     }
 
@@ -248,6 +242,15 @@ public class DowngradeCompatibilitySmokeTest {
 
     private static void assertSdkEnabled() throws Exception {
         assertFalse("PostHog should be enabled after setup", (Boolean) invokePostHog("isOptOut"));
+    }
+
+    private void waitForBackgroundQueueExceptions() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        do {
+            assertNoUncaughtExceptions();
+            Thread.sleep(100);
+        } while (System.nanoTime() < deadline);
+        assertNoUncaughtExceptions();
     }
 
     private void assertNoUncaughtExceptions() {
