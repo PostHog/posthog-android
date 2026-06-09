@@ -22,6 +22,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
@@ -116,10 +118,11 @@ public class DowngradeCompatibilitySmokeTest {
         }
 
         captureLogsRequired();
+        drainPostHogExecutors();
 
-        waitForFileCount("analytics event queue", eventsDir(), 5);
-        waitForFileCount("replay snapshot queue", replayDir(), 2);
-        waitForFileCount("logs queue", logsDir(), 2);
+        assertFileCountAtLeast("analytics event queue", eventsDir(), 5);
+        assertFileCountAtLeast("replay snapshot queue", replayDir(), 2);
+        assertFileCountAtLeast("logs queue", logsDir(), 2);
 
         FileBackedPreferences preferences = new FileBackedPreferences(preferencesFile());
         assertEquals(WRITER_DISTINCT_ID, preferences.getValue("distinctId", null));
@@ -143,8 +146,8 @@ public class DowngradeCompatibilitySmokeTest {
             null
         );
         invokePostHog("flush");
+        drainPostHogExecutors();
 
-        waitForBackgroundQueueExceptions();
         System.out.println("Downgraded SDK started against state in " + stateDir().getAbsolutePath());
     }
 
@@ -244,13 +247,31 @@ public class DowngradeCompatibilitySmokeTest {
         assertFalse("PostHog should be enabled after setup", (Boolean) invokePostHog("isOptOut"));
     }
 
-    private void waitForBackgroundQueueExceptions() throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        do {
-            assertNoUncaughtExceptions();
-            Thread.sleep(100);
-        } while (System.nanoTime() < deadline);
+    private void drainPostHogExecutors() throws Exception {
+        Object shared = sharedPostHogInstance();
+        drainExecutor(shared, "queueExecutor");
+        drainExecutor(shared, "replayExecutor");
+        drainExecutor(shared, "logsExecutor");
         assertNoUncaughtExceptions();
+    }
+
+    private static Object sharedPostHogInstance() throws Exception {
+        Field shared = PostHog.class.getDeclaredField("shared");
+        shared.setAccessible(true);
+        return shared.get(null);
+    }
+
+    private static void drainExecutor(Object target, String fieldName) throws Exception {
+        try {
+            Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            Object executor = field.get(target);
+            if (executor instanceof ExecutorService) {
+                ((ExecutorService) executor).submit(() -> null).get(5, TimeUnit.SECONDS);
+            }
+        } catch (NoSuchFieldException ignored) {
+            // Older pinned SDKs do not have every queue executor (e.g. logsExecutor before logs).
+        }
     }
 
     private void assertNoUncaughtExceptions() {
@@ -286,19 +307,14 @@ public class DowngradeCompatibilitySmokeTest {
         return map;
     }
 
-    private static void waitForFileCount(String description, File directory, int minimumCount) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        int count;
-        do {
-            count = countFiles(directory);
-            if (count >= minimumCount) {
-                return;
-            }
-            Thread.sleep(100);
-        } while (System.nanoTime() < deadline);
+    private static void assertFileCountAtLeast(String description, File directory, int minimumCount) {
+        int count = countFiles(directory);
+        if (count >= minimumCount) {
+            return;
+        }
 
         fail("Expected at least " + minimumCount + " file(s) in " + description + " at " + directory
-            + ", found " + countFiles(directory) + ". State tree:\n" + describeTree(stateDir(), ""));
+            + ", found " + count + ". State tree:\n" + describeTree(stateDir(), ""));
     }
 
     private static int countFiles(File directory) {
