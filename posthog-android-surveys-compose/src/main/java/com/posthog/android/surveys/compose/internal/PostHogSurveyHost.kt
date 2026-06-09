@@ -78,6 +78,12 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     // so a re-present after a configuration change doesn't double-fire it.
     private var shownReported = false
 
+    // Set when a show fired with no foreground activity to host the sheet (e.g. the
+    // app was backgrounded during the popup delay). Rather than dismissing — which
+    // would fire `survey dismissed` and mark the survey seen for a survey the user
+    // never saw — we defer and re-present on the next resumed activity.
+    private var awaitingForeground = false
+
     // The live registry backing the sheet's `rememberSaveable` state, plus the
     // snapshot taken across a configuration change. A non-null snapshot means a
     // re-present is armed: the window was dropped for a config change and should be
@@ -99,9 +105,10 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
             }
         }
         activityProvider.onActivityResumedListener = { resumed ->
-            // A retained snapshot means the window was dropped for a config change;
-            // rebuild it on the recreated activity (present() consumes the snapshot).
-            if (savedSurveyState != null && currentSurvey != null) {
+            // Re-present on the next foreground activity when either a config-change
+            // snapshot is armed (window dropped for rotation/etc.) or a show was
+            // deferred because no activity was available when it fired.
+            if (currentSurvey != null && (savedSurveyState != null || awaitingForeground)) {
                 present(resumed)
             }
         }
@@ -148,12 +155,15 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         val survey = currentSurvey ?: return
 
         if (activity == null || activity.isFinishing) {
-            // Nothing to host the sheet on — report a dismiss so the SDK can
-            // fire `survey dismissed` and move on.
-            dismissInternal(notifyClosed = true)
+            // No foreground activity to host the sheet — e.g. the app was backgrounded
+            // during the popup delay. Defer rather than dismiss: re-present on the next
+            // resumed activity (see onActivityResumedListener) so we don't fire
+            // `survey dismissed` / mark the survey seen for a survey the user never saw.
+            awaitingForeground = true
             return
         }
 
+        awaitingForeground = false
         hostActivity = activity
 
         // Host-owned registry so the sheet's `rememberSaveable` state survives the
@@ -252,6 +262,10 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         val activeView = composeView
         val survey = currentSurvey
         val onClosed = onClosedCallback
+        // Only a survey that was actually shown can be "dismissed". Capture this before
+        // the reset below so we never fire `survey dismissed` / mark seen for a survey the
+        // user never saw (e.g. one deferred for a missing foreground activity, then replaced).
+        val wasShown = shownReported
 
         dialog = null
         composeView = null
@@ -261,6 +275,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         onResponseCallback = null
         onClosedCallback = null
         shownReported = false
+        awaitingForeground = false
         saveableRegistry = null
         savedSurveyState = null
 
@@ -271,7 +286,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
             }
         }
 
-        if (notifyClosed && survey != null && onClosed != null) {
+        if (notifyClosed && wasShown && survey != null && onClosed != null) {
             onClosed(survey)
         }
     }

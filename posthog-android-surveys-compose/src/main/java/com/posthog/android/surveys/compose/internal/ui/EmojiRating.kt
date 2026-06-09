@@ -60,7 +60,10 @@ internal fun EmojiRating(
 ) {
     val appearance = localAppearance()
     val emojis = emojisForScale(question.scaleUpperBound - question.scaleLowerBound + 1)
-    val values = (1..emojis.size).toList()
+    // Record the rating against the question's real scale bounds (matching NumberRating and
+    // iOS), not a synthetic 1..size range. Emoji scales are 1-based on the server, so for
+    // thumbs this is 1 = 👍, 2 = 👎 — the same values iOS records and the dashboard expects.
+    val values = (question.scaleLowerBound..question.scaleUpperBound).toList()
     // Thumbs up/down (a 2-point emoji scale) hides the bound labels — thumbs
     // don't need "lower/upper" captions.
     val showBoundLabels = emojis.size > 2

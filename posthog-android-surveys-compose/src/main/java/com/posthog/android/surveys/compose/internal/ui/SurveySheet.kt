@@ -278,8 +278,8 @@ private fun LinkQuestionDispatch(
         label = question.buttonText ?: localAppearance().submitButtonText,
         enabled = true,
         onClick = {
-            openLink(context, question.link)
-            onSubmit(PostHogSurveyResponse.Link(clicked = true))
+            val clicked = openLink(context, question.link)
+            onSubmit(PostHogSurveyResponse.Link(clicked = clicked))
         },
     )
 }
