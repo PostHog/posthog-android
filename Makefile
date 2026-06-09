@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine updateLocks
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava testDowngradeCompatibility generateLintBaseLine updateLocks
 
 clean:
 	./gradlew clean
@@ -60,6 +60,9 @@ test:
 # compile already runs the tests (tests only java)
 testJava:
 	./gradlew :posthog:test
+
+testDowngradeCompatibility:
+	DOWNGRADE_VERSION="$${DOWNGRADE_VERSION:-3.45.1}" ./scripts/test-downgrade-compatibility.sh
 
 generateLintBaseLine:
 	rm -f posthog-android/lint-baseline.xml
