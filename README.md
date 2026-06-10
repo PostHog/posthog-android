@@ -32,7 +32,7 @@ Optional, drop-in Jetpack Compose UI for PostHog surveys. Add it alongside `post
 implementation("com.posthog:posthog-android-surveys-compose:$latestVersion")
 ```
 
-**Documentation:** [posthog-android-surveys-compose/](./posthog-android-surveys-compose/) | **Usage:** [posthog-android-surveys-compose/USAGE.md](./posthog-android-surveys-compose/USAGE.md)
+**Documentation:** [posthog-android-surveys-compose/](./posthog-android-surveys-compose/)
 
 ### posthog (core)
 

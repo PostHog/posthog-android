@@ -14,5 +14,4 @@ server-driven branching, the configured popup delay, and theming from your PostH
 settings.
 
 Until now the default delegate only logged; you can still provide your own
-`PostHogSurveysDelegate` for a custom UI. The module is pre-1.0 (`0.x`) — see
-`posthog-android-surveys-compose/USAGE.md`.
+`PostHogSurveysDelegate` for a custom UI. The module is pre-1.0 (`0.x`).

@@ -56,7 +56,7 @@ import com.posthog.surveys.PostHogSurveysDelegate
  * ### Known gaps (tracked follow-ups)
  *
  * - HTML question / thank-you descriptions (rendered as plain text only)
- * - Dark-mode polish; see `CHANGELOG.md` / `ARCHITECTURE.md`
+ * - Dark-mode polish
  *
  * The constructor accepts any [Context] and resolves the [Application] from
  * it, so passing an activity context is safe.
