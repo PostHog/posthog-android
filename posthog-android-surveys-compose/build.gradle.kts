@@ -75,8 +75,12 @@ dependencies {
     // ComponentDialog — hosts the survey sheet in its own window above the host activity.
     implementation("androidx.activity:activity:${PosthogBuildConfig.Dependencies.ANDROIDX_ACTIVITY}")
 
-    // Compose
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    // Compose — pin to the base of the current stable Material 3 line (1.3.0). Gradle resolves
+    // Compose to the highest version across the app, so this only "forces up" hosts on an older
+    // Compose and never downgrades a host on a newer one. We deliberately don't go older (e.g. 1.2.x):
+    // Material 3 has had binary-breaking API changes (e.g. ModalBottomSheetProperties), so compiling
+    // against an older line risks a runtime crash on the 1.3.x hosts that are common today.
+    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
