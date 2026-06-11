@@ -13,6 +13,8 @@ import androidx.compose.runtime.saveable.SaveableStateRegistry
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.drawable.toDrawable
+import com.posthog.PostHog
+import com.posthog.PostHogConfig
 import com.posthog.android.surveys.compose.internal.ui.SurveySheet
 import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
@@ -163,49 +165,59 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
             return
         }
 
-        awaitingForeground = false
-        hostActivity = activity
+        // Everything below links against Compose, supplied by the host at runtime, so an
+        // incompatible version can throw a linkage `Error`. Guard it and, on failure, tear
+        // the half-built survey down rather than crash the host.
+        val presented =
+            guard("presenting the survey") {
+                awaitingForeground = false
+                hostActivity = activity
 
-        // Host-owned registry so the sheet's `rememberSaveable` state survives the
-        // ComposeView being recreated across a configuration change. Seeded with
-        // any snapshot taken before the previous window was dropped.
-        val registry =
-            SaveableStateRegistry(
-                restoredValues = savedSurveyState,
-                canBeSaved = { true },
-            )
-        saveableRegistry = registry
-        savedSurveyState = null
+                // Host-owned registry so the sheet's `rememberSaveable` state survives the
+                // ComposeView being recreated across a configuration change. Seeded with
+                // any snapshot taken before the previous window was dropped.
+                val registry =
+                    SaveableStateRegistry(
+                        restoredValues = savedSurveyState,
+                        canBeSaved = { true },
+                    )
+                saveableRegistry = registry
+                savedSurveyState = null
 
-        val composeView =
-            ComposeView(activity).apply {
-                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-                setContent {
-                    CompositionLocalProvider(LocalSaveableStateRegistry provides registry) {
-                        SurveySheet(
-                            survey = survey,
-                            onSurveyShown = { reportShownOnce() },
-                            onSubmit = { questionIndex, response ->
-                                onResponseCallback?.invoke(survey, questionIndex, response)
-                            },
-                            onClose = { dismissInternal(notifyClosed = true) },
-                        )
+                val composeView =
+                    ComposeView(activity).apply {
+                        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                        setContent {
+                            CompositionLocalProvider(LocalSaveableStateRegistry provides registry) {
+                                SurveySheet(
+                                    survey = survey,
+                                    onSurveyShown = { reportShownOnce() },
+                                    onSubmit = { questionIndex, response ->
+                                        onResponseCallback?.invoke(survey, questionIndex, response)
+                                    },
+                                    onClose = { dismissInternal(notifyClosed = true) },
+                                )
+                            }
+                        }
                     }
-                }
+
+                val componentDialog =
+                    ComponentDialog(activity).apply {
+                        setContentView(composeView)
+                        // X-button-only dismissal (swipe-down / touch-outside / back are ignored).
+                        setCancelable(false)
+                        setCanceledOnTouchOutside(false)
+                        configureWindow(window)
+                    }
+
+                dialog = componentDialog
+                this.composeView = composeView
+                componentDialog.show()
             }
 
-        val componentDialog =
-            ComponentDialog(activity).apply {
-                setContentView(composeView)
-                // X-button-only dismissal (swipe-down / touch-outside / back are ignored).
-                setCancelable(false)
-                setCanceledOnTouchOutside(false)
-                configureWindow(window)
-            }
-
-        dialog = componentDialog
-        this.composeView = composeView
-        componentDialog.show()
+        if (!presented) {
+            dismissInternal(notifyClosed = false)
+        }
     }
 
     /**
@@ -243,12 +255,14 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     private fun preserveForConfigChange() {
         cancelPendingShow()
 
-        // Snapshot before disposing — providers unregister on disposal.
-        savedSurveyState = saveableRegistry?.performSave()
-        saveableRegistry = null
+        guard("preserving the survey across a configuration change") {
+            // Snapshot before disposing — providers unregister on disposal.
+            savedSurveyState = saveableRegistry?.performSave()
+            saveableRegistry = null
 
-        composeView?.disposeComposition()
-        dialog?.let { if (it.isShowing) it.dismiss() }
+            composeView?.disposeComposition()
+            dialog?.let { if (it.isShowing) it.dismiss() }
+        }
 
         dialog = null
         composeView = null
@@ -279,10 +293,12 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         saveableRegistry = null
         savedSurveyState = null
 
-        activeView?.disposeComposition()
-        activeDialog?.let { d ->
-            if (d.isShowing) {
-                d.dismiss()
+        guard("tearing down the survey") {
+            activeView?.disposeComposition()
+            activeDialog?.let { d ->
+                if (d.isShowing) {
+                    d.dismiss()
+                }
             }
         }
 
@@ -295,6 +311,30 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         pendingShow?.let {
             mainHandler.removeCallbacks(it)
             pendingShow = null
+        }
+    }
+
+    /**
+     * Runs Compose-touching work, swallowing and logging any failure instead of letting it
+     * crash the host app. Returns `true` when [block] completed, `false` when it threw.
+     *
+     * The host supplies the Compose runtime, so an incompatible version can throw a linkage
+     * [Error] (e.g. `NoSuchMethodError`) rather than an [Exception] — hence the [Throwable]
+     * catch. Callers decide how to recover; we'd rather fail to show and log than propagate.
+     */
+    private inline fun guard(
+        action: String,
+        block: () -> Unit,
+    ): Boolean {
+        return try {
+            block()
+            true
+        } catch (t: Throwable) {
+            PostHog.getConfig<PostHogConfig>()?.logger?.log(
+                "Surveys: $action failed, skipping the survey. " +
+                    "Likely a Compose version incompatibility in the host app. $t",
+            )
+            false
         }
     }
 
