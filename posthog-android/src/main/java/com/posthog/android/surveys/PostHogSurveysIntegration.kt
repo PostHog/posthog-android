@@ -113,6 +113,10 @@ public class PostHogSurveysIntegration(
             isStarted = false
         }
 
+        // Tear down any survey UI still on screen so its dialog window doesn't outlive the
+        // integration; clearActiveSurvey() only resets our bookkeeping, not the delegate's UI.
+        cleanupSurveys()
+
         clearActiveSurvey()
 
         this.postHog = null

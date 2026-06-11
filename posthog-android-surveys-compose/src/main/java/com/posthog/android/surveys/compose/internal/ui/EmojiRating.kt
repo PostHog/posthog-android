@@ -60,10 +60,9 @@ internal fun EmojiRating(
 ) {
     val appearance = localAppearance()
     val emojis = emojisForScale(question.scaleUpperBound - question.scaleLowerBound + 1)
-    // Record the rating against the question's real scale bounds (matching NumberRating and
-    // iOS), not a synthetic 1..size range. Emoji scales are 1-based on the server, so for
-    // thumbs this is 1 = 👍, 2 = 👎 — the same values iOS records and the dashboard expects.
-    val values = (question.scaleLowerBound..question.scaleUpperBound).toList()
+    // Drive the layout off the emoji list (always 2/3/5 faces) rather than the scale range, so an
+    // unexpected scale can never index past the available faces. The recorded rating uses the
+    // question's 1-based scale bounds: lowerBound + index (e.g. thumbs → 1 = 👍, 2 = 👎).
     // Thumbs up/down (a 2-point emoji scale) hides the bound labels — thumbs
     // don't need "lower/upper" captions.
     val showBoundLabels = emojis.size > 2
@@ -78,7 +77,8 @@ internal fun EmojiRating(
             horizontalArrangement = arrangement,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            values.forEachIndexed { index, value ->
+            emojis.forEachIndexed { index, emoji ->
+                val value = question.scaleLowerBound + index
                 val isSelected = selectedValue == value
                 // Non-selected emojis use a muted version of the input text color (a gray on a
                 // light background); selected ones use the active rating color.
@@ -99,7 +99,7 @@ internal fun EmojiRating(
                     contentAlignment = Alignment.Center,
                 ) {
                     Canvas(modifier = Modifier.size(40.dp)) {
-                        drawPath(emojis[index].buildPath(size.width, size.height), color = tint)
+                        drawPath(emoji.buildPath(size.width, size.height), color = tint)
                     }
                 }
             }
