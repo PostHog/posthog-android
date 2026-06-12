@@ -1,5 +1,13 @@
 ## Next
 
+## 6.19.0
+
+### Minor Changes
+
+- 8632f77: Surveys: expose `surveyPopupDelaySeconds` on the public `PostHogDisplaySurveyAppearance` and map it
+  from the internal `SurveyAppearance`, so survey UIs can honor the configured popup delay before
+  presenting a survey.
+
 ## 6.18.0
 
 ### Minor Changes
