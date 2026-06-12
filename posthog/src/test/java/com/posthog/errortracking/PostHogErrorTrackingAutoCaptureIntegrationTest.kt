@@ -228,8 +228,12 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     /**
      * Local stand-in for `com.facebook.react.common.JavascriptException`. The real type
      * lives in React Native, which isn't (and shouldn't be) a test dependency of the
-     * SDK. The ignored-exception filter is purely class-name based, so a local class
-     * named the same way exercises the same code path without dragging in RN.
+     * SDK. The ignored-exception filter is purely class-name based: each test that
+     * uses this stub registers its own JVM name
+     * (`...PostHogErrorTrackingAutoCaptureIntegrationTest$ReactNativeJavascriptExceptionStub`)
+     * as the ignored FQCN. That exercises the matching logic without requiring RN on
+     * the classpath. The stub name intentionally differs from the real RN class name —
+     * the production code path is identical either way.
      */
     private class ReactNativeJavascriptExceptionStub(message: String) : RuntimeException(message)
 

@@ -86,8 +86,14 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
                 postHog.captureException(PostHogThrowable(throwable, thread))
                 postHog.flush()
             } else {
+                // The match may have been against a cause anywhere in the chain,
+                // not necessarily the outermost throwable, so we deliberately
+                // don't pin the log to `throwable.javaClass.name` — that would
+                // mislead anyone looking at the logs and seeing e.g. a bare
+                // RuntimeException reported as suppressed when their ignore
+                // list only mentions com.facebook.react.common.JavascriptException.
                 config.logger.log(
-                    "Skipping autocapture for ignored exception type: ${throwable.javaClass.name}",
+                    "Skipping autocapture: ${throwable.javaClass.name} (or a cause in its chain) matches ignoredExceptionTypes",
                 )
             }
         }
