@@ -1,0 +1,33 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'posthog-downgrade-compatibility-smoke'
+
+String dependencyMode = settings.startParameter.projectProperties['posthogDependencyMode']
+String dependencyPath = settings.startParameter.projectProperties['posthogDependencyPath']
+
+if (dependencyMode == 'composite') {
+    if (dependencyPath == null || dependencyPath.trim().isEmpty()) {
+        throw new GradleException('posthogDependencyPath is required when posthogDependencyMode=composite')
+    }
+
+    includeBuild(dependencyPath) {
+        dependencySubstitution {
+            substitute(module('com.posthog:posthog')).using(project(':posthog'))
+            substitute(module('com.posthog:posthog-android')).using(project(':posthog-android'))
+        }
+    }
+}

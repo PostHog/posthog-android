@@ -1,0 +1,34 @@
+plugins {
+    id 'com.android.library' version '8.9.1'
+}
+
+android {
+    namespace 'com.posthog.downgradecompatibility'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 23
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            returnDefaultValues = true
+            all {
+                systemProperty 'posthog.smoke.mode', System.getProperty('posthog.smoke.mode', 'read')
+                systemProperty 'posthog.smoke.stateDir', System.getProperty('posthog.smoke.stateDir', '')
+                systemProperty 'posthog.smoke.apiKey', System.getProperty('posthog.smoke.apiKey', 'downgrade_compatibility_project')
+            }
+        }
+    }
+}
+
+dependencies {
+    String posthogVersion = providers.gradleProperty('posthogVersion').orElse('3.45.1').get()
+
+    testImplementation "com.posthog:posthog-android:${posthogVersion}"
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+}

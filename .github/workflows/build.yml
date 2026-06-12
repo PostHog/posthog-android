@@ -44,3 +44,47 @@ jobs:
 
       - name: Make stop
         run: make stop
+
+  downgrade-compatibility:
+    name: Downgrade compatibility (${{ matrix.downgrade_version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        downgrade_version:
+          # Pin persisted-storage schema boundaries rather than the last N releases.
+          # 3.43.3 predates the replay minimum-duration buffer queue.
+          - 3.43.3
+          # 3.45.1 predates the persisted logs queue.
+          - 3.45.1
+          # 3.47.0 includes the logs queue but predates the current captureLog surface.
+          - 3.47.0
+
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: 'Set up Java 17'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Test downgrade compatibility
+        env:
+          DOWNGRADE_VERSION: ${{ matrix.downgrade_version }}
+        run: make testDowngradeCompatibility
+
+      - name: Make stop
+        if: always()
+        run: make stop
