@@ -3,6 +3,7 @@
 | Packages        | Maven Central                                                                                                                                                                                  | Min Version    |
 |-----------------| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | posthog-android | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android) | Android API 21 |
+| posthog-android-surveys-compose | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose) | Android API 23 · `0.x` |
 | posthog (core)  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog)                 | Java 8         |
 | posthog-server  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server)                 | Java 8         |
 | posthog-android-gradle-plugin  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin)                 | Java 8         |
@@ -22,6 +23,16 @@ implementation("com.posthog:posthog-android:$latestVersion")
 ```
 
 **Documentation:** [posthog-android/](./posthog-android/) | **Usage:** [posthog-android/USAGE.md](./posthog-android/USAGE.md)
+
+### posthog-android-surveys-compose
+
+Optional, drop-in Jetpack Compose UI for PostHog surveys. Add it alongside `posthog-android` and set `surveys = true` — the SDK auto-discovers the UI delegate from the classpath, no extra wiring required. Pre-1.0 (`0.x`); the public surface may change between minor versions.
+
+```kotlin
+implementation("com.posthog:posthog-android-surveys-compose:$latestVersion")
+```
+
+**Documentation:** [posthog-android-surveys-compose/](./posthog-android-surveys-compose/)
 
 ### posthog (core)
 

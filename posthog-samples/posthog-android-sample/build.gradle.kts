@@ -73,6 +73,8 @@ kotlin {
 
 dependencies {
     implementation(project(mapOf("path" to ":posthog-android")))
+    // Optional Compose survey UI — auto-discovered by the core SDK when present.
+    implementation(project(mapOf("path" to ":posthog-android-surveys-compose")))
 
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
