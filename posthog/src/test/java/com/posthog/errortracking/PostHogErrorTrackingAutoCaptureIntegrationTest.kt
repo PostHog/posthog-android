@@ -29,10 +29,14 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         whenever(mockConfig.logger).thenReturn(mockLogger)
     }
 
-    private fun getSut(autoCapture: Boolean = true): PostHogErrorTrackingAutoCaptureIntegration {
+    private fun getSut(
+        autoCapture: Boolean = true,
+        ignoredExceptionTypes: List<String> = emptyList(),
+    ): PostHogErrorTrackingAutoCaptureIntegration {
         whenever(mockConfig.errorTrackingConfig).thenReturn(
             PostHogErrorTrackingConfig().apply {
                 this.autoCapture = autoCapture
+                this.ignoredExceptionTypes.addAll(ignoredExceptionTypes)
             },
         )
         return PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter)
@@ -148,6 +152,90 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
         integration.uninstall()
     }
+
+    @Test
+    fun `uncaughtException skips capture when throwable class is in ignoredExceptionTypes`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
+
+        val thread = Thread.currentThread()
+        // Simulates the React Native scenario: posthog-js has already captured the
+        // fatal JS error; React Native rethrows it natively as JavascriptException,
+        // and the SDK should not emit a duplicate $exception event.
+        val throwable = ReactNativeJavascriptExceptionStub("Unhandled JS Exception: ReferenceError")
+
+        val integration =
+            getSut(ignoredExceptionTypes = listOf(ReactNativeJavascriptExceptionStub::class.java.name))
+        integration.install(mockPostHog)
+
+        integration.uncaughtException(thread, throwable)
+
+        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull())
+        // The downstream handler still runs so the process terminates / RN's red-box
+        // appears as it would without PostHog installed.
+        verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `uncaughtException skips capture when ignored class is anywhere in the cause chain`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
+
+        val thread = Thread.currentThread()
+        // The outermost type is RuntimeException, not the ignored type, but the
+        // cause chain contains the ignored type. Real RN apps wrap the JS exception
+        // inside platform-level wrappers, so walking the chain matters.
+        val inner = ReactNativeJavascriptExceptionStub("inner")
+        val outer = RuntimeException("outer", inner)
+
+        val integration =
+            getSut(ignoredExceptionTypes = listOf(ReactNativeJavascriptExceptionStub::class.java.name))
+        integration.install(mockPostHog)
+
+        integration.uncaughtException(thread, outer)
+
+        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockExceptionHandler).uncaughtException(thread, outer)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `uncaughtException still captures when throwable class is not in ignoredExceptionTypes`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
+
+        val thread = Thread.currentThread()
+        val throwable = RuntimeException("Genuine native crash")
+
+        val integration =
+            getSut(ignoredExceptionTypes = listOf("com.facebook.react.common.JavascriptException"))
+        integration.install(mockPostHog)
+
+        integration.uncaughtException(thread, throwable)
+
+        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        integration.uninstall()
+    }
+
+    /**
+     * Local stand-in for `com.facebook.react.common.JavascriptException`. The real type
+     * lives in React Native, which isn't (and shouldn't be) a test dependency of the
+     * SDK. The ignored-exception filter is purely class-name based: each test that
+     * uses this stub registers its own JVM name
+     * (`...PostHogErrorTrackingAutoCaptureIntegrationTest$ReactNativeJavascriptExceptionStub`)
+     * as the ignored FQCN. That exercises the matching logic without requiring RN on
+     * the classpath. The stub name intentionally differs from the real RN class name —
+     * the production code path is identical either way.
+     */
+    private class ReactNativeJavascriptExceptionStub(message: String) : RuntimeException(message)
 
     @Test
     fun `uncaughtException calls default handler after capturing exception`() {

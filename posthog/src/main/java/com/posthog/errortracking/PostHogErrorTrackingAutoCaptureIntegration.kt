@@ -82,10 +82,41 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         throwable: Throwable,
     ) {
         postHog?.let { postHog ->
-            postHog.captureException(PostHogThrowable(throwable, thread))
-            postHog.flush()
+            if (!isIgnored(throwable)) {
+                postHog.captureException(PostHogThrowable(throwable, thread))
+                postHog.flush()
+            } else {
+                // The match may have been against a cause anywhere in the chain,
+                // not necessarily the outermost throwable, so we deliberately
+                // don't pin the log to `throwable.javaClass.name` — that would
+                // mislead anyone looking at the logs and seeing e.g. a bare
+                // RuntimeException reported as suppressed when their ignore
+                // list only mentions com.facebook.react.common.JavascriptException.
+                config.logger.log(
+                    "Skipping autocapture: ${throwable.javaClass.name} (or a cause in its chain) matches ignoredExceptionTypes",
+                )
+            }
         }
 
+        // Always chain to the next handler so the process terminates / RN's red-box
+        // surfaces / etc. behave the same way as before, regardless of whether we
+        // emitted a $exception event.
         defaultExceptionHandler?.uncaughtException(thread, throwable)
+    }
+
+    private fun isIgnored(throwable: Throwable): Boolean {
+        val ignored = config.errorTrackingConfig.ignoredExceptionTypes
+        if (ignored.isEmpty()) return false
+
+        // Walk the cause chain so a wrapped exception (e.g. RuntimeException wrapping
+        // a JavascriptException) is matched too. The seen-set guards against the
+        // pathological self-referential cause chains that some JVM libs construct.
+        var current: Throwable? = throwable
+        val seen = mutableSetOf<Throwable>()
+        while (current != null && seen.add(current)) {
+            if (ignored.contains(current.javaClass.name)) return true
+            current = current.cause
+        }
+        return false
     }
 }
