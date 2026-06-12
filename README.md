@@ -18,8 +18,12 @@ SDK usage examples and code snippets live in the official documentation so they 
 
 ## Documentation
 
+- [Android library docs](https://posthog.com/docs/libraries/android)
 - [Java/JVM library docs](https://posthog.com/docs/libraries/java)
-- [Session replay mobile docs](https://posthog.com/docs/session-replay/mobile)
+
+## Questions?
+
+### [Check out our community page.](https://posthog.com/posts)
 
 ## Contributing
 
