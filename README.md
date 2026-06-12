@@ -1,75 +1,15 @@
-[![GH Workflow](https://img.shields.io/github/actions/workflow/status/PostHog/posthog-android/build.yml?branch=main)](https://github.com/PostHog/posthog-android/actions)
-
-| Packages        | Maven Central                                                                                                                                                                                  | Min Version    |
-|-----------------| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| posthog-android | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android) | Android API 21 |
-| posthog-android-surveys-compose | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose) | Android API 23 · `0.x` |
-| posthog (core)  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog)                 | Java 8         |
-| posthog-server  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server)                 | Java 8         |
-| posthog-android-gradle-plugin  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin)                 | Java 8         |
-
-# PostHog Android & JVM SDKs
-
-This repository contains PostHog's Android and JVM SDKs. PostHog is an open source platform for product analytics, feature flags, session replay, and more.
-
-## Packages
-
-### posthog-android
-
-Full-featured Android SDK with automatic screen tracking, session recording, and Android-specific features.
-
-```kotlin
-implementation("com.posthog:posthog-android:$latestVersion")
-```
-
-**Documentation:** [posthog-android/](./posthog-android/) | **Usage:** [posthog-android/USAGE.md](./posthog-android/USAGE.md)
-
-### posthog-android-surveys-compose
-
-Optional, drop-in Jetpack Compose UI for PostHog surveys. Add it alongside `posthog-android` and set `surveys = true` — the SDK auto-discovers the UI delegate from the classpath, no extra wiring required. Pre-1.0 (`0.x`); the public surface may change between minor versions.
-
-```kotlin
-implementation("com.posthog:posthog-android-surveys-compose:$latestVersion")
-```
-
-**Documentation:** [posthog-android-surveys-compose/](./posthog-android-surveys-compose/)
-
-### posthog (core)
-
-Pure Kotlin/JVM library suitable for environment specific SDK integrations.
-
-```kotlin
-implementation("com.posthog:posthog:$latestVersion")
-```
-
-**Documentation:** [posthog/](./posthog/) | **Usage:** [posthog/USAGE.md](./posthog/USAGE.md)
-
-### posthog-server
-
-Pure Kotlin/JVM library suitable for server integrations.
-
-```kotlin
-implementation("com.posthog:posthog-server:$latestVersion")
-```
-
-**Documentation:** [posthog-server/](./posthog-server/) | **Usage:** [posthog-server/USAGE.md](./posthog-server/USAGE.md)
-
-### posthog-android-gradle-plugin
-
-Gradle plugin suitable for Android-specific features.
-
-```kotlin
-implementation("com.posthog:posthog-android-gradle-plugin:$latestVersion")
-```
-
-**Documentation:** [posthog-android-gradle-plugin/](./posthog-android-gradle-plugin/) | **Usage:** [posthog-android-gradle-plugin/USAGE.md](./posthog-android-gradle-plugin/USAGE.md)
-
-## Documentation
+# PostHog Android and JVM SDKs
 
 Please see the main [PostHog docs](https://posthog.com/docs).
 
-Specifically, the [Android docs](https://posthog.com/docs/libraries/android) details.
+SDK usage examples and code snippets live in the official documentation so they stay up to date.
 
-## Questions?
+## Documentation
 
-### [Check out our community page.](https://posthog.com/posts)
+- [Android library docs](https://posthog.com/docs/libraries/android)
+- [Java/JVM library docs](https://posthog.com/docs/libraries/java)
+- [Session replay mobile docs](https://posthog.com/docs/session-replay/mobile)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup and test instructions.
