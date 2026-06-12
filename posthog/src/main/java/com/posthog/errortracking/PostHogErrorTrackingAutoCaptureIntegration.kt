@@ -82,10 +82,35 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         throwable: Throwable,
     ) {
         postHog?.let { postHog ->
-            postHog.captureException(PostHogThrowable(throwable, thread))
-            postHog.flush()
+            if (!isIgnored(throwable)) {
+                postHog.captureException(PostHogThrowable(throwable, thread))
+                postHog.flush()
+            } else {
+                config.logger.log(
+                    "Skipping autocapture for ignored exception type: ${throwable.javaClass.name}",
+                )
+            }
         }
 
+        // Always chain to the next handler so the process terminates / RN's red-box
+        // surfaces / etc. behave the same way as before, regardless of whether we
+        // emitted a $exception event.
         defaultExceptionHandler?.uncaughtException(thread, throwable)
+    }
+
+    private fun isIgnored(throwable: Throwable): Boolean {
+        val ignored = config.errorTrackingConfig.ignoredExceptionTypes
+        if (ignored.isEmpty()) return false
+
+        // Walk the cause chain so a wrapped exception (e.g. RuntimeException wrapping
+        // a JavascriptException) is matched too. The seen-set guards against the
+        // pathological self-referential cause chains that some JVM libs construct.
+        var current: Throwable? = throwable
+        val seen = mutableSetOf<Throwable>()
+        while (current != null && seen.add(current)) {
+            if (ignored.contains(current.javaClass.name)) return true
+            current = current.cause
+        }
+        return false
     }
 }
