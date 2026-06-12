@@ -10,13 +10,14 @@
 
 # PostHog Android and JVM SDKs
 
+This repository contains PostHog's Android and JVM SDKs. PostHog is an open source platform for product analytics, feature flags, session replay, and more.
+
 Please see the main [PostHog docs](https://posthog.com/docs).
 
 SDK usage examples and code snippets live in the official documentation so they stay up to date.
 
 ## Documentation
 
-- [Android library docs](https://posthog.com/docs/libraries/android)
 - [Java/JVM library docs](https://posthog.com/docs/libraries/java)
 - [Session replay mobile docs](https://posthog.com/docs/session-replay/mobile)
 
