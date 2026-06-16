@@ -108,6 +108,13 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Recording never throws into the host app: an empty message is ignored with a
      * warning, and internal failures silently skip the step.
      *
+     * Recording is asynchronous so it never blocks the caller: the step is buffered
+     * on a background queue (the `$timestamp` is still captured at call time). A step
+     * recorded immediately before a programmatic [captureException] in the same call
+     * stack may therefore not yet be buffered when that exception is captured, and so
+     * may be absent from its `$exception_steps`. Steps recorded earlier in the
+     * session are unaffected.
+     *
      * @param message a non-empty description of the step
      * @param properties optional user-supplied properties (the reserved keys
      * `$message` and `$timestamp` are stripped)
