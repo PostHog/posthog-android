@@ -42,7 +42,10 @@ class MyApp : Application() {
                 sessionReplayConfig.captureLogcat = true
                 sessionReplayConfig.screenshot = true
                 surveys = false
-                errorTrackingConfig.autoCapture = false
+                // Enabled so the ErrorTrackingActivity "Crash app (fatal)" button is captured
+                // as an $exception with $exception_steps. Requires exception autocapture
+                // enabled for the project in PostHog too.
+                errorTrackingConfig.autoCapture = true
                 logs.serviceName = "posthog-android-sample"
                 logs.environment = "development"
             }

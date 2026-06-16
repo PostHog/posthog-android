@@ -97,6 +97,27 @@ public interface PostHogInterface : PostHogCoreInterface {
     )
 
     /**
+     * Records a breadcrumb-style exception step. A snapshot of the recorded steps is
+     * attached to every captured `$exception` event as `$exception_steps`, giving the
+     * error-tracking UI a timeline of recent activity leading up to each error.
+     *
+     * The buffer is a rolling window scoped to the SDK instance: it persists across
+     * captures and user identity changes, rotating only by byte-budget eviction
+     * (see [com.posthog.errortracking.PostHogExceptionStepsConfig]).
+     *
+     * Recording never throws into the host app: an empty message is ignored with a
+     * warning, and internal failures silently skip the step.
+     *
+     * @param message a non-empty description of the step
+     * @param properties optional user-supplied properties (the reserved keys
+     * `$message` and `$timestamp` are stripped)
+     */
+    public fun addExceptionStep(
+        message: String,
+        properties: Map<String, Any>? = null,
+    )
+
+    /**
      * Reloads the feature flags
      * @param onFeatureFlags the callback to get notified once feature flags is ready to use
      */

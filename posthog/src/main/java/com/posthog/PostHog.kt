@@ -30,6 +30,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.sortMapRecursively
@@ -116,6 +117,9 @@ public class PostHog private constructor(
 
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
     private var surveysHandler: PostHogSurveysHandler? = null
+
+    @Volatile
+    private var exceptionStepsBuffer: PostHogExceptionStepsBuffer? = null
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
@@ -226,6 +230,15 @@ public class PostHog private constructor(
                 this.queue = queue
                 this.replayQueue = replayQueue
                 this.logsQueue = logsQueue
+
+                if (config.errorTrackingConfig.exceptionSteps.enabled) {
+                    exceptionStepsBuffer =
+                        PostHogExceptionStepsBuffer(
+                            maxBytes = config.errorTrackingConfig.exceptionSteps.maxBytes,
+                            serializer = config.serializer,
+                            logger = config.logger,
+                        )
+                }
 
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
@@ -375,6 +388,9 @@ public class PostHog private constructor(
                 lastScreenName = null
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
+
+                exceptionStepsBuffer?.clear()
+                exceptionStepsBuffer = null
 
                 endSession()
             } catch (e: Throwable) {
@@ -663,11 +679,35 @@ public class PostHog private constructor(
                 exceptionProperties.putAll(it)
             }
 
+            exceptionStepsBuffer?.attachTo(exceptionProperties)
+
             capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
         } catch (e: Throwable) {
             // we swallow all exceptions that the SDK has thrown by trying to convert
             // a captured exception to a PostHog exception event
             config?.logger?.log("captureException has thrown an exception: $e.")
+        }
+    }
+
+    override fun addExceptionStep(
+        message: String,
+        properties: Map<String, Any>?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+
+        // Capture the timestamp on the calling thread, before any dispatch.
+        val timestamp = Date()
+        val buffer = exceptionStepsBuffer ?: return
+
+        try {
+            queueExecutor.execute {
+                buffer.add(message, timestamp, properties)
+            }
+        } catch (e: Throwable) {
+            // recording must never throw into the host app (e.g. executor rejected after close)
+            config?.logger?.log("addExceptionStep has thrown an exception: $e.")
         }
     }
 
@@ -1838,6 +1878,13 @@ public class PostHog private constructor(
             properties: Map<String, Any>?,
         ) {
             shared.captureException(throwable, properties)
+        }
+
+        public override fun addExceptionStep(
+            message: String,
+            properties: Map<String, Any>?,
+        ) {
+            shared.addExceptionStep(message, properties)
         }
 
         public override fun identify(

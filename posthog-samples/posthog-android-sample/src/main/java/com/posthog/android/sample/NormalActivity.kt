@@ -34,6 +34,11 @@ class NormalActivity : ComponentActivity() {
             startActivity(Intent(this, LogsActivity::class.java))
         }
 
+        findViewById<Button>(R.id.errorTrackingButton).setOnClickListener {
+            // Screen for recording exception steps and capturing manual/fatal exceptions.
+            startActivity(Intent(this, ErrorTrackingActivity::class.java))
+        }
+
         val button = findViewById<Button>(R.id.button)
 //        val editText = findViewById<EditText>(R.id.editText)
 //        val imvAndroid = findViewById<ImageView>(R.id.imvAndroid)
