@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Skip expensive CI for markdown-only PR
+      - name: Complete markdown-only PR check
         if: needs.detect-markdown-only.outputs.markdown_only == 'true'
-        run: echo "Only Markdown files changed; marking this check successful without running expensive CI."
+        run: echo "Only Markdown files changed; no additional work is required for this check."
       - name: Git checkout
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
