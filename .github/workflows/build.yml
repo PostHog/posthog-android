@@ -7,27 +7,66 @@ on:
 
 permissions:
   contents: read
-
+  pull-requests: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  detect-markdown-only:
+    name: Detect markdown-only changes
+    runs-on: ubuntu-latest
+    outputs:
+      markdown_only: ${{ steps.detect.outputs.markdown_only }}
+    steps:
+      - name: Detect markdown-only PR
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "markdown_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/changed-files.txt"
+
+          if [ ! -s "$RUNNER_TEMP/changed-files.txt" ]; then
+            markdown_only=false
+          elif grep -qvE '\.md$' "$RUNNER_TEMP/changed-files.txt"; then
+            markdown_only=false
+          else
+            markdown_only=true
+          fi
+
+          echo "markdown_only=$markdown_only" >> "$GITHUB_OUTPUT"
+          echo "markdown_only=$markdown_only"
+
   build:
+    needs: detect-markdown-only
     name: Build Job
     runs-on: ubuntu-latest
 
     steps:
+      - name: Skip expensive CI for markdown-only PR
+        if: needs.detect-markdown-only.outputs.markdown_only == 'true'
+        run: echo "Only Markdown files changed; marking this check successful without running expensive CI."
       - name: Git checkout
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: 'Set up Java 17'
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Cache Gradle packages
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
@@ -38,7 +77,9 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Make compile
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make compile
 
       - name: Make stop
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make stop
