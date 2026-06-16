@@ -604,10 +604,22 @@ public class PostHog private constructor(
                 groupIdentify = true
             }
 
+            // Attach the buffered exception steps to any $exception event (unless the caller
+            // already supplied them), so externally-built exceptions (e.g. from the Flutter/RN
+            // bridge) carry steps too, not only those captured via captureException(throwable).
+            val effectiveProperties =
+                if (event == PostHogEventName.EXCEPTION.event && exceptionStepsBuffer != null) {
+                    val mutableProperties = properties?.toMutableMap() ?: mutableMapOf()
+                    exceptionStepsBuffer?.attachTo(mutableProperties)
+                    mutableProperties
+                } else {
+                    properties
+                }
+
             val mergedProperties =
                 buildProperties(
                     newDistinctId,
-                    properties = properties,
+                    properties = effectiveProperties,
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
                     groups = groups,
@@ -679,8 +691,8 @@ public class PostHog private constructor(
                 exceptionProperties.putAll(it)
             }
 
-            exceptionStepsBuffer?.attachTo(exceptionProperties)
-
+            // $exception_steps are attached in capture() for all $exception events,
+            // so externally-built exceptions (e.g. the Flutter/RN bridge) get them too.
             capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
         } catch (e: Throwable) {
             // we swallow all exceptions that the SDK has thrown by trying to convert
