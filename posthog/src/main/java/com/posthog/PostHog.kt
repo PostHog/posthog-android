@@ -607,10 +607,11 @@ public class PostHog private constructor(
             // Attach the buffered exception steps to any $exception event (unless the caller
             // already supplied them), so externally-built exceptions (e.g. from the Flutter/RN
             // bridge) carry steps too, not only those captured via captureException(throwable).
+            val stepsBuffer = exceptionStepsBuffer
             val effectiveProperties =
-                if (event == PostHogEventName.EXCEPTION.event && exceptionStepsBuffer != null) {
+                if (event == PostHogEventName.EXCEPTION.event && stepsBuffer != null) {
                     val mutableProperties = properties?.toMutableMap() ?: mutableMapOf()
-                    exceptionStepsBuffer?.attachTo(mutableProperties)
+                    stepsBuffer.attachTo(mutableProperties)
                     mutableProperties
                 } else {
                     properties
