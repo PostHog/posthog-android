@@ -710,16 +710,16 @@ public class PostHog private constructor(
             return
         }
 
-        // Capture the timestamp on the calling thread, before any dispatch.
         val timestamp = Date()
         val buffer = exceptionStepsBuffer ?: return
 
         try {
-            queueExecutor.execute {
-                buffer.add(message, timestamp, properties)
-            }
+            // Record synchronously on the calling thread (no background dispatch): a step
+            // recorded immediately before a crash must already be buffered when the
+            // uncaught-exception handler captures it. The work is bounded and cheap.
+            buffer.add(message, timestamp, properties)
         } catch (e: Throwable) {
-            // recording must never throw into the host app (e.g. executor rejected after close)
+            // recording must never throw into the host app
             config?.logger?.log("addExceptionStep has thrown an exception: $e.")
         }
     }

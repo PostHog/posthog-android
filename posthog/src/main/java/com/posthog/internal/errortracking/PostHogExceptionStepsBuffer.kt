@@ -29,8 +29,9 @@ internal class PostHogExceptionStepsBuffer(
     private class Entry(val step: Map<String, Any>, val bytes: Int)
 
     /**
-     * Normalizes and appends a step. [timestamp] is captured by the caller (on the
-     * calling thread); this method is expected to run on the SDK's background queue.
+     * Normalizes and appends a step synchronously on the calling thread, so a step
+     * recorded just before a crash is buffered when the crash is captured. [timestamp]
+     * is captured by the caller at call time. Thread-safe via [lock].
      */
     fun add(
         message: String,

@@ -3394,9 +3394,6 @@ internal class PostHogTest {
         sut.addExceptionStep("B")
         sut.addExceptionStep("C")
 
-        // drain the queue so the buffered steps are recorded before capture reads them
-        queueExecutor.submit { }.get()
-
         sut.captureException(RuntimeException("boom"))
 
         queueExecutor.shutdownAndAwaitTermination()
@@ -3420,7 +3417,6 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
         sut.addExceptionStep("buffered")
-        queueExecutor.submit { }.get()
 
         sut.captureException(
             RuntimeException("boom"),
@@ -3447,13 +3443,11 @@ internal class PostHogTest {
 
         sut.addExceptionStep("A")
         sut.addExceptionStep("B")
-        queueExecutor.submit { }.get()
         sut.captureException(RuntimeException("first"))
 
         sut.reset()
 
         sut.addExceptionStep("C")
-        queueExecutor.submit { }.get()
         sut.captureException(RuntimeException("second"))
 
         // flushAt is high so neither capture triggers a flush on its own; flush explicitly
@@ -3495,7 +3489,6 @@ internal class PostHogTest {
             )
 
         sut.addExceptionStep("A")
-        queueExecutor.submit { }.get()
         sut.captureException(RuntimeException("boom"))
 
         queueExecutor.shutdownAndAwaitTermination()
