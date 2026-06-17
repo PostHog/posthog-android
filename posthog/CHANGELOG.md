@@ -1,5 +1,11 @@
 ## Next
 
+## 6.20.0
+
+### Minor Changes
+
+- e227aa5: Expose `getAnonymousId()` on `PostHogInterface`. Returns the anonymous ID generated before any `identify()` call — unlike `distinctId()`, this does not change after identification.
+
 ## 6.19.1
 
 ### Patch Changes
