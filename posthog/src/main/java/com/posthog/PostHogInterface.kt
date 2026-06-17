@@ -144,6 +144,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param defaultValue the default value if not found
      * @return The feature flag payload, or [defaultValue] if not found.
      */
+    @Deprecated("Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation")
     public fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any? = null,

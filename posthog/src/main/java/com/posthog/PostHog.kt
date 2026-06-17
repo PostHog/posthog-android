@@ -1435,6 +1435,7 @@ public class PostHog private constructor(
         return results
     }
 
+    @Deprecated("Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation")
     public override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
@@ -1877,6 +1878,8 @@ public class PostHog private constructor(
             return shared.getAllFeatureFlags()
         }
 
+        @Deprecated("Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation")
+        @Suppress("DEPRECATION")
         public override fun getFeatureFlagPayload(
             key: String,
             defaultValue: Any?,
