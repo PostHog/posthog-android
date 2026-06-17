@@ -1435,7 +1435,10 @@ public class PostHog private constructor(
         return results
     }
 
-    @Deprecated("Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation")
+    @Deprecated(
+        message = "Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation. Note: getFeatureFlagResult sends the \$feature_flag_called event by default, while getFeatureFlagPayload does not.",
+        replaceWith = ReplaceWith("getFeatureFlagResult(key)?.payload"),
+    )
     public override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
@@ -1878,7 +1881,10 @@ public class PostHog private constructor(
             return shared.getAllFeatureFlags()
         }
 
-        @Deprecated("Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation")
+        @Deprecated(
+            message = "Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation. Note: getFeatureFlagResult sends the \$feature_flag_called event by default, while getFeatureFlagPayload does not.",
+            replaceWith = ReplaceWith("getFeatureFlagResult(key)?.payload"),
+        )
         @Suppress("DEPRECATION")
         public override fun getFeatureFlagPayload(
             key: String,
