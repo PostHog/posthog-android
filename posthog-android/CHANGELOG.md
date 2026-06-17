@@ -1,5 +1,23 @@
 ## Next
 
+## 3.49.0
+
+### Minor Changes
+
+- 8632f77: Surveys now have a ready-made UI on Android. Add the new optional
+  `com.posthog:posthog-android-surveys-compose` module alongside `posthog-android` and set
+  `surveys = true` — the SDK auto-discovers the Compose UI and renders surveys with no extra wiring.
+
+  The UI is a Material 3 modal bottom sheet presented in its own window above your foreground
+  activity, so it works over both XML and Jetpack Compose apps and never interferes with your app's
+  navigation. It covers all survey question types (open text, single / multiple choice, number /
+  NPS rating, emoji rating, thumbs up/down, link) plus the thank-you screen, multi-question
+  server-driven branching, the configured popup delay, and theming from your PostHog appearance
+  settings.
+
+  Until now the default delegate only logged; you can still provide your own
+  `PostHogSurveysDelegate` for a custom UI. The module is pre-1.0 (`0.x`).
+
 ## 3.48.0
 
 ### Minor Changes
@@ -672,7 +690,7 @@ config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080
 
 - chore: Add mutations support to Session Recording ([#72](https://github.com/PostHog/posthog-android/pull/72))
 - chore: Session Recording as Experimental preview
-  - Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md#android-session-recording) guide.
+  - Check out the [docs](https://posthog.com/docs/session-replay/mobile) guide.
 
 ## 3.0.1 - 2024-01-03
 
@@ -686,13 +704,13 @@ config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080
 
 - Android Session Recording - Alpha preview ([#69](https://github.com/PostHog/posthog-android/pull/69))
 
-Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md#android-session-recording) guide.
+Check out the [docs](https://posthog.com/docs/session-replay/mobile) guide.
 
 ## 3.0.0 - 2023-12-06
 
 Check out the updated [docs](https://posthog.com/docs/libraries/android).
 
-Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md) guide.
+Check out the [docs](https://posthog.com/docs/libraries/android) guide.
 
 ### Changes
 

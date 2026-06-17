@@ -60,6 +60,8 @@ tasks.withType<DetektCreateBaselineTask>().configureEach {
 
 apiValidation {
     ignoredProjects.add("posthog-android-sample")
+    // Pre-1.0 (0.x) module — public surface may change between minor versions until 1.0.0.
+    ignoredProjects.add("posthog-android-surveys-compose")
 }
 
 nexusPublishing.postHogConfig()

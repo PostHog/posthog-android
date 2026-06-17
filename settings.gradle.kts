@@ -17,6 +17,7 @@ rootProject.name = "PostHog"
 
 include(":posthog")
 include(":posthog-android")
+include(":posthog-android-surveys-compose")
 include(":posthog-server")
 
 // samples

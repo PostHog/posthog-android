@@ -18,6 +18,8 @@ importers:
 
   posthog-android-gradle-plugin: {}
 
+  posthog-android-surveys-compose: {}
+
   posthog-server: {}
 
 packages:

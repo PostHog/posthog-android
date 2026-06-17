@@ -104,11 +104,13 @@ jobs:
                   # Sync package.json versions back to gradle.properties
                   CORE_VERSION=$(node -p "require('./posthog/package.json').version")
                   ANDROID_VERSION=$(node -p "require('./posthog-android/package.json').version")
+                  SURVEYS_COMPOSE_VERSION=$(node -p "require('./posthog-android-surveys-compose/package.json').version")
                   SERVER_VERSION=$(node -p "require('./posthog-server/package.json').version")
                   PLUGIN_VERSION=$(node -p "require('./posthog-android-gradle-plugin/package.json').version")
 
                   sed -i "s/^coreVersion=.*/coreVersion=$CORE_VERSION/" gradle.properties
                   sed -i "s/^androidVersion=.*/androidVersion=$ANDROID_VERSION/" gradle.properties
+                  sed -i "s/^surveysComposeVersion=.*/surveysComposeVersion=$SURVEYS_COMPOSE_VERSION/" gradle.properties
                   sed -i "s/^serverVersion=.*/serverVersion=$SERVER_VERSION/" gradle.properties
                   sed -i "s/^androidPluginVersion=.*/androidPluginVersion=$PLUGIN_VERSION/" posthog-android-gradle-plugin/gradle.properties
 
@@ -125,7 +127,7 @@ jobs:
             - name: Commit version bump
               id: commit-version-bump
               if: steps.check-changes.outputs.committed == 'true'
-              uses: planetscale/ghcommit-action@25309d8005ac7c3bcd61d3fe19b69e0fe47dbdde # v0.2.20
+              uses: planetscale/ghcommit-action@a6b150b81dca5dd027baa898604418eec9e11465 # v0.2.22
               with:
                 commit_message: "chore: update versions and changelogs [version bump] [skip ci]"
                 repo: ${{ github.repository }}
@@ -214,6 +216,11 @@ jobs:
                       make_dry_target: dryReleaseAndroid
                       make_release_target: releaseAndroid
                       changelog: posthog-android/CHANGELOG.md
+                    - name: posthog-android-surveys-compose
+                      tag_prefix: surveysCompose
+                      make_dry_target: dryReleaseSurveysCompose
+                      make_release_target: releaseSurveysCompose
+                      changelog: posthog-android-surveys-compose/CHANGELOG.md
                     - name: posthog-server
                       tag_prefix: server
                       make_dry_target: dryReleaseServer

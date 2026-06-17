@@ -1,5 +1,13 @@
 ## Next
 
+## 6.19.0
+
+### Minor Changes
+
+- 8632f77: Surveys: expose `surveyPopupDelaySeconds` on the public `PostHogDisplaySurveyAppearance` and map it
+  from the internal `SurveyAppearance`, so survey UIs can honor the configured popup delay before
+  presenting a survey.
+
 ## 6.18.0
 
 ### Minor Changes
@@ -667,7 +675,7 @@ config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080
 
 - chore: Add mutations support to Session Recording ([#72](https://github.com/PostHog/posthog-android/pull/72))
 - chore: Session Recording as Experimental preview
-  - Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md#android-session-recording) guide.
+  - Check out the [docs](https://posthog.com/docs/session-replay/mobile) guide.
 
 ## 3.0.1 - 2024-01-03
 
@@ -681,13 +689,13 @@ config.proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("proxy.example.com",8080
 
 - Android Session Recording - Alpha preview ([#69](https://github.com/PostHog/posthog-android/pull/69))
 
-Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md#android-session-recording) guide.
+Check out the [docs](https://posthog.com/docs/session-replay/mobile) guide.
 
 ## 3.0.0 - 2023-12-06
 
 Check out the updated [docs](https://posthog.com/docs/libraries/android).
 
-Check out the [USAGE](https://github.com/PostHog/posthog-android/blob/main/USAGE.md) guide.
+Check out the [docs](https://posthog.com/docs/libraries/android) guide.
 
 ### Changes
 

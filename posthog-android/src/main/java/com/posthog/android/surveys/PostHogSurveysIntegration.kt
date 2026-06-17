@@ -21,6 +21,7 @@ import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogNextSurveyQuestion
 import com.posthog.surveys.PostHogSurveyResponse
+import com.posthog.surveys.PostHogSurveysDefaultDelegate
 import com.posthog.surveys.PostHogSurveysDelegate
 import com.posthog.surveys.RatingSurveyQuestion
 import com.posthog.surveys.SingleSurveyQuestion
@@ -58,6 +59,9 @@ public class PostHogSurveysIntegration(
 
     private val deviceType: String = getDeviceType(context) ?: "Mobile"
 
+    // Held for reflectively constructing the optional Compose UI delegate (auto-discovery).
+    private val appContext: Context = context.applicationContext ?: context
+
     // Thread safety locks
     private val surveysLock = Any()
     private val seenSurveysLock = Any()
@@ -90,6 +94,16 @@ public class PostHogSurveysIntegration(
             isStarted = true
         }
 
+        // Resolve the delegate now, at app start — do NOT defer this to first
+        // render. The auto-discovered Compose delegate registers an
+        // ActivityLifecycleCallbacks to track the foreground activity; resolving
+        // it here guarantees that callback is registered before the first
+        // activity resumes, so it actually receives the resume. Resolving lazily
+        // (on the first survey) registers it too late — the resume has already
+        // fired and is not replayed, leaving no foreground activity to host the
+        // survey, which then closes immediately as a "non-active survey".
+        getSurveysDelegate()
+
         showNextSurvey()
     }
 
@@ -98,6 +112,10 @@ public class PostHogSurveysIntegration(
         synchronized(lifecycleLock) {
             isStarted = false
         }
+
+        // Tear down any survey UI still on screen so its dialog window doesn't outlive the
+        // integration; clearActiveSurvey() only resets our bookkeeping, not the delegate's UI.
+        cleanupSurveys()
 
         clearActiveSurvey()
 
@@ -120,13 +138,45 @@ public class PostHogSurveysIntegration(
     }
 
     /**
-     * Gets the surveys delegate from the PostHog config.
+     * Resolves the surveys delegate.
      *
-     * @return The surveys delegate from PostHogConfig.surveysConfig
+     * If the consumer explicitly set a delegate on
+     * [com.posthog.surveys.PostHogSurveysConfig], that one is always used.
+     * Otherwise — when the delegate is still the log-only
+     * [PostHogSurveysDefaultDelegate] — we try to auto-discover the optional
+     * `posthog-android-surveys-compose` UI delegate from the classpath, so
+     * adding that single dependency is enough to get a real survey UI with no
+     * extra wiring. When the module isn't present we fall back to the default.
+     *
+     * @return The surveys delegate to render with.
      */
     private fun getSurveysDelegate(): PostHogSurveysDelegate {
-        return config.surveysConfig.surveysDelegate
+        val configured = config.surveysConfig.surveysDelegate
+        if (configured !is PostHogSurveysDefaultDelegate) {
+            return configured
+        }
+        return autoDiscoveredComposeDelegate ?: configured
     }
+
+    /**
+     * The optional Compose UI delegate, reflectively loaded from
+     * `:posthog-android-surveys-compose` when it is on the classpath. Resolved
+     * once; `null` when the module isn't present. Mirrors the classpath probe
+     * the replay integration uses to detect Compose.
+     */
+    private val autoDiscoveredComposeDelegate: PostHogSurveysDelegate? by
+        lazy(LazyThreadSafetyMode.PUBLICATION) {
+            try {
+                val clazz = Class.forName(COMPOSE_DELEGATE_CLASS_NAME)
+                val constructor = clazz.getConstructor(Context::class.java)
+                (constructor.newInstance(appContext) as PostHogSurveysDelegate).also {
+                    config.logger.log("Surveys: auto-discovered Compose UI delegate.")
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Surveys: Compose UI module not found, using default delegate: $e")
+                null
+            }
+        }
 
     private fun defaultMatchType(matchType: SurveyMatchType?): SurveyMatchType {
         return matchType ?: SurveyMatchType.I_CONTAINS
@@ -909,6 +959,11 @@ public class PostHogSurveysIntegration(
 
     private companion object {
         private const val NEXT_SURVEY_TRANSITION_DELAY_MS = 750L
+
+        // Fully-qualified name of the optional Compose UI delegate. Kept as a
+        // string so the core SDK has no compile-time dependency on the module.
+        private const val COMPOSE_DELEGATE_CLASS_NAME =
+            "com.posthog.android.surveys.compose.PostHogSurveysComposeDelegate"
     }
 
     /**

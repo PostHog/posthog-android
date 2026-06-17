@@ -16,6 +16,7 @@ package com.posthog.surveys
  * @property inputBackground Optional background color for input fields as web color
  * @property inputTextColor Optional text color for input fields as web color
  * @property placeholder Optional placeholder text for input fields
+ * @property surveyPopupDelaySeconds Optional delay, in seconds, before the survey is shown after it is triggered
  * @property displayThankYouMessage Whether to show a thank you message after survey completion
  * @property thankYouMessageHeader Optional header text for the thank you message
  * @property thankYouMessageDescription Optional description text for the thank you message
@@ -36,6 +37,7 @@ public data class PostHogDisplaySurveyAppearance(
     val inputBackground: String? = null,
     val inputTextColor: String? = null,
     val placeholder: String? = null,
+    val surveyPopupDelaySeconds: Double? = null,
     val displayThankYouMessage: Boolean = false,
     val thankYouMessageHeader: String? = null,
     val thankYouMessageDescription: String? = null,
@@ -75,6 +77,7 @@ public data class PostHogDisplaySurveyAppearance(
                 inputBackground = appearance.inputBackground,
                 inputTextColor = appearance.inputTextColor,
                 placeholder = appearance.placeholder,
+                surveyPopupDelaySeconds = appearance.surveyPopupDelaySeconds,
                 displayThankYouMessage = appearance.displayThankYouMessage ?: false,
                 thankYouMessageHeader = translation?.thankYouMessageHeader ?: appearance.thankYouMessageHeader,
                 thankYouMessageDescription = translation?.thankYouMessageDescription ?: appearance.thankYouMessageDescription,
