@@ -230,6 +230,17 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun distinctId(): String
 
     /**
+     * Returns the anonymous ID generated for this device before any [identify] call.
+     *
+     * Unlike [distinctId], this value does not change after [identify] — it always reflects
+     * the pre-identification anonymous identifier. Useful for linking anonymous sessions to
+     * identified users in downstream systems.
+     *
+     * @return The anonymous ID, or an empty string if not yet initialized.
+     */
+    public fun getAnonymousId(): String
+
+    /**
      * Returns the stable device identifier used for device-level feature flag bucketing.
      * This ID persists across [identify] and [reset] calls, only changing on a fresh
      * app install, manual cache clearing, or OS-initiated storage cleanup.

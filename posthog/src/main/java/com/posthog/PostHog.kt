@@ -1591,6 +1591,13 @@ public class PostHog private constructor(
         return distinctId
     }
 
+    override fun getAnonymousId(): String {
+        if (!isEnabled()) {
+            return ""
+        }
+        return anonymousId
+    }
+
     override fun getDeviceId(): String {
         if (!isEnabled()) {
             return ""
@@ -1992,6 +1999,8 @@ public class PostHog private constructor(
         }
 
         override fun distinctId(): String = shared.distinctId()
+
+        override fun getAnonymousId(): String = shared.getAnonymousId()
 
         override fun getDeviceId(): String = shared.getDeviceId()
 
