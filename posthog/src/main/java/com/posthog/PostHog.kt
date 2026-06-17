@@ -383,6 +383,7 @@ public class PostHog private constructor(
         }
     }
 
+    @get:JvmName("getAnonymousIdInternal")
     private var anonymousId: String
         get() {
             var anonymousId: String?
