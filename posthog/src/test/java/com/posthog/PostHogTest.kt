@@ -529,6 +529,7 @@ internal class PostHogTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `getFeatureFlagPayload returns the value after reloaded`() {
         val http =
             mockHttp(

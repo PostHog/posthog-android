@@ -83,6 +83,7 @@ public class PostHogFake : PostHogInterface {
         return null
     }
 
+    @Deprecated("Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation")
     override fun getFeatureFlagPayload(
         key: String,
         defaultValue: Any?,
