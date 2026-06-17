@@ -236,7 +236,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * the pre-identification anonymous identifier. Useful for linking anonymous sessions to
      * identified users in downstream systems.
      *
-     * @return The anonymous ID, or an empty string if not yet initialized.
+     * @return The anonymous ID, or an empty string if the SDK is not enabled.
      */
     public fun getAnonymousId(): String
 
