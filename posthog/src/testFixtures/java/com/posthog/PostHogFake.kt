@@ -189,6 +189,10 @@ public class PostHogFake : PostHogInterface {
         return ""
     }
 
+    override fun getAnonymousId(): String {
+        return ""
+    }
+
     override fun getDeviceId(): String {
         return ""
     }
