@@ -11,7 +11,8 @@ import java.util.Date
  * Each step is normalized to its JSON-safe wire form exactly once (using the same
  * serializer applied to event properties) before it is byte-counted, stored, and
  * later attached to an `$exception` event, so the byte budget reflects exactly what
- * is sent. The buffer is thread-safe and recording never throws.
+ * is sent. The buffer is thread-safe and recording is defensive — bad input and
+ * unrepresentable values are skipped and logged rather than propagated.
  *
  * Android captures fatal crashes in-process via the uncaught-exception handler and
  * the resulting event rides the existing persisted event queue, so an in-memory
@@ -38,12 +39,12 @@ internal class PostHogExceptionStepsBuffer(
         timestamp: Date,
         properties: Map<String, Any>?,
     ) {
-        if (message.isBlank()) {
-            logger.log("Exception step ignored: message is empty.")
-            return
-        }
-
         try {
+            if (message.isBlank()) {
+                logger.log("Exception step ignored: message is empty.")
+                return
+            }
+
             val raw = LinkedHashMap<String, Any>()
             properties?.forEach { (key, value) ->
                 if (key == MESSAGE_KEY || key == TIMESTAMP_KEY) {
@@ -96,10 +97,14 @@ internal class PostHogExceptionStepsBuffer(
         }
     }
 
-    /** Returns a snapshot of the buffered steps, oldest first. */
+    /**
+     * Returns a snapshot of the buffered steps, oldest first. Each step is copied so the
+     * returned maps are decoupled from internal state — the snapshot is attached to an
+     * event and serialized on another thread, so it must not alias the live buffer.
+     */
     fun snapshot(): List<Map<String, Any>> =
         synchronized(lock) {
-            steps.map { it.step }
+            steps.map { LinkedHashMap(it.step) }
         }
 
     fun clear() {

@@ -232,12 +232,17 @@ public class PostHog private constructor(
                 this.logsQueue = logsQueue
 
                 if (config.errorTrackingConfig.exceptionSteps.enabled) {
-                    exceptionStepsBuffer =
-                        PostHogExceptionStepsBuffer(
-                            maxBytes = config.errorTrackingConfig.exceptionSteps.maxBytes,
-                            serializer = config.serializer,
-                            logger = config.logger,
-                        )
+                    val maxBytes = config.errorTrackingConfig.exceptionSteps.maxBytes
+                    if (maxBytes > 0) {
+                        exceptionStepsBuffer =
+                            PostHogExceptionStepsBuffer(
+                                maxBytes = maxBytes,
+                                serializer = config.serializer,
+                                logger = config.logger,
+                            )
+                    } else {
+                        config.logger.log("Exception steps disabled: maxBytes ($maxBytes) must be greater than 0.")
+                    }
                 }
 
                 if (featureFlags is PostHogRemoteConfig) {
@@ -706,21 +711,18 @@ public class PostHog private constructor(
         message: String,
         properties: Map<String, Any>?,
     ) {
-        if (!isEnabled()) {
-            return
-        }
-
-        val timestamp = Date()
-        val buffer = exceptionStepsBuffer ?: return
-
         try {
+            if (!isEnabled()) {
+                return
+            }
+            val buffer = exceptionStepsBuffer ?: return
             // Record synchronously on the calling thread (no background dispatch): a step
             // recorded immediately before a crash must already be buffered when the
             // uncaught-exception handler captures it. The work is bounded and cheap.
-            buffer.add(message, timestamp, properties)
+            buffer.add(message, Date(), properties)
         } catch (e: Throwable) {
-            // recording must never throw into the host app
-            config?.logger?.log("addExceptionStep has thrown an exception: $e.")
+            // recording must never throw into the host app, even via a host-supplied logger
+            safeLog("addExceptionStep has thrown an exception: $e.")
         }
     }
 

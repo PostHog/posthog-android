@@ -69,6 +69,8 @@ internal class PostHogTest {
         evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
         personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
+        exceptionStepsEnabled: Boolean = true,
+        exceptionStepsMaxBytes: Int = 32768,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -92,6 +94,8 @@ internal class PostHogTest {
                     addBeforeSend(beforeSend)
                 }
                 this.errorTrackingConfig.inAppIncludes.add("com.posthog")
+                this.errorTrackingConfig.exceptionSteps.enabled = exceptionStepsEnabled
+                this.errorTrackingConfig.exceptionSteps.maxBytes = exceptionStepsMaxBytes
                 this.context = context
                 this.personProfiles = personProfiles
             }
@@ -3471,21 +3475,12 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val config =
-            PostHogConfig(API_KEY, url.toString()).apply {
-                preloadFeatureFlags = false
-                flushAt = 1
-                storagePrefix = File(tmpDir.newFolder().absolutePath, "events").absolutePath
-                errorTrackingConfig.exceptionSteps.enabled = false
-            }
         val sut =
-            PostHog.withInternal(
-                config,
-                queueExecutor,
-                replayQueueExecutor,
-                remoteConfigExecutor,
-                cachedEventsExecutor,
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
                 reloadFeatureFlags = false,
+                exceptionStepsEnabled = false,
             )
 
         sut.addExceptionStep("A")
@@ -3498,6 +3493,60 @@ internal class PostHogTest {
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         assertTrue(exceptionStepMessages(batch.batch.first()).isEmpty())
+
+        sut.close()
+    }
+
+    @Test
+    fun `addExceptionStep is a no-op when maxBytes is not positive`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                exceptionStepsMaxBytes = 0,
+            )
+
+        sut.addExceptionStep("A")
+        sut.captureException(RuntimeException("boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertTrue(exceptionStepMessages(batch.batch.first()).isEmpty())
+
+        sut.close()
+    }
+
+    @Test
+    fun `exception steps attach to a generic capture of the exception event`() {
+        // Hybrid SDKs (RN/Flutter) forward steps via addExceptionStep and emit the
+        // exception through the generic capture() entry point rather than captureException.
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.addExceptionStep("A")
+        sut.addExceptionStep("B")
+
+        sut.capture("\$exception", properties = mapOf("\$exception_message" to "boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$exception", theEvent.event)
+        assertEquals(listOf("A", "B"), exceptionStepMessages(theEvent))
 
         sut.close()
     }

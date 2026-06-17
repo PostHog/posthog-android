@@ -3,6 +3,9 @@ package com.posthog.internal.errortracking
 import com.posthog.PostHogConfig
 import com.posthog.internal.PostHogSerializer
 import java.util.Date
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -23,14 +26,17 @@ internal class PostHogExceptionStepsBufferTest {
         val sut = getSut()
         val ts = Date()
 
-        sut.add("User tapped Checkout", ts, mapOf("screen" to "cart"))
+        sut.add("User tapped Checkout", ts, mapOf("screen" to "cart", "qty" to 2))
 
         val steps = sut.snapshot()
         assertEquals(1, steps.size)
         val step = steps.first()
         assertEquals("User tapped Checkout", step[PostHogExceptionStepsBuffer.MESSAGE_KEY])
         assertEquals("cart", step["screen"])
-        assertTrue(step.containsKey(PostHogExceptionStepsBuffer.TIMESTAMP_KEY))
+        // the step is normalized to its JSON wire form once, exactly as event properties
+        // are serialized: the Date becomes an ISO-8601 String, scalars are preserved
+        assertTrue(step[PostHogExceptionStepsBuffer.TIMESTAMP_KEY] is String)
+        assertEquals(2, (step["qty"] as Number).toInt())
     }
 
     @Test
@@ -81,7 +87,7 @@ internal class PostHogExceptionStepsBufferTest {
 
     @Test
     fun `evicts oldest steps when over byte budget`() {
-        // budget large enough for ~2 of these steps
+        // budget holds only a fraction of the five equally-sized steps
         val sut = getSut(maxBytes = 120)
 
         repeat(5) { index ->
@@ -89,9 +95,11 @@ internal class PostHogExceptionStepsBufferTest {
         }
 
         val messages = sut.snapshot().map { it[PostHogExceptionStepsBuffer.MESSAGE_KEY] }
+        // eviction happened and left a contiguous newest-first suffix (no stale oldest,
+        // no accounting drift that would keep a non-contiguous set)
         assertTrue(messages.isNotEmpty())
-        // oldest dropped: step-0 must not survive, newest must
-        assertTrue(!messages.contains("step-0"))
+        assertTrue(messages.size < 5)
+        assertEquals((5 - messages.size until 5).map { "step-$it" }, messages)
         assertEquals("step-4", messages.last())
     }
 
@@ -133,10 +141,41 @@ internal class PostHogExceptionStepsBufferTest {
         val sut = getSut()
         val ts = Date()
 
-        // a value the safe map serializer drops should not prevent the step from being stored
-        sut.add("msg", ts, mapOf("ok" to "value"))
+        // NaN cannot be represented in JSON; the safe map serializer drops it. The
+        // step is still stored and the representable sibling property survives.
+        sut.add("msg", ts, mapOf("ok" to "value", "bad" to Double.NaN))
 
         val step = sut.snapshot().first()
         assertEquals("value", step["ok"])
+        assertTrue(!step.containsKey("bad"))
+    }
+
+    @Test
+    fun `concurrent adds and snapshots stay consistent`() {
+        // budget large enough that nothing is evicted, so the surviving count is exact
+        val sut = getSut(maxBytes = 1 shl 20)
+        val threadCount = 8
+        val perThread = 200
+
+        val pool = Executors.newFixedThreadPool(threadCount)
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(threadCount)
+        repeat(threadCount) { t ->
+            pool.submit {
+                start.await()
+                repeat(perThread) { i ->
+                    sut.add("t$t-$i", Date(), mapOf("i" to i))
+                    // interleave reads to race add() against snapshot()
+                    sut.snapshot()
+                }
+                done.countDown()
+            }
+        }
+        start.countDown()
+        assertTrue(done.await(30, TimeUnit.SECONDS))
+        pool.shutdown()
+
+        // every add fit within budget, so all steps are present with no lost updates
+        assertEquals(threadCount * perThread, sut.snapshot().size)
     }
 }

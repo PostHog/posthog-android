@@ -106,7 +106,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * (see [com.posthog.errortracking.PostHogExceptionStepsConfig]).
      *
      * Recording never throws into the host app: an empty message is ignored with a
-     * warning, and internal failures silently skip the step.
+     * warning, and internal failures skip the step (logged via the configured logger).
      *
      * Recording is synchronous: the `$timestamp` is captured at call time and the step
      * is normalized, byte-budget enforced, and buffered before this method returns, so a

@@ -97,7 +97,8 @@ fun exceptionStepsDemo(modifier: Modifier = Modifier) {
         }
         actionRow("Crash app (fatal — attaches steps)") {
             // Uncaught on the main thread: the SDK's UncaughtExceptionHandler captures
-            // the $exception with the buffered steps and flushes before the process dies.
+            // the $exception with the buffered steps; delivery typically completes on the
+            // next launch via the persisted event queue.
             throw MyCustomException("Fatal crash from sample")
         }
         actionRow("flush all queues") {
