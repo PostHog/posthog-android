@@ -1,5 +1,11 @@
 ## Next
 
+## 3.51.0
+
+### Minor Changes
+
+- d64ad52: Add `addExceptionStep(message, properties?)` and the `errorTrackingConfig.exceptionSteps` config (enabled by default, 32 KiB byte budget). Recorded steps are buffered in a rolling, byte-bounded FIFO and attached to every captured `$exception` event as `$exception_steps`.
+
 ## 3.50.0
 
 ### Minor Changes
