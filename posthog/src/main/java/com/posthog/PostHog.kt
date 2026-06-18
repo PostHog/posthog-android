@@ -715,6 +715,9 @@ public class PostHog private constructor(
             if (!isEnabled()) {
                 return
             }
+            if (config?.optOut == true) {
+                return
+            }
             val buffer = exceptionStepsBuffer ?: return
             // Record synchronously on the calling thread (no background dispatch): a step
             // recorded immediately before a crash must already be buffered when the
@@ -897,6 +900,7 @@ public class PostHog private constructor(
         synchronized(optOutLock) {
             config?.optOut = true
             getPreferences().setValue(OPT_OUT, true)
+            exceptionStepsBuffer?.clear()
         }
     }
 

@@ -3525,6 +3525,31 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `addExceptionStep clears the buffer on optOut and stops buffering while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.addExceptionStep("before opt-out")
+        sut.optOut()
+        sut.addExceptionStep("while opted out")
+        sut.optIn()
+
+        sut.captureException(RuntimeException("boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertTrue(exceptionStepMessages(batch.batch.first()).isEmpty())
+
+        sut.close()
+    }
+
+    @Test
     fun `exception steps attach to a generic capture of the exception event`() {
         // Hybrid SDKs (RN/Flutter) forward steps via addExceptionStep and emit the
         // exception through the generic capture() entry point rather than captureException.
