@@ -19,6 +19,11 @@
             android:theme="@style/Theme.PostHogAndroidSample" />
 
         <activity
+            android:name="com.posthog.android.sample.ErrorTrackingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PostHogAndroidSample" />
+
+        <activity
             android:name="com.posthog.android.sample.SurveysComposeActivity"
             android:exported="false"
             android:theme="@style/Theme.PostHogAndroidSample" />

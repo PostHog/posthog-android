@@ -44,7 +44,10 @@ class MyApp : Application() {
                 // Surveys are opt-in. With :posthog-android-surveys-compose on the classpath the
                 // core SDK auto-discovers the Compose UI delegate — no surveysConfig wiring needed.
                 surveys = true
-                errorTrackingConfig.autoCapture = false
+                // Enabled so the ErrorTrackingActivity "Crash app (fatal)" button is captured
+                // as an $exception with $exception_steps. Requires exception autocapture
+                // enabled for the project in PostHog too.
+                errorTrackingConfig.autoCapture = true
                 logs.serviceName = "posthog-android-sample"
                 logs.environment = "development"
             }

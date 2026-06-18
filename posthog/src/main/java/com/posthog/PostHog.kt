@@ -30,6 +30,7 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.sortMapRecursively
@@ -116,6 +117,9 @@ public class PostHog private constructor(
 
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
     private var surveysHandler: PostHogSurveysHandler? = null
+
+    @Volatile
+    private var exceptionStepsBuffer: PostHogExceptionStepsBuffer? = null
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
@@ -226,6 +230,20 @@ public class PostHog private constructor(
                 this.queue = queue
                 this.replayQueue = replayQueue
                 this.logsQueue = logsQueue
+
+                if (config.errorTrackingConfig.exceptionSteps.enabled) {
+                    val maxBytes = config.errorTrackingConfig.exceptionSteps.maxBytes
+                    if (maxBytes > 0) {
+                        exceptionStepsBuffer =
+                            PostHogExceptionStepsBuffer(
+                                maxBytes = maxBytes,
+                                serializer = config.serializer,
+                                logger = config.logger,
+                            )
+                    } else {
+                        config.logger.log("Exception steps disabled: maxBytes ($maxBytes) must be greater than 0.")
+                    }
+                }
 
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
@@ -375,6 +393,9 @@ public class PostHog private constructor(
                 lastScreenName = null
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
+
+                exceptionStepsBuffer?.clear()
+                exceptionStepsBuffer = null
 
                 endSession()
             } catch (e: Throwable) {
@@ -589,10 +610,23 @@ public class PostHog private constructor(
                 groupIdentify = true
             }
 
+            // Attach the buffered exception steps to any $exception event (unless the caller
+            // already supplied them), so externally-built exceptions (e.g. from the Flutter/RN
+            // bridge) carry steps too, not only those captured via captureException(throwable).
+            val stepsBuffer = exceptionStepsBuffer
+            val effectiveProperties =
+                if (event == PostHogEventName.EXCEPTION.event && stepsBuffer != null) {
+                    val mutableProperties = properties?.toMutableMap() ?: mutableMapOf()
+                    stepsBuffer.attachTo(mutableProperties)
+                    mutableProperties
+                } else {
+                    properties
+                }
+
             val mergedProperties =
                 buildProperties(
                     newDistinctId,
-                    properties = properties,
+                    properties = effectiveProperties,
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
                     groups = groups,
@@ -664,11 +698,35 @@ public class PostHog private constructor(
                 exceptionProperties.putAll(it)
             }
 
+            // $exception_steps are attached in capture() for all $exception events,
+            // so externally-built exceptions (e.g. the Flutter/RN bridge) get them too.
             capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
         } catch (e: Throwable) {
             // we swallow all exceptions that the SDK has thrown by trying to convert
             // a captured exception to a PostHog exception event
             config?.logger?.log("captureException has thrown an exception: $e.")
+        }
+    }
+
+    override fun addExceptionStep(
+        message: String,
+        properties: Map<String, Any>?,
+    ) {
+        try {
+            if (!isEnabled()) {
+                return
+            }
+            if (config?.optOut == true) {
+                return
+            }
+            val buffer = exceptionStepsBuffer ?: return
+            // Record synchronously on the calling thread (no background dispatch): a step
+            // recorded immediately before a crash must already be buffered when the
+            // uncaught-exception handler captures it. The work is bounded and cheap.
+            buffer.add(message, Date(), properties)
+        } catch (e: Throwable) {
+            // recording must never throw into the host app, even via a host-supplied logger
+            safeLog("addExceptionStep has thrown an exception: $e.")
         }
     }
 
@@ -843,6 +901,7 @@ public class PostHog private constructor(
         synchronized(optOutLock) {
             config?.optOut = true
             getPreferences().setValue(OPT_OUT, true)
+            exceptionStepsBuffer?.clear()
         }
     }
 
@@ -1850,6 +1909,13 @@ public class PostHog private constructor(
             properties: Map<String, Any>?,
         ) {
             shared.captureException(throwable, properties)
+        }
+
+        public override fun addExceptionStep(
+            message: String,
+            properties: Map<String, Any>?,
+        ) {
+            shared.addExceptionStep(message, properties)
         }
 
         public override fun identify(

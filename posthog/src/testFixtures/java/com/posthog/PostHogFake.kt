@@ -57,6 +57,12 @@ public class PostHogFake : PostHogInterface {
     ) {
     }
 
+    override fun addExceptionStep(
+        message: String,
+        properties: Map<String, Any>?,
+    ) {
+    }
+
     override fun identify(
         distinctId: String,
         userProperties: Map<String, Any>?,

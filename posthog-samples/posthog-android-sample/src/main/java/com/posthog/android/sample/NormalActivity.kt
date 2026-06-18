@@ -29,6 +29,11 @@ class NormalActivity : ComponentActivity() {
             startActivity(Intent(this, LogsActivity::class.java))
         }
 
+        findViewById<Button>(R.id.errorTrackingButton).setOnClickListener {
+            // Screen for recording exception steps and capturing manual/fatal exceptions.
+            startActivity(Intent(this, ErrorTrackingActivity::class.java))
+        }
+
         findViewById<Button>(R.id.triggerSurveyButton).setOnClickListener {
             // Fires the event a Popover survey can be targeted on (event = "show_survey_trigger").
             PostHog.capture("show_survey_trigger")
