@@ -13,8 +13,8 @@ import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.ThrowableCoercer
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
-import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -599,7 +599,7 @@ public open class PostHogStateless protected constructor(
             var id = distinctId
             if (id.isNullOrBlank()) {
                 exceptionProperties.set("\$process_person_profile", false)
-                id = UUID.randomUUID().toString()
+                id = TimeBasedEpochGenerator.generate().toString()
             }
 
             captureStateless(PostHogEventName.EXCEPTION.event, distinctId = id, properties = exceptionProperties)

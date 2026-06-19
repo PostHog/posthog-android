@@ -13,6 +13,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import java.io.File
 import java.util.Date
+import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -1349,7 +1350,7 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `captureExceptionStateless without distinctId generates random UUID`() {
+    fun `captureExceptionStateless without distinctId generates UUID v7`() {
         val mockQueue = MockQueue()
         sut = createStatelessInstance()
         config = createConfig()
@@ -1365,6 +1366,7 @@ internal class PostHogStatelessTest {
         val event = mockQueue.events.first()
         assertTrue(event.distinctId.isNotBlank())
         assertTrue(event.distinctId.matches(("[0-9a-fA-F-]{36}".toRegex())))
+        assertEquals(7, UUID.fromString(event.distinctId).version())
         assertEquals(false, event.properties!!["\$process_person_profile"])
     }
 

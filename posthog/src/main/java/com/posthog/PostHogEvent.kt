@@ -16,7 +16,7 @@ import java.util.UUID
  * @property distinctId The distinct Id
  * @property properties All the event properties
  * @property timestamp The timestamp is automatically generated
- * @property uuid the UUID v4 is automatically generated and used for deduplication
+ * @property uuid the UUID v7 is automatically generated and used for deduplication
  */
 public data class PostHogEvent(
     val event: String,

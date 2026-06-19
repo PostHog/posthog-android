@@ -155,7 +155,8 @@ internal class PostHogRequestContextTest {
             val distinctId = batch.firstEvent?.get("distinct_id")?.asString
             assertNotNull(distinctId)
             assertNotEquals("header-user", distinctId)
-            assertTrue(runCatching { java.util.UUID.fromString(distinctId) }.isSuccess)
+            val parsedDistinctId = java.util.UUID.fromString(distinctId)
+            assertEquals(7, parsedDistinctId.version())
             val properties = batch.firstEventProperties()
             assertEquals(false, properties["\$process_person_profile"])
             assertFalse(properties.containsKey("\$session_id"))
@@ -176,7 +177,8 @@ internal class PostHogRequestContextTest {
             val batch = request.parseBatch()
             val distinctId = batch.firstEvent?.get("distinct_id")?.asString
             assertNotNull(distinctId)
-            assertTrue(runCatching { java.util.UUID.fromString(distinctId) }.isSuccess)
+            val parsedDistinctId = java.util.UUID.fromString(distinctId)
+            assertEquals(7, parsedDistinctId.version())
             val properties = batch.firstEventProperties()
             assertEquals(false, properties["\$process_person_profile"])
             assertEquals("present", properties["request"])
