@@ -507,9 +507,11 @@ public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
 	public fun <init> (Z)V
 	public fun <init> (ZLjava/util/List;)V
 	public fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;)V
-	public synthetic fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;)V
+	public synthetic fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAutoCapture ()Z
 	public final fun getExceptionSteps ()Lcom/posthog/errortracking/PostHogExceptionStepsConfig;
+	public final fun getIgnoredExceptionTypes ()Ljava/util/List;
 	public final fun getInAppIncludes ()Ljava/util/List;
 	public final fun setAutoCapture (Z)V
 }
