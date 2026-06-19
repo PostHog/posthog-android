@@ -687,6 +687,17 @@ public class PostHog private constructor(
         }
 
         try {
+            val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
+            if (!ignored.isNullOrEmpty()) {
+                val match = findIgnoredTypeInCauseChain(throwable, ignored)
+                if (match != null) {
+                    config?.logger?.log(
+                        "Skipping \$exception: ${match.name} (or a cause in its chain) matches ignoredExceptionTypes",
+                    )
+                    return
+                }
+            }
+
             val exceptionProperties =
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
@@ -706,6 +717,21 @@ public class PostHog private constructor(
             // a captured exception to a PostHog exception event
             config?.logger?.log("captureException has thrown an exception: $e.")
         }
+    }
+
+    private fun findIgnoredTypeInCauseChain(
+        throwable: Throwable,
+        ignored: List<Class<out Throwable>>,
+    ): Class<out Throwable>? {
+        var current: Throwable? = throwable
+        var depth = 0
+        while (current != null && depth < MAX_CAUSE_DEPTH) {
+            val link = current
+            ignored.firstOrNull { it.isInstance(link) }?.let { return it }
+            current = if (link.cause === link) null else link.cause
+            depth++
+        }
+        return null
     }
 
     override fun addExceptionStep(
@@ -1803,6 +1829,10 @@ public class PostHog private constructor(
         private var defaultSharedInstance = shared
 
         private val apiKeys = mutableSetOf<String>()
+
+        // Cap on the cause-chain walk used by ignoredExceptionTypes.
+        // Guards against self-referential or cyclic causes.
+        private const val MAX_CAUSE_DEPTH: Int = 32
 
         /**
          * Captures application log records into PostHog's logs product
