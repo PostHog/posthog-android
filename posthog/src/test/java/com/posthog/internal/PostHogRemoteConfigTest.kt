@@ -49,6 +49,9 @@ internal class PostHogRemoteConfigTest {
     @BeforeTest
     fun `set up`() {
         preferences.clear()
+        // isReactNative is a process-global flag on the PostHogSessionManager singleton; reset it so a
+        // test in another suite that sets it true can't leak into these (e.g. flip getEventTriggers to null).
+        PostHogSessionManager.isReactNative = false
     }
 
     @Test
@@ -1991,6 +1994,33 @@ internal class PostHogRemoteConfigTest {
 
         val sut = getSut(host = url.toString())
 
+        assertEquals(triggers.toSet(), sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `getEventTriggers returns null for react native even when configured`() {
+        val triggers = listOf("checkout_started", "payment_completed")
+        preferences.setValue(SESSION_REPLAY, mapOf("eventTriggers" to triggers))
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        // React Native evaluates event triggers in its JS layer, so the native gate opts out.
+        PostHogSessionManager.isReactNative = true
+        assertNull(sut.getEventTriggers())
+
+        // Non-RN still receives the configured set.
+        PostHogSessionManager.isReactNative = false
         assertEquals(triggers.toSet(), sut.getEventTriggers())
 
         sut.clear()

@@ -1059,8 +1059,15 @@ public class PostHogRemoteConfig(
     /**
      * Returns the current event triggers for session recording, or null if not configured.
      * When event triggers are configured, session recording only starts after one of these events is captured.
+     *
+     * React Native evaluates event triggers in its JS layer; RN-captured events never reach the
+     * native capture() pipeline, so the native gate can't be satisfied. Returns null for RN — the
+     * JS layer owns them (linkedFlag and sampling gates still apply).
      */
-    public fun getEventTriggers(): Set<String>? = sessionRecordingEventTriggers
+    public fun getEventTriggers(): Set<String>? {
+        if (PostHogSessionManager.isReactNative) return null
+        return sessionRecordingEventTriggers
+    }
 
     /**
      * Returns the current minimum recording duration in milliseconds, or null if not set.
