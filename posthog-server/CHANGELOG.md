@@ -1,5 +1,11 @@
 ## Next
 
+## 2.7.1
+
+### Patch Changes
+
+- 125f724: Clear the feature flag called cache when closing the SDK.
+
 ## 2.7.0
 
 ### Minor Changes
