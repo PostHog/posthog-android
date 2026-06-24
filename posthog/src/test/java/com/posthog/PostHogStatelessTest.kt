@@ -1027,8 +1027,9 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `close clears feature flag called cache`() {
-        val mockQueue = MockQueue()
+    fun `close resets feature flag called cache before setup again`() {
+        val firstQueue = MockQueue()
+        val secondQueue = MockQueue()
         val mockFeatureFlags = MockFeatureFlags()
         mockFeatureFlags.setFlag("test_flag", "variant_a")
 
@@ -1036,15 +1037,26 @@ internal class PostHogStatelessTest {
         config = createConfig(sendFeatureFlagEvent = true)
 
         sut.setup(config)
-        sut.setMockQueue(mockQueue)
+        sut.setMockQueue(firstQueue)
         sut.setMockFeatureFlags(mockFeatureFlags)
 
         sut.getFeatureFlagStateless("user123", "test_flag")
+        sut.getFeatureFlagStateless("user123", "test_flag")
+        assertEquals(1, firstQueue.events.size)
         assertEquals(1, sut.featureFlagsCalledCacheSize())
 
         sut.close()
-
         assertEquals(0, sut.featureFlagsCalledCacheSize())
+
+        sut.setup(config)
+        sut.setMockQueue(secondQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        assertEquals(1, secondQueue.events.size)
+        assertEquals("user123", secondQueue.events[0].distinctId)
+        assertEquals("variant_a", secondQueue.events[0].properties!!["${'$'}feature_flag_response"])
     }
 
     @Test
