@@ -15,6 +15,7 @@ import org.junit.Assert.assertThrows
 import java.io.File
 import java.io.IOException
 import java.net.InetAddress
+import java.net.SocketException
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.concurrent.atomic.AtomicInteger
@@ -145,7 +146,7 @@ internal class PostHogApiTest {
     }
 
     @Test
-    fun `flags retries IOException and returns successful response`() {
+    fun `flags retries transient IOException and returns successful response`() {
         val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
         val responseFlagsApi = file.readText()
         val attempts = AtomicInteger(0)
@@ -153,7 +154,7 @@ internal class PostHogApiTest {
             OkHttpClient.Builder()
                 .addInterceptor { chain ->
                     if (attempts.incrementAndGet() == 1) {
-                        throw IOException("network failure")
+                        throw SocketException("Connection reset")
                     }
                     chain.proceed(chain.request())
                 }
@@ -169,6 +170,33 @@ internal class PostHogApiTest {
             assertNotNull(response)
             assertEquals(2, attempts.get())
             assertEquals(1, http.requestCount)
+        } finally {
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `flags does not retry connection refused`() {
+        val attempts = AtomicInteger(0)
+        val client =
+            OkHttpClient.Builder()
+                .addInterceptor {
+                    attempts.incrementAndGet()
+                    throw SocketException("Connection refused")
+                }
+                .build()
+        val http = mockHttp(response = MockResponse().setBody("{}"))
+        val url = http.url("/")
+
+        try {
+            val sut = getSut(host = url.toString(), httpClient = client, maxRetries = 1)
+
+            assertThrows(IOException::class.java) {
+                sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+            }
+
+            assertEquals(1, attempts.get())
+            assertEquals(0, http.requestCount)
         } finally {
             http.shutdown()
         }

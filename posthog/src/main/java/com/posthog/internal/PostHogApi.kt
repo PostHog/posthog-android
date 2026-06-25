@@ -16,7 +16,10 @@ import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
+import java.io.EOFException
 import java.io.IOException
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.io.OutputStream
 
 /**
@@ -213,7 +216,7 @@ public class PostHogApi(
             try {
                 return executeFlagsRequest(request)
             } catch (e: IOException) {
-                if (retryAttempt >= maxRetries) {
+                if (retryAttempt >= maxRetries || !isRetryableFlagsIOException(e)) {
                     throw e
                 }
 
@@ -221,6 +224,12 @@ public class PostHogApi(
                 sleepBeforeFlagsRetry(retryAttempt)
             }
         }
+    }
+
+    private fun isRetryableFlagsIOException(error: IOException): Boolean {
+        return error is SocketTimeoutException
+            || error is EOFException
+            || (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
     }
 
     @Throws(PostHogApiError::class, IOException::class)
