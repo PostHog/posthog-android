@@ -8,13 +8,16 @@ import com.posthog.logs.PostHogLogRecord
 import com.posthog.logs.PostHogLogSeverity
 import com.posthog.mockHttp
 import com.posthog.unGzip
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
 import java.io.File
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -38,12 +41,20 @@ internal class PostHogApiTest {
         proxy: Proxy? = null,
         debug: Boolean = false,
         logger: PostHogLogger? = null,
+        httpClient: OkHttpClient? = null,
+        maxRetries: Int? = null,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
         config.debug = debug
         if (logger != null) {
             config.logger = logger
+        }
+        if (httpClient != null) {
+            config.httpClient = httpClient
+        }
+        if (maxRetries != null) {
+            config.maxRetries = maxRetries
         }
         return PostHogApi(config)
     }
@@ -131,6 +142,58 @@ internal class PostHogApiTest {
         assertEquals(400, exc.statusCode)
         assertEquals("Client Error", exc.message)
         assertNotNull(exc.body)
+    }
+
+    @Test
+    fun `flags retries IOException and returns successful response`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
+        val attempts = AtomicInteger(0)
+        val client =
+            OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    if (attempts.incrementAndGet() == 1) {
+                        throw IOException("network failure")
+                    }
+                    chain.proceed(chain.request())
+                }
+                .build()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        try {
+            val sut = getSut(host = url.toString(), httpClient = client, maxRetries = 1)
+
+            val response = sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+
+            assertNotNull(response)
+            assertEquals(2, attempts.get())
+            assertEquals(1, http.requestCount)
+        } finally {
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `flags does not retry HTTP error responses`() {
+        listOf(408, 429, 500, 502, 503).forEach { statusCode ->
+            val http = mockHttp(response = MockResponse().setResponseCode(statusCode).setBody("error"))
+            val url = http.url("/")
+
+            try {
+                val sut = getSut(host = url.toString())
+
+                val exc =
+                    assertThrows(PostHogApiError::class.java) {
+                        sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+                    }
+
+                assertEquals(statusCode, exc.statusCode)
+                assertEquals(1, http.requestCount)
+            } finally {
+                http.shutdown()
+            }
+        }
     }
 
     @Test
