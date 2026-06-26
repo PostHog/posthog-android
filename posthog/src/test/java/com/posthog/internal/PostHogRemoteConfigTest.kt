@@ -14,6 +14,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -174,6 +175,90 @@ internal class PostHogRemoteConfigTest {
         assertFalse(sut.hasRemoteConfigFetched())
 
         sut.clear()
+    }
+
+    @Test
+    fun `quota-limited flags reload resolves the config and notifies`() {
+        // A quota-limited first /flags re-arms replay from the cached config, so it must resolve the
+        // gate (mark fetched + notify) instead of leaving the buffer-and-decide gate stuck.
+        val quotaLimited = File("src/test/resources/json/basic-flags-quota-limited.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(quotaLimited))
+        config =
+            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+                cachePreferences = preferences
+            }
+        val notified = CountDownLatch(1)
+        val sut =
+            PostHogRemoteConfig(
+                config!!,
+                PostHogApi(config!!),
+                executor = executor,
+                defaultPersonPropertiesProvider = { emptyMap() },
+                onRemoteConfigLoaded = { notified.countDown() },
+            )
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        assertTrue(notified.await(5, TimeUnit.SECONDS), "quota-limited load should still notify")
+        assertTrue(sut.hasRemoteConfigFetched())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `failure notify does not re-fire on an offline reload after a successful load`() {
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        var online = true
+        val networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = online
+            }
+        config =
+            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+                this.networkStatus = networkStatus
+                cachePreferences = preferences
+            }
+        val notifyCount = AtomicInteger(0)
+        val sut =
+            PostHogRemoteConfig(
+                config!!,
+                PostHogApi(config!!),
+                executor = executor,
+                defaultPersonPropertiesProvider = { emptyMap() },
+                onRemoteConfigLoaded = { notifyCount.incrementAndGet() },
+            )
+
+        val firstLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+        )
+        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
+        assertTrue(sut.hasRemoteConfigFetched())
+        assertEquals(1, notifyCount.get())
+
+        // Offline reload after a successful resolve: the failure notify is gated on
+        // !hasRemoteConfigFetched, so it must not fire a second (spurious) resolution.
+        online = false
+        val secondLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+        )
+        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second (offline) flags load should complete")
+
+        assertEquals(1, notifyCount.get())
+
+        sut.clear()
+        http.shutdown()
     }
 
     @Test

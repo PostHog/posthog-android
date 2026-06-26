@@ -230,7 +230,9 @@ public class PostHogRemoteConfig(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
                 )
-                notifyRemoteConfigResolved()
+                if (!remoteConfigHasFetched.get()) {
+                    notifyRemoteConfigResolved()
+                }
                 return@executeSafely
             }
 
@@ -299,7 +301,9 @@ public class PostHogRemoteConfig(
                         internalOnFeatureFlags = internalOnFeatureFlags,
                         onFeatureFlags = onFeatureFlags,
                     )
-                    notifyRemoteConfigResolved()
+                    if (!remoteConfigHasFetched.get()) {
+                        notifyRemoteConfigResolved()
+                    }
                 }
 
                 if (shouldNotifyRemoteConfigLoaded) {
@@ -311,7 +315,9 @@ public class PostHogRemoteConfig(
                     onFeatureFlags = onFeatureFlags,
                 )
                 config.logger.log("Loading remote config failed: $e")
-                notifyRemoteConfigResolved()
+                if (!remoteConfigHasFetched.get()) {
+                    notifyRemoteConfigResolved()
+                }
             } finally {
                 isLoadingRemoteConfig.set(false)
             }
@@ -622,7 +628,7 @@ public class PostHogRemoteConfig(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
             )
-            if (notifyRemoteConfigLoaded) {
+            if (notifyRemoteConfigLoaded && !remoteConfigHasFetched.get()) {
                 notifyRemoteConfigResolved()
             }
             return
@@ -659,6 +665,7 @@ public class PostHogRemoteConfig(
                     groupProperties = getGroupPropertiesForFlags(),
                 )
 
+            var quotaLimitedResolved = false
             response?.let {
                 synchronized(featureFlagsLock) {
                     if (it.quotaLimited?.contains("feature_flags") == true) {
@@ -672,6 +679,10 @@ public class PostHogRemoteConfig(
                         reevaluateSessionReplayFromCachedConfig()
                         reevaluateCapturePerformanceFromCachedConfig()
                         reevaluateErrorTrackingFromCachedConfig()
+                        // The server responded and the cached config was re-armed, so this resolves the
+                        // remote config for the current identity — mark fetched + notify (outside the
+                        // lock) so the replay buffer-and-decide gate disarms instead of staying stuck.
+                        quotaLimitedResolved = notifyRemoteConfigLoaded
                         return@let
                     }
 
@@ -744,13 +755,18 @@ public class PostHogRemoteConfig(
                 }
             } ?: run {
                 isFeatureFlagsLoaded = false
-                if (notifyRemoteConfigLoaded) {
+                if (notifyRemoteConfigLoaded && !remoteConfigHasFetched.get()) {
                     notifyRemoteConfigResolved()
                 }
             }
+
+            if (quotaLimitedResolved) {
+                remoteConfigHasFetched.set(true)
+                notifyRemoteConfigResolved()
+            }
         } catch (e: Throwable) {
             config.logger.log("Loading feature flags failed: $e")
-            if (notifyRemoteConfigLoaded) {
+            if (notifyRemoteConfigLoaded && !remoteConfigHasFetched.get()) {
                 notifyRemoteConfigResolved()
             }
         } finally {
