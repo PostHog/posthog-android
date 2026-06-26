@@ -183,7 +183,6 @@ public class PostHogReplayIntegration(
     // True while recording optimistically off the disk-cached session-replay flag and the first
     // live remote config is still pending. Snapshots are buffered (not persisted) until the server
     // confirms or rejects the flag. Always read/written under [bufferingLock].
-    @Volatile
     private var awaitingFirstRemoteConfig: Boolean = false
 
     private val replayBufferDelegate =
