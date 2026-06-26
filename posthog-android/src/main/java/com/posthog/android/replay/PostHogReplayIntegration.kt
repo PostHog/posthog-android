@@ -1844,31 +1844,43 @@ public class PostHogReplayIntegration(
         }
 
     private fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
-        val minimumDurationMs: Long?
-        synchronized(bufferingLock) {
-            // The min-duration migrate is triggered by elapsed time, independently of isBuffering's
-            // add-routing. Don't drain the buffer into the persisted queue until the first remote
-            // config has decided — otherwise a cached minimumDuration would leak the stale-cache
-            // snapshots to the network before a fresh-false clearBuffer() can drop them.
-            if (awaitingFirstRemoteConfig) {
-                return
-            }
-            minimumDurationMs = cachedMinimumDurationMs
+        // The min-duration migrate is triggered by elapsed time, independently of isBuffering's
+        // add-routing. Don't drain the buffer into the persisted queue until the first remote config
+        // has decided — otherwise a cached minimumDuration could migrate stale-cache snapshots before
+        // the flag decision and leak them to the network.
+        val awaiting = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
+        if (awaiting) {
+            return
         }
+
+        // Only persist while recording is active: on a fresh-false resolve the buffer is cleared, and
+        // this stops an in-flight add() that began buffering before the flag flipped from migrating the
+        // stale window into the persisted queue (the migrate path bypasses the add() routing gate).
+        if (!isActive()) {
+            return
+        }
+
+        migrateBufferIfMinimumDurationMet(replayQueue)
+    }
+
+    /**
+     * Migrates the buffer to the persisted queue when it should flush now — no minimum duration is
+     * configured, or the buffered window (oldest to newest) already spans it — and otherwise leaves
+     * it buffering for the minimum-duration window. Each caller gates recording first: the snapshot
+     * callback on [isActive], the first-config resolve on the freshly-resolved flag.
+     */
+    private fun migrateBufferIfMinimumDurationMet(replayQueue: PostHogReplayQueue) {
+        val minimumDurationMs = synchronized(bufferingLock) { cachedMinimumDurationMs }
+
         if (minimumDurationMs == null || minimumDurationMs <= 0) {
-            // No minimum duration configured: should not be buffering, migrate immediately.
             synchronized(bufferingLock) { hasPassedMinimumDuration = true }
             migrateBufferToQueueOnBackgroundThread(replayQueue)
             return
         }
 
-        // Check buffer content duration (oldest to newest snapshot)
-        val bufferDurationMs = replayQueue.bufferDurationMs ?: 0
-
-        // Keep buffered snapshots intact until threshold is reached.
-        // Session replay payloads may include metadata snapshots required by the player,
-        // so buffering follows an all-or-nothing migration strategy.
-        if (bufferDurationMs >= minimumDurationMs) {
+        // Session replay payloads include metadata snapshots required by the player, so migration is
+        // all-or-nothing once the buffered window spans the minimum duration.
+        if ((replayQueue.bufferDurationMs ?: 0) >= minimumDurationMs) {
             config.logger.log(
                 "[Session Replay] Minimum duration met. Migrating ${replayQueue.bufferDepth} buffered events to replay queue.",
             )
@@ -1901,11 +1913,12 @@ public class PostHogReplayIntegration(
     }
 
     /**
-     * On the first live remote config, flush or drop the snapshots buffered while the cached flag
-     * was being trusted, then disarm the gate. Flush when the (now fresh) flag is on; otherwise
-     * stop the capturer and drop the buffer. The flag is flipped only after the buffer is resolved
-     * so an in-flight `add()` (which reads [isBuffering] outside the buffer write lock) cannot route
-     * a stale snapshot straight to the persisted queue.
+     * Resolves the buffer on the first live remote config, then disarms the gate. When the (now
+     * fresh) flag is on, the buffered opening window is handed to the minimum-duration gate (kept
+     * buffering, not force-flushed) so a short session isn't persisted just because the flag
+     * resolved; when off, the capturer is stopped and the buffer dropped before disarming, so an
+     * in-flight `add()` (which reads [isBuffering] outside the buffer write lock) can't route a stale
+     * snapshot to the persisted queue.
      */
     private fun resolveFirstRemoteConfig() {
         val resolving = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
@@ -1914,14 +1927,15 @@ public class PostHogReplayIntegration(
         }
 
         if (config.remoteConfigHolder?.isSessionReplayFlagActive() == true) {
-            replayQueue?.let { migrateBufferToQueueOnBackgroundThread(it) }
+            synchronized(bufferingLock) { awaitingFirstRemoteConfig = false }
+            replayQueue?.let { migrateBufferIfMinimumDurationMet(it) }
         } else {
-            // Self-gate the capturer first so no new snapshot re-enters the buffer, then drop it.
+            // Self-gate the capturer first so no new snapshot re-enters the buffer, then drop the
+            // buffer, and only then disarm — an in-flight add() reads isBuffering outside the lock.
             stop()
             replayQueue?.clearBuffer()
+            synchronized(bufferingLock) { awaitingFirstRemoteConfig = false }
         }
-
-        synchronized(bufferingLock) { awaitingFirstRemoteConfig = false }
     }
 
     /**

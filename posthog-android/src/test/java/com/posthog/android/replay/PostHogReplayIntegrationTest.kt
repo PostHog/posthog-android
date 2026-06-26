@@ -345,6 +345,8 @@ internal class PostHogReplayIntegrationTest {
         val replayQueue = createReplayQueue(config)
         config.replayQueueHolder = replayQueue
         sut.install(mock<PostHogInterface>())
+        // Min-duration migration only persists while recording is active.
+        sut.start(resumeCurrent = true)
         replayQueue.add(createTestEvent("snapshot_1"))
         awaitReplayExecutors()
         Thread.sleep(10)
@@ -543,6 +545,133 @@ internal class PostHogReplayIntegrationTest {
             shadowOf(Looper.getMainLooper()).idle()
 
             assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `first remote config flag on under min duration keeps buffering instead of flushing`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = false,
+                minimumDurationMs = 60_000L,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            Thread.sleep(5)
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            // Flag on but session is far under the 60s minimum: the opening window must stay buffered
+            // (handed to the min-duration gate), not be force-flushed to the persisted queue.
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+            assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `first remote config flag on with min duration already met migrates immediately`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = false,
+                minimumDurationMs = 10L,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            Thread.sleep(30)
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            fx.sut.onRemoteConfig()
+
+            // Buffered window already spans the 10ms minimum -> migrate on resolve.
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(2, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `flag on resolve under min duration then migrates whole window once min duration accrues`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = false,
+                minimumDurationMs = 10L,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            awaitReplayExecutors()
+
+            // First config resolves flag-on while under the 10ms minimum: keep buffering, disarm.
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            // A later snapshot pushes the window (from the opening frame) past the minimum: the whole
+            // window migrates, proving awaitingFirstRemoteConfig was disarmed and the opening frame
+            // was preserved and counted from session start.
+            Thread.sleep(20)
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            assertEquals(2, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onReplayBufferSnapshot does not migrate when recording is inactive`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                minimumDurationMs = 1L,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            awaitReplayExecutors()
+            Thread.sleep(10)
+
+            // Recording stops, then a late snapshot fires onReplayBufferSnapshot with the 1ms minimum
+            // already met — the inactive guard must prevent it migrating to the persisted queue.
+            fx.sut.stop()
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.depth)
+            assertEquals(2, fx.replayQueue.bufferDepth)
         } finally {
             fx.sut.uninstall()
         }
