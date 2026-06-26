@@ -44,6 +44,7 @@ internal class PostHogApiTest {
         logger: PostHogLogger? = null,
         httpClient: OkHttpClient? = null,
         maxRetries: Int? = null,
+        featureFlagRequestMaxRetries: Int? = null,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
@@ -56,6 +57,9 @@ internal class PostHogApiTest {
         }
         if (maxRetries != null) {
             config.maxRetries = maxRetries
+        }
+        if (featureFlagRequestMaxRetries != null) {
+            config.featureFlagRequestMaxRetries = featureFlagRequestMaxRetries
         }
         return PostHogApi(config)
     }
@@ -163,13 +167,40 @@ internal class PostHogApiTest {
         val url = http.url("/")
 
         try {
-            val sut = getSut(host = url.toString(), httpClient = client, maxRetries = 1)
+            val sut = getSut(host = url.toString(), httpClient = client, featureFlagRequestMaxRetries = 1)
 
             val response = sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
 
             assertNotNull(response)
             assertEquals(2, attempts.get())
             assertEquals(1, http.requestCount)
+        } finally {
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `flags does not retry when feature flag request max retries is zero`() {
+        val attempts = AtomicInteger(0)
+        val client =
+            OkHttpClient.Builder()
+                .addInterceptor {
+                    attempts.incrementAndGet()
+                    throw SocketException("Connection reset")
+                }
+                .build()
+        val http = mockHttp(response = MockResponse().setBody("{}"))
+        val url = http.url("/")
+
+        try {
+            val sut = getSut(host = url.toString(), httpClient = client, featureFlagRequestMaxRetries = 0)
+
+            assertThrows(IOException::class.java) {
+                sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+            }
+
+            assertEquals(1, attempts.get())
+            assertEquals(0, http.requestCount)
         } finally {
             http.shutdown()
         }
@@ -189,7 +220,7 @@ internal class PostHogApiTest {
         val url = http.url("/")
 
         try {
-            val sut = getSut(host = url.toString(), httpClient = client, maxRetries = 1)
+            val sut = getSut(host = url.toString(), httpClient = client, featureFlagRequestMaxRetries = 1)
 
             assertThrows(IOException::class.java) {
                 sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())

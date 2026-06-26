@@ -209,7 +209,7 @@ public class PostHogApi(
 
     @Throws(PostHogApiError::class, IOException::class)
     private fun executeFlagsWithRetry(request: Request): PostHogFlagsResponse? {
-        val maxRetries = config.maxRetries.coerceAtLeast(0)
+        val maxRetries = config.featureFlagRequestMaxRetries.coerceAtLeast(0)
         var retryAttempt = 0
 
         while (true) {
