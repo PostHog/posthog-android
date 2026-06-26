@@ -18,9 +18,9 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
 import java.io.EOFException
 import java.io.IOException
+import java.io.OutputStream
 import java.net.SocketException
 import java.net.SocketTimeoutException
-import java.io.OutputStream
 
 /**
  * The class that calls the PostHog API
@@ -227,9 +227,9 @@ public class PostHogApi(
     }
 
     private fun isRetryableFlagsIOException(error: IOException): Boolean {
-        return error is SocketTimeoutException
-            || error is EOFException
-            || (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
+        return error is SocketTimeoutException ||
+            error is EOFException ||
+            (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
     }
 
     @Throws(PostHogApiError::class, IOException::class)
