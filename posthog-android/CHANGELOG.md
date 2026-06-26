@@ -1,5 +1,11 @@
 ## Next
 
+## 3.51.2
+
+### Patch Changes
+
+- f418d41: Allow the posthog-kmp wrapper SDK to keep its own `sdkName`/`sdkVersion` so KMP events report the correct `$lib`/version, mirroring how posthog-flutter and posthog-react-native are handled.
+
 ## 3.51.1
 
 ### Patch Changes
