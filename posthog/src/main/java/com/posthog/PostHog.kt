@@ -186,15 +186,22 @@ public class PostHog private constructor(
                     )
                 val onRemoteConfigLoaded =
                     PostHogOnRemoteConfigLoaded {
-                        try {
-                            val surveys = remoteConfig?.getSurveys() ?: emptyList()
-                            surveysHandler?.onSurveysLoaded(surveys)
-                        } catch (e: Throwable) {
-                            config.logger.log("Failed to notify surveys loaded: $e.")
-                        }
+                        // The callback fires whether the attempt succeeded or terminally failed;
+                        // hasRemoteConfigFetched() tells them apart. On a failure no fresh values
+                        // were applied, so integrations fall back to their cached state instead.
+                        if (remoteConfig?.hasRemoteConfigFetched() == true) {
+                            try {
+                                val surveys = remoteConfig?.getSurveys() ?: emptyList()
+                                surveysHandler?.onSurveysLoaded(surveys)
+                            } catch (e: Throwable) {
+                                config.logger.log("Failed to notify surveys loaded: $e.")
+                            }
 
-                        // Notify all integrations about remote config changes
-                        notifyIntegrationsRemoteConfig(config)
+                            // Notify all integrations about remote config changes
+                            notifyIntegrationsRemoteConfig(config)
+                        } else {
+                            notifyIntegrationsRemoteConfigFailed(config)
+                        }
                     }
 
                 val featureFlags =
@@ -327,6 +334,16 @@ public class PostHog private constructor(
                 integration.onRemoteConfig()
             } catch (e: Throwable) {
                 config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+            }
+        }
+    }
+
+    private fun notifyIntegrationsRemoteConfigFailed(config: PostHogConfig) {
+        config.integrations.forEach { integration ->
+            try {
+                integration.onRemoteConfigFailed()
+            } catch (e: Throwable) {
+                config.logger.log("Integration ${integration.javaClass.name} onRemoteConfigFailed failed: $e.")
             }
         }
     }

@@ -143,6 +143,40 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `offline remote config load still notifies without marking fetched`() {
+        // Offline -> loadRemoteConfig short-circuits, but it must still fire the callback so the
+        // replay integration can fall back to the cached flag instead of buffering forever. The
+        // attempt resolved no live config, so hasRemoteConfigFetched stays false to distinguish it.
+        val offline =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = false
+            }
+        config =
+            PostHogConfig(API_KEY, "http://localhost").apply {
+                networkStatus = offline
+                cachePreferences = preferences
+            }
+        val notified = CountDownLatch(1)
+        val sut =
+            PostHogRemoteConfig(
+                config!!,
+                PostHogApi(config!!),
+                executor = executor,
+                defaultPersonPropertiesProvider = { emptyMap() },
+                onRemoteConfigLoaded = { notified.countDown() },
+            )
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        assertTrue(notified.await(5, TimeUnit.SECONDS), "offline load should still notify")
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.clear()
+    }
+
+    @Test
     fun `re-arms session replay on a quota-limited flags reload`() {
         // Project config lives in /config (cached); a flags reload that is quota-limited for
         // feature_flags must still re-arm replay instead of leaving it disabled until app restart.

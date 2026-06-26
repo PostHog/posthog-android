@@ -205,6 +205,17 @@ public class PostHogRemoteConfig(
         }
     }
 
+    // Notifies that a remote config resolution attempt finished. Callers set
+    // [remoteConfigHasFetched] before this only on success; on a terminal failure (offline/error)
+    // it stays false, letting listeners fall back to the cached config instead of waiting forever.
+    private fun notifyRemoteConfigResolved() {
+        try {
+            onRemoteConfigLoaded?.loaded()
+        } catch (e: Throwable) {
+            config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
+        }
+    }
+
     public fun loadRemoteConfig(
         distinctId: String,
         anonymousId: String?,
@@ -219,6 +230,7 @@ public class PostHogRemoteConfig(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
                 )
+                notifyRemoteConfigResolved()
                 return@executeSafely
             }
 
@@ -287,14 +299,11 @@ public class PostHogRemoteConfig(
                         internalOnFeatureFlags = internalOnFeatureFlags,
                         onFeatureFlags = onFeatureFlags,
                     )
+                    notifyRemoteConfigResolved()
                 }
 
                 if (shouldNotifyRemoteConfigLoaded) {
-                    try {
-                        onRemoteConfigLoaded?.loaded()
-                    } catch (e: Throwable) {
-                        config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
-                    }
+                    notifyRemoteConfigResolved()
                 }
             } catch (e: Throwable) {
                 runOnFeatureFlagsCallbacks(
@@ -302,6 +311,7 @@ public class PostHogRemoteConfig(
                     onFeatureFlags = onFeatureFlags,
                 )
                 config.logger.log("Loading remote config failed: $e")
+                notifyRemoteConfigResolved()
             } finally {
                 isLoadingRemoteConfig.set(false)
             }
@@ -612,6 +622,9 @@ public class PostHogRemoteConfig(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
             )
+            if (notifyRemoteConfigLoaded) {
+                notifyRemoteConfigResolved()
+            }
             return
         }
 
@@ -727,17 +740,19 @@ public class PostHogRemoteConfig(
                     // how reset()/identify and a preloadFeatureFlags-only setup re-arm it after
                     // clear()), so mark it fetched here too — not only on the /config path.
                     remoteConfigHasFetched.set(true)
-                    try {
-                        onRemoteConfigLoaded?.loaded()
-                    } catch (e: Throwable) {
-                        config.logger.log("Executing onRemoteConfigLoaded callback failed: $e")
-                    }
+                    notifyRemoteConfigResolved()
                 }
             } ?: run {
                 isFeatureFlagsLoaded = false
+                if (notifyRemoteConfigLoaded) {
+                    notifyRemoteConfigResolved()
+                }
             }
         } catch (e: Throwable) {
             config.logger.log("Loading feature flags failed: $e")
+            if (notifyRemoteConfigLoaded) {
+                notifyRemoteConfigResolved()
+            }
         } finally {
             runOnFeatureFlagsCallbacks(
                 internalOnFeatureFlags = internalOnFeatureFlags,
@@ -1255,7 +1270,7 @@ public class PostHogRemoteConfig(
             clearFlags()
         }
 
-        // Re-arm the buffer-and-decide gate so the next session waits for a fresh /config again.
+        // Re-arm the buffer-and-decide gate so the next session waits for fresh remote config again.
         remoteConfigHasFetched.set(false)
 
         synchronized(remoteConfigLock) {

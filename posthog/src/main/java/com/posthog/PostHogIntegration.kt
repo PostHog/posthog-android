@@ -25,4 +25,13 @@ public interface PostHogIntegration {
      */
     public fun onRemoteConfig() {
     }
+
+    /**
+     * Called when the first remote config attempt finished without a live response
+     * (e.g. the device is offline, or the request failed). No fresh config was applied, so
+     * integrations that buffered work while awaiting the live config should fall back to their
+     * cached state instead of waiting indefinitely.
+     */
+    public fun onRemoteConfigFailed() {
+    }
 }
