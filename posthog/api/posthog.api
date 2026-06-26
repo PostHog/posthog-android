@@ -930,6 +930,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
 	public final fun getSurveys ()Ljava/util/List;
+	public final fun hasRemoteConfigFetched ()Z
 	public final fun isAutocaptureExceptionsEnabled ()Z
 	public final fun isCaptureNetworkTimingEnabled ()Z
 	public final fun isConsoleLogRecordingEnabled ()Z

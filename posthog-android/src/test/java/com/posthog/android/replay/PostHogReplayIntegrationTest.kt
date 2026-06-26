@@ -9,7 +9,10 @@ import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
+import com.posthog.internal.EndpointSpec
+import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
@@ -63,6 +66,7 @@ internal class PostHogReplayIntegrationTest {
 
     private class NoOpBufferDelegate : PostHogReplayBufferDelegate {
         override val isBuffering: Boolean = true
+        override val isActive: Boolean = true
 
         override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
         }
@@ -148,6 +152,7 @@ internal class PostHogReplayIntegrationTest {
                 on { isSessionReplayFlagActive() } doReturn flagActive
                 on { makeSamplingDecision(any()) } doReturn samplingPasses
                 on { getEventTriggers() } doReturn emptySet<String>()
+                on { hasRemoteConfigFetched() } doReturn true
             }
         return PostHogAndroidConfig(API_KEY).apply {
             remoteConfigHolder = remoteConfig
@@ -329,6 +334,7 @@ internal class PostHogReplayIntegrationTest {
         val logger = RecordingLogger()
         val remoteConfig = mock<PostHogRemoteConfig>()
         whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
+        whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 this.logger = logger
@@ -356,6 +362,7 @@ internal class PostHogReplayIntegrationTest {
         val logger = RecordingLogger()
         val remoteConfig = mock<PostHogRemoteConfig>()
         whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
+        whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 this.logger = logger
@@ -391,5 +398,177 @@ internal class PostHogReplayIntegrationTest {
 
         assertEquals(1, replayQueue.bufferDepth)
         sut.uninstall()
+    }
+
+    private data class RealQueueFixture(
+        val sut: PostHogReplayIntegration,
+        val replayQueue: PostHogReplayQueue,
+        val config: PostHogAndroidConfig,
+    )
+
+    private fun createIntegrationWithRealQueue(
+        flagActive: Boolean,
+        hasFetched: Boolean,
+        minimumDurationMs: Long? = null,
+        sessionReplay: Boolean = true,
+    ): RealQueueFixture {
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { isSessionReplayFlagActive() } doReturn flagActive
+                on { hasRemoteConfigFetched() } doReturn hasFetched
+                on { makeSamplingDecision(any()) } doReturn true
+                on { getEventTriggers() } doReturn emptySet<String>()
+                on { getRecordingMinimumDurationMs() } doReturn minimumDurationMs
+            }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                remoteConfigHolder = remoteConfig
+                this.sessionReplay = sessionReplay
+            }
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val executor = createReplayExecutor()
+        val innerQueue =
+            PostHogQueue(
+                config,
+                EndpointSpec.snapshot(config, PostHogApi(config), storagePrefix),
+                executor,
+            )
+        val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
+        config.replayQueueHolder = replayQueue
+        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        return RealQueueFixture(sut, replayQueue, config)
+    }
+
+    private fun awaitCondition(
+        timeoutMs: Long = 2_000,
+        condition: () -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        while (!condition()) {
+            if (System.nanoTime() > deadline) {
+                error("Timed out waiting for condition")
+            }
+            Thread.sleep(10)
+        }
+    }
+
+    @Test
+    fun `routes snapshots to buffer while awaiting first remote config`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.sut.install(mock<PostHogInterface>())
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `first remote config with flag on migrates buffer to inner queue`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.sut.install(mock<PostHogInterface>())
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            Thread.sleep(5)
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            fx.sut.onRemoteConfig()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(2, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `first remote config with flag off clears buffer and stops recording`() {
+        val fx = createIntegrationWithRealQueue(flagActive = false, hasFetched = false)
+        fx.sut.install(mock<PostHogInterface>())
+        fx.sut.start(resumeCurrent = true)
+        try {
+            assertTrue(fx.sut.isActive())
+
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+            assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onRemoteConfig stops active recording when flag turns off after config already fetched`() {
+        val fx = createIntegrationWithRealQueue(flagActive = false, hasFetched = true)
+        fx.sut.install(mock<PostHogInterface>())
+        fx.sut.start(resumeCurrent = true)
+        try {
+            assertTrue(fx.sut.isActive())
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onRemoteConfig resumes recording when flag turns on and recording inactive`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            assertFalse(fx.sut.isActive())
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `min duration elapsed while awaiting first remote config does not migrate`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = false,
+                minimumDurationMs = 1L,
+            )
+        fx.sut.install(mock<PostHogInterface>())
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            Thread.sleep(10)
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+
+            // Min duration (1ms) has elapsed, but the migrate trigger must stay gated until the
+            // first remote config resolves — otherwise the stale-cache buffer leaks to the queue.
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
     }
 }

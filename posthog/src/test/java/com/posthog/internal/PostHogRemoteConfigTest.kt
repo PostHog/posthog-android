@@ -97,6 +97,52 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `hasRemoteConfigFetched flips true on a flags reload and resets on clear`() {
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // The flags path also resolves the remote config for the current identity.
+        assertTrue(sut.hasRemoteConfigFetched())
+
+        // reset()/clear() re-arms the gate for the next identity.
+        sut.clear()
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `hasRemoteConfigFetched flips true on a remote config load`() {
+        val response = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.hasRemoteConfigFetched())
+
+        sut.clear()
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        http.shutdown()
+    }
+
+    @Test
     fun `re-arms session replay on a quota-limited flags reload`() {
         // Project config lives in /config (cached); a flags reload that is quota-limited for
         // feature_flags must still re-arm replay instead of leaving it disabled until app restart.

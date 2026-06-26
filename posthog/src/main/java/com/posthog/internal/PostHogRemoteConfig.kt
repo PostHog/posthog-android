@@ -41,6 +41,12 @@ public class PostHogRemoteConfig(
     private var isLoadingFeatureFlags = AtomicBoolean(false)
     private var isLoadingRemoteConfig = AtomicBoolean(false)
 
+    // True once the live remote config has been resolved for the current identity, via either the
+    // /config or the /flags path (whichever fires onRemoteConfigLoaded). Reset by clear() so a
+    // post-reset identity re-arms. Lets the replay integration distinguish a cold start still
+    // serving the cached session-replay flag from one whose flag the server has confirmed.
+    private val remoteConfigHasFetched = AtomicBoolean(false)
+
     // Track if an additional reload was requested while a request was in flight
     // This prevents dropping reload requests (e.g., from identify()) when preload is in progress
     private var pendingFeatureFlagsReload = AtomicBoolean(false)
@@ -273,6 +279,7 @@ public class PostHogRemoteConfig(
                         }
 
                         // mark to notify outside the lock
+                        remoteConfigHasFetched.set(true)
                         shouldNotifyRemoteConfigLoaded = true
                     }
                 } ?: run {
@@ -716,6 +723,10 @@ public class PostHogRemoteConfig(
                 isFeatureFlagsLoaded = true
 
                 if (notifyRemoteConfigLoaded) {
+                    // The flags path also resolves the remote config for the current identity (it's
+                    // how reset()/identify and a preloadFeatureFlags-only setup re-arm it after
+                    // clear()), so mark it fetched here too — not only on the /config path.
+                    remoteConfigHasFetched.set(true)
                     try {
                         onRemoteConfigLoaded?.loaded()
                     } catch (e: Throwable) {
@@ -1025,6 +1036,13 @@ public class PostHogRemoteConfig(
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
     /**
+     * Whether the live remote config has been resolved (via /config or /flags) since setup or the
+     * last [clear]. While this is false, [isSessionReplayFlagActive] still reflects the disk-cached
+     * value, so the replay integration buffers snapshots until the server confirms the flag.
+     */
+    public fun hasRemoteConfigFetched(): Boolean = remoteConfigHasFetched.get()
+
+    /**
      * Makes a sampling decision for session recording based on the sample rate
      * from remote config and the given session ID.
      *
@@ -1236,6 +1254,9 @@ public class PostHogRemoteConfig(
             isFeatureFlagsLoaded = false
             clearFlags()
         }
+
+        // Re-arm the buffer-and-decide gate so the next session waits for a fresh /config again.
+        remoteConfigHasFetched.set(false)
 
         synchronized(remoteConfigLock) {
             // Zero error tracking / capture performance in memory (cache kept so a reload re-arms them).
