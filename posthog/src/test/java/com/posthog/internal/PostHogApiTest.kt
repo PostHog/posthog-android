@@ -120,6 +120,19 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `custom Authorization header does not override localEvaluation personal API key`() {
+        val http = mockHttp(response = MockResponse().setBody(createLocalEvaluationJson()))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("Authorization" to "Bearer custom"))
+
+        sut.localEvaluation("test-personal-key")
+
+        val request = http.takeRequest()
+        assertEquals("Bearer test-personal-key", request.headers["Authorization"])
+    }
+
+    @Test
     fun `does not send an Authorization header when no custom headers are set`() {
         val http = mockHttp()
         val url = http.url("/")

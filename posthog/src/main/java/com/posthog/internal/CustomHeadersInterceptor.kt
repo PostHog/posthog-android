@@ -20,9 +20,14 @@ public class CustomHeadersInterceptor(private val config: PostHogConfig) : Inter
             return chain.proceed(chain.request())
         }
 
-        val builder = chain.request().newBuilder()
+        val request = chain.request()
+        val builder = request.newBuilder()
         for ((key, value) in requestHeaders) {
-            builder.header(key, value)
+            // Keep headers the SDK already set on the request (e.g. localEvaluation's
+            // Authorization personal API key); those take precedence over config values.
+            if (request.header(key) == null) {
+                builder.header(key, value)
+            }
         }
         return chain.proceed(builder.build())
     }
