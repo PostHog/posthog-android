@@ -32,7 +32,7 @@ public class PostHogApi(
 ) {
     private companion object {
         private const val APP_JSON_UTF_8 = "application/json; charset=utf-8"
-        private const val FLAGS_INITIAL_RETRY_DELAY_MS = 1_000L
+        private const val FLAGS_INITIAL_RETRY_DELAY_MS = 300L
         private const val FLAGS_MAX_RETRY_DELAY_MS = 30_000L
     }
 
