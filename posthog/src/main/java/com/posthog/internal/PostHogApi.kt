@@ -16,8 +16,11 @@ import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
+import java.io.EOFException
 import java.io.IOException
 import java.io.OutputStream
+import java.net.SocketException
+import java.net.SocketTimeoutException
 
 /**
  * The class that calls the PostHog API
@@ -29,6 +32,8 @@ public class PostHogApi(
 ) {
     private companion object {
         private const val APP_JSON_UTF_8 = "application/json; charset=utf-8"
+        private const val FLAGS_INITIAL_RETRY_DELAY_MS = 300L
+        private const val FLAGS_MAX_RETRY_DELAY_MS = 30_000L
     }
 
     private val mediaType by lazy {
@@ -45,6 +50,12 @@ public class PostHogApi(
             .proxy(config.proxy)
             .addInterceptor(GzipRequestInterceptor(config))
             .build()
+
+    private val flagsClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .retryOnConnectionFailure(false)
+            .build()
+    }
 
     private val theHost: String
         get() {
@@ -193,9 +204,39 @@ public class PostHogApi(
                 config.serializer.serialize(flagsRequest, it.bufferedWriter())
             }
 
+        return executeFlagsWithRetry(request)
+    }
+
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun executeFlagsWithRetry(request: Request): PostHogFlagsResponse? {
+        val maxRetries = config.featureFlagRequestMaxRetries.coerceAtLeast(0)
+        var retryAttempt = 0
+
+        while (true) {
+            try {
+                return executeFlagsRequest(request)
+            } catch (e: IOException) {
+                if (retryAttempt >= maxRetries || !isRetryableFlagsIOException(e)) {
+                    throw e
+                }
+
+                retryAttempt++
+                sleepBeforeFlagsRetry(retryAttempt)
+            }
+        }
+    }
+
+    private fun isRetryableFlagsIOException(error: IOException): Boolean {
+        return error is SocketTimeoutException ||
+            error is EOFException ||
+            (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
+    }
+
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun executeFlagsRequest(request: Request): PostHogFlagsResponse? {
         logRequestHeaders(request)
 
-        client.newCall(request).execute().use {
+        flagsClient.newCall(request).execute().use {
             val response = logResponse(it)
 
             if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
@@ -205,6 +246,27 @@ public class PostHogApi(
             }
             return null
         }
+    }
+
+    @Throws(IOException::class)
+    private fun sleepBeforeFlagsRetry(retryAttempt: Int) {
+        try {
+            Thread.sleep(flagsRetryDelayMillis(retryAttempt))
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IOException("Interrupted while waiting to retry feature flags request.", e)
+        }
+    }
+
+    private fun flagsRetryDelayMillis(retryAttempt: Int): Long {
+        var delay = FLAGS_INITIAL_RETRY_DELAY_MS
+        repeat((retryAttempt - 1).coerceAtLeast(0)) {
+            if (delay >= FLAGS_MAX_RETRY_DELAY_MS / 2) {
+                return FLAGS_MAX_RETRY_DELAY_MS
+            }
+            delay *= 2
+        }
+        return delay.coerceAtMost(FLAGS_MAX_RETRY_DELAY_MS)
     }
 
     @Throws(PostHogApiError::class, IOException::class)
