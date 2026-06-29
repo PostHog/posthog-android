@@ -47,10 +47,14 @@ internal class PostHogApiTest {
         httpClient: OkHttpClient? = null,
         maxRetries: Int? = null,
         featureFlagRequestMaxRetries: Int? = null,
+        requestHeaders: Map<String, String>? = null,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
         config.debug = debug
+        if (requestHeaders != null) {
+            config.requestHeaders = requestHeaders
+        }
         if (logger != null) {
             config.logger = logger
         }
@@ -86,6 +90,46 @@ internal class PostHogApiTest {
         assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+    }
+
+    @Test
+    fun `batch includes custom request headers`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("Authorization" to "Bearer test-jwt"))
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertEquals("Bearer test-jwt", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `flags includes custom request headers`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val http = mockHttp(response = MockResponse().setBody(file.readText()))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("Authorization" to "Bearer test-jwt"))
+
+        sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+
+        val request = http.takeRequest()
+        assertEquals("Bearer test-jwt", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `does not send an Authorization header when no custom headers are set`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertNull(request.headers["Authorization"])
     }
 
     @Test

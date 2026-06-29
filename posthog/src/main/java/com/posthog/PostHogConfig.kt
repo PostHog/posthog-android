@@ -355,6 +355,15 @@ public open class PostHogConfig(
     public var httpClient: OkHttpClient? = null
 
     /**
+     * Custom headers to send with every request to the PostHog API.
+     *
+     * Useful for reverse-proxy setups that require authentication, e.g. an `Authorization` header.
+     *
+     * Default: empty (no extra headers).
+     */
+    public var requestHeaders: Map<String, String> = emptyMap()
+
+    /**
      * The PostHog project API key, trimmed of leading and trailing whitespace.
      */
     public val apiKey: String = apiKey.trim()
