@@ -1,5 +1,11 @@
 ## Next
 
+## 3.51.3
+
+### Patch Changes
+
+- 15c39fd: Retry feature flag requests after transient network errors only. The feature flag request retry count defaults to 1 and can be set to 0 to disable retries.
+
 ## 3.51.2
 
 ### Patch Changes
