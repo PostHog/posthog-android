@@ -46,14 +46,9 @@ public class PostHogApi(
     }
 
     private val client: OkHttpClient =
-        (
-            config.httpClient ?: OkHttpClient.Builder()
-                .proxy(config.proxy)
-                .addInterceptor(GzipRequestInterceptor(config))
-                .build()
-        )
-            // Applies config.requestHeaders to every request; no-ops when none are set.
-            .newBuilder()
+        config.httpClient ?: OkHttpClient.Builder()
+            .proxy(config.proxy)
+            .addInterceptor(GzipRequestInterceptor(config))
             .addInterceptor(CustomHeadersInterceptor(config))
             .build()
 

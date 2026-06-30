@@ -9,6 +9,7 @@ import com.posthog.logs.PostHogLogSeverity
 import com.posthog.mockHttp
 import com.posthog.unGzip
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
@@ -130,6 +131,21 @@ internal class PostHogApiTest {
 
         val request = http.takeRequest()
         assertEquals("Bearer test-personal-key", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `does not attach custom headers when the request host differs from the configured host`() {
+        val http = mockHttp()
+
+        // Configured host differs from the request host, mirroring the static-config CDN.
+        val config = PostHogConfig(API_KEY, "https://different-host.example.com")
+        config.requestHeaders = mapOf("Authorization" to "Bearer test-jwt")
+        val client = OkHttpClient.Builder().addInterceptor(CustomHeadersInterceptor(config)).build()
+
+        client.newCall(Request.Builder().url(http.url("/")).build()).execute().close()
+
+        val request = http.takeRequest()
+        assertNull(request.headers["Authorization"])
     }
 
     @Test

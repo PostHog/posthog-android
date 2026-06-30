@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
@@ -13,20 +14,26 @@ import java.io.IOException
  */
 @PostHogInternal
 public class CustomHeadersInterceptor(private val config: PostHogConfig) : Interceptor {
+    private val configuredHost: String? = config.host.toHttpUrlOrNull()?.host
+
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val requestHeaders = config.requestHeaders
-        if (requestHeaders.isEmpty()) {
-            return chain.proceed(chain.request())
+        val request = chain.request()
+        // Only attach to the configured host so headers aren't sent to rewritten hosts (e.g. the CDN).
+        if (requestHeaders.isEmpty() || request.url.host != configuredHost) {
+            return chain.proceed(request)
         }
 
-        val request = chain.request()
         val builder = request.newBuilder()
         for ((key, value) in requestHeaders) {
-            // Keep headers the SDK already set on the request (e.g. localEvaluation's
-            // Authorization personal API key); those take precedence over config values.
-            if (request.header(key) == null) {
+            // SDK-set request headers (e.g. localEvaluation's Authorization) take precedence.
+            if (request.header(key) != null) continue
+            try {
                 builder.header(key, value)
+            } catch (e: IllegalArgumentException) {
+                // Drop headers okhttp rejects rather than failing the request.
+                config.logger.log("Dropping invalid request header '$key': ${e.message}")
             }
         }
         return chain.proceed(builder.build())
