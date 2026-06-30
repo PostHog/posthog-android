@@ -49,8 +49,7 @@ public class PostHogApi(
         config.httpClient ?: OkHttpClient.Builder()
             .proxy(config.proxy)
             .addInterceptor(GzipRequestInterceptor(config))
-            // Network interceptor so the host check re-runs per hop and custom headers are never
-            // added to a redirect that leaves the configured host.
+            // Network interceptor so the host check re-runs on each redirect hop.
             .addNetworkInterceptor(CustomHeadersInterceptor(config))
             .build()
 
