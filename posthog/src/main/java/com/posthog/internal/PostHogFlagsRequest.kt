@@ -27,23 +27,22 @@ internal class PostHogFlagsRequest(
         if (!deviceId.isNullOrBlank()) {
             this["\$device_id"] = deviceId
         }
-        if (groups?.isNotEmpty() == true) {
-            this["groups"] = groups
-        }
+        this["groups"] = groups ?: emptyMap<String, String>()
         if (personProperties?.isNotEmpty() == true) {
-            this["person_properties"] = personProperties
+            this["person_properties"] =
+                personProperties.toMutableMap().apply {
+                    if (!containsKey("distinct_id")) {
+                        this["distinct_id"] = distinctId
+                    }
+                }
         }
-        if (groupProperties?.isNotEmpty() == true) {
-            this["group_properties"] = groupProperties
-        }
+        this["group_properties"] = groupProperties ?: emptyMap<String, Map<String, Any?>>()
         if (evaluationContexts?.isNotEmpty() == true) {
             this["evaluation_contexts"] = evaluationContexts
         }
         if (flagKeys?.isNotEmpty() == true) {
             this["flag_keys_to_evaluate"] = flagKeys
         }
-        if (disableGeoip) {
-            this["geoip_disable"] = true
-        }
+        this["geoip_disable"] = disableGeoip
     }
 }
