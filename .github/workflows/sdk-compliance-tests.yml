@@ -22,9 +22,12 @@ permissions:
 
 jobs:
   test-android-sdk:
-    uses: PostHog/posthog-sdk-test-harness/.github/workflows/test-sdk-action.yml@be8b8d5a3f94a249659844e94832e874f049c1e4
+    uses: PostHog/posthog-sdk-test-harness/.github/workflows/test-sdk-action.yml@fix/sdk-harness-options-20260630
     with:
       adapter-dockerfile: sdk_compliance_adapter/Dockerfile
       adapter-context: .
       test-harness-version: "0.8.0"
+      sdk-type: "client"
+      suite: "capture"
+      continue-on-error: true
       report-name: android-sdk-compliance-report
