@@ -200,6 +200,40 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `successful remote config routes integrations to onRemoteConfig`() {
+        val integration = FakePostHogIntegration()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, integration.remoteConfigCount)
+        assertEquals(0, integration.remoteConfigFailedCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `failed remote config routes integrations to onRemoteConfigFailed`() {
+        val integration = FakePostHogIntegration()
+        // Empty body -> the flags response deserializes to null -> terminal-failure branch, so the
+        // gate stays unfetched and the dispatch must route to onRemoteConfigFailed, not onRemoteConfig.
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, integration.remoteConfigFailedCount)
+        assertEquals(0, integration.remoteConfigCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `setup sets in memory cached preferences if not given`() {
         val http = mockHttp()
         val url = http.url("/")

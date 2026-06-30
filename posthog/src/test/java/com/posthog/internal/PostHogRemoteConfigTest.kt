@@ -36,6 +36,7 @@ internal class PostHogRemoteConfigTest {
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
         surveys: Boolean = false,
+        onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
     ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -44,7 +45,13 @@ internal class PostHogRemoteConfigTest {
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
-        return PostHogRemoteConfig(config!!, api, executor = executor, defaultPersonPropertiesProvider = { emptyMap() })
+        return PostHogRemoteConfig(
+            config!!,
+            api,
+            executor = executor,
+            defaultPersonPropertiesProvider = { emptyMap() },
+            onRemoteConfigLoaded = onRemoteConfigLoaded,
+        )
     }
 
     @BeforeTest
@@ -152,20 +159,8 @@ internal class PostHogRemoteConfigTest {
             object : PostHogNetworkStatus {
                 override fun isConnected(): Boolean = false
             }
-        config =
-            PostHogConfig(API_KEY, "http://localhost").apply {
-                networkStatus = offline
-                cachePreferences = preferences
-            }
         val notified = CountDownLatch(1)
-        val sut =
-            PostHogRemoteConfig(
-                config!!,
-                PostHogApi(config!!),
-                executor = executor,
-                defaultPersonPropertiesProvider = { emptyMap() },
-                onRemoteConfigLoaded = { notified.countDown() },
-            )
+        val sut = getSut(host = "http://localhost", networkStatus = offline, onRemoteConfigLoaded = { notified.countDown() })
 
         assertFalse(sut.hasRemoteConfigFetched())
 
@@ -183,19 +178,8 @@ internal class PostHogRemoteConfigTest {
         // gate (mark fetched + notify) instead of leaving the buffer-and-decide gate stuck.
         val quotaLimited = File("src/test/resources/json/basic-flags-quota-limited.json").readText()
         val http = mockHttp(response = MockResponse().setBody(quotaLimited))
-        config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
-                cachePreferences = preferences
-            }
         val notified = CountDownLatch(1)
-        val sut =
-            PostHogRemoteConfig(
-                config!!,
-                PostHogApi(config!!),
-                executor = executor,
-                defaultPersonPropertiesProvider = { emptyMap() },
-                onRemoteConfigLoaded = { notified.countDown() },
-            )
+        val sut = getSut(host = http.url("/").toString(), onRemoteConfigLoaded = { notified.countDown() })
 
         assertFalse(sut.hasRemoteConfigFetched())
 
@@ -217,18 +201,11 @@ internal class PostHogRemoteConfigTest {
             object : PostHogNetworkStatus {
                 override fun isConnected(): Boolean = online
             }
-        config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
-                this.networkStatus = networkStatus
-                cachePreferences = preferences
-            }
         val notifyCount = AtomicInteger(0)
         val sut =
-            PostHogRemoteConfig(
-                config!!,
-                PostHogApi(config!!),
-                executor = executor,
-                defaultPersonPropertiesProvider = { emptyMap() },
+            getSut(
+                host = http.url("/").toString(),
+                networkStatus = networkStatus,
                 onRemoteConfigLoaded = { notifyCount.incrementAndGet() },
             )
 
@@ -255,6 +232,28 @@ internal class PostHogRemoteConfigTest {
         )
         assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second (offline) flags load should complete")
 
+        assertEquals(1, notifyCount.get())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `config success with a failing nested flags call notifies once and stays fetched`() {
+        // /config succeeds (hasFeatureFlags=true) and nests a /flags call with
+        // notifyRemoteConfigLoaded=false; that nested call fails (empty body). The nested failure must
+        // NOT fire a second (spurious) failure notify — /config already resolved the config.
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        http.enqueue(MockResponse().setBody(""))
+        val notifyCount = AtomicInteger(0)
+        val sut = getSut(host = http.url("/").toString(), onRemoteConfigLoaded = { notifyCount.incrementAndGet() })
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        // /config resolved the config; the nested flags failure must not have re-fired the callback.
+        assertTrue(sut.hasRemoteConfigFetched())
         assertEquals(1, notifyCount.get())
 
         sut.clear()
