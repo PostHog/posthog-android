@@ -359,6 +359,8 @@ public open class PostHogConfig(
      *
      * Useful for reverse-proxy setups that require authentication, e.g. an `Authorization` header.
      *
+     * Read once when the SDK is set up; changes after setup are ignored.
+     *
      * Default: empty (no extra headers).
      */
     @Volatile

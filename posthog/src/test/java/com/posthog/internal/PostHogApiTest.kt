@@ -162,6 +162,42 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `custom headers do not override SDK-managed headers`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("User-Agent" to "evil"))
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
+    }
+
+    @Test
+    fun `drops a header okhttp rejects without failing the request`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut =
+            getSut(
+                host = url.toString(),
+                requestHeaders =
+                    mapOf(
+                        // A newline makes okhttp's header() throw.
+                        "X-Bad" to "bad\nvalue",
+                        "Authorization" to "Bearer ok",
+                    ),
+            )
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertNull(request.headers["X-Bad"])
+        assertEquals("Bearer ok", request.headers["Authorization"])
+    }
+
+    @Test
     fun `batch throws if not successful`() {
         val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
         val url = http.url("/")

@@ -17,8 +17,8 @@ import java.io.IOException
 public class CustomHeadersInterceptor(private val config: PostHogConfig) : Interceptor {
     private val configuredHost: String? = config.host.toHttpUrlOrNull()?.host
 
-    // Snapshot at construction so config is treated as immutable after setup.
-    private val requestHeaders: Map<String, String> = config.requestHeaders
+    // Snapshot a copy at construction so config is treated as immutable after setup.
+    private val requestHeaders: Map<String, String> = config.requestHeaders.toMap()
 
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {

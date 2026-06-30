@@ -49,7 +49,9 @@ public class PostHogApi(
         config.httpClient ?: OkHttpClient.Builder()
             .proxy(config.proxy)
             .addInterceptor(GzipRequestInterceptor(config))
-            .addInterceptor(CustomHeadersInterceptor(config))
+            // Network interceptor so the host check re-runs per hop and custom headers are never
+            // added to a redirect that leaves the configured host.
+            .addNetworkInterceptor(CustomHeadersInterceptor(config))
             .build()
 
     private val flagsClient: OkHttpClient by lazy {
