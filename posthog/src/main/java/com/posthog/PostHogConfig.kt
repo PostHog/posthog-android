@@ -361,6 +361,7 @@ public open class PostHogConfig(
      *
      * Default: empty (no extra headers).
      */
+    @Volatile
     public var requestHeaders: Map<String, String> = emptyMap()
 
     /**

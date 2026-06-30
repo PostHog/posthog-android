@@ -4,6 +4,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
+import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
 
@@ -28,14 +29,20 @@ public class CustomHeadersInterceptor(private val config: PostHogConfig) : Inter
         val builder = request.newBuilder()
         for ((key, value) in requestHeaders) {
             // SDK-set request headers (e.g. localEvaluation's Authorization) take precedence.
-            if (request.header(key) != null) continue
-            try {
-                builder.header(key, value)
-            } catch (e: IllegalArgumentException) {
-                // Drop headers okhttp rejects rather than failing the request.
-                config.logger.log("Dropping invalid request header '$key': ${e.message}")
-            }
+            request.header(key) ?: builder.addCustomHeader(key, value)
         }
         return chain.proceed(builder.build())
+    }
+
+    private fun Request.Builder.addCustomHeader(
+        key: String,
+        value: String,
+    ) {
+        try {
+            header(key, value)
+        } catch (e: IllegalArgumentException) {
+            // Drop headers okhttp rejects rather than failing the request.
+            config.logger.log("Dropping invalid request header '$key': ${e.message}")
+        }
     }
 }
