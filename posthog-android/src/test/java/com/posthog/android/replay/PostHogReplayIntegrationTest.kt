@@ -414,6 +414,8 @@ internal class PostHogReplayIntegrationTest {
         minimumDurationMs: Long? = null,
         sessionReplay: Boolean = true,
         samplingPasses: Boolean = true,
+        linkedFlagGated: Boolean = false,
+        preloadFeatureFlags: Boolean = true,
     ): RealQueueFixture {
         val remoteConfig =
             mock<PostHogRemoteConfig> {
@@ -422,11 +424,13 @@ internal class PostHogReplayIntegrationTest {
                 on { makeSamplingDecision(any()) } doReturn samplingPasses
                 on { getEventTriggers() } doReturn emptySet<String>()
                 on { getRecordingMinimumDurationMs() } doReturn minimumDurationMs
+                on { isRecordingGatedOnLinkedFlag() } doReturn linkedFlagGated
             }
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 remoteConfigHolder = remoteConfig
                 this.sessionReplay = sessionReplay
+                this.preloadFeatureFlags = preloadFeatureFlags
             }
         val storagePrefix = tmpDir.newFolder().absolutePath
         val executor = createReplayExecutor()
@@ -818,6 +822,191 @@ internal class PostHogReplayIntegrationTest {
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
+            assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `linkedFlag-gated first config defers buffer resolve and does not stop the capturer`() {
+        // A linkedFlag config's flag value isn't fresh at /config — /flags lands right after and
+        // re-evaluates it. The first onRemoteConfig (the /config callback) must NOT resolve the
+        // buffer against the stale flag (which evaluates false here) and must NOT stop the capturer
+        // for the same transiently-false reason; both are deferred to the imminent /flags callback.
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = false,
+                hasFetched = false,
+                linkedFlagGated = true,
+                preloadFeatureFlags = true,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            assertTrue(fx.sut.isActive())
+
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // First onRemoteConfig represents the /config callback: defer the resolve, keep recording.
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+            assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `linkedFlag-gated flags callback flipping the flag on migrates the deferred buffer and keeps recording`() {
+        // The deferral's primary payoff: /config sees the linked flag transiently false, /flags lands
+        // and resolves it to true. The buffered opening window must migrate (not get dropped on the
+        // stale /config-time value) and the capturer must stay active.
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { isSessionReplayFlagActive() } doReturn false
+                on { hasRemoteConfigFetched() } doReturn false
+                on { makeSamplingDecision(any()) } doReturn true
+                on { getEventTriggers() } doReturn emptySet<String>()
+                on { getRecordingMinimumDurationMs() } doReturn null
+                on { isRecordingGatedOnLinkedFlag() } doReturn true
+            }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                remoteConfigHolder = remoteConfig
+                this.sessionReplay = true
+                this.preloadFeatureFlags = true
+            }
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val executor = createReplayExecutor()
+        val innerQueue =
+            PostHogQueue(
+                config,
+                EndpointSpec.snapshot(config, PostHogApi(config), storagePrefix),
+                executor,
+            )
+        val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
+        config.replayQueueHolder = replayQueue
+        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        sut.install(postHog)
+        sut.start(resumeCurrent = true)
+        try {
+            replayQueue.add(createTestEvent("snapshot_1"))
+            Thread.sleep(5)
+            replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+
+            // /config callback: defer; capturer stays active, buffer untouched.
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(2, replayQueue.bufferDepth)
+            assertTrue(sut.isActive())
+
+            // /flags reload merges in the linked flag, flipping the recording flag to true.
+            whenever(remoteConfig.isSessionReplayFlagActive()).thenReturn(true)
+            sut.onRemoteConfig()
+
+            awaitCondition { replayQueue.bufferDepth == 0 && replayQueue.depth == 2 }
+            assertEquals(0, replayQueue.bufferDepth)
+            assertEquals(2, replayQueue.depth)
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `linkedFlag-gated second config callback resolves the deferred buffer against the fresh flag`() {
+        // The second onRemoteConfig represents the /flags callback that lands after /config. Now the
+        // flag is freshly merged: the deferred buffer must resolve against this value (off here →
+        // drop + stop), not against the stale /config-time value.
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = false,
+                hasFetched = false,
+                linkedFlagGated = true,
+                preloadFeatureFlags = true,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+
+            // /config callback: defer.
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertTrue(fx.sut.isActive())
+
+            // /flags callback: fresh flag is still off → resolve drops the buffer and stops.
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+            assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `linkedFlag deferral does not apply when preloadFeatureFlags is off`() {
+        // Without preloadFeatureFlags no /flags reload will follow /config, so deferring would buffer
+        // the whole session forever. The first onRemoteConfig must resolve immediately against the
+        // cached flag (off here → drop + stop), just like the boolean-config path.
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = false,
+                hasFetched = false,
+                linkedFlagGated = true,
+                preloadFeatureFlags = false,
+            )
+        fx.sut.install(mock<PostHogInterface>())
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+            assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `boolean config first remote config with flag off still stops via buffer-resolve path`() {
+        // No linkedFlag involved: the first onRemoteConfig is exempt from reevaluateRecordingState's
+        // stop step (Decision 3), but the buffer-resolve path still stops on not-recordable. The
+        // exemption applies to the mid-session stop; the cleanup stop on a not-recordable resolve fires.
+        val fx = createIntegrationWithRealQueue(flagActive = false, hasFetched = false)
+        fx.sut.install(mock<PostHogInterface>())
+        fx.sut.start(resumeCurrent = true)
+        try {
+            assertTrue(fx.sut.isActive())
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
             assertFalse(fx.sut.isActive())
         } finally {
             fx.sut.uninstall()
