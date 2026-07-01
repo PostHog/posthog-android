@@ -53,7 +53,7 @@ internal class PostHogApiTest {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
         config.debug = debug
-        if (requestHeaders != null) {
+        if (!requestHeaders.isNullOrEmpty()) {
             config.requestHeaders = requestHeaders
         }
         if (logger != null) {
@@ -166,12 +166,13 @@ internal class PostHogApiTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(host = url.toString(), requestHeaders = mapOf("User-Agent" to "evil"))
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("User-Agent" to "evil", "Content-Type" to "text/plain"))
 
         sut.batch(listOf(generateEvent()))
 
         val request = http.takeRequest()
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
     }
 
     @Test
