@@ -79,25 +79,33 @@ jobs:
           elif isinstance(payload, dict):
               records.append(payload)
 
-          workflow_allowlist = {
-              ".github/workflows/release.yml",
-              ".github/workflows/release.yaml",
-              ".github/workflows/stale.yml",
-              ".github/workflows/stale.yaml",
-              ".github/workflows/lint-pr.yml",
-              ".github/workflows/lint-pr.yaml",
-              ".github/workflows/call-flags.yml",
-              ".github/workflows/call-flags.yaml",
-          }
+          SAFE_WORKFLOW_RE = re.compile(
+              r"^\.github/workflows/"
+              r"(release|publish|stale|lint-pr|call-flags-project-board|changeset-hygiene|"
+              r"dependabot-changeset|validate-versioning|new-pr|generated-files-notice|"
+              r"posthog-upgrade|posthog-watcher-[^/]+)"
+              r"\.ya?ml$"
+          )
 
-          def is_non_impacting(path: str) -> bool:
-              if not path or path.startswith("/") or "//" in path:
+          def is_safe_path(path: object) -> bool:
+              if not isinstance(path, str) or not path or path.startswith("/") or "//" in path:
                   return False
               if path.endswith(".md"):
                   return True
-              if re.fullmatch(r"\.changeset/[^/]+\.md", path):
+              if path.startswith("docs/"):
                   return True
-              return path in workflow_allowlist
+              if path.startswith(".github/ISSUE_TEMPLATE/"):
+                  return True
+              if path.startswith(".github/PULL_REQUEST_TEMPLATE/"):
+                  return True
+              if path in {
+                  ".github/pull_request_template.md",
+                  ".github/CODEOWNERS",
+                  "CODEOWNERS",
+                  ".github/dependabot.yml",
+              }:
+                  return True
+              return SAFE_WORKFLOW_RE.fullmatch(path) is not None
 
           changed_paths = []
           blocking_paths = []
@@ -114,10 +122,10 @@ jobs:
                   paths_to_check.append(previous)
 
               for path in paths_to_check:
-                  if path and path not in changed_paths:
+                  if isinstance(path, str) and path and path not in changed_paths:
                       changed_paths.append(path)
-                  if not is_non_impacting(path):
-                      blocking_paths.append(path or "<missing filename>")
+                  if not is_safe_path(path):
+                      blocking_paths.append(path if isinstance(path, str) and path else "<missing filename>")
 
           if not records:
               skip_heavy_ci = "false"
@@ -128,12 +136,12 @@ jobs:
               for path in blocking_paths:
                   if path not in unique_blocking:
                       unique_blocking.append(path)
-              reason = "Heavy CI will run because these files may affect build/test: " + ", ".join(unique_blocking[:20])
+              reason = "Heavy CI will run because these files are outside the generic safe set: " + ", ".join(unique_blocking[:20])
               if len(unique_blocking) > 20:
                   reason += f", and {len(unique_blocking) - 20} more"
           else:
               skip_heavy_ci = "true"
-              reason = "All PR files are docs, release metadata, or unrelated workflow files."
+              reason = "All PR files are in the generic safe set for heavy CI."
 
           with open(output_path, "a", encoding="utf-8") as handle:
               handle.write(f"skip_heavy_ci={skip_heavy_ci}\n")
