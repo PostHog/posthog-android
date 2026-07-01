@@ -185,11 +185,11 @@ public class PostHogReplayIntegration(
     // confirms or rejects the flag. Always read/written under [bufferingLock].
     private var awaitingFirstRemoteConfig: Boolean = false
 
-    // True after the first onRemoteConfig callback fires while the gate is armed. Used to tell the
-    // linkedFlag-deferred /config callback (first) apart from the imminent /flags callback (second)
-    // that actually resolves the buffer against the freshly-merged flag. Reset by [resetBufferingState]
-    // so a re-armed gate gets the same deferral on the next delivery. Always under [bufferingLock].
-    private var firstRemoteConfigDeliverySeen: Boolean = false
+    // Bumped every time the gate is (re-)armed for a new session/identity. [resolveFirstRemoteConfig]
+    // captures it and re-checks before migrating/clearing the buffer, so a concurrent session
+    // rotation ([resetBufferingState]) that re-arms and clears the buffer can't have the in-flight
+    // resolution act on the wrong window. Always read/written under [bufferingLock].
+    private var bufferingGeneration: Int = 0
 
     private val replayBufferDelegate =
         object : PostHogReplayBufferDelegate {
@@ -445,7 +445,7 @@ public class PostHogReplayIntegration(
         // Buffer snapshots until the first live remote config resolves, unless it already has.
         synchronized(bufferingLock) {
             awaitingFirstRemoteConfig = shouldAwaitFirstRemoteConfig()
-            firstRemoteConfigDeliverySeen = false
+            bufferingGeneration++
         }
 
         // workaround for react native that is started after the window is added
@@ -1916,24 +1916,13 @@ public class PostHogReplayIntegration(
     override fun onRemoteConfig() {
         updateCachedMinimumDuration()
         // Snapshot the gate state BEFORE resolveFirstRemoteConfig disarms it, so reevaluateRecordingState
-        // can tell whether this callback is the first delivery. When a linkedFlag gates recording and
-        // /flags will follow (preloadFeatureFlags=true), defer the resolve to that /flags callback so the
-        // buffer isn't evaluated against the transiently-stale linkedFlag value at /config time.
-        val (wasFirstDelivery, deferResolve) = synchronized(bufferingLock) {
-            val wasFirst = awaitingFirstRemoteConfig
-            val canDefer = wasFirst && !firstRemoteConfigDeliverySeen && shouldDeferFirstResolveToFlags()
-            if (wasFirst) firstRemoteConfigDeliverySeen = true
-            Pair(wasFirst, canDefer)
-        }
-        if (!deferResolve) {
-            resolveFirstRemoteConfig()
-        }
+        // can tell whether this callback is the first delivery. loadRemoteConfig loads /flags nested and
+        // synchronously (notifyRemoteConfigLoaded=false) before this single callback fires, so the
+        // session-replay flag is already fresh here — resolve the buffer against it on this delivery
+        // rather than deferring to a second callback the cold-start path never produces.
+        val wasFirstDelivery = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
+        resolveFirstRemoteConfig()
         reevaluateRecordingState(isFirstDelivery = wasFirstDelivery)
-    }
-
-    private fun shouldDeferFirstResolveToFlags(): Boolean {
-        val remoteConfig = config.remoteConfigHolder ?: return false
-        return config.preloadFeatureFlags && remoteConfig.isRecordingGatedOnLinkedFlag()
     }
 
     /**
@@ -1947,21 +1936,49 @@ public class PostHogReplayIntegration(
      * steps, not atomically with the disarm) can't route a stale snapshot to the persisted queue.
      */
     private fun resolveFirstRemoteConfig() {
-        val resolving = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
-        if (!resolving) {
-            return
-        }
+        val generation =
+            synchronized(bufferingLock) {
+                if (!awaitingFirstRemoteConfig) {
+                    return
+                }
+                bufferingGeneration
+            }
 
         if (isRecordingPermittedForCurrentSession()) {
-            synchronized(bufferingLock) { awaitingFirstRemoteConfig = false }
-            replayQueue?.let { migrateBufferIfMinimumDurationMet(it) }
+            // Disarm and migrate only if a session rotation hasn't re-armed the gate under a newer
+            // generation in the meantime; that generation owns the (re-cleared) buffer and resolves
+            // it on its own delivery, so acting here would migrate the wrong session's window.
+            val resolved =
+                synchronized(bufferingLock) {
+                    if (bufferingGeneration != generation || !awaitingFirstRemoteConfig) {
+                        false
+                    } else {
+                        awaitingFirstRemoteConfig = false
+                        true
+                    }
+                }
+            if (resolved) {
+                replayQueue?.let { migrateBufferIfMinimumDurationMet(it) }
+            }
         } else {
+            // Bail if a session rotation superseded this resolution before we touch the buffer.
+            val superseded =
+                synchronized(bufferingLock) {
+                    bufferingGeneration != generation || !awaitingFirstRemoteConfig
+                }
+            if (superseded) {
+                return
+            }
             // Self-gate the capturer first so no new snapshot re-enters the buffer, then drop the
             // buffer, and only then disarm — an in-flight add() checks isBuffering and enqueues in
             // separate steps, so it could otherwise route a stale snapshot past the disarm.
             stop()
             replayQueue?.clearBuffer()
-            synchronized(bufferingLock) { awaitingFirstRemoteConfig = false }
+            synchronized(bufferingLock) {
+                if (bufferingGeneration == generation) {
+                    awaitingFirstRemoteConfig = false
+                }
+            }
         }
     }
 
@@ -2005,10 +2022,10 @@ public class PostHogReplayIntegration(
      * permitted (master switch off, flag off, or sampled out) and resume when it turns on. Without
      * this, a fresh-`false` would keep recording until the next session rotation.
      *
-     * The very first delivery is exempt from the **flag-off** stop only: a `linkedFlag` config can
-     * transiently evaluate to `false` at /config time before /flags lands, and stopping here would
-     * prevent the capturer from resuming when /flags satisfies it. Sampling is deterministic per
-     * session id (it can't flip between /config and /flags), so the sampled-out stop is NOT exempt.
+     * The very first delivery is exempt from the **flag-off** stop only: on that delivery
+     * [resolveFirstRemoteConfig] already owns the stop-and-drop decision for the buffered opening
+     * window, so stopping again here would be redundant. Sampling is deterministic per session id,
+     * so the sampled-out stop is NOT exempt.
      */
     private fun reevaluateRecordingState(isFirstDelivery: Boolean = false) {
         val postHog = this.postHog ?: return
@@ -2040,14 +2057,26 @@ public class PostHogReplayIntegration(
     private fun stopIfActive(reason: String) {
         if (isSessionReplayActive) {
             config.logger.log("[Session Replay] $reason")
-            mainHandler.handler.post { if (isSessionReplayActive) stop() }
+            // Flip the active gate synchronously so a concurrent add() on the replay executor stops
+            // persisting immediately (PostHogReplayQueue.shouldPersist reads isActive), instead of
+            // leaking snapshots to the send queue in the window before the posted stop() runs on main.
+            isSessionReplayActive = false
+            mainHandler.handler.post { stop() }
         }
     }
 
     // Whether to buffer until the live remote config resolves: only when a remote config holder
-    // exists and hasn't resolved yet. Remote config is always fetched at setup, so this disarms on
-    // the first onRemoteConfig (and re-arms after clear() until the post-reset reload resolves it).
-    private fun shouldAwaitFirstRemoteConfig(): Boolean = config.remoteConfigHolder?.let { !it.hasRemoteConfigFetched() } ?: false
+    // exists and hasn't resolved yet, AND a fetch will actually be attempted at setup. If neither
+    // remoteConfig nor preloadFeatureFlags is enabled, PostHog.setup dispatches no /config or /flags
+    // request, so no onRemoteConfig/onRemoteConfigFailed callback ever arrives to disarm the gate —
+    // buffering would then grow unbounded for the whole session. Don't arm in that case.
+    private fun shouldAwaitFirstRemoteConfig(): Boolean {
+        @Suppress("DEPRECATION")
+        if (!config.remoteConfig && !config.preloadFeatureFlags) {
+            return false
+        }
+        return config.remoteConfigHolder?.let { !it.hasRemoteConfigFetched() } ?: false
+    }
 
     private fun updateCachedMinimumDuration() {
         val minimumDuration = config.remoteConfigHolder?.getRecordingMinimumDurationMs()
@@ -2068,7 +2097,9 @@ public class PostHogReplayIntegration(
             // Re-arm after reset()/identity change (PostHogRemoteConfig.clear() cleared its fetched
             // flag); a plain session rotation keeps it disarmed since the config is still fetched.
             awaitingFirstRemoteConfig = shouldAwaitFirstRemoteConfig()
-            firstRemoteConfigDeliverySeen = false
+            // Supersede any in-flight resolveFirstRemoteConfig so it can't migrate or clear this
+            // session's buffer after we've re-armed and cleared it below.
+            bufferingGeneration++
         }
         // Clear any buffered events from previous session
         replayQueue?.clearBuffer()

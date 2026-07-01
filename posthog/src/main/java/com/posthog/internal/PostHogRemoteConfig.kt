@@ -1067,19 +1067,6 @@ public class PostHogRemoteConfig(
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
 
     /**
-     * Whether the cached `sessionRecording` config gates recording on a linked feature flag rather
-     * than a plain boolean. The linked flag's value is only fresh after `/flags`, which lands just
-     * after `/config`, so callers may want to defer flag-dependent decisions to the flags reload.
-     */
-    public fun isRecordingGatedOnLinkedFlag(): Boolean {
-        val sessionRecording = synchronized(featureFlagsLock) {
-            @Suppress("UNCHECKED_CAST")
-            (config.cachePreferences?.getValue(SESSION_REPLAY) as? Map<String, Any?>)
-        } ?: return false
-        return sessionRecording["linkedFlag"] != null
-    }
-
-    /**
      * Whether the live remote config has been resolved (via /config or /flags) since setup or the
      * last [clear]. While this is false, [isSessionReplayFlagActive] still reflects the disk-cached
      * value, so the replay integration buffers snapshots until the server confirms the flag.
