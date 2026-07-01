@@ -27,7 +27,7 @@ internal class PostHogFlagsRequestTest {
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertEquals(ANON_ID, request["\$anon_distinct_id"])
         assertEquals(groups, request["groups"])
-        assertEquals(personProperties + ("distinct_id" to DISTINCT_ID), request["person_properties"])
+        assertEquals(personProperties, request["person_properties"])
         assertEquals(groupProperties, request["group_properties"])
     }
 
@@ -109,7 +109,7 @@ internal class PostHogFlagsRequestTest {
     }
 
     @Test
-    fun `adds distinct_id to non-empty person properties`() {
+    fun `does not add distinct_id to non-empty person properties`() {
         val request =
             PostHogFlagsRequest(
                 API_KEY,
@@ -118,7 +118,7 @@ internal class PostHogFlagsRequestTest {
             )
 
         assertEquals(
-            mapOf("email" to "example@example.com", "distinct_id" to DISTINCT_ID),
+            mapOf("email" to "example@example.com"),
             request["person_properties"],
         )
     }
