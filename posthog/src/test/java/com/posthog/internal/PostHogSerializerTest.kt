@@ -212,8 +212,7 @@ internal class PostHogSerializerTest {
                     "custom_prop": {
                         "field1": "custom",
                         "field2": 999
-                    },
-                    "distinct_id": "test_user"
+                    }
                 },
                 "groups": {}
             }
