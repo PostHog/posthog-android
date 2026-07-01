@@ -1,5 +1,11 @@
 ## Next
 
+## 6.21.4
+
+### Patch Changes
+
+- 1c8521b: Fix SDK compliance for feature flag payloads and retry metadata while preserving Android API 23 compatibility.
+
 ## 6.21.3
 
 ### Patch Changes

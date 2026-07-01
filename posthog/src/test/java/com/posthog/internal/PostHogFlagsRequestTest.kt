@@ -6,6 +6,7 @@ import com.posthog.DISTINCT_ID
 import com.posthog.groups
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 internal class PostHogFlagsRequestTest {
     @Test
@@ -26,7 +27,7 @@ internal class PostHogFlagsRequestTest {
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertEquals(ANON_ID, request["\$anon_distinct_id"])
         assertEquals(groups, request["groups"])
-        assertEquals(personProperties, request["person_properties"])
+        assertEquals(personProperties + ("distinct_id" to DISTINCT_ID), request["person_properties"])
         assertEquals(groupProperties, request["group_properties"])
     }
 
@@ -97,5 +98,54 @@ internal class PostHogFlagsRequestTest {
             )
 
         assertEquals(null, request["\$device_id"])
+    }
+
+    @Test
+    fun `defaults groups and group_properties to empty objects`() {
+        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID)
+
+        assertEquals(emptyMap<String, String>(), request["groups"])
+        assertEquals(emptyMap<String, Map<String, Any?>>(), request["group_properties"])
+    }
+
+    @Test
+    fun `adds distinct_id to non-empty person properties`() {
+        val request =
+            PostHogFlagsRequest(
+                API_KEY,
+                DISTINCT_ID,
+                personProperties = mapOf("email" to "example@example.com"),
+            )
+
+        assertEquals(
+            mapOf("email" to "example@example.com", "distinct_id" to DISTINCT_ID),
+            request["person_properties"],
+        )
+    }
+
+    @Test
+    fun `does not overwrite explicit person property distinct_id`() {
+        val request =
+            PostHogFlagsRequest(
+                API_KEY,
+                DISTINCT_ID,
+                personProperties = mapOf("distinct_id" to "custom-distinct-id"),
+            )
+
+        assertEquals(mapOf("distinct_id" to "custom-distinct-id"), request["person_properties"])
+    }
+
+    @Test
+    fun `includes geoip_disable when false`() {
+        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID, disableGeoip = false)
+
+        assertFalse(request["geoip_disable"] as Boolean)
+    }
+
+    @Test
+    fun `includes flag keys to evaluate`() {
+        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID, flagKeys = listOf("my-flag"))
+
+        assertEquals(listOf("my-flag"), request["flag_keys_to_evaluate"])
     }
 }

@@ -3,6 +3,7 @@ package com.posthog.compliance
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
 import com.posthog.internal.GzipRequestInterceptor
+import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogContext
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.gson.gson
@@ -20,7 +21,6 @@ import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.File
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
@@ -140,6 +140,7 @@ object AdapterContext {
     // Signalled by the tracking interceptor when a /batch response lands (see awaitBatch).
     val batchObserved: Condition = lock.newCondition()
     var postHog: com.posthog.PostHogInterface? = null
+    var api: PostHogApi? = null
     val capturedEvents = mutableListOf<String>() // Store UUIDs of captured events
 }
 
@@ -261,6 +262,7 @@ fun main() {
 
                     // Close existing instance if any
                     AdapterContext.postHog?.close()
+                    AdapterContext.api = null
 
                     // close() leaves queue files on disk; wipe so they don't replay into this test.
                     File(QUEUE_STORAGE_PREFIX).deleteRecursively()
@@ -306,8 +308,9 @@ fun main() {
                         event
                     }
 
-                    // Create PostHog instance
+                    // Create PostHog instance and direct API helper for per-request flag evaluation.
                     AdapterContext.postHog = PostHog.with(config)
+                    AdapterContext.api = PostHogApi(config)
                 }
 
                 call.respond(SuccessResponse(success = true))
@@ -368,48 +371,47 @@ fun main() {
                     return@post
                 }
 
-                // Note: distinct_id is decoded for harness parity but not applied. The only
-                // public setter is identify(), which unconditionally fires its own /flags reload
-                // and would double the request count the harness asserts on (known SDK gap).
-
-                // Stage person properties without reloading, so the explicit reload below
-                // is the single /flags request we await (the harness counts requests).
-                req.person_properties?.takeIf { it.isNotEmpty() }?.let {
-                    ph.setPersonPropertiesForFlags(it, reloadFeatureFlags = false)
+                val api = AdapterContext.lock.withLock { AdapterContext.api }
+                if (api == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "SDK not initialized"))
+                    return@post
                 }
 
-                // Set group properties via the flags-specific API so we don't fire an extra
-                // reload for them. The /flags `group_properties` field reads from this store.
-                req.group_properties?.forEach { (type, props) ->
-                    if (props.isNotEmpty()) {
-                        ph.setGroupPropertiesForFlags(type, props, reloadFeatureFlags = false)
-                    }
-                }
+                val distinctId = req.distinct_id ?: ph.distinctId()
+                val response =
+                    api.flags(
+                        distinctId = distinctId,
+                        anonymousId = ph.distinctId(),
+                        deviceId = ph.distinctId(),
+                        groups = req.groups ?: emptyMap(),
+                        personProperties = req.person_properties,
+                        groupProperties = req.group_properties,
+                        flagKeys = listOf(req.key),
+                        disableGeoip = req.disable_geoip ?: false,
+                    )
+                val value =
+                    response?.featureFlags?.get(req.key)
+                        ?: response?.flags?.get(req.key)?.let { it.variant ?: it.enabled }
 
-                // group() is the only public writer of the GROUPS pref (needed in the /flags body);
-                // on a fresh SDK the new key also forces a $groupidentify + an extra /flags.
-                req.groups?.forEach { (type, key) ->
-                    ph.group(type, key, null)
-                }
-
-                // Reload flags and wait for the /flags request to complete.
-                val latch = CountDownLatch(1)
-                ph.reloadFeatureFlags { latch.countDown() }
-                val reloaded = latch.await(5, TimeUnit.SECONDS)
-                if (!reloaded) {
-                    // Surface a reload timeout; otherwise it looks like a genuine null flag.
-                    System.err.println("[ADAPTER] /get_feature_flag reload timed out after 5s for key=${req.key}")
-                }
-
-                // Resolve the value, capturing the documented $feature_flag_called side effect.
                 val requestsBefore = AdapterContext.lock.withLock { AdapterContext.state.requestsMade.size }
-                val value = ph.getFeatureFlag(req.key, defaultValue = null, sendFeatureFlagEvent = true)
-
-                // $feature_flag_called is captured internally, so wait on the request count, not pendingEvents.
+                ph.capture(
+                    event = "\$feature_flag_called",
+                    distinctId = distinctId,
+                    properties =
+                        mapOf(
+                            "\$feature_flag" to req.key,
+                            "\$feature_flag_response" to (value ?: false),
+                            "\$feature/${req.key}" to (value ?: false),
+                        ),
+                )
+                AdapterContext.lock.withLock {
+                    AdapterContext.state.totalEventsCaptured++
+                    AdapterContext.state.pendingEvents++
+                }
                 ph.flush()
                 awaitBatch(FLUSH_SETTLE_MS) { AdapterContext.state.requestsMade.size > requestsBefore }
 
-                call.respond(FlagResponse(success = true, value = value))
+                call.respond(FlagResponse(success = true, value = value ?: false))
             }
 
             post("/flush") {
@@ -452,6 +454,7 @@ fun main() {
                     // close (not reset) — reset() reloads flags, lands as +1 /flags in the next test.
                     AdapterContext.postHog?.close()
                     AdapterContext.postHog = null
+                    AdapterContext.api = null
 
                     // close() leaves queue files on disk; wipe so they don't replay next test (matches iOS).
                     File(QUEUE_STORAGE_PREFIX).deleteRecursively()

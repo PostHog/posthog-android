@@ -194,7 +194,9 @@ internal class PostHogSerializerTest {
         val expectedJson =
             """
             {
+                "geoip_disable": false,
                 "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
+                "group_properties": {},
                 "distinct_id": "test_user",
                 "timezone": "$timezone",
                 "person_properties": {
@@ -210,8 +212,10 @@ internal class PostHogSerializerTest {
                     "custom_prop": {
                         "field1": "custom",
                         "field2": 999
-                    }
-                }
+                    },
+                    "distinct_id": "test_user"
+                },
+                "groups": {}
             }
             """.replace(" ", "").replace("\n", "")
 

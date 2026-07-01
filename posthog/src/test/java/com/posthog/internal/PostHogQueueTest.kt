@@ -493,6 +493,17 @@ internal class PostHogQueueTest {
     }
 
     @Test
+    fun `delete files if 413 affects a single record with larger configured cap`() {
+        val e = PostHogApiError(413, "", null)
+        val config = PostHogConfig(API_KEY)
+        val limits = initialBatchLimits(config)
+
+        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = 1, logger = config.logger))
+        assertEquals(50, limits.cap)
+        assertEquals(20, limits.flushAt)
+    }
+
+    @Test
     fun `delete files if errored`() {
         val e = PostHogApiError(400, "", null)
         val config = PostHogConfig(API_KEY)
