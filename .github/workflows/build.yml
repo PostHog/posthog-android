@@ -12,33 +12,178 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  detect-markdown-only:
-    uses: PostHog/.github/.github/workflows/detect-markdown-only.yml@ec25337d9fae0100622cbfea1bd5bd88284ac10b
+  detect-ci-impact:
+    name: Detect CI impact
+    runs-on: ubuntu-latest
     permissions:
       pull-requests: read
+    outputs:
+      skip_heavy_ci: ${{ steps.classify.outputs.skip_heavy_ci }}
+      reason: ${{ steps.classify.outputs.reason }}
+
+    steps:
+      - name: Classify changed files
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            {
+              echo "skip_heavy_ci=false"
+              echo "reason=Heavy CI runs for non-PR events."
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "## CI impact detection"
+              echo
+              echo "Heavy CI will run because this is a $EVENT_NAME event."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          tmp_files="$(mktemp)"
+          if ! gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" > "$tmp_files"; then
+            {
+              echo "skip_heavy_ci=false"
+              echo "reason=Could not inspect PR files, so heavy CI will run."
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "## CI impact detection"
+              echo
+              echo "Heavy CI will run because changed-file detection failed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          python3 - "$tmp_files" "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          import re
+          import sys
+
+          files_path, output_path, summary_path = sys.argv[1:4]
+
+          with open(files_path, "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          records = []
+          if isinstance(payload, list):
+              for page in payload:
+                  if isinstance(page, list):
+                      records.extend(page)
+                  elif isinstance(page, dict):
+                      records.append(page)
+          elif isinstance(payload, dict):
+              records.append(payload)
+
+          workflow_allowlist = {
+              ".github/workflows/release.yml",
+              ".github/workflows/release.yaml",
+              ".github/workflows/stale.yml",
+              ".github/workflows/stale.yaml",
+              ".github/workflows/lint-pr.yml",
+              ".github/workflows/lint-pr.yaml",
+              ".github/workflows/call-flags.yml",
+              ".github/workflows/call-flags.yaml",
+          }
+
+          def is_non_impacting(path: str) -> bool:
+              if not path or path.startswith("/") or "//" in path:
+                  return False
+              if path.endswith(".md"):
+                  return True
+              if re.fullmatch(r"\.changeset/[^/]+\.md", path):
+                  return True
+              return path in workflow_allowlist
+
+          changed_paths = []
+          blocking_paths = []
+
+          for record in records:
+              if not isinstance(record, dict):
+                  blocking_paths.append("<unparseable changed-file record>")
+                  continue
+
+              current = record.get("filename")
+              previous = record.get("previous_filename")
+              paths_to_check = [current]
+              if previous:
+                  paths_to_check.append(previous)
+
+              for path in paths_to_check:
+                  if path and path not in changed_paths:
+                      changed_paths.append(path)
+                  if not is_non_impacting(path):
+                      blocking_paths.append(path or "<missing filename>")
+
+          if not records:
+              skip_heavy_ci = "false"
+              reason = "No PR files were returned, so heavy CI will run."
+          elif blocking_paths:
+              skip_heavy_ci = "false"
+              unique_blocking = []
+              for path in blocking_paths:
+                  if path not in unique_blocking:
+                      unique_blocking.append(path)
+              reason = "Heavy CI will run because these files may affect build/test: " + ", ".join(unique_blocking[:20])
+              if len(unique_blocking) > 20:
+                  reason += f", and {len(unique_blocking) - 20} more"
+          else:
+              skip_heavy_ci = "true"
+              reason = "All PR files are docs, release metadata, or unrelated workflow files."
+
+          with open(output_path, "a", encoding="utf-8") as handle:
+              handle.write(f"skip_heavy_ci={skip_heavy_ci}\n")
+              handle.write(f"reason={reason}\n")
+
+          with open(summary_path, "a", encoding="utf-8") as handle:
+              handle.write("## CI impact detection\n\n")
+              handle.write(f"Heavy CI skipped: `{skip_heavy_ci}`\n\n")
+              handle.write(f"Reason: {reason}\n\n")
+              if changed_paths:
+                  handle.write("Changed files considered:\n")
+                  for path in changed_paths:
+                      handle.write(f"- `{path}`\n")
+              else:
+                  handle.write("No changed files were returned by the PR files API.\n")
+          PY
 
   build:
-    needs: detect-markdown-only
+    needs: detect-ci-impact
     name: Build Job
     runs-on: ubuntu-latest
 
     steps:
-      - name: Complete markdown-only PR check
-        if: needs.detect-markdown-only.outputs.markdown_only == 'true'
-        run: echo "Only Markdown files changed; no additional work is required for this check."
+      - name: Complete non-impacting PR check
+        if: needs.detect-ci-impact.outputs.skip_heavy_ci == 'true'
+        env:
+          SKIP_REASON: ${{ needs.detect-ci-impact.outputs.reason }}
+        run: |
+          echo "$SKIP_REASON"
+          {
+            echo "## Build Job"
+            echo
+            echo "Heavy Gradle build skipped."
+            echo
+            echo "$SKIP_REASON"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Git checkout
-        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        if: needs.detect-ci-impact.outputs.skip_heavy_ci != 'true'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: 'Set up Java 17'
-        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        if: needs.detect-ci-impact.outputs.skip_heavy_ci != 'true'
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Cache Gradle packages
-        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        if: needs.detect-ci-impact.outputs.skip_heavy_ci != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -50,9 +195,10 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Make compile
-        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        id: make-compile
+        if: needs.detect-ci-impact.outputs.skip_heavy_ci != 'true'
         run: make compile
 
       - name: Make stop
-        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        if: always() && needs.detect-ci-impact.outputs.skip_heavy_ci != 'true' && steps.make-compile.outcome != 'skipped'
         run: make stop
