@@ -1,5 +1,11 @@
 ## Next
 
+## 6.22.0
+
+### Minor Changes
+
+- a1261a5: Add `requestHeaders` config option to send custom headers (e.g. `Authorization`) with every request to the PostHog API. Useful for reverse-proxy setups that require authentication.
+
 ## 6.21.4
 
 ### Patch Changes
