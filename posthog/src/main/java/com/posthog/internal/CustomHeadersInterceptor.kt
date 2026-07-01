@@ -15,6 +15,11 @@ import java.io.IOException
  */
 @PostHogInternal
 public class CustomHeadersInterceptor(private val config: PostHogConfig) : Interceptor {
+    private companion object {
+        // SDK-managed headers that custom values can't override (compared lowercase).
+        private val RESERVED_HEADERS = setOf("content-type", "user-agent", "accept-encoding", "content-encoding")
+    }
+
     private val configuredHost: String? = config.host.toHttpUrlOrNull()?.host
 
     // Snapshot a copy at construction so config is treated as immutable after setup.
@@ -30,6 +35,7 @@ public class CustomHeadersInterceptor(private val config: PostHogConfig) : Inter
 
         val builder = request.newBuilder()
         for ((key, value) in requestHeaders) {
+            if (key.lowercase() in RESERVED_HEADERS) continue
             // SDK-set request headers (e.g. localEvaluation's Authorization) take precedence.
             request.header(key) ?: builder.addCustomHeader(key, value)
         }
