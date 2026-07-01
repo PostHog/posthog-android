@@ -406,6 +406,7 @@ internal class PostHogReplayIntegrationTest {
         val sut: PostHogReplayIntegration,
         val replayQueue: PostHogReplayQueue,
         val config: PostHogAndroidConfig,
+        val remoteConfig: PostHogRemoteConfig,
     )
 
     private fun createIntegrationWithRealQueue(
@@ -443,7 +444,7 @@ internal class PostHogReplayIntegrationTest {
         val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
         config.replayQueueHolder = replayQueue
         val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
-        return RealQueueFixture(sut, replayQueue, config)
+        return RealQueueFixture(sut, replayQueue, config, remoteConfig)
     }
 
     private fun awaitCondition(
@@ -1037,6 +1038,88 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(2, fx.replayQueue.depth)
             assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `re-armed gate after reset resolves from cached config on the next flags reload with cached on`() {
+        // Req 5: reset() clears PostHogRemoteConfig's fetched latch, and the silent session rotation
+        // that follows re-arms the cold-start gate via resetBufferingState. The next /flags reload —
+        // represented here by onRemoteConfig — must resolve the re-armed gate against the cached
+        // sessionRecording config without waiting for a new /config fetch. Cached-on migrates the
+        // post-reset opening window.
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        val firstSessionId = UUID.randomUUID()
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(firstSessionId)
+        PostHogSessionManager.setSessionId(firstSessionId)
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.sut.onRemoteConfig()
+            assertTrue(fx.sut.isActive())
+
+            // reset()/identify(newUser) flips the fetched latch back and rotates the session id.
+            whenever(fx.remoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+            val secondSessionId = UUID.randomUUID()
+            whenever(postHog.getSessionId()).thenReturn(secondSessionId)
+            PostHogSessionManager.setSessionId(secondSessionId)
+            fx.sut.onSessionIdChanged()
+
+            fx.replayQueue.add(createTestEvent("snapshot_after_reset_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_after_reset_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            fx.sut.onRemoteConfig()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(2, fx.replayQueue.depth)
+            assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `re-armed gate after reset drops the post-reset window when cached config is off`() {
+        // Companion to the previous test: same re-arm sequence, opposite cached decision. The /flags
+        // reload after reset must resolve the re-armed gate via the not-recordable rules — drop the
+        // buffered post-reset window and stop the capturer.
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        val firstSessionId = UUID.randomUUID()
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(firstSessionId)
+        PostHogSessionManager.setSessionId(firstSessionId)
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.sut.onRemoteConfig()
+            assertTrue(fx.sut.isActive())
+
+            // reset()/identify(newUser): fetched latch cleared, cached flag now off, session rotates.
+            whenever(fx.remoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+            whenever(fx.remoteConfig.isSessionReplayFlagActive()).thenReturn(false)
+            val secondSessionId = UUID.randomUUID()
+            whenever(postHog.getSessionId()).thenReturn(secondSessionId)
+            PostHogSessionManager.setSessionId(secondSessionId)
+            fx.sut.onSessionIdChanged()
+
+            fx.replayQueue.add(createTestEvent("snapshot_after_reset_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_after_reset_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+            assertFalse(fx.sut.isActive())
         } finally {
             fx.sut.uninstall()
         }
