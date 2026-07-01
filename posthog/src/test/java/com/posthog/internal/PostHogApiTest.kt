@@ -9,6 +9,7 @@ import com.posthog.logs.PostHogLogSeverity
 import com.posthog.mockHttp
 import com.posthog.unGzip
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
@@ -47,10 +48,14 @@ internal class PostHogApiTest {
         httpClient: OkHttpClient? = null,
         maxRetries: Int? = null,
         featureFlagRequestMaxRetries: Int? = null,
+        requestHeaders: Map<String, String>? = null,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
         config.proxy = proxy
         config.debug = debug
+        if (!requestHeaders.isNullOrEmpty()) {
+            config.requestHeaders = requestHeaders
+        }
         if (logger != null) {
             config.logger = logger
         }
@@ -86,6 +91,111 @@ internal class PostHogApiTest {
         assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+    }
+
+    @Test
+    fun `batch includes custom request headers`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("Authorization" to "Bearer test-jwt"))
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertEquals("Bearer test-jwt", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `flags includes custom request headers`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val http = mockHttp(response = MockResponse().setBody(file.readText()))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("Authorization" to "Bearer test-jwt"))
+
+        sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+
+        val request = http.takeRequest()
+        assertEquals("Bearer test-jwt", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `custom Authorization header does not override localEvaluation personal API key`() {
+        val http = mockHttp(response = MockResponse().setBody(createLocalEvaluationJson()))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("Authorization" to "Bearer custom"))
+
+        sut.localEvaluation("test-personal-key")
+
+        val request = http.takeRequest()
+        assertEquals("Bearer test-personal-key", request.headers["Authorization"])
+    }
+
+    @Test
+    fun `does not attach custom headers when the request host differs from the configured host`() {
+        val http = mockHttp()
+
+        // Configured host differs from the request host, mirroring the static-config CDN.
+        val config = PostHogConfig(API_KEY, "https://different-host.example.com")
+        config.requestHeaders = mapOf("Authorization" to "Bearer test-jwt")
+        val client = OkHttpClient.Builder().addInterceptor(CustomHeadersInterceptor(config)).build()
+
+        client.newCall(Request.Builder().url(http.url("/")).build()).execute().close()
+
+        val request = http.takeRequest()
+        assertNull(request.headers["Authorization"])
+    }
+
+    @Test
+    fun `does not send an Authorization header when no custom headers are set`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertNull(request.headers["Authorization"])
+    }
+
+    @Test
+    fun `custom headers do not override SDK-managed headers`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), requestHeaders = mapOf("User-Agent" to "evil", "Content-Type" to "text/plain"))
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+    }
+
+    @Test
+    fun `drops a header okhttp rejects without failing the request`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut =
+            getSut(
+                host = url.toString(),
+                requestHeaders =
+                    mapOf(
+                        // A newline makes okhttp's header() throw.
+                        "X-Bad" to "bad\nvalue",
+                        "Authorization" to "Bearer ok",
+                    ),
+            )
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+        assertNull(request.headers["X-Bad"])
+        assertEquals("Bearer ok", request.headers["Authorization"])
     }
 
     @Test

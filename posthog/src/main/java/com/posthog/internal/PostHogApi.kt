@@ -49,6 +49,8 @@ public class PostHogApi(
         config.httpClient ?: OkHttpClient.Builder()
             .proxy(config.proxy)
             .addInterceptor(GzipRequestInterceptor(config))
+            // Network interceptor so the host check re-runs on each redirect hop.
+            .addNetworkInterceptor(CustomHeadersInterceptor(config))
             .build()
 
     private val flagsClient: OkHttpClient by lazy {
