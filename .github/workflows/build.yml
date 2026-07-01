@@ -59,7 +59,7 @@ jobs:
             exit 0
           fi
 
-          python3 - "$tmp_files" "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY" <<'PY'
+          if ! python3 - "$tmp_files" "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY" <<'PY'
           import json
           import re
           import sys
@@ -158,6 +158,17 @@ jobs:
               else:
                   handle.write("No changed files were returned by the PR files API.\n")
           PY
+          then
+            {
+              echo "skip_heavy_ci=false"
+              echo "reason=Could not classify PR files, so heavy CI will run."
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "## CI impact detection"
+              echo
+              echo "Heavy CI will run because changed-file classification failed."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   build:
     needs: detect-ci-impact
