@@ -16,6 +16,9 @@ import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogNetworkStatus
+import com.posthog.internal.PostHogOnRemoteConfigLoaded
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
@@ -1013,6 +1016,71 @@ internal class PostHogReplayIntegrationTest {
             assertFalse(status.sentMetaEvent)
         } finally {
             fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `real remote config resolves the replay buffer end to end via the production dispatch`() {
+        // End-to-end through the production pipeline: a real PostHogRemoteConfig wired to the replay
+        // integration by the same onRemoteConfig(loaded) dispatch PostHog.setup uses. Offline, the
+        // attempt terminally fails -> onRemoteConfig(loaded = false) -> the integration falls back to
+        // the disk-cached flag (on here) and migrates the buffered opening window.
+        val preferences = PostHogMemoryPreferences()
+        preferences.setValue("sessionReplay", mapOf("endpoint" to "/b/"))
+
+        val offline =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = false
+            }
+        val config =
+            PostHogAndroidConfig(API_KEY, host = "http://localhost").apply {
+                cachePreferences = preferences
+                networkStatus = offline
+                sessionReplay = true
+            }
+
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val queueExecutor = createReplayExecutor()
+        val innerQueue =
+            PostHogQueue(
+                config,
+                EndpointSpec.snapshot(config, PostHogApi(config), storagePrefix),
+                queueExecutor,
+            )
+        val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, queueExecutor)
+        config.replayQueueHolder = replayQueue
+        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+
+        // Wire the real remote config with the production dispatch: loaded = hasRemoteConfigFetched().
+        val remoteConfigExecutor = createReplayExecutor()
+        lateinit var remoteConfig: PostHogRemoteConfig
+        remoteConfig =
+            PostHogRemoteConfig(
+                config,
+                PostHogApi(config),
+                remoteConfigExecutor,
+                onRemoteConfigLoaded = PostHogOnRemoteConfigLoaded { sut.onRemoteConfig(loaded = remoteConfig.hasRemoteConfigFetched()) },
+            )
+        config.remoteConfigHolder = remoteConfig
+
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        sut.install(postHog)
+        try {
+            replayQueue.add(createTestEvent("snapshot_1"))
+            replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, replayQueue.bufferDepth)
+
+            // Drive the real (offline) remote config resolution through the production callback.
+            remoteConfig.loadRemoteConfig("distinct-id", anonymousId = null, groups = null)
+
+            awaitCondition { replayQueue.bufferDepth == 0 && replayQueue.depth == 2 }
+            assertEquals(0, replayQueue.bufferDepth)
+            assertEquals(2, replayQueue.depth)
+        } finally {
+            sut.uninstall()
+            remoteConfig.clear()
         }
     }
 
