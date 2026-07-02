@@ -68,7 +68,11 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         config.logger.log("Exception autocapture is disabled.")
     }
 
-    override fun onRemoteConfig() {
+    override fun onRemoteConfig(loaded: Boolean) {
+        // Only react to a live config; a failed attempt applies no fresh values.
+        if (!loaded) {
+            return
+        }
         val autocaptureExceptionsEnabled = config.remoteConfigHolder?.isAutocaptureExceptionsEnabled() ?: false
         if (autocaptureExceptionsEnabled) {
             postHog?.let { install(it) }

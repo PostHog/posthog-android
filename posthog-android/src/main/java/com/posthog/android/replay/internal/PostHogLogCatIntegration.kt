@@ -93,7 +93,11 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
         logcatThread?.start()
     }
 
-    override fun onRemoteConfig() {
+    override fun onRemoteConfig(loaded: Boolean) {
+        // Only react to a live config; a failed attempt applies no fresh values.
+        if (!loaded) {
+            return
+        }
         val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
         if (captureLogcat) {
             postHog?.let { install(it) }
