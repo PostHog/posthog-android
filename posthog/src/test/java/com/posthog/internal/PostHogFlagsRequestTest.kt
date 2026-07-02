@@ -27,7 +27,7 @@ internal class PostHogFlagsRequestTest {
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertEquals(ANON_ID, request["\$anon_distinct_id"])
         assertEquals(groups, request["groups"])
-        assertEquals(personProperties + ("distinct_id" to DISTINCT_ID), request["person_properties"])
+        assertEquals(personProperties, request["person_properties"])
         assertEquals(groupProperties, request["group_properties"])
     }
 
@@ -109,30 +109,20 @@ internal class PostHogFlagsRequestTest {
     }
 
     @Test
-    fun `adds distinct_id to non-empty person properties`() {
-        val request =
-            PostHogFlagsRequest(
-                API_KEY,
-                DISTINCT_ID,
-                personProperties = mapOf("email" to "example@example.com"),
-            )
+    fun `preserves caller person properties without adding distinct_id`() {
+        listOf(
+            mapOf("email" to "example@example.com"),
+            mapOf("distinct_id" to "custom-distinct-id"),
+        ).forEach { personProperties ->
+            val request =
+                PostHogFlagsRequest(
+                    API_KEY,
+                    DISTINCT_ID,
+                    personProperties = personProperties,
+                )
 
-        assertEquals(
-            mapOf("email" to "example@example.com", "distinct_id" to DISTINCT_ID),
-            request["person_properties"],
-        )
-    }
-
-    @Test
-    fun `does not overwrite explicit person property distinct_id`() {
-        val request =
-            PostHogFlagsRequest(
-                API_KEY,
-                DISTINCT_ID,
-                personProperties = mapOf("distinct_id" to "custom-distinct-id"),
-            )
-
-        assertEquals(mapOf("distinct_id" to "custom-distinct-id"), request["person_properties"])
+            assertEquals(personProperties, request["person_properties"])
+        }
     }
 
     @Test

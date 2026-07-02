@@ -2615,7 +2615,6 @@ internal class PostHogTest {
                 "\$device_type" to "Mobile",
                 "\$lib" to "posthog-android",
                 "\$lib_version" to "1.2.3",
-                "distinct_id" to requestBody["distinct_id"],
             ),
             personProperties,
         )

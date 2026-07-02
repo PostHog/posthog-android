@@ -29,12 +29,7 @@ internal class PostHogFlagsRequest(
         }
         this["groups"] = groups ?: emptyMap<String, String>()
         if (personProperties?.isNotEmpty() == true) {
-            this["person_properties"] =
-                personProperties.toMutableMap().apply {
-                    if (!containsKey("distinct_id")) {
-                        this["distinct_id"] = distinctId
-                    }
-                }
+            this["person_properties"] = personProperties
         }
         this["group_properties"] = groupProperties ?: emptyMap<String, Map<String, Any?>>()
         if (evaluationContexts?.isNotEmpty() == true) {
