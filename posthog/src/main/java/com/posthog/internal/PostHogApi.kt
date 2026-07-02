@@ -217,32 +217,26 @@ public class PostHogApi(
         while (true) {
             try {
                 return executeFlagsRequest(request)
-            } catch (e: PostHogApiError) {
-                if (retryAttempt >= maxRetries || !isRetryableFlagsApiError(e)) {
+            } catch (e: Exception) {
+                if (retryAttempt >= maxRetries || !isRetryableFlagsError(e)) {
                     throw e
                 }
-
-                retryAttempt++
-                sleepBeforeFlagsRetry(retryAttempt)
-            } catch (e: IOException) {
-                if (retryAttempt >= maxRetries || !isRetryableFlagsIOException(e)) {
-                    throw e
-                }
-
-                retryAttempt++
-                sleepBeforeFlagsRetry(retryAttempt)
             }
+
+            retryAttempt++
+            sleepBeforeFlagsRetry(retryAttempt)
         }
     }
 
-    private fun isRetryableFlagsApiError(error: PostHogApiError): Boolean {
-        return error.statusCode == 502 || error.statusCode == 504
-    }
-
-    private fun isRetryableFlagsIOException(error: IOException): Boolean {
-        return error is SocketTimeoutException ||
-            error is EOFException ||
-            (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
+    private fun isRetryableFlagsError(error: Exception): Boolean {
+        return when (error) {
+            is PostHogApiError -> error.statusCode == 502 || error.statusCode == 504
+            is IOException ->
+                error is SocketTimeoutException ||
+                    error is EOFException ||
+                    (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
+            else -> false
+        }
     }
 
     @Throws(PostHogApiError::class, IOException::class)

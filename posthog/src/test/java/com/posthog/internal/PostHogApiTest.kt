@@ -799,6 +799,54 @@ internal class PostHogApiFlagsRetryableHttpErrorTest(
         }
     }
 
+    @Test
+    fun `flags throws HTTP 502 and 504 responses after exhausting retries`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(statusCode).setBody("error"))
+        http.enqueue(MockResponse().setResponseCode(statusCode).setBody("error"))
+        http.enqueue(MockResponse().setResponseCode(statusCode).setBody("error"))
+        val url = http.url("/")
+
+        try {
+            val config = PostHogConfig(API_KEY, url.toString())
+            config.featureFlagRequestMaxRetries = 2
+            val sut = PostHogApi(config)
+
+            val exc =
+                assertThrows(PostHogApiError::class.java) {
+                    sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+                }
+
+            assertEquals(statusCode, exc.statusCode)
+            assertEquals(3, http.requestCount)
+        } finally {
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `flags succeeds after multiple HTTP 502 and 504 retries`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
+        val http = mockHttp(response = MockResponse().setResponseCode(statusCode).setBody("error"))
+        http.enqueue(MockResponse().setResponseCode(statusCode).setBody("error"))
+        http.enqueue(MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        try {
+            val config = PostHogConfig(API_KEY, url.toString())
+            config.featureFlagRequestMaxRetries = 2
+            val sut = PostHogApi(config)
+
+            val response = sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+
+            assertNotNull(response)
+            assertEquals(true, response.featureFlags?.get("4535-funnel-bar-viz"))
+            assertEquals(3, http.requestCount)
+        } finally {
+            http.shutdown()
+        }
+    }
+
     private companion object {
         @JvmStatic
         @Parameterized.Parameters(name = "statusCode={0}")
