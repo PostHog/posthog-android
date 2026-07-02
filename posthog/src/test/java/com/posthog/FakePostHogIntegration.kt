@@ -13,11 +13,11 @@ internal class FakePostHogIntegration : PostHogIntegration {
         installed = false
     }
 
-    override fun onRemoteConfig() {
-        remoteConfigCount++
-    }
-
-    override fun onRemoteConfigFailed() {
-        remoteConfigFailedCount++
+    override fun onRemoteConfig(loaded: Boolean) {
+        if (loaded) {
+            remoteConfigCount++
+        } else {
+            remoteConfigFailedCount++
+        }
     }
 }

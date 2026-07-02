@@ -777,7 +777,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `onRemoteConfigFailed with cached flag on migrates buffer and keeps recording`() {
+    fun `onRemoteConfig loaded false with cached flag on migrates buffer and keeps recording`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
         val postHog = mock<PostHogInterface>()
         whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
@@ -794,7 +794,7 @@ internal class PostHogReplayIntegrationTest {
 
             // First config fetch failed (offline): fall back to the cached (on) flag — keep recording
             // and migrate the buffered opening window rather than dropping the offline session.
-            fx.sut.onRemoteConfigFailed()
+            fx.sut.onRemoteConfig(loaded = false)
 
             awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
             assertEquals(0, fx.replayQueue.bufferDepth)
@@ -806,7 +806,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `onRemoteConfigFailed with cached flag off drops buffer and stops recording`() {
+    fun `onRemoteConfig loaded false with cached flag off drops buffer and stops recording`() {
         val fx = createIntegrationWithRealQueue(flagActive = false, hasFetched = false)
         fx.sut.install(mock<PostHogInterface>())
         fx.sut.start(resumeCurrent = true)
@@ -819,7 +819,7 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(2, fx.replayQueue.bufferDepth)
 
             // First config fetch failed and the cached flag is off: drop the buffer and stop.
-            fx.sut.onRemoteConfigFailed()
+            fx.sut.onRemoteConfig(loaded = false)
             shadowOf(Looper.getMainLooper()).idle()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
@@ -831,7 +831,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `onRemoteConfigFailed with cached flag on but sampled out drops buffer and stops recording`() {
+    fun `onRemoteConfig loaded false with cached flag on but sampled out drops buffer and stops recording`() {
         val fx =
             createIntegrationWithRealQueue(
                 flagActive = true,
@@ -852,7 +852,7 @@ internal class PostHogReplayIntegrationTest {
 
             // Fetch failed; cached flag is on but the cached sample rate excludes this session —
             // the fallback must respect sampling and drop + stop, not migrate.
-            fx.sut.onRemoteConfigFailed()
+            fx.sut.onRemoteConfig(loaded = false)
             shadowOf(Looper.getMainLooper()).idle()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
@@ -1037,7 +1037,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `onRemoteConfigFailed after first config already resolved is a no-op`() {
+    fun `onRemoteConfig loaded false after first config already resolved is a no-op`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
         val postHog = mock<PostHogInterface>()
         whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
@@ -1054,7 +1054,7 @@ internal class PostHogReplayIntegrationTest {
             awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
 
             // A late failure callback after the gate already resolved must not disturb queue state.
-            fx.sut.onRemoteConfigFailed()
+            fx.sut.onRemoteConfig(loaded = false)
             shadowOf(Looper.getMainLooper()).idle()
 
             assertEquals(0, fx.replayQueue.bufferDepth)

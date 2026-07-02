@@ -198,9 +198,9 @@ public class PostHog private constructor(
                             }
 
                             // Notify all integrations about remote config changes
-                            notifyIntegrationsRemoteConfig(config)
+                            notifyIntegrationsRemoteConfig(config, loaded = true)
                         } else {
-                            notifyIntegrationsRemoteConfigFailed(config)
+                            notifyIntegrationsRemoteConfig(config, loaded = false)
                         }
                     }
 
@@ -328,22 +328,15 @@ public class PostHog private constructor(
         }
     }
 
-    private fun notifyIntegrationsRemoteConfig(config: PostHogConfig) {
+    private fun notifyIntegrationsRemoteConfig(
+        config: PostHogConfig,
+        loaded: Boolean,
+    ) {
         config.integrations.forEach { integration ->
             try {
-                integration.onRemoteConfig()
+                integration.onRemoteConfig(loaded)
             } catch (e: Throwable) {
                 config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
-            }
-        }
-    }
-
-    private fun notifyIntegrationsRemoteConfigFailed(config: PostHogConfig) {
-        config.integrations.forEach { integration ->
-            try {
-                integration.onRemoteConfigFailed()
-            } catch (e: Throwable) {
-                config.logger.log("Integration ${integration.javaClass.name} onRemoteConfigFailed failed: $e.")
             }
         }
     }

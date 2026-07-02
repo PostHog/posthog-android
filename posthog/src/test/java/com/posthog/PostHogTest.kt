@@ -216,10 +216,10 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `failed remote config routes integrations to onRemoteConfigFailed`() {
+    fun `failed remote config routes integrations to onRemoteConfig loaded false`() {
         val integration = FakePostHogIntegration()
         // Empty body -> the flags response deserializes to null -> terminal-failure branch, so the
-        // gate stays unfetched and the dispatch must route to onRemoteConfigFailed, not onRemoteConfig.
+        // gate stays unfetched and the dispatch must route to onRemoteConfig(loaded=false).
         val http = mockHttp(response = MockResponse().setBody(""))
         val url = http.url("/")
 

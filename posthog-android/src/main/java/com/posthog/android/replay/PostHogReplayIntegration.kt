@@ -1914,7 +1914,22 @@ public class PostHogReplayIntegration(
 
     // MARK: - Remote Config
 
-    override fun onRemoteConfig() {
+    override fun onRemoteConfig(loaded: Boolean) {
+        if (!loaded) {
+            // The first remote config attempt failed (offline/error), so no live config will arrive
+            // this resolution. Fall back to the disk-cached flag via resolveFirstRemoteConfig: keep
+            // recording (migrate the buffered window) when the cache permits it, or drop the buffer
+            // and stop when it doesn't. Recording for offline-first apps is preferred over discarding
+            // a session whose cached flag was on. Log only while genuinely falling back;
+            // resolveFirstRemoteConfig re-checks the gate and no-ops if the first config already resolved.
+            val resolving = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
+            if (resolving) {
+                config.logger.log("[Session Replay] First remote config fetch failed. Falling back to the cached session replay flag.")
+            }
+            resolveFirstRemoteConfig()
+            return
+        }
+
         updateCachedMinimumDuration()
         // Snapshot the gate state BEFORE resolveFirstRemoteConfig disarms it, so reevaluateRecordingState
         // can tell whether this callback is the first delivery. loadRemoteConfig loads /flags nested and
@@ -1927,9 +1942,9 @@ public class PostHogReplayIntegration(
     }
 
     /**
-     * Resolves the buffer once the first remote config settles — either a live response, or (via
-     * [onRemoteConfigFailed]) a terminal fetch failure that falls back to the disk-cached flag —
-     * then disarms the gate. When the session is recordable now, the buffered opening window is
+     * Resolves the buffer once the first remote config settles — either a live response, or a
+     * terminal fetch failure (onRemoteConfig with loaded = false) that falls back to the disk-cached
+     * flag — then disarms the gate. When the session is recordable now, the buffered opening window is
      * handed to the minimum-duration gate (kept buffering, not force-flushed) so a short session
      * isn't persisted just because the flag resolved; otherwise — flag off, master switch off, or
      * the fresh config sampling this session out — the capturer is stopped and the buffer dropped
@@ -2003,22 +2018,6 @@ public class PostHogReplayIntegration(
     }
 
     /**
-     * The first remote config attempt failed (offline/error), so no live config will arrive this
-     * resolution. Fall back to the disk-cached flag: keep recording (migrate the buffered opening
-     * window) when the cache permits it, or drop the buffer and stop when it doesn't. Recording for
-     * offline-first apps is preferred over discarding a session whose cached flag was on.
-     */
-    override fun onRemoteConfigFailed() {
-        // Log only while genuinely falling back; resolveFirstRemoteConfig re-checks the gate and
-        // no-ops if the first config already resolved.
-        val resolving = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
-        if (resolving) {
-            config.logger.log("[Session Replay] First remote config fetch failed. Falling back to the cached session replay flag.")
-        }
-        resolveFirstRemoteConfig()
-    }
-
-    /**
      * Re-evaluate recording against the live remote config: stop when session replay is no longer
      * permitted (master switch off, flag off, or sampled out) and resume when it turns on. Without
      * this, a fresh-`false` would keep recording until the next session rotation.
@@ -2081,7 +2080,7 @@ public class PostHogReplayIntegration(
     // Whether to buffer until the live remote config resolves: only when a remote config holder
     // exists and hasn't resolved yet, AND a fetch will actually be attempted at setup. If neither
     // remoteConfig nor preloadFeatureFlags is enabled, PostHog.setup dispatches no /config or /flags
-    // request, so no onRemoteConfig/onRemoteConfigFailed callback ever arrives to disarm the gate —
+    // request, so no onRemoteConfig callback ever arrives to disarm the gate —
     // buffering would then grow unbounded for the whole session. Don't arm in that case.
     private fun shouldAwaitFirstRemoteConfig(): Boolean {
         @Suppress("DEPRECATION")
