@@ -753,11 +753,69 @@ internal class PostHogApiTest {
 }
 
 @RunWith(Parameterized::class)
+internal class PostHogApiFlagsRetryableHttpErrorTest(
+    private val statusCode: Int,
+) {
+    @Test
+    fun `flags retries HTTP 502 and 504 responses by default`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val responseFlagsApi = file.readText()
+        val http = mockHttp(response = MockResponse().setResponseCode(statusCode).setBody("error"))
+        http.enqueue(MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        try {
+            val sut = PostHogApi(PostHogConfig(API_KEY, url.toString()))
+
+            val response = sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+
+            assertNotNull(response)
+            assertEquals(true, response.featureFlags?.get("4535-funnel-bar-viz"))
+            assertEquals(2, http.requestCount)
+        } finally {
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `flags does not retry HTTP 502 and 504 responses when feature flag retries are disabled`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(statusCode).setBody("error"))
+        val url = http.url("/")
+
+        try {
+            val config = PostHogConfig(API_KEY, url.toString())
+            config.featureFlagRequestMaxRetries = 0
+            val sut = PostHogApi(config)
+
+            val exc =
+                assertThrows(PostHogApiError::class.java) {
+                    sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+                }
+
+            assertEquals(statusCode, exc.statusCode)
+            assertEquals(1, http.requestCount)
+        } finally {
+            http.shutdown()
+        }
+    }
+
+    private companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "statusCode={0}")
+        fun statusCodes(): Collection<Array<Int>> =
+            listOf(
+                arrayOf(502),
+                arrayOf(504),
+            )
+    }
+}
+
+@RunWith(Parameterized::class)
 internal class PostHogApiFlagsHttpErrorTest(
     private val statusCode: Int,
 ) {
     @Test
-    fun `flags does not retry HTTP error responses`() {
+    fun `flags does not retry non-retryable HTTP error responses`() {
         val http = mockHttp(response = MockResponse().setResponseCode(statusCode).setBody("error"))
         val url = http.url("/")
 
@@ -784,7 +842,6 @@ internal class PostHogApiFlagsHttpErrorTest(
                 arrayOf(408),
                 arrayOf(429),
                 arrayOf(500),
-                arrayOf(502),
                 arrayOf(503),
             )
     }

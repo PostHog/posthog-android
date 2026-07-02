@@ -217,6 +217,13 @@ public class PostHogApi(
         while (true) {
             try {
                 return executeFlagsRequest(request)
+            } catch (e: PostHogApiError) {
+                if (retryAttempt >= maxRetries || !isRetryableFlagsApiError(e)) {
+                    throw e
+                }
+
+                retryAttempt++
+                sleepBeforeFlagsRetry(retryAttempt)
             } catch (e: IOException) {
                 if (retryAttempt >= maxRetries || !isRetryableFlagsIOException(e)) {
                     throw e
@@ -226,6 +233,10 @@ public class PostHogApi(
                 sleepBeforeFlagsRetry(retryAttempt)
             }
         }
+    }
+
+    private fun isRetryableFlagsApiError(error: PostHogApiError): Boolean {
+        return error.statusCode == 502 || error.statusCode == 504
     }
 
     private fun isRetryableFlagsIOException(error: IOException): Boolean {
