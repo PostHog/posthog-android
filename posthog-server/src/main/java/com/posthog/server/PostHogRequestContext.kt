@@ -1,6 +1,6 @@
 package com.posthog.server
 
-import java.util.UUID
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 
 /**
  * Request-scoped PostHog analytics context.
@@ -181,7 +181,7 @@ public class PostHogRequestContext private constructor() {
             val resolvedDistinctId = resolveDistinctId(distinctId)
             val isPersonless = resolvedDistinctId.isNullOrBlank()
             val mergedProperties = properties?.toMutableMap() ?: mutableMapOf()
-            val captureDistinctId = resolvedDistinctId ?: UUID.randomUUID().toString()
+            val captureDistinctId = resolvedDistinctId ?: TimeBasedEpochGenerator.generate().toString()
 
             if (isPersonless) {
                 mergedProperties.putIfAbsent(PROCESS_PERSON_PROFILE_PROPERTY, false)
