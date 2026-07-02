@@ -1,5 +1,11 @@
 ## Next
 
+## 3.53.1
+
+### Patch Changes
+
+- cccf68b: Retry `/flags` requests once by default when the flags endpoint returns HTTP 502 or 504, respecting `featureFlagRequestMaxRetries`.
+
 ## 3.53.0
 
 ### Minor Changes
