@@ -101,7 +101,8 @@ public class PostHogReplayIntegration(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
 ) : PostHogIntegration, PostHogSessionReplayHandler {
-    private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
+    // internal (not private) so tests can assert the resume path resets per-view snapshot state.
+    internal val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
 
     private val passwordInputTypes =
         setOf(
@@ -2050,7 +2051,19 @@ public class PostHogReplayIntegration(
 
         if (!isSessionReplayActive) {
             config.logger.log("[Session Replay] Remote config enabled recording. Resuming.")
-            mainHandler.handler.post { if (!isSessionReplayActive) start(resumeCurrent = true) }
+            mainHandler.handler.post {
+                if (!isSessionReplayActive) {
+                    // Force a fresh keyframe for the resumed segment. While stopped, per-view snapshot
+                    // state is frozen and can reference a full snapshot that was never delivered (e.g. a
+                    // first-config-off opening window that was dropped), so resuming against it would emit
+                    // orphaned incremental snapshots the player can't anchor. Clear the state and force a
+                    // redraw so the resumed segment starts with meta + full snapshot — without rotating the
+                    // session or touching the cold-start buffering state (unlike start(resumeCurrent = false)).
+                    clearSnapshotStates()
+                    start(resumeCurrent = true)
+                    decorViews.keys.forEach { it.postInvalidate() }
+                }
+            }
         }
     }
 

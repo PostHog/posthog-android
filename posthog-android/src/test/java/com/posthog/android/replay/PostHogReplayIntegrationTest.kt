@@ -2,6 +2,8 @@ package com.posthog.android.replay
 
 import android.content.Context
 import android.os.Looper
+import android.view.View
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogEvent
 import com.posthog.PostHogInterface
@@ -9,6 +11,8 @@ import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
+import com.posthog.android.replay.internal.NextDrawListener
+import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogLogger
@@ -966,6 +970,49 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(1, replayQueue.depth)
         } finally {
             sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `mid-session resume forces a fresh keyframe by clearing per-view snapshot state`() {
+        // A mid-session flag-on resume must emit a fresh full snapshot: while stopped, per-view state
+        // is frozen and can reference a full snapshot that was never delivered (e.g. a dropped
+        // first-config-off window), so resuming against it would emit orphaned incremental snapshots.
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            assertTrue(fx.sut.isActive())
+
+            // Simulate a decor view that already emitted a full snapshot before the stop.
+            val view = View(ApplicationProvider.getApplicationContext())
+            val status =
+                ViewTreeSnapshotStatus(
+                    mock<NextDrawListener>(),
+                    sentFullSnapshot = true,
+                    sentMetaEvent = true,
+                )
+            fx.sut.decorViews[view] = status
+
+            // Flag turns off mid-session -> stop. stop() intentionally does NOT clear per-view state.
+            whenever(fx.remoteConfig.isSessionReplayFlagActive()).thenReturn(false)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(fx.sut.isActive())
+            assertTrue(status.sentFullSnapshot)
+
+            // Flag turns back on -> resume must reset the per-view state so the next snapshot is full.
+            whenever(fx.remoteConfig.isSessionReplayFlagActive()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(fx.sut.isActive())
+            assertFalse(status.sentFullSnapshot)
+            assertFalse(status.sentMetaEvent)
+        } finally {
+            fx.sut.uninstall()
         }
     }
 
