@@ -1,5 +1,11 @@
 ## Next
 
+## 3.53.2
+
+### Patch Changes
+
+- 46008ad: Stop duplicating `distinct_id` inside `/flags` person properties.
+
 ## 3.53.1
 
 ### Patch Changes
