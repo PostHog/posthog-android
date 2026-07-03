@@ -74,6 +74,9 @@ internal class PostHogAndroidContext(
         dynamicContext["\$locale"] = "${Locale.getDefault().language}-${Locale.getDefault().country}"
         System.getProperty("http.agent")?.let {
             dynamicContext["\$user_agent"] = it
+            // Mirrored into $raw_user_agent, the standardized property PostHog's
+            // server-side classification (e.g. bot detection) reads
+            dynamicContext["\$raw_user_agent"] = it
         }
         dynamicContext["\$timezone"] = TimeZone.getDefault().id
 
