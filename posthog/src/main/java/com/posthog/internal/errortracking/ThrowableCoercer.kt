@@ -68,7 +68,9 @@ public class ThrowableCoercer {
             if (stackTraces.isNotEmpty()) {
                 val frames = mutableListOf<Map<String, Any>>()
 
-                stackTraces.forEach { frame ->
+                // Emit frames bottom-up (canonical order): frames[0] is the outermost/entry point,
+                // the last frame is the crash site. Java's native stackTrace is innermost-first, so reverse it.
+                stackTraces.reversed().forEach { frame ->
                     val myFrame = mutableMapOf<String, Any>()
 
                     myFrame["module"] = frame.className
