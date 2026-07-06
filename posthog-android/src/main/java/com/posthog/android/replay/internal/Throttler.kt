@@ -14,6 +14,11 @@ internal class Throttler(
     private val delayNs = TimeUnit.MILLISECONDS.toNanos(throttleDelayMs)
     private val isThrottling = AtomicBoolean(false)
 
+    // Set to true when a draw arrives while a postDelayed is already in flight.
+    // The pending draw is re-captured once the delayed snapshot fires, ensuring
+    // that a screen change landing inside the throttle window is not silently lost.
+    @Volatile private var hasPendingDraw = false
+
     /**
      * Throttles the given [runnable] by delaying its execution until [delayNs] has passed since the last call.
      */
@@ -28,13 +33,23 @@ internal class Throttler(
                 executeAndReleaseThrottle(runnable)
             }
         } else {
-            // If already throttling, ignore additional calls
             if (!isThrottling.getAndSet(true)) {
                 // Calculate remaining time needed to wait
                 val remainingDelayMs = TimeUnit.NANOSECONDS.toMillis(delayNs - timeSinceLastExecution)
                 mainHandler.handler.postDelayed({
+                    val pendingAfter = hasPendingDraw
+                    hasPendingDraw = false
                     executeAndReleaseThrottle(runnable)
+                    // A draw arrived while we were waiting; take one more snapshot so
+                    // no screen change that occurred inside the throttle window is lost.
+                    if (pendingAfter) {
+                        throttle(runnable)
+                    }
                 }, remainingDelayMs)
+            } else {
+                // A draw arrived while a postDelayed is already scheduled.
+                // Mark it so the delayed lambda re-captures the current view tree after it fires.
+                hasPendingDraw = true
             }
         }
     }
