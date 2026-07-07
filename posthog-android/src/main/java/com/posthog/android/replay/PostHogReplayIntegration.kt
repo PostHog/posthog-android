@@ -64,8 +64,10 @@ import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
+import com.posthog.android.replay.internal.findRunningIndeterminateProgressBar
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.android.replay.internal.isShownIndeterminateProgressBar
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -190,21 +192,56 @@ public class PostHogReplayIntegration(
             }
         }
 
-    @Volatile
-    private var isOnDrawnCalled: Boolean = false
+    private fun onDrawCallback(
+        decorView: View,
+        status: ViewTreeSnapshotStatus,
+    ) {
+        // Publish isOnlyAnimationRedraw before isOnDrawnCalled: a reader that observes
+        // isOnDrawnCalled==true then sees an animation-only flag that matches this draw, not a stale
+        // value from the previous one (which could let a structural frame through the discard guard).
+        status.isOnlyAnimationRedraw = decorView.isAnimationOnlyRedraw(status)
+        status.isOnDrawnCalled = true
+    }
 
-    // True when the draw was triggered purely by an in-progress animation (e.g. Lottie) rather
-    // than a structural layout change. When set, the isOnDrawnCalled guard is relaxed so that
-    // continuously-animating screens can still be captured (mask geometry remains valid).
-    @Volatile
-    private var isOnlyAnimationRedraw: Boolean = false
+    /**
+     * True when a draw was triggered purely by an in-progress animation rather than a structural
+     * layout change. In that case view geometry (and therefore mask positions) is stable, so the
+     * frame is safe to capture. Two animation styles are recognised:
+     *  - [View.hasTransientState] propagates up from descendants driven by a ValueAnimator (e.g. Lottie).
+     *  - an indeterminate [ProgressBar] (e.g. a loading spinner) invalidates its drawable every frame
+     *    without ever setting transient state, so it has to be detected explicitly.
+     * Legacy [View.animation] mutates the transformation matrix and can shift masks, so it is excluded.
+     *
+     * Note the escape hatch is deliberately coarse: it reports "an animation is in progress", not
+     * "this exact redraw was only the animation" (the same tradeoff the transient-state path has
+     * always made). A structural change that races an in-flight PixelCopy while a spinner is genuinely
+     * animating can still be captured; the guard relies on animated loaders sitting on otherwise
+     * static screens.
+     */
+    private fun View.isAnimationOnlyRedraw(status: ViewTreeSnapshotStatus): Boolean {
+        if (isAnimationRunning()) return false
+        if (hasTransientState()) return true
 
-    private fun onDrawCallback(decorView: View) {
-        isOnDrawnCalled = true
-        // hasTransientState() propagates up from any descendant using a ValueAnimator (e.g. Lottie),
-        // indicating pixel-only changes with stable view geometry. We additionally exclude legacy
-        // view.animation which mutates the transformation matrix and can shift mask positions.
-        isOnlyAnimationRedraw = decorView.hasTransientState() && !decorView.isAnimationRunning()
+        // Fast path: if a spinner was already located, just re-validate that one view (O(tree depth))
+        // instead of re-walking the whole tree every frame. This detects dismissal within one frame —
+        // so the flag can't stay stale and keep relaxing the discard guard after the spinner is gone —
+        // without the per-frame O(view count) cost.
+        status.animatingProgressBar?.get()?.let { tracked ->
+            if (tracked.isShownIndeterminateProgressBar()) return true
+            status.animatingProgressBar = null
+        }
+
+        // Nothing cheap left to re-check: walk the tree, throttled with a floor so a tiny
+        // throttleDelayMs can't turn this into a per-frame tree walk.
+        val interval = maxOf(config.sessionReplayConfig.throttleDelayMs, MIN_ANIMATION_PROBE_MS)
+        val now = config.dateProvider.currentTimeMillis()
+        if (now - status.lastAnimationProbeMs < interval) {
+            return false
+        }
+        status.lastAnimationProbeMs = now
+        val spinner = findRunningIndeterminateProgressBar()
+        status.animatingProgressBar = spinner?.let { WeakReference(it) }
+        return spinner != null
     }
 
     private fun addView(
@@ -224,12 +261,16 @@ public class PostHogReplayIntegration(
                     if (view.windowAttachCount == 0 || !hasDecorView) {
                         window.onDecorViewReady { decorView ->
                             try {
+                                // Capture the status in the draw callback instead of looking it up in
+                                // the WeakHashMap on every frame — that per-frame main-thread get()
+                                // races the executor's reads and can corrupt the (unsynchronized) map.
+                                var status: ViewTreeSnapshotStatus? = null
                                 val listener =
                                     decorView.onNextDraw(
                                         mainHandler,
                                         config.dateProvider,
                                         config.sessionReplayConfig.throttleDelayMs,
-                                        { onDrawCallback(decorView) },
+                                        { status?.let { onDrawCallback(decorView, it) } },
                                     ) {
                                         if (!isActive() || !isNativeSdk) {
                                             return@onNextDraw
@@ -244,7 +285,7 @@ public class PostHogReplayIntegration(
                                         }
                                     }
 
-                                val status = ViewTreeSnapshotStatus(listener)
+                                status = ViewTreeSnapshotStatus(listener)
                                 decorViews[decorView] = status
                             } catch (e: Throwable) {
                                 config.logger.log("Session Replay onDecorViewReady failed: $e.")
@@ -379,13 +420,6 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun resetViewSnapshotStates(status: ViewTreeSnapshotStatus) {
-        status.sentFullSnapshot = false
-        status.sentMetaEvent = false
-        status.keyboardVisible = false
-        status.lastSnapshot = null
-    }
-
     private fun clearViewListeners(
         view: View,
         status: ViewTreeSnapshotStatus,
@@ -458,8 +492,6 @@ public class PostHogReplayIntegration(
             }
 
             isSessionReplayActive = false
-            isOnDrawnCalled = false
-            isOnlyAnimationRedraw = false
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -505,6 +537,7 @@ public class PostHogReplayIntegration(
             if (config.sessionReplayConfig.screenshot) {
                 view.toScreenshotWireframe(
                     window,
+                    status,
                 ) ?: return
             } else {
                 view.toWireframe() ?: return
@@ -608,7 +641,7 @@ public class PostHogReplayIntegration(
     /**
      * Adapted from https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/view/View.java;l=11620;bpv=0;bpt=1
      */
-    private fun View.isVisible(): Boolean {
+    private fun View.isVisible(allowAnimationRedraw: Boolean = false): Boolean {
         try {
             if (width <= 0 || height <= 0) return false
 
@@ -632,7 +665,7 @@ public class PostHogReplayIntegration(
                 }
 
                 // Check if view is in a stable state before accessing matrix-dependent operations
-                return hasGlobalVisibleRect()
+                return hasGlobalVisibleRect(allowAnimationRedraw)
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
 //            if (boundInView != null) {
@@ -657,8 +690,11 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.globalVisibleRect(offset: Point? = null): Rect? {
-        return if (isViewStateStableForMatrixOperations()) {
+    private fun View.globalVisibleRect(
+        offset: Point? = null,
+        allowAnimationRedraw: Boolean = false,
+    ): Rect? {
+        return if (isViewStateStableForMatrixOperations(allowAnimationRedraw)) {
             val rect = Rect()
             getGlobalVisibleRect(rect, offset)
             rect
@@ -671,8 +707,8 @@ public class PostHogReplayIntegration(
      * Fast visibility check that reuses a scratch Rect instead of allocating.
      * Only checks whether the view has a non-empty visible rect, does not return the rect.
      */
-    private fun View.hasGlobalVisibleRect(): Boolean {
-        return if (isViewStateStableForMatrixOperations()) {
+    private fun View.hasGlobalVisibleRect(allowAnimationRedraw: Boolean): Boolean {
+        return if (isViewStateStableForMatrixOperations(allowAnimationRedraw)) {
             getGlobalVisibleRect(reusableRect, reusablePoint)
         } else {
             false
@@ -685,7 +721,7 @@ public class PostHogReplayIntegration(
      * this excludes the padding and compound drawables, masking only the text area.
      * For regular TextView, this falls back to the full view rect.
      */
-    private fun TextView.getTextAreaGlobalVisibleRect(): Rect? {
+    private fun TextView.getTextAreaGlobalVisibleRect(allowAnimationRedraw: Boolean): Rect? {
         // Only adjust bounds for views that typically have significant padding or compound drawables
         // EditText: has border/underline padding
         // Button: has background padding
@@ -693,10 +729,10 @@ public class PostHogReplayIntegration(
         val shouldAdjustBounds = this is EditText || this is Button
 
         if (!shouldAdjustBounds) {
-            return globalVisibleRect()
+            return globalVisibleRect(allowAnimationRedraw = allowAnimationRedraw)
         }
 
-        return globalVisibleRect()?.let { fullRect ->
+        return globalVisibleRect(allowAnimationRedraw = allowAnimationRedraw)?.let { fullRect ->
             // Calculate the text area bounds by accounting for compound padding
             // Compound padding includes both regular padding and drawable padding
             val textAreaLeft = fullRect.left + compoundPaddingLeft
@@ -714,7 +750,7 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.isViewStateStableForMatrixOperations(): Boolean {
+    private fun View.isViewStateStableForMatrixOperations(allowAnimationRedraw: Boolean = false): Boolean {
         return try {
             isAttachedToWindow &&
                 (isLaidOut || PostHogSessionManager.isReactNative) &&
@@ -722,8 +758,9 @@ public class PostHogReplayIntegration(
                 width > 0 && height > 0 &&
                 // Check if view is not in layout transition (API 18+)
                 !isInLayout &&
-                // Check if view doesn't have transient state (animations, etc.)
-                !hasTransientState() &&
+                // Check if view doesn't have transient state (animations, etc.). Geometry stays
+                // stable during an animation-only redraw, so matrix ops are still safe there.
+                (allowAnimationRedraw || !hasTransientState()) &&
                 // Check if view is not currently being animated
                 !isAnimationRunning() &&
                 // Check if view tree is not currently computing layout
@@ -761,9 +798,14 @@ public class PostHogReplayIntegration(
         return this.isTextInputSensitive(ancestorUnmasked) || passwordInputTypes.contains(inputType - 1)
     }
 
+    // allowAnimationRedraw is read once at the start of the walk (not per node): during an
+    // animation-only redraw view geometry is stable, so mask rects can still be resolved even
+    // though descendants may carry transient state.
     private fun findMaskableWidgets(
         view: View,
         maskableWidgets: MutableList<Rect>,
+        status: ViewTreeSnapshotStatus,
+        allowAnimationRedraw: Boolean,
         visitedViews: MutableSet<Int> = mutableSetOf(),
     ): Boolean {
         val viewId = System.identityHashCode(view)
@@ -788,7 +830,7 @@ public class PostHogReplayIntegration(
             }
 
             view.isNoCapture() -> {
-                view.globalVisibleRect()?.let {
+                view.globalVisibleRect(allowAnimationRedraw = allowAnimationRedraw)?.let {
                     maskableWidgets.add(it)
                 }
             }
@@ -810,7 +852,7 @@ public class PostHogReplayIntegration(
                 if (maskIt) {
                     // For EditText, mask only the text area (excluding padding and compound drawables)
                     // For regular TextView, mask the full view
-                    view.getTextAreaGlobalVisibleRect()?.let {
+                    view.getTextAreaGlobalVisibleRect(allowAnimationRedraw)?.let {
                         maskableWidgets.add(it)
                     }
                 }
@@ -818,7 +860,7 @@ public class PostHogReplayIntegration(
 
             view is Spinner -> {
                 if (view.shouldMaskSpinner()) {
-                    view.globalVisibleRect()?.let {
+                    view.globalVisibleRect(allowAnimationRedraw = allowAnimationRedraw)?.let {
                         maskableWidgets.add(it)
                     }
                 }
@@ -826,7 +868,7 @@ public class PostHogReplayIntegration(
 
             view is ImageView -> {
                 if (view.shouldMaskImage()) {
-                    view.globalVisibleRect()?.let {
+                    view.globalVisibleRect(allowAnimationRedraw = allowAnimationRedraw)?.let {
                         maskableWidgets.add(it)
                     }
                 }
@@ -834,7 +876,7 @@ public class PostHogReplayIntegration(
 
             view is WebView -> {
                 if (view.isAnyInputSensitive()) {
-                    view.globalVisibleRect()?.let {
+                    view.globalVisibleRect(allowAnimationRedraw = allowAnimationRedraw)?.let {
                         maskableWidgets.add(it)
                     }
                 }
@@ -847,18 +889,18 @@ public class PostHogReplayIntegration(
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
-                if (isOnDrawnCalled && !isOnlyAnimationRedraw) {
+                if (status.isOnDrawnCalled && !status.isOnlyAnimationRedraw) {
                     config.logger.log("Session Replay screenshot discarded due to screen changes.")
                     return false
                 }
 
                 val viewChild = view.getChildAt(i) ?: continue
 
-                if (!viewChild.isVisible()) {
+                if (!viewChild.isVisible(allowAnimationRedraw)) {
                     continue
                 }
 
-                if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
+                if (!findMaskableWidgets(viewChild, maskableWidgets, status, allowAnimationRedraw, visitedViews)) {
                     // do not continue if the screen has changed
                     return false
                 }
@@ -973,16 +1015,23 @@ public class PostHogReplayIntegration(
 
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
-    private fun View.toScreenshotWireframe(window: Window): RRWireframe? {
+    private fun View.toScreenshotWireframe(
+        window: Window,
+        status: ViewTreeSnapshotStatus,
+    ): RRWireframe? {
         val view = this
-        if (!view.isVisible()) {
+        // An animation-only redraw (e.g. a loading spinner) keeps geometry stable, so honor the
+        // escape hatch here too — otherwise the visibility gate would drop the frame before the
+        // guard downstream ever gets a chance to allow it.
+        val allowAnimationRedraw = status.isOnlyAnimationRedraw
+        if (!view.isVisible(allowAnimationRedraw)) {
             return null
         }
 
         val viewId = System.identityHashCode(view)
 
         val coordinates = IntArray(2)
-        if (view.isViewStateStableForMatrixOperations()) {
+        if (view.isViewStateStableForMatrixOperations(allowAnimationRedraw)) {
             view.getLocationOnScreen(coordinates)
         } else {
             // Use zero coordinates as fallback when view state is unstable
@@ -1007,8 +1056,8 @@ public class PostHogReplayIntegration(
 
         try {
             // reset the draw-dirty flags since we are about to take a screenshot
-            isOnDrawnCalled = false
-            isOnlyAnimationRedraw = false
+            status.isOnDrawnCalled = false
+            status.isOnlyAnimationRedraw = false
 
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
@@ -1019,10 +1068,15 @@ public class PostHogReplayIntegration(
                         // Allow capture if the screen hasn't redrawn, or if the only redraws
                         // since PixelCopy started were animation frames (e.g. Lottie). In the
                         // animation case, view geometry is stable so mask positions are still valid.
-                        if (!isOnDrawnCalled || isOnlyAnimationRedraw) {
+                        if (!status.isOnDrawnCalled || status.isOnlyAnimationRedraw) {
                             val maskableWidgets = mutableListOf<Rect>()
 
-                            if (findMaskableWidgets(view, maskableWidgets)) {
+                            // Resolve masks with the same allowAnimationRedraw decision the isVisible
+                            // admission gate used above, not the live flag — when no draw fires during
+                            // the copy the live flag is false, which would silently skip (and fail to
+                            // mask) transient-state subtrees that were admitted. A structural draw that
+                            // lands mid-walk is still caught by the live guard inside findMaskableWidgets.
+                            if (findMaskableWidgets(view, maskableWidgets, status, allowAnimationRedraw)) {
                                 if (!bitmap.isValid()) {
                                     config.logger.log("Session Replay Bitmap is invalid.")
                                     success = false
@@ -1039,7 +1093,7 @@ public class PostHogReplayIntegration(
                                     }
 
                                 maskableWidgets.forEach {
-                                    if (isOnDrawnCalled && !isOnlyAnimationRedraw) {
+                                    if (status.isOnDrawnCalled && !status.isOnlyAnimationRedraw) {
                                         config.logger.log("Session Replay screenshot discarded due to screen changes.")
                                         success = false
                                         return@forEach
@@ -1052,8 +1106,8 @@ public class PostHogReplayIntegration(
                             }
                         } else {
                             config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                            // isOnDrawnCalled is true and it was a structural change (not just an
-                            // animation frame), so masks may be out of sync — discard to avoid PII leak.
+                            // The window redrew and it was a structural change (not just an animation
+                            // frame), so masks may be out of sync — discard to avoid PII leak.
                             success = false
                         }
                     }
@@ -1062,8 +1116,8 @@ public class PostHogReplayIntegration(
                     success = false
                 } finally {
                     // reset the draw-dirty flags since we've taken the screenshot
-                    isOnDrawnCalled = false
-                    isOnlyAnimationRedraw = false
+                    status.isOnDrawnCalled = false
+                    status.isOnlyAnimationRedraw = false
                     callbackCompleted = true
                     latch.countDown()
                 }
@@ -1085,8 +1139,8 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
-            isOnDrawnCalled = false
-            isOnlyAnimationRedraw = false
+            status.isOnDrawnCalled = false
+            status.isOnlyAnimationRedraw = false
             // Only recycle the bitmap if the callback has completed.
             // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
             // on another thread; recycling it now would cause a native SIGSEGV.
@@ -1669,14 +1723,12 @@ public class PostHogReplayIntegration(
     private fun clearSnapshotStates() {
         // clear state so it starts with a full snapshot again
         decorViews.entries.forEach {
-            resetViewSnapshotStates(it.value)
+            it.value.reset()
         }
     }
 
     override fun stop() {
         isSessionReplayActive = false
-        isOnDrawnCalled = false
-        isOnlyAnimationRedraw = false
     }
 
     override fun isActive(): Boolean {
@@ -1898,6 +1950,10 @@ public class PostHogReplayIntegration(
         const val PH_NO_MASK_LABEL: String = "ph-no-mask"
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
+
+        // Floor for the animation probe interval so a very small throttleDelayMs can't turn the
+        // per-frame onDraw callback into a per-frame view-tree walk.
+        private const val MIN_ANIMATION_PROBE_MS: Long = 250
 
         @Volatile
         private var integrationInstalled = false
