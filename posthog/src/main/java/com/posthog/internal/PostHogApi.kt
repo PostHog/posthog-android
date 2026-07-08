@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
 import java.io.EOFException
@@ -382,19 +383,19 @@ public class PostHogApi(
         }
     }
 
-    private fun deserializeFlagsResponse(body: okhttp3.ResponseBody): PostHogFlagsResponse? =
-        try {
-            config.serializer.deserialize(body.charStream().buffered())
-        } catch (e: JsonSyntaxException) {
-            config.logger.log("Loading feature flags failed: response was not valid JSON: $e")
-            null
-        } catch (e: JsonIOException) {
-            config.logger.log("Loading feature flags failed: response was not valid JSON: $e")
-            null
-        } catch (e: Throwable) {
-            config.logger.log("Loading feature flags failed: response could not be parsed: $e")
-            null
-        }
+    private fun deserializeFlagsResponse(body: ResponseBody): PostHogFlagsResponse? =
+        runCatching {
+            config.serializer.deserialize<PostHogFlagsResponse?>(body.charStream().buffered())
+        }.onFailure { error ->
+            val reason =
+                when (error) {
+                    is JsonIOException,
+                    is JsonSyntaxException,
+                    -> "response was not valid JSON"
+                    else -> "response could not be parsed"
+                }
+            config.logger.log("Loading feature flags failed: $reason: $error")
+        }.getOrNull()
 
     private fun logResponse(response: Response): Response {
         if (config.debug) {
