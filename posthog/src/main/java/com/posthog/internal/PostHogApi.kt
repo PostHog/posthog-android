@@ -384,18 +384,19 @@ public class PostHogApi(
     }
 
     private fun deserializeFlagsResponse(body: ResponseBody): PostHogFlagsResponse? =
-        runCatching {
-            config.serializer.deserialize<PostHogFlagsResponse?>(body.charStream().buffered())
-        }.onFailure { error ->
+        try {
+            config.serializer.deserialize(body.charStream().buffered())
+        } catch (e: Exception) {
             val reason =
-                when (error) {
+                when (e) {
                     is JsonIOException,
                     is JsonSyntaxException,
                     -> "response was not valid JSON"
                     else -> "response could not be parsed"
                 }
-            config.logger.log("Loading feature flags failed: $reason: $error")
-        }.getOrNull()
+            config.logger.log("Loading feature flags failed: $reason: $e")
+            null
+        }
 
     private fun logResponse(response: Response): Response {
         if (config.debug) {
