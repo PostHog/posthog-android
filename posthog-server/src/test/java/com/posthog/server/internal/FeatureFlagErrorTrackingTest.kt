@@ -9,6 +9,7 @@ import com.posthog.server.createMockHttp
 import com.posthog.server.createTestConfig
 import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
+import okhttp3.mockwebserver.MockResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -144,6 +145,34 @@ internal class FeatureFlagErrorTrackingTest {
             )
 
         assertEquals(FeatureFlagError.apiError(403), error)
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `getFeatureFlagError returns unknown_error when success response is not JSON`() {
+        val mockServer = createMockHttp(MockResponse().setBody("<html>upstream error</html>"))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        config.featureFlagRequestMaxRetries = 0
+        val api = PostHogApi(config)
+        val remoteConfig = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val value =
+            remoteConfig.getFeatureFlag(
+                key = "test-flag",
+                defaultValue = "default",
+                distinctId = "test-user",
+            )
+
+        val error =
+            remoteConfig.getFeatureFlagError(
+                key = "test-flag",
+                distinctId = "test-user",
+            )
+
+        assertEquals("default", value)
+        assertEquals(FeatureFlagError.UNKNOWN_ERROR, error)
         mockServer.shutdown()
     }
 
