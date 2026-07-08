@@ -111,6 +111,21 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `getFeatureFlags returns null when success response is not JSON`() {
+        val mockServer = createMockHttp(MockResponse().setBody("<html>upstream error</html>"))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val remoteConfig = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val result = remoteConfig.getFeatureFlags(distinctId = "test-user")
+
+        assertNull(result)
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `getFeatureFlagPayload returns payload when available`() {
         val flagsResponse = createFlagsResponse("test-flag", payload = "test-payload")
         val mockServer = createMockHttp(jsonResponse(flagsResponse))

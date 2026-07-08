@@ -1,5 +1,7 @@
 package com.posthog.internal
 
+import com.google.gson.JsonIOException
+import com.google.gson.JsonSyntaxException
 import com.posthog.PostHogConfig
 import com.posthog.PostHogConfig.Companion.DEFAULT_EU_ASSETS_HOST
 import com.posthog.PostHogConfig.Companion.DEFAULT_EU_HOST
@@ -14,6 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.BufferedSink
 import java.io.EOFException
@@ -249,7 +252,7 @@ public class PostHogApi(
             if (!response.isSuccessful) throw PostHogApiError(response.code, response.message, response.body)
 
             response.body?.let { body ->
-                return config.serializer.deserialize(body.charStream().buffered())
+                return deserializeFlagsResponse(body)
             }
             return null
         }
@@ -379,6 +382,21 @@ public class PostHogApi(
             return LocalEvaluationApiResponse.success(null, null)
         }
     }
+
+    private fun deserializeFlagsResponse(body: ResponseBody): PostHogFlagsResponse? =
+        try {
+            config.serializer.deserialize(body.charStream().buffered())
+        } catch (e: Exception) {
+            val reason =
+                when (e) {
+                    is JsonIOException,
+                    is JsonSyntaxException,
+                    -> "response was not valid JSON"
+                    else -> "response could not be parsed"
+                }
+            config.logger.log("Loading feature flags failed: $reason: $e")
+            null
+        }
 
     private fun logResponse(response: Response): Response {
         if (config.debug) {
