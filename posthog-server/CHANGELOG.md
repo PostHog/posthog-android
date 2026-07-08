@@ -1,5 +1,11 @@
 ## Next
 
+## 2.7.5
+
+### Patch Changes
+
+- aed3704: Fail closed instead of throwing when feature flag responses cannot be parsed as JSON.
+
 ## 2.7.4
 
 ### Patch Changes
