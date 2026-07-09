@@ -762,13 +762,13 @@ public class PostHog private constructor(
         throwable: Throwable,
         ignored: List<Class<out Throwable>>,
     ): Class<out Throwable>? {
+        // same cycle detection as ThrowableCoercer, so both walks cover the same chain
+        val seen = hashSetOf<Throwable>()
         var current: Throwable? = throwable
-        var depth = 0
-        while (current != null && depth < MAX_CAUSE_DEPTH) {
+        while (current != null && seen.add(current)) {
             val link = current
             ignored.firstOrNull { it.isInstance(link) }?.let { return it }
-            current = if (link.cause === link) null else link.cause
-            depth++
+            current = link.cause
         }
         return null
     }
@@ -1868,9 +1868,6 @@ public class PostHog private constructor(
         private var defaultSharedInstance = shared
 
         private val apiKeys = mutableSetOf<String>()
-
-        // bounds the ignoredExceptionTypes cause-chain walk against cyclic causes
-        private const val MAX_CAUSE_DEPTH: Int = 32
 
         /**
          * Captures application log records into PostHog's logs product
