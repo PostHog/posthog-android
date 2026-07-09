@@ -506,7 +506,8 @@ public class PostHogReplayIntegration(
         }?.toRGBColor()
     }
 
-    private fun generateSnapshot(
+    // internal (not private) so tests can drive a snapshot pass directly.
+    internal fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
     ) {
