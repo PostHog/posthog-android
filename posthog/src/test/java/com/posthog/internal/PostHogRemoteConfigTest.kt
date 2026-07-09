@@ -14,6 +14,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,6 +36,7 @@ internal class PostHogRemoteConfigTest {
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
         surveys: Boolean = false,
+        onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
     ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -43,7 +45,13 @@ internal class PostHogRemoteConfigTest {
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
-        return PostHogRemoteConfig(config!!, api, executor = executor, defaultPersonPropertiesProvider = { emptyMap() })
+        return PostHogRemoteConfig(
+            config!!,
+            api,
+            executor = executor,
+            defaultPersonPropertiesProvider = { emptyMap() },
+            onRemoteConfigLoaded = onRemoteConfigLoaded,
+        )
     }
 
     @BeforeTest
@@ -91,6 +99,162 @@ internal class PostHogRemoteConfigTest {
 
         // Must re-arm from the cached config, not stay clobbered to false.
         assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `hasRemoteConfigFetched flips true on a flags reload and resets on clear`() {
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // The flags path also resolves the remote config for the current identity.
+        assertTrue(sut.hasRemoteConfigFetched())
+
+        // reset()/clear() re-arms the gate for the next identity.
+        sut.clear()
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `hasRemoteConfigFetched flips true on a remote config load`() {
+        val response = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.hasRemoteConfigFetched())
+
+        sut.clear()
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `offline remote config load still notifies without marking fetched`() {
+        // Offline -> loadRemoteConfig short-circuits, but it must still fire the callback so the
+        // replay integration can fall back to the cached flag instead of buffering forever. The
+        // attempt resolved no live config, so hasRemoteConfigFetched stays false to distinguish it.
+        val offline =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = false
+            }
+        val notified = CountDownLatch(1)
+        val sut = getSut(host = "http://localhost", networkStatus = offline, onRemoteConfigLoaded = { notified.countDown() })
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+
+        assertTrue(notified.await(5, TimeUnit.SECONDS), "offline load should still notify")
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.clear()
+    }
+
+    @Test
+    fun `quota-limited flags reload resolves the config and notifies`() {
+        // A quota-limited first /flags re-arms replay from the cached config, so it must resolve the
+        // gate (mark fetched + notify) instead of leaving the buffer-and-decide gate stuck.
+        val quotaLimited = File("src/test/resources/json/basic-flags-quota-limited.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(quotaLimited))
+        val notified = CountDownLatch(1)
+        val sut = getSut(host = http.url("/").toString(), onRemoteConfigLoaded = { notified.countDown() })
+
+        assertFalse(sut.hasRemoteConfigFetched())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        assertTrue(notified.await(5, TimeUnit.SECONDS), "quota-limited load should still notify")
+        assertTrue(sut.hasRemoteConfigFetched())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `failure notify does not re-fire on an offline reload after a successful load`() {
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        var online = true
+        val networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = online
+            }
+        val notifyCount = AtomicInteger(0)
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                networkStatus = networkStatus,
+                onRemoteConfigLoaded = { notifyCount.incrementAndGet() },
+            )
+
+        val firstLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+        )
+        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
+        assertTrue(sut.hasRemoteConfigFetched())
+        assertEquals(1, notifyCount.get())
+
+        // Offline reload after a successful resolve: the failure notify is gated on
+        // !hasRemoteConfigFetched, so it must not fire a second (spurious) resolution.
+        online = false
+        val secondLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+        )
+        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second (offline) flags load should complete")
+
+        assertEquals(1, notifyCount.get())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `config success with a failing nested flags call notifies once and stays fetched`() {
+        // /config succeeds (hasFeatureFlags=true) and nests a /flags call with
+        // notifyRemoteConfigLoaded=false; that nested call fails (empty body). The nested failure must
+        // NOT fire a second (spurious) failure notify — /config already resolved the config.
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        http.enqueue(MockResponse().setBody(""))
+        val notifyCount = AtomicInteger(0)
+        val sut = getSut(host = http.url("/").toString(), onRemoteConfigLoaded = { notifyCount.incrementAndGet() })
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        // /config resolved the config; the nested flags failure must not have re-fired the callback.
+        assertTrue(sut.hasRemoteConfigFetched())
+        assertEquals(1, notifyCount.get())
 
         sut.clear()
         http.shutdown()

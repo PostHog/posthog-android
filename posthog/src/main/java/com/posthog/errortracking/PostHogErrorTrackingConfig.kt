@@ -38,11 +38,9 @@ public class PostHogErrorTrackingConfig
          */
         public val exceptionSteps: PostHogExceptionStepsConfig = PostHogExceptionStepsConfig(),
         /**
-         * Throwable classes to skip during capture. For each captured throwable, the
-         * SDK walks the cause chain and drops the `$exception` event when any link is
-         * an instance of an entry in this list. Matching uses [Class.isInstance], so
-         * R8 / ProGuard renames don't break the filter. The downstream uncaught
-         * exception handler still runs.
+         * Throwable classes to drop during capture. The throwable and every cause in
+         * its chain are matched via [Class.isInstance]. Also applies to `$exception`
+         * events sent through the generic capture path (matched by class name).
          *
          * Defaults to empty.
          */

@@ -69,6 +69,8 @@ internal class PostHogTest {
         evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
         personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
+        exceptionStepsEnabled: Boolean = true,
+        exceptionStepsMaxBytes: Int = 32768,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -92,6 +94,8 @@ internal class PostHogTest {
                     addBeforeSend(beforeSend)
                 }
                 this.errorTrackingConfig.inAppIncludes.add("com.posthog")
+                this.errorTrackingConfig.exceptionSteps.enabled = exceptionStepsEnabled
+                this.errorTrackingConfig.exceptionSteps.maxBytes = exceptionStepsMaxBytes
                 this.context = context
                 this.personProfiles = personProfiles
             }
@@ -193,6 +197,40 @@ internal class PostHogTest {
         sut.close()
 
         assertFalse(integration.installed)
+    }
+
+    @Test
+    fun `successful remote config routes integrations to onRemoteConfig`() {
+        val integration = FakePostHogIntegration()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, integration.remoteConfigCount)
+        assertEquals(0, integration.remoteConfigFailedCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `failed remote config routes integrations to onRemoteConfig loaded false`() {
+        val integration = FakePostHogIntegration()
+        // Empty body -> the flags response deserializes to null -> terminal-failure branch, so the
+        // gate stays unfetched and the dispatch must route to onRemoteConfig(loaded=false).
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, integration.remoteConfigFailedCount)
+        assertEquals(0, integration.remoteConfigCount)
+
+        sut.close()
     }
 
     @Test
@@ -2537,12 +2575,8 @@ internal class PostHogTest {
         sut.close()
     }
 
-    /**
-     * Local stand-in for `com.facebook.react.common.JavascriptException` (the
-     * production target). Using a class defined here lets the test register
-     * the same `Class` reference at config time and at capture time without
-     * pulling React Native onto the classpath.
-     */
+    // stand-in for com.facebook.react.common.JavascriptException, so React Native
+    // stays off the test classpath
     private class JavascriptExceptionStub(message: String) : RuntimeException(message)
 
     @Test
@@ -2569,8 +2603,6 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
         config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
 
-        // PostHogThrowable / RuntimeException wrappers must not defeat the filter:
-        // the cause chain still surfaces the ignored type.
         val wrapped =
             RuntimeException(
                 "wrapper",
@@ -2593,6 +2625,105 @@ internal class PostHogTest {
         config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
 
         sut.captureException(IllegalStateException("normal failure"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException drops events whose throwable is a subclass of an ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        // matching is isInstance, not name equality: the stub extends RuntimeException
+        config.errorTrackingConfig.ignoredExceptionTypes.add(RuntimeException::class.java)
+
+        sut.captureException(JavascriptExceptionStub("Unhandled JS Exception"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException drops uncaught-handler wrapped throwables of an ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        // the uncaught-exception handler wraps throwables in PostHogThrowable before capture
+        sut.captureException(PostHogThrowable(JavascriptExceptionStub("Unhandled JS Exception")))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    // $exception_list entry as ThrowableCoercer serializes it: module = package,
+    // type = class name with the package prefix stripped
+    private fun exceptionListEntry(clazz: Class<out Throwable>): Map<String, Any> {
+        val module = clazz.`package`?.name
+        val type = if (module != null) clazz.name.replace("$module.", "") else clazz.name
+        return if (module != null) {
+            mapOf("type" to type, "module" to module)
+        } else {
+            mapOf("type" to type)
+        }
+    }
+
+    @Test
+    fun `capture drops externally-built exception events whose list contains an ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        // hybrid SDKs forward exceptions through capture() with a pre-serialized
+        // $exception_list instead of a throwable
+        sut.capture(
+            "\$exception",
+            properties =
+                mapOf(
+                    "\$exception_list" to
+                        listOf(
+                            exceptionListEntry(RuntimeException::class.java),
+                            exceptionListEntry(JavascriptExceptionStub::class.java),
+                        ),
+                ),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capture keeps externally-built exception events whose list has no ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        sut.capture(
+            "\$exception",
+            properties =
+                mapOf(
+                    "\$exception_list" to
+                        listOf(
+                            exceptionListEntry(IllegalStateException::class.java),
+                        ),
+                ),
+        )
 
         queueExecutor.shutdownAndAwaitTermination()
         assertEquals(1, http.requestCount)
@@ -3437,6 +3568,201 @@ internal class PostHogTest {
         val lazyDeviceId = sut.getDeviceId()
         assertTrue(lazyDeviceId.isNotBlank())
         assertEquals(deviceId, lazyDeviceId)
+
+        sut.close()
+    }
+
+    private fun exceptionStepMessages(event: com.posthog.PostHogEvent): List<Any?> {
+        @Suppress("UNCHECKED_CAST")
+        val steps = event.properties!!["\$exception_steps"] as? List<Map<String, Any>> ?: return emptyList()
+        return steps.map { it["\$message"] }
+    }
+
+    @Test
+    fun `addExceptionStep attaches ordered steps to the exception event`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.addExceptionStep("A", mapOf("screen" to "cart"))
+        sut.addExceptionStep("B")
+        sut.addExceptionStep("C")
+
+        sut.captureException(RuntimeException("boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$exception", theEvent.event)
+        assertEquals(listOf("A", "B", "C"), exceptionStepMessages(theEvent))
+
+        sut.close()
+    }
+
+    @Test
+    fun `addExceptionStep does not overwrite caller-provided exception steps`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.addExceptionStep("buffered")
+
+        sut.captureException(
+            RuntimeException("boom"),
+            properties = mapOf("\$exception_steps" to listOf(mapOf("\$message" to "caller"))),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertEquals(listOf("caller"), exceptionStepMessages(batch.batch.first()))
+
+        sut.close()
+    }
+
+    @Test
+    fun `exception steps persist across captures and identity changes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 100)
+
+        sut.addExceptionStep("A")
+        sut.addExceptionStep("B")
+        sut.captureException(RuntimeException("first"))
+
+        sut.reset()
+
+        sut.addExceptionStep("C")
+        sut.captureException(RuntimeException("second"))
+
+        // flushAt is high so neither capture triggers a flush on its own; flush explicitly
+        // so both events land in a single batch
+        sut.flush()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val exceptions = batch.batch.filter { it.event == "\$exception" }
+        assertEquals(listOf("A", "B"), exceptionStepMessages(exceptions[0]))
+        assertEquals(listOf("A", "B", "C"), exceptionStepMessages(exceptions[1]))
+
+        sut.close()
+    }
+
+    @Test
+    fun `addExceptionStep is a no-op when exception steps are disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                exceptionStepsEnabled = false,
+            )
+
+        sut.addExceptionStep("A")
+        sut.captureException(RuntimeException("boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertTrue(exceptionStepMessages(batch.batch.first()).isEmpty())
+
+        sut.close()
+    }
+
+    @Test
+    fun `addExceptionStep is a no-op when maxBytes is not positive`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                exceptionStepsMaxBytes = 0,
+            )
+
+        sut.addExceptionStep("A")
+        sut.captureException(RuntimeException("boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertTrue(exceptionStepMessages(batch.batch.first()).isEmpty())
+
+        sut.close()
+    }
+
+    @Test
+    fun `addExceptionStep clears the buffer on optOut and stops buffering while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.addExceptionStep("before opt-out")
+        sut.optOut()
+        sut.addExceptionStep("while opted out")
+        sut.optIn()
+
+        sut.captureException(RuntimeException("boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        assertTrue(exceptionStepMessages(batch.batch.first()).isEmpty())
+
+        sut.close()
+    }
+
+    @Test
+    fun `exception steps attach to a generic capture of the exception event`() {
+        // Hybrid SDKs (RN/Flutter) forward steps via addExceptionStep and emit the
+        // exception through the generic capture() entry point rather than captureException.
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.addExceptionStep("A")
+        sut.addExceptionStep("B")
+
+        sut.capture("\$exception", properties = mapOf("\$exception_message" to "boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$exception", theEvent.event)
+        assertEquals(listOf("A", "B"), exceptionStepMessages(theEvent))
 
         sut.close()
     }

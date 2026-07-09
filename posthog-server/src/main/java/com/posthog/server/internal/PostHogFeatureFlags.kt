@@ -182,7 +182,7 @@ internal class PostHogFeatureFlags(
             if (flagDef != null) {
                 try {
                     config.logger.log("Attempting local evaluation for flag '$key' for distinctId: $distinctId")
-                    val props = (personProperties ?: EMPTY_PROPERTIES).toMutableMap()
+                    val props = localPersonProperties(distinctId, personProperties)
 
                     val result =
                         computeFlagLocally(
@@ -257,7 +257,7 @@ internal class PostHogFeatureFlags(
 
         config.logger.log("Attempting local evaluation for distinctId: $distinctId")
         val localFlags = mutableMapOf<String, FeatureFlag>()
-        val props = (personProperties ?: EMPTY_PROPERTIES).toMutableMap()
+        val props = localPersonProperties(distinctId, personProperties)
 
         // Evaluate all flags locally
         for ((key, flagDef) in currentFlagDefinitions) {
@@ -283,6 +283,15 @@ internal class PostHogFeatureFlags(
 
         config.logger.log("Local evaluation successful for ${localFlags.size} flags")
         return localFlags
+    }
+
+    private fun localPersonProperties(
+        distinctId: String,
+        personProperties: Map<String, Any?>?,
+    ): MutableMap<String, Any?> {
+        val props = (personProperties ?: EMPTY_PROPERTIES).toMutableMap()
+        props.putIfAbsent("distinct_id", distinctId)
+        return props
     }
 
     private fun getFeatureFlagsFromRemote(

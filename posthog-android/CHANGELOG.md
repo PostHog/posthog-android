@@ -1,5 +1,55 @@
 ## Next
 
+## 3.53.3
+
+### Patch Changes
+
+- aed3704: Fail closed instead of throwing when feature flag responses cannot be parsed as JSON.
+
+## 3.53.2
+
+### Patch Changes
+
+- 46008ad: Stop duplicating `distinct_id` inside `/flags` person properties.
+
+## 3.53.1
+
+### Patch Changes
+
+- cccf68b: Retry `/flags` requests once by default when the flags endpoint returns HTTP 502 or 504, respecting `featureFlagRequestMaxRetries`.
+
+## 3.53.0
+
+### Minor Changes
+
+- 77aa107: Session replay now respects the freshly-fetched session-recording remote config at cold start. Previously a returning user whose cached flag said "on" could record an opening window even when the server's config said "off". Snapshots captured before the first remote config response are buffered; once the config resolves they are migrated to the send pipeline if the session is recordable (kept buffering until the minimum-duration window is met), or dropped if the flag is off or the session is sampled out. A fresh "off" now also stops an in-progress recording instead of waiting for the next session rotation, and a mid-session resume re-emits a full-snapshot keyframe. When the first remote config can't be fetched (e.g. the device is offline), recording falls back to the disk-cached flag rather than discarding the session.
+
+  API: `PostHogIntegration.onRemoteConfig()` now takes a `loaded: Boolean = true` parameter (true when a live remote config was applied, false on a terminal fetch failure), replacing the separate `onRemoteConfigFailed()` callback. Integrations that implement `PostHogIntegration` and override these methods should migrate to the single `onRemoteConfig(loaded)`.
+
+## 3.52.0
+
+### Minor Changes
+
+- a1261a5: Add `requestHeaders` config option to send custom headers (e.g. `Authorization`) with every request to the PostHog API. Useful for reverse-proxy setups that require authentication.
+
+## 3.51.4
+
+### Patch Changes
+
+- 1c8521b: Fix SDK compliance for feature flag payloads and retry metadata while preserving Android API 23 compatibility.
+
+## 3.51.3
+
+### Patch Changes
+
+- 15c39fd: Retry feature flag requests after transient network errors only. The feature flag request retry count defaults to 1 and can be set to 0 to disable retries.
+
+## 3.51.2
+
+### Patch Changes
+
+- f418d41: Allow the posthog-kmp wrapper SDK to keep its own `sdkName`/`sdkVersion` so KMP events report the correct `$lib`/version, mirroring how posthog-flutter and posthog-react-native are handled.
+
 ## 3.51.1
 
 ### Patch Changes

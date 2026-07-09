@@ -6,6 +6,7 @@ import com.posthog.DISTINCT_ID
 import com.posthog.groups
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 internal class PostHogFlagsRequestTest {
     @Test
@@ -97,5 +98,44 @@ internal class PostHogFlagsRequestTest {
             )
 
         assertEquals(null, request["\$device_id"])
+    }
+
+    @Test
+    fun `defaults groups and group_properties to empty objects`() {
+        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID)
+
+        assertEquals(emptyMap<String, String>(), request["groups"])
+        assertEquals(emptyMap<String, Map<String, Any?>>(), request["group_properties"])
+    }
+
+    @Test
+    fun `preserves caller person properties without adding distinct_id`() {
+        listOf(
+            mapOf("email" to "example@example.com"),
+            mapOf("distinct_id" to "custom-distinct-id"),
+        ).forEach { personProperties ->
+            val request =
+                PostHogFlagsRequest(
+                    API_KEY,
+                    DISTINCT_ID,
+                    personProperties = personProperties,
+                )
+
+            assertEquals(personProperties, request["person_properties"])
+        }
+    }
+
+    @Test
+    fun `includes geoip_disable when false`() {
+        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID, disableGeoip = false)
+
+        assertFalse(request["geoip_disable"] as Boolean)
+    }
+
+    @Test
+    fun `includes flag keys to evaluate`() {
+        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID, flagKeys = listOf("my-flag"))
+
+        assertEquals(listOf("my-flag"), request["flag_keys_to_evaluate"])
     }
 }

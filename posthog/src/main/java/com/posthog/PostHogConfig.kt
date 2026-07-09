@@ -129,6 +129,11 @@ public open class PostHogConfig(
      * Defaults to 3
      */
     public var maxRetries: Int = 3,
+    /**
+     * Maximum number of retries for feature flag requests after transient network errors.
+     * Defaults to 1. Set to 0 to disable feature flag request retries.
+     */
+    public var featureFlagRequestMaxRetries: Int = 1,
     // (30).toDuration(DurationUnit.SECONDS) requires Kotlin 1.6
     /**
      * Interval in seconds for sending events over the wire
@@ -348,6 +353,18 @@ public open class PostHogConfig(
      */
     @PostHogInternal
     public var httpClient: OkHttpClient? = null
+
+    /**
+     * Custom headers to send with every request to the PostHog API.
+     *
+     * Useful for reverse-proxy setups that require authentication, e.g. an `Authorization` header.
+     *
+     * Read once when the SDK is set up; changes after setup are ignored.
+     *
+     * Default: empty (no extra headers).
+     */
+    @Volatile
+    public var requestHeaders: Map<String, String> = emptyMap()
 
     /**
      * The PostHog project API key, trimmed of leading and trailing whitespace.

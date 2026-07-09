@@ -2,4 +2,4 @@
 "posthog": minor
 ---
 
-Add `errorTrackingConfig.ignoredExceptionTypes`, a `MutableList<Class<out Throwable>>` consulted by `PostHog.captureException` (both autocapture and direct callers). The throwable and every entry in its cause chain are tested with `Class.isInstance`; if any link matches, the SDK skips the `$exception` event. Matching by `Class` reference is safe under R8 / ProGuard renames. The downstream uncaught-exception handler still runs. Defaults to empty.
+Add `errorTrackingConfig.ignoredExceptionTypes`: throwable classes to drop from `$exception` capture. Matched via `Class.isInstance` across the cause chain in `captureException` (autocapture and manual callers), and by class name in `$exception_list` for the generic capture path. Defaults to empty.

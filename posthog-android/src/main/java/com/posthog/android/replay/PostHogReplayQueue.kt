@@ -57,7 +57,9 @@ internal class PostHogReplayQueue internal constructor(
 
     override fun add(event: PostHogEvent) {
         if (bufferDelegate?.isBuffering != true) {
-            innerQueue.add(event)
+            if (shouldPersist()) {
+                innerQueue.add(event)
+            }
             return
         }
 
@@ -66,11 +68,16 @@ internal class PostHogReplayQueue internal constructor(
                 bufferQueue.add(event)
                 config.logger.log("Buffered replay event '${event.event}'. Buffer depth: ${bufferQueue.depth}")
                 bufferDelegate?.onReplayBufferSnapshot(this)
-            } else {
+            } else if (shouldPersist()) {
                 innerQueue.add(event)
             }
         }
     }
+
+    // A delegate that reports recording inactive means a snapshot slipped through after recording
+    // stopped (e.g. a fresh-false remote config); drop it rather than persist/send it. With no
+    // delegate (recording not yet wired) the queue persists as before.
+    private fun shouldPersist(): Boolean = bufferDelegate?.isActive != false
 
     override fun flush() {
         if (bufferDelegate?.isBuffering == true) {
