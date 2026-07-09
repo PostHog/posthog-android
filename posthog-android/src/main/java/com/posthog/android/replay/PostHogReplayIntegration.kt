@@ -104,7 +104,8 @@ public class PostHogReplayIntegration(
 ) : PostHogIntegration, PostHogSessionReplayHandler {
     // internal (not private) so tests can assert the resume path resets per-view snapshot state.
     // Main-thread writes race the capture executor's reads, and even WeakHashMap.get()
-    // structurally modifies the map (stale-entry expunge), so accesses must be synchronized.
+    // structurally modifies the map (stale-entry expunge), so accesses must be synchronized
+    // and iteration must hold the map's monitor.
     internal val decorViews: MutableMap<View, ViewTreeSnapshotStatus> =
         Collections.synchronizedMap(WeakHashMap<View, ViewTreeSnapshotStatus>())
 
@@ -478,8 +479,11 @@ public class PostHogReplayIntegration(
 
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
-            decorViews.entries.forEach {
-                clearViewListeners(it.key, it.value)
+            // Snapshot first: clearViewListeners removes entries, which would structurally
+            // modify the map mid-iteration.
+            val decorViewsSnapshot = synchronized(decorViews) { decorViews.entries.map { it.toPair() } }
+            decorViewsSnapshot.forEach { (view, status) ->
+                clearViewListeners(view, status)
             }
 
             isSessionReplayActive = false
@@ -1686,15 +1690,19 @@ public class PostHogReplayIntegration(
             // away — and incremental events (type:3) would ship under the new session before
             // the meta + full-snapshot keyframes (type:4 + type:2) needed to render them.
             mainHandler.handler.post {
-                decorViews.keys.forEach { it.postInvalidate() }
+                synchronized(decorViews) {
+                    decorViews.keys.forEach { it.postInvalidate() }
+                }
             }
         }
     }
 
     private fun clearSnapshotStates() {
         // clear state so it starts with a full snapshot again
-        decorViews.entries.forEach {
-            resetViewSnapshotStates(it.value)
+        synchronized(decorViews) {
+            decorViews.entries.forEach {
+                resetViewSnapshotStates(it.value)
+            }
         }
     }
 
@@ -2064,7 +2072,9 @@ public class PostHogReplayIntegration(
                     // session or touching the cold-start buffering state (unlike start(resumeCurrent = false)).
                     clearSnapshotStates()
                     start(resumeCurrent = true)
-                    decorViews.keys.forEach { it.postInvalidate() }
+                    synchronized(decorViews) {
+                        decorViews.keys.forEach { it.postInvalidate() }
+                    }
                 }
             }
         }

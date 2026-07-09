@@ -1056,10 +1056,16 @@ internal class PostHogReplayIntegrationTest {
             }
         }
 
+        assertNotNull(sut.decorViews[probe])
+
+        // uninstall() iterates and clears the map while the reader races get(); cleanup must
+        // complete and leave the map empty (a mid-iteration expunge would abort it early).
+        sut.uninstall()
+        assertTrue(sut.decorViews.isEmpty())
+
         stopReading.set(true)
         reader.join()
         readerFailure.get()?.let { throw it }
-        assertNotNull(sut.decorViews[probe])
     }
 
     @Test
