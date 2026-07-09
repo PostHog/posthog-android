@@ -37,12 +37,15 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -1017,6 +1020,46 @@ internal class PostHogReplayIntegrationTest {
         } finally {
             fx.sut.uninstall()
         }
+    }
+
+    @Test(timeout = 20_000)
+    fun `decorViews survives capture-executor reads racing main-thread registration`() {
+        // generateSnapshot() reads decorViews on the capture executor while decor views are
+        // registered on the main thread. WeakHashMap.get() expunges stale entries — a structural
+        // modification — so an unsynchronized map can corrupt under this race (lost entries or an
+        // infinite bucket-chain loop; the timeout catches the latter).
+        val sut = getSut()
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val listener = mock<NextDrawListener>()
+        val probe = View(appContext)
+        sut.decorViews[probe] = ViewTreeSnapshotStatus(listener)
+
+        val stopReading = AtomicBoolean(false)
+        val readerFailure = AtomicReference<Throwable>()
+        val reader =
+            Thread {
+                try {
+                    while (!stopReading.get()) {
+                        sut.decorViews[probe]
+                    }
+                } catch (e: Throwable) {
+                    readerFailure.set(e)
+                }
+            }
+        reader.start()
+
+        repeat(5_000) { i ->
+            // Unreferenced views become stale entries for the reader's get() to expunge.
+            sut.decorViews[View(appContext)] = ViewTreeSnapshotStatus(listener)
+            if (i % 500 == 0) {
+                System.gc()
+            }
+        }
+
+        stopReading.set(true)
+        reader.join()
+        readerFailure.get()?.let { throw it }
+        assertNotNull(sut.decorViews[probe])
     }
 
     @Test

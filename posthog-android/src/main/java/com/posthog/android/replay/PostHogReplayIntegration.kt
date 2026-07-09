@@ -103,10 +103,8 @@ public class PostHogReplayIntegration(
     private val mainHandler: MainHandler,
 ) : PostHogIntegration, PostHogSessionReplayHandler {
     // internal (not private) so tests can assert the resume path resets per-view snapshot state.
-    // synchronizedMap: this map is written on the main thread (decor view
-    // registration) while the capture executor reads it, and even
-    // WeakHashMap.get() can expunge stale entries — a structural modification
-    // that is unsafe to race across threads.
+    // Main-thread writes race the capture executor's reads, and even WeakHashMap.get()
+    // structurally modifies the map (stale-entry expunge), so accesses must be synchronized.
     internal val decorViews: MutableMap<View, ViewTreeSnapshotStatus> =
         Collections.synchronizedMap(WeakHashMap<View, ViewTreeSnapshotStatus>())
 
