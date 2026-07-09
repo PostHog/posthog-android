@@ -91,6 +91,7 @@ import curtains.phoneWindow
 import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.lang.ref.WeakReference
+import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -102,7 +103,12 @@ public class PostHogReplayIntegration(
     private val mainHandler: MainHandler,
 ) : PostHogIntegration, PostHogSessionReplayHandler {
     // internal (not private) so tests can assert the resume path resets per-view snapshot state.
-    internal val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
+    // synchronizedMap: this map is written on the main thread (decor view
+    // registration) while the capture executor reads it, and even
+    // WeakHashMap.get() can expunge stale entries — a structural modification
+    // that is unsafe to race across threads.
+    internal val decorViews: MutableMap<View, ViewTreeSnapshotStatus> =
+        Collections.synchronizedMap(WeakHashMap<View, ViewTreeSnapshotStatus>())
 
     private val passwordInputTypes =
         setOf(
