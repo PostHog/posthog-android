@@ -1,5 +1,11 @@
 ## Next
 
+## 6.24.0
+
+### Minor Changes
+
+- ef8f1d6: Add `errorTrackingConfig.ignoredExceptionTypes`: throwable classes to drop from `$exception` capture. Matched via `Class.isInstance` across the cause chain in `captureException` (autocapture and manual callers), and by class name in `$exception_list` for the generic capture path. Defaults to empty.
+
 ## 6.23.3
 
 ### Patch Changes
