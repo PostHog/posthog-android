@@ -398,6 +398,39 @@ internal class PostHogStatelessTest {
         assertEquals(mapOf("company" to "acme"), event.properties!!["\$groups"])
     }
 
+    private class IgnoredExceptionStub(message: String) : RuntimeException(message)
+
+    @Test
+    fun `captureExceptionStateless drops throwables matching ignoredExceptionTypes`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredExceptionStub::class.java)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(IgnoredExceptionStub("boom"), distinctId = "user123")
+
+        assertEquals(0, mockQueue.events.size)
+    }
+
+    @Test
+    fun `captureExceptionStateless keeps throwables not in ignoredExceptionTypes`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredExceptionStub::class.java)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(IllegalStateException("boom"), distinctId = "user123")
+
+        assertEquals(1, mockQueue.events.size)
+        assertEquals("\$exception", mockQueue.events.first().event)
+    }
+
     @Test
     fun `captureStateless does nothing when not enabled`() {
         val mockQueue = MockQueue()

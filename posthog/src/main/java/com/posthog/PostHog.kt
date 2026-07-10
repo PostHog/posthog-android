@@ -710,15 +710,8 @@ public class PostHog private constructor(
         }
 
         try {
-            val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
-            if (!ignored.isNullOrEmpty()) {
-                val match = findIgnoredTypeInCauseChain(throwable, ignored)
-                if (match != null) {
-                    config?.logger?.log(
-                        "Skipping \$exception: ${match.name} (or a cause in its chain) matches ignoredExceptionTypes",
-                    )
-                    return
-                }
+            if (isIgnoredThrowable(throwable)) {
+                return
             }
 
             val exceptionProperties =
@@ -756,21 +749,6 @@ public class PostHog private constructor(
             val className = if (module.isNullOrEmpty()) type else "$module.$type"
             className in ignoredNames
         }
-    }
-
-    private fun findIgnoredTypeInCauseChain(
-        throwable: Throwable,
-        ignored: List<Class<out Throwable>>,
-    ): Class<out Throwable>? {
-        // same cycle detection as ThrowableCoercer, so both walks cover the same chain
-        val seen = hashSetOf<Throwable>()
-        var current: Throwable? = throwable
-        while (current != null && seen.add(current)) {
-            val link = current
-            ignored.firstOrNull { it.isInstance(link) }?.let { return it }
-            current = link.cause
-        }
-        return null
     }
 
     override fun addExceptionStep(
