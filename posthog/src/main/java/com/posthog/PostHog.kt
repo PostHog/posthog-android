@@ -620,6 +620,19 @@ public class PostHog private constructor(
                 groupIdentify = true
             }
 
+            // Externally-built $exception events (e.g. the Flutter/RN bridge) carry only
+            // serialized class names, so they are matched by name instead of isInstance.
+            val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
+            if (!ignored.isNullOrEmpty() &&
+                event == PostHogEventName.EXCEPTION.event &&
+                hasIgnoredTypeInExceptionList(properties, ignored)
+            ) {
+                config?.logger?.log(
+                    "Skipping \$exception: an entry in \$exception_list matches ignoredExceptionTypes",
+                )
+                return
+            }
+
             // Attach the buffered exception steps to any $exception event (unless the caller
             // already supplied them), so externally-built exceptions (e.g. from the Flutter/RN
             // bridge) carry steps too, not only those captured via captureException(throwable).
@@ -697,6 +710,10 @@ public class PostHog private constructor(
         }
 
         try {
+            if (isIgnoredThrowable(throwable)) {
+                return
+            }
+
             val exceptionProperties =
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
@@ -715,6 +732,22 @@ public class PostHog private constructor(
             // we swallow all exceptions that the SDK has thrown by trying to convert
             // a captured exception to a PostHog exception event
             config?.logger?.log("captureException has thrown an exception: $e.")
+        }
+    }
+
+    private fun hasIgnoredTypeInExceptionList(
+        properties: Map<String, Any>?,
+        ignored: List<Class<out Throwable>>,
+    ): Boolean {
+        val exceptionList = properties?.get("\$exception_list") as? List<*> ?: return false
+        val ignoredNames = ignored.map { it.name }
+        return exceptionList.any { entry ->
+            val exception = entry as? Map<*, *> ?: return@any false
+            val type = exception["type"] as? String ?: return@any false
+            val module = exception["module"] as? String
+            // module + type rejoins the runtime class name ThrowableCoercer split apart
+            val className = if (module.isNullOrEmpty()) type else "$module.$type"
+            className in ignoredNames
         }
     }
 
