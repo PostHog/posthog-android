@@ -1,11 +1,14 @@
 package com.posthog.android.replay
 
+import android.app.Activity
 import android.content.Context
 import android.os.Looper
 import android.view.View
+import android.view.Window
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogEvent
+import com.posthog.PostHogFake
 import com.posthog.PostHogInterface
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
@@ -30,8 +33,11 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowPixelCopy
+import java.lang.ref.WeakReference
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
@@ -424,6 +430,7 @@ internal class PostHogReplayIntegrationTest {
         sessionReplay: Boolean = true,
         samplingPasses: Boolean = true,
         preloadFeatureFlags: Boolean = true,
+        integrationContext: Context = mock<Context>(),
     ): RealQueueFixture {
         val remoteConfig =
             mock<PostHogRemoteConfig> {
@@ -449,7 +456,7 @@ internal class PostHogReplayIntegrationTest {
             )
         val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
         config.replayQueueHolder = replayQueue
-        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        val sut = PostHogReplayIntegration(integrationContext, config, MainHandler())
         return RealQueueFixture(sut, replayQueue, innerQueue, config, remoteConfig)
     }
 
@@ -1210,6 +1217,79 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
             assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    // Robolectric never runs the ViewRootImpl traversal that copies the window's
+    // visibility into AttachInfo, so getWindowVisibility() stays GONE and the
+    // integration treats the decor view as invisible. Set it directly.
+    private fun makeWindowVisible(decorView: View) {
+        val attachInfo =
+            View::class.java.getDeclaredField("mAttachInfo")
+                .apply { isAccessible = true }
+                .get(decorView)
+        attachInfo.javaClass.getDeclaredField("mWindowVisibility")
+            .apply { isAccessible = true }
+            .setInt(attachInfo, View.VISIBLE)
+    }
+
+    private fun screenshotFixture(): Pair<RealQueueFixture, PostHogFake> {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = ApplicationProvider.getApplicationContext(),
+            )
+        fx.config.sessionReplayConfig.screenshot = true
+        val fake = PostHogFake()
+        fx.sut.install(fake)
+        fx.sut.start(resumeCurrent = true)
+        return fx to fake
+    }
+
+    @Test
+    fun `screenshot mode skips the frame when the capture is discarded`() {
+        // A window without a decor view makes PixelCopy.request throw, so the capture is
+        // discarded (the same outcome as a PixelCopy failure or a redraw race in
+        // production). No event may be emitted: an imageless "screenshot" wireframe is
+        // rendered by the player as a placeholder tile, flashing until the next capture.
+        val (fx, fake) = screenshotFixture()
+        try {
+            assertTrue(fx.sut.isActive())
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+
+            assertEquals(0, fake.captures)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `screenshot mode emits meta and full snapshot when the capture succeeds`() {
+        // Control for the discarded-capture test: with PixelCopy succeeding, the same
+        // pipeline must emit the snapshot event.
+        val (fx, fake) = screenshotFixture()
+        try {
+            assertTrue(fx.sut.isActive())
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(activity.window))
+
+            assertEquals(1, fake.captures)
+            assertEquals("\$snapshot", fake.event)
         } finally {
             fx.sut.uninstall()
         }

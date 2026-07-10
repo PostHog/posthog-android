@@ -506,7 +506,8 @@ public class PostHogReplayIntegration(
         }?.toRGBColor()
     }
 
-    private fun generateSnapshot(
+    // internal (not private) so tests can drive a snapshot pass directly.
+    internal fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
     ) {
@@ -1114,6 +1115,15 @@ public class PostHogReplayIntegration(
             if (callbackCompleted && !bitmap.isRecycled) {
                 bitmap.recycle()
             }
+        }
+
+        // A discarded capture (PixelCopy failure, or a redraw race that
+        // invalidates mask alignment) leaves base64 null. Emitting the
+        // wireframe anyway ships an imageless "screenshot" that the player
+        // renders as its placeholder tile — a visible flash. Skip the frame
+        // instead; the caller retries on the next capture.
+        if (base64 == null) {
+            return null
         }
 
         return RRWireframe(
