@@ -1,5 +1,11 @@
 ## Next
 
+## 3.53.6
+
+### Patch Changes
+
+- 208e716: Re-pin the core dependency so `errorTrackingConfig.ignoredExceptionTypes` (core 6.24.0) is reachable for posthog-android consumers without an explicit core override.
+
 ## 3.53.5
 
 ### Patch Changes
