@@ -1,5 +1,11 @@
 ## Next
 
+## 3.53.5
+
+### Patch Changes
+
+- 7562890: Session Replay: fix a thread-safety race on the internal decor-view snapshot map between main-thread view registration and capture-executor reads.
+
 ## 3.53.4
 
 ### Patch Changes
