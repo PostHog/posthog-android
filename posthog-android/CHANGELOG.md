@@ -1,5 +1,11 @@
 ## Next
 
+## 3.53.4
+
+### Patch Changes
+
+- 59725fc: Session Replay (screenshot mode): skip a frame when the screenshot capture is discarded instead of sending an imageless `screenshot` wireframe. An empty wireframe was rendered by the player as a placeholder tile, causing a brief visual flash before the next successful capture.
+
 ## 3.53.3
 
 ### Patch Changes
