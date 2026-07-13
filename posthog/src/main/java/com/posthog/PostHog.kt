@@ -373,24 +373,34 @@ public class PostHog private constructor(
             return
         }
 
-        val preferences = getPreferences()
-        // Persisted identity wins — never overwrite an existing anonymous id, and never
-        // re-link traffic across a previous anon→identified merge.
-        val persistedAnonymousId = preferences.getValue(ANONYMOUS_ID) as? String
-        val persistedDistinctId = preferences.getValue(DISTINCT_ID) as? String
-        val alreadyIdentified = preferences.getValue(IS_IDENTIFIED) as? Boolean == true
+        // Self-guard like legacyPreferences: a failure here must only skip bootstrap seeding,
+        // not abort the rest of setup() (queue start, integrations, flag reload).
+        try {
+            val preferences = getPreferences()
+            // Persisted identity wins — never overwrite an existing anonymous id, and never
+            // re-link traffic across a previous anon→identified merge.
+            val persistedAnonymousId = preferences.getValue(ANONYMOUS_ID) as? String
+            val persistedDistinctId = preferences.getValue(DISTINCT_ID) as? String
+            val alreadyIdentified = preferences.getValue(IS_IDENTIFIED) as? Boolean == true
 
-        if (!persistedAnonymousId.isNullOrBlank() ||
-            !persistedDistinctId.isNullOrBlank() ||
-            alreadyIdentified
-        ) {
-            return
-        }
+            if (!persistedAnonymousId.isNullOrBlank() ||
+                !persistedDistinctId.isNullOrBlank() ||
+                alreadyIdentified
+            ) {
+                return
+            }
 
-        this.anonymousId = bootstrapId
-        if (bootstrap.isIdentifiedId) {
-            this.distinctId = bootstrapId
-            this.isIdentified = true
+            if (bootstrap.isIdentifiedId) {
+                // Already-identified user: seed the distinct id and mark identified, but leave the
+                // anonymous id to generate on its own so device_id isn't derived from a real user id
+                // (device_id survives reset() and would otherwise leak onto later users).
+                this.distinctId = bootstrapId
+                this.isIdentified = true
+            } else {
+                this.anonymousId = bootstrapId
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Applying bootstrap identity failed: $e.")
         }
     }
 

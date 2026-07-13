@@ -90,6 +90,10 @@ internal class PostHogBootstrapTest {
 
         assertEquals("user-123", sut.distinctId())
         assertEquals(true, prefs.getValue(IS_IDENTIFIED))
+        // an identified bootstrap must NOT reuse the user id as the anonymous / device id: those
+        // survive reset() and would otherwise leak the prior user's id onto later users.
+        assertNotEquals("user-123", sut.getAnonymousId())
+        assertNotEquals("user-123", sut.getDeviceId())
 
         sut.close()
     }

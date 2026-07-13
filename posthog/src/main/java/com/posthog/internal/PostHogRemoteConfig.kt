@@ -72,8 +72,10 @@ public class PostHogRemoteConfig(
 
     // Immutable copies of the values supplied via config.bootstrap, retained for
     // $feature_flag_called enrichment even after loaded values overlay the served cache.
-    private val bootstrappedFlags: Map<String, Any> = config.bootstrap?.featureFlags ?: emptyMap()
-    private val bootstrappedPayloads: Map<String, Any?> = config.bootstrap?.featureFlagPayloads ?: emptyMap()
+    // Copied at construction so a caller mutating the map it passed in can't corrupt served
+    // state or throw ConcurrentModificationException out of a flag-read path.
+    private val bootstrappedFlags: Map<String, Any> = config.bootstrap?.featureFlags?.toMap() ?: emptyMap()
+    private val bootstrappedPayloads: Map<String, Any?> = config.bootstrap?.featureFlagPayloads?.toMap() ?: emptyMap()
 
     // Flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
@@ -90,7 +92,8 @@ public class PostHogRemoteConfig(
     // $used_bootstrap_value. Distinct from isFeatureFlagsLoaded, which also flips true on a
     // cache load and so would flag bootstrap as "not used" before any network response.
     @Volatile
-    private var flagsLoadedFromRemote: Boolean? = null
+    private var flagsLoadedFromRemote: Boolean =
+        config.cachePreferences?.getValue(FLAGS_LOADED_FROM_REMOTE) as? Boolean ?: false
 
     @Volatile
     private var sessionReplayFlagActive = false
@@ -1159,14 +1162,18 @@ public class PostHogRemoteConfig(
         }
     }
 
-    // Returns [flags] with the bootstrapped values as a base layer: existing/loaded entries win
-    // over bootstrapped ones for overlapping keys, bootstrapped-only keys are added. Returns the
-    // input untouched when no bootstrap flags were supplied, preserving null semantics.
-    private fun withBootstrapBase(flags: Map<String, Any>?): Map<String, Any>? =
-        if (bootstrappedFlags.isEmpty()) flags else bootstrappedFlags + (flags ?: emptyMap())
+    // Returns [overlay] with [base] as a base layer: overlay entries win over base ones for
+    // overlapping keys, base-only keys are added. Returns [overlay] untouched when [base] is empty,
+    // preserving null semantics. Map<String, out V> covariance lets one function serve both the
+    // non-null flag map (V=Any) and the nullable payload map (V=Any?).
+    private fun <V> withBase(
+        base: Map<String, V>,
+        overlay: Map<String, V>?,
+    ): Map<String, V>? = if (base.isEmpty()) overlay else base + (overlay ?: emptyMap())
 
-    private fun withBootstrapPayloadBase(payloads: Map<String, Any?>?): Map<String, Any?>? =
-        if (bootstrappedPayloads.isEmpty()) payloads else bootstrappedPayloads + (payloads ?: emptyMap())
+    private fun withBootstrapBase(flags: Map<String, Any>?): Map<String, Any>? = withBase(bootstrappedFlags, flags)
+
+    private fun withBootstrapPayloadBase(payloads: Map<String, Any?>?): Map<String, Any?>? = withBase(bootstrappedPayloads, payloads)
 
     private fun seedBootstrapFlagsIfNeeded() {
         if (bootstrappedFlags.isEmpty()) return
@@ -1198,21 +1205,19 @@ public class PostHogRemoteConfig(
      * Whether a `/flags` response has been received (persisted across launches). Drives
      * `$used_bootstrap_value`: bootstrapped values are "used" until this becomes true.
      */
-    public fun hasLoadedFeatureFlagsFromRemote(): Boolean {
-        synchronized(featureFlagsLock) {
-            if (flagsLoadedFromRemote == null) {
-                flagsLoadedFromRemote = config.cachePreferences?.getValue(FLAGS_LOADED_FROM_REMOTE) as? Boolean ?: false
-            }
-            return flagsLoadedFromRemote ?: false
-        }
-    }
+    public fun hasLoadedFeatureFlagsFromRemote(): Boolean = flagsLoadedFromRemote
 
     private fun setFlagsLoadedFromRemote() {
+        // Flip the in-memory flag under the same lock clear() uses to reset it, so a late /flags
+        // completion can't interleave with a concurrent reset() and leave torn state. Persist
+        // outside the lock, matching the cache-write pattern in executeFeatureFlags.
+        val shouldPersist: Boolean
         synchronized(featureFlagsLock) {
-            if (flagsLoadedFromRemote != true) {
-                flagsLoadedFromRemote = true
-                config.cachePreferences?.setValue(FLAGS_LOADED_FROM_REMOTE, true)
-            }
+            shouldPersist = !flagsLoadedFromRemote
+            flagsLoadedFromRemote = true
+        }
+        if (shouldPersist) {
+            config.cachePreferences?.setValue(FLAGS_LOADED_FROM_REMOTE, true)
         }
     }
 
@@ -1319,9 +1324,9 @@ public class PostHogRemoteConfig(
             sessionReplayFlagActive = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
-            // drop the in-memory cache so $used_bootstrap_value re-reads from the (now cleared)
-            // preference; the FLAGS_LOADED_FROM_REMOTE key is wiped by the reset() storage clear
-            flagsLoadedFromRemote = null
+            // reset $used_bootstrap_value; the FLAGS_LOADED_FROM_REMOTE key is wiped by the
+            // reset() storage clear that precedes this call
+            flagsLoadedFromRemote = false
             clearFlags()
         }
 
