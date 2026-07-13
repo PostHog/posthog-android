@@ -70,10 +70,8 @@ public class PostHogRemoteConfig(
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
-    // Immutable copies of the values supplied via config.bootstrap, retained for
-    // $feature_flag_called enrichment even after loaded values overlay the served cache.
-    // Copied at construction so a caller mutating the map it passed in can't corrupt served
-    // state or throw ConcurrentModificationException out of a flag-read path.
+    // Immutable copies of config.bootstrap's flags, kept for $feature_flag_called enrichment after
+    // loaded values overlay them. Copied so a caller mutating their map can't corrupt reads / CME.
     private val bootstrappedFlags: Map<String, Any> = config.bootstrap?.featureFlags?.toMap() ?: emptyMap()
     private val bootstrappedPayloads: Map<String, Any?> = config.bootstrap?.featureFlagPayloads?.toMap() ?: emptyMap()
 
@@ -692,7 +690,6 @@ public class PostHogRemoteConfig(
 
                             val newFeatureFlags =
                                 normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf()
-                            // bootstrap stays the base layer; loaded values overlay it
                             this.featureFlags = withBootstrapBase((this.featureFlags ?: mapOf()) + newFeatureFlags)
 
                             val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
@@ -711,8 +708,6 @@ public class PostHogRemoteConfig(
                         }
                     } else {
                         this.flags = normalizedResponse.flags
-                        // bootstrapped flags form the base layer; loaded values overlay them for
-                        // overlapping keys, while bootstrapped-only keys remain available
                         this.featureFlags = withBootstrapBase(normalizedResponse.featureFlags)
                         val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                         this.featureFlagPayloads = withBootstrapPayloadBase(normalizedPayloads)
@@ -891,7 +886,6 @@ public class PostHogRemoteConfig(
 
             synchronized(featureFlagsLock) {
                 this.flags = flags
-                // bootstrapped flags remain the base layer under any cached values
                 this.featureFlags = withBootstrapBase(featureFlags)
                 this.featureFlagPayloads = withBootstrapPayloadBase(payloads)
                 this.requestId = cachedRequestId
@@ -1162,18 +1156,14 @@ public class PostHogRemoteConfig(
         }
     }
 
-    // Returns [overlay] with [base] as a base layer: overlay entries win over base ones for
-    // overlapping keys, base-only keys are added. Returns [overlay] untouched when [base] is empty,
-    // preserving null semantics. Map<String, out V> covariance lets one function serve both the
-    // non-null flag map (V=Any) and the nullable payload map (V=Any?).
-    private fun <V> withBase(
-        base: Map<String, V>,
-        overlay: Map<String, V>?,
-    ): Map<String, V>? = if (base.isEmpty()) overlay else base + (overlay ?: emptyMap())
+    // Overlays the served flags onto the bootstrapped base: loaded/cached entries win on key
+    // collisions, bootstrapped-only keys survive. Returns the input untouched (preserving null)
+    // when no bootstrap flags were supplied.
+    private fun withBootstrapBase(flags: Map<String, Any>?): Map<String, Any>? =
+        if (bootstrappedFlags.isEmpty()) flags else bootstrappedFlags + (flags ?: emptyMap())
 
-    private fun withBootstrapBase(flags: Map<String, Any>?): Map<String, Any>? = withBase(bootstrappedFlags, flags)
-
-    private fun withBootstrapPayloadBase(payloads: Map<String, Any?>?): Map<String, Any?>? = withBase(bootstrappedPayloads, payloads)
+    private fun withBootstrapPayloadBase(payloads: Map<String, Any?>?): Map<String, Any?>? =
+        if (bootstrappedPayloads.isEmpty()) payloads else bootstrappedPayloads + (payloads ?: emptyMap())
 
     private fun seedBootstrapFlagsIfNeeded() {
         if (bootstrappedFlags.isEmpty()) return

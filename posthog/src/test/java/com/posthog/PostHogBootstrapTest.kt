@@ -128,8 +128,7 @@ internal class PostHogBootstrapTest {
 
     @Test
     fun `blank bootstrap distinct id is a no-op`() {
-        val prefs = PostHogMemoryPreferences()
-        val sut = getSut(bootstrap = PostHogBootstrap(distinctId = "   "), cachePreferences = prefs)
+        val sut = getSut(bootstrap = PostHogBootstrap(distinctId = "   "))
 
         // a normal generated anonymous id is used, not the blank bootstrap value
         assertTrue(sut.getAnonymousId().isNotBlank())
@@ -140,8 +139,7 @@ internal class PostHogBootstrapTest {
 
     @Test
     fun `no bootstrap leaves identity untouched`() {
-        val prefs = PostHogMemoryPreferences()
-        val sut = getSut(bootstrap = null, cachePreferences = prefs)
+        val sut = getSut(bootstrap = null)
 
         // a generated anonymous id, and distinct id falls back to it
         val anonymousId = sut.getAnonymousId()

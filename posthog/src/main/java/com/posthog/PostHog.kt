@@ -360,11 +360,9 @@ public class PostHog private constructor(
     }
 
     /**
-     * Seeds the bootstrap distinct id on the very first launch, before the first anonymous id
-     * is generated. Skipped when identity is already persisted (an existing anonymous id, a
-     * persisted distinct id, or an already-identified user) so a returning user is never
-     * silently reassigned. When [PostHogBootstrap.isIdentifiedId] is true the value is treated
-     * as an already-identified distinct id; otherwise it becomes the anonymous id.
+     * Seeds the bootstrap distinct id on first launch only. Skipped once any identity is persisted
+     * so a returning user is never reassigned. Per [PostHogBootstrap.isIdentifiedId]: true seeds an
+     * identified distinct id, false seeds the anonymous id.
      */
     private fun applyBootstrapIfNeeded(config: PostHogConfig) {
         val bootstrap = config.bootstrap ?: return
@@ -1514,7 +1512,6 @@ public class PostHog private constructor(
                         props["\$feature_flag_version"] = it.metadata.version
                         props["\$feature_flag_reason"] = it.reason?.description ?: ""
                     }
-                    // Enrich with bootstrap context when this flag was bootstrapped.
                     val bootstrappedResponse = it.getBootstrappedFeatureFlag(key)
                     if (bootstrappedResponse != null) {
                         props["\$feature_flag_bootstrapped_response"] = bootstrappedResponse
