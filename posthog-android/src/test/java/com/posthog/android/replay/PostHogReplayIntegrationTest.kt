@@ -339,6 +339,7 @@ internal class PostHogReplayIntegrationTest {
 
         val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
         sut.install(mock<PostHogInterface>())
+        awaitReplayExecutors()
 
         assertEquals(0, replayQueue.bufferDepth)
 
@@ -408,6 +409,7 @@ internal class PostHogReplayIntegrationTest {
         PostHogSessionManager.setSessionId(secondSessionId)
         whenever(postHog.getSessionId()).thenReturn(secondSessionId)
         sut.onSessionIdChanged()
+        awaitReplayExecutors()
 
         assertEquals(0, replayQueue.bufferDepth)
 
@@ -530,6 +532,7 @@ internal class PostHogReplayIntegrationTest {
 
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -560,6 +563,7 @@ internal class PostHogReplayIntegrationTest {
 
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             // The pre-existing persisted events survive — clearBuffer() only drops the buffer.
@@ -780,6 +784,7 @@ internal class PostHogReplayIntegrationTest {
             // discarded, not migrated to the persisted (and sent) queue.
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -834,6 +839,7 @@ internal class PostHogReplayIntegrationTest {
             // First config fetch failed and the cached flag is off: drop the buffer and stop.
             fx.sut.onRemoteConfig(loaded = false)
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -867,6 +873,7 @@ internal class PostHogReplayIntegrationTest {
             // the fallback must respect sampling and drop + stop, not migrate.
             fx.sut.onRemoteConfig(loaded = false)
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -1262,6 +1269,7 @@ internal class PostHogReplayIntegrationTest {
 
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
