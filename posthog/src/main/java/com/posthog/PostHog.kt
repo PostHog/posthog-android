@@ -254,6 +254,8 @@ public class PostHog private constructor(
 
                 legacyPreferences(config, config.serializer)
 
+                applyBootstrapIfNeeded(config)
+
                 super.enabled = true
 
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
@@ -354,6 +356,41 @@ public class PostHog private constructor(
             } catch (e: Throwable) {
                 config.logger.log("Legacy cached prefs: $cachedPrefs failed to parse: $e.")
             }
+        }
+    }
+
+    /**
+     * Seeds the bootstrap distinct id on the very first launch, before the first anonymous id
+     * is generated. Skipped when identity is already persisted (an existing anonymous id, a
+     * persisted distinct id, or an already-identified user) so a returning user is never
+     * silently reassigned. When [PostHogBootstrap.isIdentifiedId] is true the value is treated
+     * as an already-identified distinct id; otherwise it becomes the anonymous id.
+     */
+    private fun applyBootstrapIfNeeded(config: PostHogConfig) {
+        val bootstrap = config.bootstrap ?: return
+        val bootstrapId = bootstrap.distinctId
+        if (bootstrapId.isNullOrBlank()) {
+            return
+        }
+
+        val preferences = getPreferences()
+        // Persisted identity wins — never overwrite an existing anonymous id, and never
+        // re-link traffic across a previous anon→identified merge.
+        val persistedAnonymousId = preferences.getValue(ANONYMOUS_ID) as? String
+        val persistedDistinctId = preferences.getValue(DISTINCT_ID) as? String
+        val alreadyIdentified = preferences.getValue(IS_IDENTIFIED) as? Boolean == true
+
+        if (!persistedAnonymousId.isNullOrBlank() ||
+            !persistedDistinctId.isNullOrBlank() ||
+            alreadyIdentified
+        ) {
+            return
+        }
+
+        this.anonymousId = bootstrapId
+        if (bootstrap.isIdentifiedId) {
+            this.distinctId = bootstrapId
+            this.isIdentified = true
         }
     }
 
@@ -1466,6 +1503,15 @@ public class PostHog private constructor(
                         props["\$feature_flag_id"] = it.metadata.id
                         props["\$feature_flag_version"] = it.metadata.version
                         props["\$feature_flag_reason"] = it.reason?.description ?: ""
+                    }
+                    // Enrich with bootstrap context when this flag was bootstrapped.
+                    val bootstrappedResponse = it.getBootstrappedFeatureFlag(key)
+                    if (bootstrappedResponse != null) {
+                        props["\$feature_flag_bootstrapped_response"] = bootstrappedResponse
+                        it.getBootstrappedFeatureFlagPayload(key)?.let { payload ->
+                            props["\$feature_flag_bootstrapped_payload"] = payload
+                        }
+                        props["\$used_bootstrap_value"] = !it.hasLoadedFeatureFlagsFromRemote()
                     }
                     capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
                 }

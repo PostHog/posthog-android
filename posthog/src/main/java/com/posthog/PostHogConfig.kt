@@ -308,6 +308,14 @@ public open class PostHogConfig(
      *   posthog-cli exp proguard upload --path "app/build/outputs/mapping/release/mapping.txt" --map-id "com.posthog.mobile@1.0.0+1"
      */
     public var releaseIdentifier: String? = null,
+    /**
+     * Optional bootstrap configuration that seeds identity and feature-flag state before any
+     * network request completes. Applied only on the very first launch when nothing has been
+     * persisted yet; see [PostHogBootstrap] for the precedence rules.
+     *
+     * Defaults to null (no bootstrap).
+     */
+    public var bootstrap: PostHogBootstrap? = null,
 ) {
     @Volatile
     private var tracingHeadersList: List<String>? = null

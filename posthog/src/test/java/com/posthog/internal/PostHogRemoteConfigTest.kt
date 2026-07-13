@@ -1,6 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.API_KEY
+import com.posthog.PostHogBootstrap
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
@@ -35,11 +36,13 @@ internal class PostHogRemoteConfigTest {
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
         surveys: Boolean = false,
+        bootstrap: PostHogBootstrap? = null,
     ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
                 this.networkStatus = networkStatus
                 this.surveys = surveys
+                this.bootstrap = bootstrap
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
@@ -2067,6 +2070,119 @@ internal class PostHogRemoteConfigTest {
         val sut = getSut(host = url.toString())
 
         assertEquals(triggers.toSet(), sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `serves bootstrapped flags and payloads before the first flags response`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrap(
+                        featureFlags = mapOf("beta-ui" to "variant-a"),
+                        featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
+                    ),
+            )
+
+        assertEquals("variant-a", sut.getFeatureFlag("beta-ui"))
+        assertEquals(mapOf("color" to "blue"), sut.getFeatureFlagPayload("beta-ui"))
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `loaded flags override bootstrapped flags`() {
+        // fixture returns featureFlags {"4535-funnel-bar-viz": true}
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrap(featureFlags = mapOf("4535-funnel-bar-viz" to false)),
+            )
+
+        // before load, the bootstrapped value is served
+        assertEquals(false, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // the freshly loaded value wins
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `bootstrapped-only keys survive a flags load`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrap(
+                        featureFlags = mapOf("4535-funnel-bar-viz" to false, "legacy" to true),
+                    ),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // loaded value wins for the overlapping key, the bootstrapped-only key survives
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertEquals(true, sut.getFeatureFlag("legacy"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `retains bootstrapped values for reporting after a load overrides them`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrap(
+                        featureFlags = mapOf("4535-funnel-bar-viz" to false),
+                        featureFlagPayloads = mapOf("4535-funnel-bar-viz" to mapOf("k" to "v")),
+                    ),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // served value is the loaded one, but the retained bootstrap copy is unchanged
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertEquals(false, sut.getBootstrappedFeatureFlag("4535-funnel-bar-viz"))
+        assertEquals(mapOf("k" to "v"), sut.getBootstrappedFeatureFlagPayload("4535-funnel-bar-viz"))
+        assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
 
         sut.clear()
         http.shutdown()
