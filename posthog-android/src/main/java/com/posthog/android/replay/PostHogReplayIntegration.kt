@@ -561,6 +561,10 @@ public class PostHogReplayIntegration(
                     // fields that are otherwise only touched here, and a
                     // stale queued capture must not emit after the episode.
                     if (!isStillValid()) {
+                        // The contract promises onResult for every scheduled
+                        // capture; a silent self-drop would leave the caller's
+                        // in-flight tracking latched forever.
+                        onResult(false)
                         return@submit
                     }
                     if (forceFullSnapshot) {
