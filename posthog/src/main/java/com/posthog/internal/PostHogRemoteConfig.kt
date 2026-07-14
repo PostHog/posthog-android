@@ -72,8 +72,13 @@ public class PostHogRemoteConfig(
 
     // Immutable copies of config.bootstrap's flags, kept for $feature_flag_called enrichment after
     // loaded values overlay them. Copied so a caller mutating their map can't corrupt reads / CME.
-    private val bootstrappedFlags: Map<String, Any> = config.bootstrap?.featureFlags?.toMap() ?: emptyMap()
-    private val bootstrappedPayloads: Map<String, Any?> = config.bootstrap?.featureFlagPayloads?.toMap() ?: emptyMap()
+    // Dropped to empty on clear() — bootstrap is first-session only and must not re-seed a new
+    // identity (see clear()). @Volatile so the swap is visible to unlocked enrichment reads.
+    @Volatile
+    private var bootstrappedFlags: Map<String, Any> = config.bootstrap?.featureFlags?.toMap() ?: emptyMap()
+
+    @Volatile
+    private var bootstrappedPayloads: Map<String, Any?> = config.bootstrap?.featureFlagPayloads?.toMap() ?: emptyMap()
 
     // Flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
@@ -1314,9 +1319,13 @@ public class PostHogRemoteConfig(
             sessionReplayFlagActive = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
-            // reset $used_bootstrap_value; the FLAGS_LOADED_FROM_REMOTE key is wiped by the
-            // reset() storage clear that precedes this call
+            // Bootstrap is first-session only: drop the retained base layer and the "loaded from
+            // remote" signal so a later identity is never served the previous user's bootstrapped
+            // values and $used_bootstrap_value reports true again until its own /flags response.
+            bootstrappedFlags = emptyMap()
+            bootstrappedPayloads = emptyMap()
             flagsLoadedFromRemote = false
+            config.cachePreferences?.remove(FLAGS_LOADED_FROM_REMOTE)
             clearFlags()
         }
 

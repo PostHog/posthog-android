@@ -2271,4 +2271,49 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
         http.shutdown()
     }
+
+    @Test
+    fun `bootstrapped flags are not resurrected after clear`() {
+        // fixture returns featureFlags {"4535-funnel-bar-viz": true}, not the bootstrapped key
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        http.enqueue(MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrap(featureFlags = mapOf("legacy" to true)),
+            )
+
+        val firstLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "user-1",
+            anonymousId = "anon-1",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+        )
+        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
+        // bootstrapped-only key is served as the base layer alongside the loaded flags
+        assertEquals(true, sut.getFeatureFlag("legacy"))
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+
+        // reset() calls clear(): bootstrap is first-session only, so the base layer is dropped
+        sut.clear()
+        assertNull(sut.getBootstrappedFeatureFlag("legacy"))
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        val secondLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "user-2",
+            anonymousId = "anon-2",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+        )
+        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
+
+        // the new user is never served the previous user's bootstrapped-only key
+        assertNull(sut.getFeatureFlag("legacy"))
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+
+        sut.clear()
+        http.shutdown()
+    }
 }
