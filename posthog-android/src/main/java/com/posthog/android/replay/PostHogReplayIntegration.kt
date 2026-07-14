@@ -555,6 +555,15 @@ public class PostHogReplayIntegration(
                 return false
             }
             executor.submit {
+                // A throwing onResult would land in the catch below and fire a
+                // second time — report exactly once per scheduled capture.
+                var resultReported = false
+
+                fun report(delivered: Boolean) {
+                    if (resultReported) return
+                    resultReported = true
+                    onResult(delivered)
+                }
                 try {
                     // Validity and the first-of-episode reset both happen on
                     // the capture thread: the reset mutates snapshot status
@@ -564,7 +573,7 @@ public class PostHogReplayIntegration(
                         // The contract promises onResult for every scheduled
                         // capture; a silent self-drop would leave the caller's
                         // in-flight tracking latched forever.
-                        onResult(false)
+                        report(false)
                         return@submit
                     }
                     if (forceFullSnapshot) {
@@ -578,10 +587,10 @@ public class PostHogReplayIntegration(
                     if (!delivered) {
                         config.logger.log("Session Replay bridge capture produced no frame (will retry next tick).")
                     }
-                    onResult(delivered)
+                    report(delivered)
                 } catch (e: Throwable) {
                     config.logger.log("Session Replay bridge capture failed: $e.")
-                    onResult(false)
+                    report(false)
                 }
             }
             return true
