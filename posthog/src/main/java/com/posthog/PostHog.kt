@@ -321,6 +321,10 @@ public class PostHog private constructor(
                 config.logger.log("Setup failed: $e.")
             }
         }
+
+        // After the setup lock is released: reconcile a differing identified bootstrap against the
+        // existing local identity. This may call identify(), which captures an event and reloads flags.
+        reconcileBootstrapIdentityIfNeeded()
     }
 
     private fun notifyIntegrationsRemoteConfig(config: PostHogConfig) {
@@ -399,6 +403,39 @@ public class PostHog private constructor(
             }
         } catch (e: Throwable) {
             config.logger.log("Applying bootstrap identity failed: $e.")
+        }
+    }
+
+    /**
+     * Reconciles a differing identified bootstrap against the existing local identity. A fresh
+     * install is already seeded by [applyBootstrapIfNeeded]; this only runs when the bootstrapped
+     * id differs from the current distinct id: an existing anonymous user is merged into the
+     * identified id via [identify], while a different already-identified user is preserved with a
+     * warning. Must run after setup completes — [identify] requires the SDK enabled and captures an
+     * `$identify` event.
+     */
+    private fun reconcileBootstrapIdentityIfNeeded() {
+        val bootstrap = config?.bootstrap ?: return
+        if (!bootstrap.isIdentifiedId) {
+            return
+        }
+        val bootstrapId = bootstrap.distinctId
+        if (bootstrapId.isNullOrBlank() || !isEnabled()) {
+            return
+        }
+        if (distinctId == bootstrapId) {
+            // Fresh install already seeded this id, or the local user already is this identity.
+            return
+        }
+
+        if (isIdentified) {
+            config?.logger?.log(
+                "Bootstrap distinctId differs from an already-identified user. The existing identity " +
+                    "is preserved. Call reset() before reinitializing to switch users.",
+            )
+        } else {
+            // Existing anonymous user — merge it into the identified bootstrap id.
+            identify(bootstrapId)
         }
     }
 

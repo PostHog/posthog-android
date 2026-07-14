@@ -39,6 +39,7 @@ internal class PostHogBootstrapTest {
         sendFeatureFlagEvent: Boolean = true,
         flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
+        logger: TestLogger? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -51,6 +52,9 @@ internal class PostHogBootstrapTest {
                 // keep setup on the single /flags path instead of the /config + /flags path
                 this.remoteConfig = false
                 this.bootstrap = bootstrap
+                if (logger != null) {
+                    this.logger = logger
+                }
             }
         return PostHog.withInternal(
             config,
@@ -111,19 +115,50 @@ internal class PostHogBootstrapTest {
     }
 
     @Test
-    fun `bootstrapped identity does not overwrite an identified user`() {
+    fun `identified bootstrap preserves a different identified user and warns`() {
         val prefs = PostHogMemoryPreferences()
         prefs.setValue(DISTINCT_ID, "user-existing")
         prefs.setValue(IS_IDENTIFIED, true)
+        val logger = TestLogger()
         val sut =
             getSut(
                 bootstrap = PostHogBootstrap(distinctId = "user-123", isIdentifiedId = true),
                 cachePreferences = prefs,
+                logger = logger,
             )
 
+        // reconciliation preserves the existing identity and warns instead of switching users
         assertEquals("user-existing", sut.distinctId())
+        assertTrue(logger.messages.any { it.contains("existing identity is preserved") })
 
         sut.close()
+    }
+
+    @Test
+    fun `identified bootstrap merges an existing anonymous user`() {
+        val http = mockHttp()
+        val prefs = PostHogMemoryPreferences()
+        prefs.setValue(ANONYMOUS_ID, "anon-abc")
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrap(distinctId = "user-123", isIdentifiedId = true),
+                cachePreferences = prefs,
+                reloadFeatureFlags = false,
+            )
+
+        // reconciliation identifies user-123, merging the existing anonymous user into it
+        assertEquals("user-123", sut.distinctId())
+        assertEquals("anon-abc", sut.getAnonymousId())
+
+        queueExecutor.shutdownAndAwaitTermination()
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())!!
+        val identify = batch.batch.first { it.event == "\$identify" }
+        assertEquals("user-123", identify.distinctId)
+        assertEquals("anon-abc", identify.properties?.get("\$anon_distinct_id"))
+
+        sut.close()
+        http.shutdown()
     }
 
     @Test
