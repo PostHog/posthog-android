@@ -311,14 +311,14 @@ public open class PostHogConfig(
     /**
      * Optional bootstrap configuration that seeds identity and feature-flag state before any
      * network request completes. Applied only on the very first launch when nothing has been
-     * persisted yet; see [PostHogBootstrap] for the precedence rules.
+     * persisted yet; see [PostHogBootstrapConfig] for the precedence rules.
      *
      * Must be set before [PostHog.setup]; it is read once during setup, so mutating it afterward
      * has no effect.
      *
      * Defaults to null (no bootstrap).
      */
-    public var bootstrap: PostHogBootstrap? = null,
+    public var bootstrap: PostHogBootstrapConfig? = null,
 ) {
     @Volatile
     private var tracingHeadersList: List<String>? = null

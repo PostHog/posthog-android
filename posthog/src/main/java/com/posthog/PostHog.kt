@@ -366,8 +366,7 @@ public class PostHog private constructor(
 
     /**
      * Seeds the bootstrap distinct id on first launch only. Skipped once any identity is persisted
-     * so a returning user is never reassigned. Per [PostHogBootstrap.isIdentifiedId]: true seeds an
-     * identified distinct id, false seeds the anonymous id.
+     * so a returning user is never reassigned.
      */
     private fun applyBootstrapIfNeeded(config: PostHogConfig) {
         val bootstrap = config.bootstrap ?: return
@@ -409,9 +408,8 @@ public class PostHog private constructor(
 
     /**
      * Reconciles a differing identified bootstrap against the local identity — fresh installs are
-     * already seeded by [applyBootstrapIfNeeded]. Merges an existing anonymous user via [identify];
-     * preserves a different identified user with a warning. Must run after setup — [identify] needs
-     * the SDK enabled and captures an event.
+     * already seeded by [applyBootstrapIfNeeded]. Must run after setup: [identify] needs the SDK
+     * enabled and captures an event.
      */
     private fun reconcileBootstrapIdentityIfNeeded(config: PostHogConfig) {
         val bootstrap = config.bootstrap ?: return

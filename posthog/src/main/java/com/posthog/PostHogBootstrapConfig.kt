@@ -18,7 +18,7 @@ package com.posthog
  * logged. Bootstrapped feature flags form a base layer only: values from `/flags` overlay them
  * for overlapping keys, while bootstrapped-only keys remain available.
  */
-public class PostHogBootstrap
+public class PostHogBootstrapConfig
     @JvmOverloads
     constructor(
         /**
@@ -26,9 +26,8 @@ public class PostHogBootstrap
          *
          * When [isIdentifiedId] is `false` (the default) this becomes the anonymous id — the
          * `$distinct_id` on pre-identify events. When `true` it is treated as an
-         * already-identified user's distinct id: on a fresh install the SDK marks the user
-         * identified, and if a local anonymous user already exists it is merged into this id
-         * via `identify()`.
+         * already-identified user's distinct id. See the class documentation for how each mode is
+         * applied.
          */
         public val distinctId: String? = null,
         /**
@@ -42,6 +41,8 @@ public class PostHogBootstrap
         /**
          * Feature flag values served until the first `/flags` response arrives, keyed by flag
          * key. Each value is a [Boolean] for boolean flags or a [String] for multivariate flags.
+         * Values must be JSON-serializable; any non-serializable entry (e.g. NaN) is dropped with
+         * a logged warning rather than surfaced.
          */
         public val featureFlags: Map<String, Any>? = null,
         /**

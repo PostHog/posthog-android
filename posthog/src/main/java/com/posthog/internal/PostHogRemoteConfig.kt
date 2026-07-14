@@ -70,15 +70,14 @@ public class PostHogRemoteConfig(
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
-    // Immutable copies of config.bootstrap's flags, kept for $feature_flag_called enrichment after
-    // loaded values overlay them. Copied so a caller mutating their map can't corrupt reads / CME.
-    // Dropped to empty on clear() — bootstrap is first-session only and must not re-seed a new
-    // identity (see clear()). @Volatile so the swap is visible to unlocked enrichment reads.
+    // JSON-sanitized, immutable copies of config.bootstrap's flags, kept for $feature_flag_called
+    // enrichment. Sanitized so a non-serializable host value can't fail the whole flags-cache write;
+    // copied to avoid CME. @Volatile so the clear()-time swap to empty is visible to unlocked reads.
     @Volatile
-    private var bootstrappedFlags: Map<String, Any> = config.bootstrap?.featureFlags?.toMap() ?: emptyMap()
+    private var bootstrappedFlags: Map<String, Any> = sanitizeBootstrapValues(config.bootstrap?.featureFlags)
 
     @Volatile
-    private var bootstrappedPayloads: Map<String, Any?> = config.bootstrap?.featureFlagPayloads?.toMap() ?: emptyMap()
+    private var bootstrappedPayloads: Map<String, Any?> = sanitizeBootstrapValues(config.bootstrap?.featureFlagPayloads)
 
     // Flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
@@ -284,10 +283,9 @@ public class PostHogRemoteConfig(
                                 // because remote config API returned hasFeatureFlags=false
                                 isFeatureFlagsLoaded = true
                                 clearFlags()
-                                // bootstrapped flags are a caller-provided base layer, not server
-                                // state; re-seed them so they stay available until a real /flags
-                                // response overlays them. hasFeatureFlags comes from /config, not
-                                // /flags, so $used_bootstrap_value stays true here.
+                                // Bootstrapped flags are a caller-provided base layer, not server
+                                // state, so re-seed them after the clear. hasFeatureFlags comes from
+                                // /config, not /flags, so $used_bootstrap_value stays true here.
                                 seedBootstrapFlagsLocked()
                             }
 
@@ -742,7 +740,6 @@ public class PostHogRemoteConfig(
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
                 }
                 isFeatureFlagsLoaded = true
-                // A real /flags response arrived; bootstrapped values are no longer "used".
                 setFlagsLoadedFromRemote()
 
                 if (notifyRemoteConfigLoaded) {
@@ -1161,14 +1158,36 @@ public class PostHogRemoteConfig(
         }
     }
 
+    // Drops host-provided bootstrap entries Gson can't serialize (NaN/Infinity, non-JSON objects),
+    // matching posthog-js/-ios. Without this a single bad value fails the entire FEATURE_FLAGS cache
+    // write (serializeObject serializes via Any and throws), losing the whole first session's cache.
+    // Runs from a property initializer, so it is fully self-guarded: any unexpected failure (a throwing
+    // host logger, a concurrently-mutated input map) degrades to empty rather than aborting setup().
+    private fun <V> sanitizeBootstrapValues(values: Map<String, V>?): Map<String, V> {
+        if (values.isNullOrEmpty()) return emptyMap()
+        return try {
+            values.filter { (key, value) ->
+                try {
+                    config.serializer.gson.toJsonTree(value)
+                    true
+                } catch (e: Throwable) {
+                    config.logger.log("Bootstrapped value for '$key' ('$value') isn't JSON-serializable; dropping it.")
+                    false
+                }
+            }
+        } catch (e: Throwable) {
+            emptyMap()
+        }
+    }
+
     // Overlays the served flags onto the bootstrapped base: loaded/cached entries win on key
     // collisions, bootstrapped-only keys survive. Returns the input untouched (preserving null)
     // when no bootstrap flags were supplied.
     private fun withBootstrapBase(flags: Map<String, Any>?): Map<String, Any>? =
-        if (bootstrappedFlags.isEmpty()) flags else bootstrappedFlags + (flags ?: emptyMap())
+        if (bootstrappedFlags.isEmpty()) flags else bootstrappedFlags + flags.orEmpty()
 
     private fun withBootstrapPayloadBase(payloads: Map<String, Any?>?): Map<String, Any?>? =
-        if (bootstrappedPayloads.isEmpty()) payloads else bootstrappedPayloads + (payloads ?: emptyMap())
+        if (bootstrappedPayloads.isEmpty()) payloads else bootstrappedPayloads + payloads.orEmpty()
 
     private fun seedBootstrapFlagsIfNeeded() {
         if (bootstrappedFlags.isEmpty()) return

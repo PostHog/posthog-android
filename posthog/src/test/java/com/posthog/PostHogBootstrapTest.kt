@@ -33,7 +33,7 @@ internal class PostHogBootstrapTest {
     @Suppress("DEPRECATION")
     private fun getSut(
         host: String = PostHogConfig.DEFAULT_HOST,
-        bootstrap: PostHogBootstrap? = null,
+        bootstrap: PostHogBootstrapConfig? = null,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         preloadFeatureFlags: Boolean = false,
         reloadFeatureFlags: Boolean = true,
@@ -41,6 +41,7 @@ internal class PostHogBootstrapTest {
         flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         logger: TestLogger? = null,
+        optOut: Boolean = false,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -53,6 +54,7 @@ internal class PostHogBootstrapTest {
                 // keep setup on the single /flags path instead of the /config + /flags path
                 this.remoteConfig = false
                 this.bootstrap = bootstrap
+                this.optOut = optOut
                 if (logger != null) {
                     this.logger = logger
                 }
@@ -75,7 +77,7 @@ internal class PostHogBootstrapTest {
     @Test
     fun `bootstrapped anonymous identity seeds a fresh install`() {
         val prefs = PostHogMemoryPreferences()
-        val sut = getSut(bootstrap = PostHogBootstrap(distinctId = "anon-abc"), cachePreferences = prefs)
+        val sut = getSut(bootstrap = PostHogBootstrapConfig(distinctId = "anon-abc"), cachePreferences = prefs)
 
         assertEquals("anon-abc", sut.getAnonymousId())
         assertEquals("anon-abc", sut.distinctId())
@@ -89,7 +91,7 @@ internal class PostHogBootstrapTest {
         val prefs = PostHogMemoryPreferences()
         val sut =
             getSut(
-                bootstrap = PostHogBootstrap(distinctId = "user-123", isIdentifiedId = true),
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123", isIdentifiedId = true),
                 cachePreferences = prefs,
             )
 
@@ -107,7 +109,7 @@ internal class PostHogBootstrapTest {
     fun `bootstrapped identity does not overwrite a persisted anonymous id`() {
         val prefs = PostHogMemoryPreferences()
         prefs.setValue(ANONYMOUS_ID, "existing-anon")
-        val sut = getSut(bootstrap = PostHogBootstrap(distinctId = "user-123"), cachePreferences = prefs)
+        val sut = getSut(bootstrap = PostHogBootstrapConfig(distinctId = "user-123"), cachePreferences = prefs)
 
         assertEquals("existing-anon", sut.getAnonymousId())
         assertEquals("existing-anon", sut.distinctId())
@@ -123,7 +125,7 @@ internal class PostHogBootstrapTest {
         val logger = TestLogger()
         val sut =
             getSut(
-                bootstrap = PostHogBootstrap(distinctId = "user-123", isIdentifiedId = true),
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123", isIdentifiedId = true),
                 cachePreferences = prefs,
                 logger = logger,
             )
@@ -142,7 +144,7 @@ internal class PostHogBootstrapTest {
         val logger = TestLogger()
         val sut =
             getSut(
-                bootstrap = PostHogBootstrap(distinctId = "user-123", isIdentifiedId = true),
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123", isIdentifiedId = true),
                 cachePreferences = prefs,
                 logger = logger,
             )
@@ -162,7 +164,7 @@ internal class PostHogBootstrapTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrap(distinctId = "user-123", isIdentifiedId = true),
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123", isIdentifiedId = true),
                 cachePreferences = prefs,
                 reloadFeatureFlags = false,
             )
@@ -180,8 +182,32 @@ internal class PostHogBootstrapTest {
     }
 
     @Test
+    fun `opted-out identified bootstrap still merges locally, matching posthog-js`() {
+        val http = mockHttp()
+        val prefs = PostHogMemoryPreferences()
+        prefs.setValue(ANONYMOUS_ID, "anon-abc")
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123", isIdentifiedId = true),
+                cachePreferences = prefs,
+                reloadFeatureFlags = false,
+                optOut = true,
+            )
+
+        // Opt-out suppresses event sending, not local identity: the merge still updates identity
+        // (matching posthog-js); only the $identify event is dropped by the opt-out capture guard.
+        assertEquals("user-123", sut.distinctId())
+        assertEquals("anon-abc", sut.getAnonymousId())
+        assertEquals(true, prefs.getValue(IS_IDENTIFIED))
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `blank bootstrap distinct id is a no-op`() {
-        val sut = getSut(bootstrap = PostHogBootstrap(distinctId = "   "))
+        val sut = getSut(bootstrap = PostHogBootstrapConfig(distinctId = "   "))
 
         // a normal generated anonymous id is used, not the blank bootstrap value
         assertTrue(sut.getAnonymousId().isNotBlank())
@@ -209,7 +235,7 @@ internal class PostHogBootstrapTest {
             getSut(
                 host = http.url("/").toString(),
                 bootstrap =
-                    PostHogBootstrap(
+                    PostHogBootstrapConfig(
                         featureFlags = mapOf("beta-ui" to true),
                         featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
                     ),
@@ -240,7 +266,7 @@ internal class PostHogBootstrapTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrap(featureFlags = mapOf("4535-funnel-bar-viz" to false)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to false)),
             )
 
         sut.reloadFeatureFlags()

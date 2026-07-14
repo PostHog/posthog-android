@@ -1,7 +1,7 @@
 package com.posthog.internal
 
 import com.posthog.API_KEY
-import com.posthog.PostHogBootstrap
+import com.posthog.PostHogBootstrapConfig
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
@@ -38,7 +38,7 @@ internal class PostHogRemoteConfigTest {
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
         surveys: Boolean = false,
-        bootstrap: PostHogBootstrap? = null,
+        bootstrap: PostHogBootstrapConfig? = null,
     ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -2084,7 +2084,7 @@ internal class PostHogRemoteConfigTest {
             getSut(
                 host = http.url("/").toString(),
                 bootstrap =
-                    PostHogBootstrap(
+                    PostHogBootstrapConfig(
                         featureFlags = mapOf("beta-ui" to "variant-a"),
                         featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
                     ),
@@ -2105,7 +2105,7 @@ internal class PostHogRemoteConfigTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrap(featureFlags = mapOf("4535-funnel-bar-viz" to false)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to false)),
             )
 
         // before load, the bootstrapped value is served
@@ -2136,7 +2136,7 @@ internal class PostHogRemoteConfigTest {
             getSut(
                 host = http.url("/").toString(),
                 bootstrap =
-                    PostHogBootstrap(
+                    PostHogBootstrapConfig(
                         featureFlags = mapOf("4535-funnel-bar-viz" to false, "legacy" to true),
                     ),
             )
@@ -2165,7 +2165,7 @@ internal class PostHogRemoteConfigTest {
             getSut(
                 host = http.url("/").toString(),
                 bootstrap =
-                    PostHogBootstrap(
+                    PostHogBootstrapConfig(
                         featureFlags = mapOf("4535-funnel-bar-viz" to false),
                         featureFlagPayloads = mapOf("4535-funnel-bar-viz" to mapOf("k" to "v")),
                     ),
@@ -2199,7 +2199,7 @@ internal class PostHogRemoteConfigTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrap(featureFlags = mapOf("beta-ui" to true)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
             )
 
         val latch = CountDownLatch(1)
@@ -2230,7 +2230,7 @@ internal class PostHogRemoteConfigTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrap(featureFlags = mapOf("beta-ui" to true, "legacy" to true)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true, "legacy" to true)),
             )
 
         // cached value wins over bootstrap for the overlapping key; bootstrapped-only key still serves
@@ -2251,7 +2251,7 @@ internal class PostHogRemoteConfigTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrap(featureFlags = mapOf("legacy" to true)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("legacy" to true)),
             )
 
         val latch = CountDownLatch(1)
@@ -2280,7 +2280,7 @@ internal class PostHogRemoteConfigTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrap(featureFlags = mapOf("legacy" to true)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("legacy" to true)),
             )
 
         val firstLatch = CountDownLatch(1)
@@ -2312,6 +2312,32 @@ internal class PostHogRemoteConfigTest {
         // the new user is never served the previous user's bootstrapped-only key
         assertNull(sut.getFeatureFlag("legacy"))
         assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `drops non-serializable bootstrapped values and keeps valid ones`() {
+        // A non-serializable host value (NaN/Infinity) would otherwise fail the whole FEATURE_FLAGS
+        // cache write; it is dropped at construction while valid entries stay served.
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("good" to true, "bad" to Double.NaN),
+                        featureFlagPayloads =
+                            mapOf("good" to mapOf("k" to "v"), "bad" to mapOf("n" to Double.POSITIVE_INFINITY)),
+                    ),
+            )
+
+        assertEquals(true, sut.getFeatureFlag("good"))
+        assertEquals(mapOf("k" to "v"), sut.getFeatureFlagPayload("good"))
+        assertNull(sut.getFeatureFlag("bad"))
+        assertNull(sut.getBootstrappedFeatureFlag("bad"))
+        assertNull(sut.getBootstrappedFeatureFlagPayload("bad"))
 
         sut.clear()
         http.shutdown()
