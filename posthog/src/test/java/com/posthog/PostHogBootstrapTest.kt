@@ -15,6 +15,7 @@ import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -127,9 +128,28 @@ internal class PostHogBootstrapTest {
                 logger = logger,
             )
 
-        // reconciliation preserves the existing identity and warns instead of switching users
         assertEquals("user-existing", sut.distinctId())
         assertTrue(logger.messages.any { it.contains("existing identity is preserved") })
+
+        sut.close()
+    }
+
+    @Test
+    fun `identified bootstrap for the same already-identified user does not warn`() {
+        val prefs = PostHogMemoryPreferences()
+        prefs.setValue(DISTINCT_ID, "user-123")
+        prefs.setValue(IS_IDENTIFIED, true)
+        val logger = TestLogger()
+        val sut =
+            getSut(
+                bootstrap = PostHogBootstrap(distinctId = "user-123", isIdentifiedId = true),
+                cachePreferences = prefs,
+                logger = logger,
+            )
+
+        // same id as the persisted identity: reconciliation is a no-op, no spurious warning
+        assertEquals("user-123", sut.distinctId())
+        assertFalse(logger.messages.any { it.contains("existing identity is preserved") })
 
         sut.close()
     }
@@ -147,13 +167,11 @@ internal class PostHogBootstrapTest {
                 reloadFeatureFlags = false,
             )
 
-        // reconciliation identifies user-123, merging the existing anonymous user into it
         assertEquals("user-123", sut.distinctId())
         assertEquals("anon-abc", sut.getAnonymousId())
 
         queueExecutor.shutdownAndAwaitTermination()
-        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())!!
-        val identify = batch.batch.first { it.event == "\$identify" }
+        val identify = firstEvent(http, "\$identify")
         assertEquals("user-123", identify.distinctId)
         assertEquals("anon-abc", identify.properties?.get("\$anon_distinct_id"))
 
@@ -245,9 +263,13 @@ internal class PostHogBootstrapTest {
         http.shutdown()
     }
 
-    private fun firstFeatureFlagCalled(http: okhttp3.mockwebserver.MockWebServer): PostHogEvent {
-        val request = http.takeRequest()
-        val batch = serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader())!!
-        return batch.batch.first { it.event == "\$feature_flag_called" }
+    private fun firstEvent(
+        http: okhttp3.mockwebserver.MockWebServer,
+        event: String,
+    ): PostHogEvent {
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())!!
+        return batch.batch.first { it.event == event }
     }
+
+    private fun firstFeatureFlagCalled(http: okhttp3.mockwebserver.MockWebServer): PostHogEvent = firstEvent(http, "\$feature_flag_called")
 }

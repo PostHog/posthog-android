@@ -10,11 +10,13 @@ package com.posthog
  * reads return caller-provided values before the first `/flags` response. Mirrors the
  * [bootstrap option in posthog-js](https://posthog.com/docs/feature-flags/bootstrapping).
  *
- * Bootstrap only seeds the very first session. Once an anonymous id is persisted on disk,
- * or the user is already identified, the bootstrapped identity is ignored — it never
- * overrides an already-identified user or re-links traffic across a previous
- * anon→identified merge. Bootstrapped feature flags form a base layer only: values from
- * `/flags` overlay them for overlapping keys, while bootstrapped-only keys remain available.
+ * Bootstrap identity applies to the very first session. An anonymous bootstrap
+ * ([isIdentifiedId] false) seeds the anonymous id only when none is persisted, and is
+ * otherwise ignored. An identified bootstrap ([isIdentifiedId] true) seeds the distinct id on
+ * a fresh install; if a local anonymous user already exists it is merged into the identified
+ * id via `identify()`, while a different already-identified user is preserved and a warning is
+ * logged. Bootstrapped feature flags form a base layer only: values from `/flags` overlay them
+ * for overlapping keys, while bootstrapped-only keys remain available.
  */
 public class PostHogBootstrap
     @JvmOverloads
@@ -24,8 +26,9 @@ public class PostHogBootstrap
          *
          * When [isIdentifiedId] is `false` (the default) this becomes the anonymous id — the
          * `$distinct_id` on pre-identify events. When `true` it is treated as an
-         * already-identified user's distinct id and the SDK marks the user identified without
-         * an `$identify` merge.
+         * already-identified user's distinct id: on a fresh install the SDK marks the user
+         * identified, and if a local anonymous user already exists it is merged into this id
+         * via `identify()`.
          */
         public val distinctId: String? = null,
         /**

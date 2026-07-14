@@ -317,14 +317,15 @@ public class PostHog private constructor(
                         config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
                     }
                 }
+
+                // Reconcile a differing identified bootstrap now that the SDK is enabled. Runs under
+                // setupLock — safe on Android because identify() never takes it (unlike iOS) — which
+                // keeps it mutually exclusive with close() and guarded by the catch below.
+                reconcileBootstrapIdentityIfNeeded(config)
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
             }
         }
-
-        // After the setup lock is released: reconcile a differing identified bootstrap against the
-        // existing local identity. This may call identify(), which captures an event and reloads flags.
-        reconcileBootstrapIdentityIfNeeded()
     }
 
     private fun notifyIntegrationsRemoteConfig(config: PostHogConfig) {
@@ -407,15 +408,13 @@ public class PostHog private constructor(
     }
 
     /**
-     * Reconciles a differing identified bootstrap against the existing local identity. A fresh
-     * install is already seeded by [applyBootstrapIfNeeded]; this only runs when the bootstrapped
-     * id differs from the current distinct id: an existing anonymous user is merged into the
-     * identified id via [identify], while a different already-identified user is preserved with a
-     * warning. Must run after setup completes — [identify] requires the SDK enabled and captures an
-     * `$identify` event.
+     * Reconciles a differing identified bootstrap against the local identity — fresh installs are
+     * already seeded by [applyBootstrapIfNeeded]. Merges an existing anonymous user via [identify];
+     * preserves a different identified user with a warning. Must run after setup — [identify] needs
+     * the SDK enabled and captures an event.
      */
-    private fun reconcileBootstrapIdentityIfNeeded() {
-        val bootstrap = config?.bootstrap ?: return
+    private fun reconcileBootstrapIdentityIfNeeded(config: PostHogConfig) {
+        val bootstrap = config.bootstrap ?: return
         if (!bootstrap.isIdentifiedId) {
             return
         }
@@ -423,19 +422,24 @@ public class PostHog private constructor(
         if (bootstrapId.isNullOrBlank() || !isEnabled()) {
             return
         }
-        if (distinctId == bootstrapId) {
-            // Fresh install already seeded this id, or the local user already is this identity.
-            return
-        }
 
-        if (isIdentified) {
-            config?.logger?.log(
-                "Bootstrap distinctId differs from an already-identified user. The existing identity " +
-                    "is preserved. Call reset() before reinitializing to switch users.",
-            )
-        } else {
-            // Existing anonymous user — merge it into the identified bootstrap id.
-            identify(bootstrapId)
+        // Self-guard like applyBootstrapIfNeeded: the identity reads and identify() (which captures
+        // an event) must not abort setup.
+        try {
+            if (distinctId == bootstrapId) {
+                // Already this identity (fresh-install seed, or unchanged); reconciling would only warn spuriously.
+                return
+            }
+            if (isIdentified) {
+                config.logger.log(
+                    "Bootstrap distinctId differs from an already-identified user. The existing identity " +
+                        "is preserved. Call reset() before reinitializing to switch users.",
+                )
+            } else {
+                identify(bootstrapId)
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Reconciling bootstrap identity failed: $e.")
         }
     }
 
