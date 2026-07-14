@@ -14,6 +14,13 @@ internal interface PostHogReplayBufferDelegate {
     val isBuffering: Boolean
 
     /**
+     * Whether session recording is currently active. The queue drops snapshots routed to the
+     * persisted queue while this is false, so a snapshot captured just before recording stopped
+     * (e.g. a fresh remote config rejecting the cached flag) cannot leak to the network.
+     */
+    val isActive: Boolean
+
+    /**
      * Called after a snapshot was added to the buffer.
      * The delegate should check threshold conditions and schedule
      * `replayQueue.migrateBufferToQueue()` on a background thread when

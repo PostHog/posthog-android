@@ -127,6 +127,7 @@ public open class PostHogStateless protected constructor(
 
                 queue?.stop()
                 featureFlags?.shutDown()
+                featureFlagsCalled?.clear()
             } catch (e: Throwable) {
                 config?.logger?.log("Close failed: $e.")
             }
@@ -576,6 +577,33 @@ public open class PostHogStateless protected constructor(
         return config as? T
     }
 
+    internal fun isIgnoredThrowable(throwable: Throwable): Boolean {
+        val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
+        if (ignored.isNullOrEmpty()) {
+            return false
+        }
+        val match = findIgnoredTypeInCauseChain(throwable, ignored) ?: return false
+        config?.logger?.log(
+            "Skipping \$exception: ${match.name} (or a cause in its chain) matches ignoredExceptionTypes",
+        )
+        return true
+    }
+
+    private fun findIgnoredTypeInCauseChain(
+        throwable: Throwable,
+        ignored: List<Class<out Throwable>>,
+    ): Class<out Throwable>? {
+        // same cycle detection as ThrowableCoercer, so both walks cover the same chain
+        val seen = hashSetOf<Throwable>()
+        var current: Throwable? = throwable
+        while (current != null && seen.add(current)) {
+            val link = current
+            ignored.firstOrNull { it.isInstance(link) }?.let { return it }
+            current = link.cause
+        }
+        return null
+    }
+
     override fun captureExceptionStateless(
         throwable: Throwable,
         distinctId: String?,
@@ -586,6 +614,10 @@ public open class PostHogStateless protected constructor(
         }
 
         try {
+            if (isIgnoredThrowable(throwable)) {
+                return
+            }
+
             val exceptionProperties =
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,

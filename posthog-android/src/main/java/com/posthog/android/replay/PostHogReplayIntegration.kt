@@ -91,6 +91,7 @@ import curtains.phoneWindow
 import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.lang.ref.WeakReference
+import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -101,7 +102,12 @@ public class PostHogReplayIntegration(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
 ) : PostHogIntegration, PostHogSessionReplayHandler {
-    private val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
+    // internal (not private) so tests can assert the resume path resets per-view snapshot state.
+    // Main-thread writes race the capture executor's reads, and even WeakHashMap.get()
+    // structurally modifies the map (stale-entry expunge), so accesses must be synchronized
+    // and iteration must hold the map's monitor.
+    internal val decorViews: MutableMap<View, ViewTreeSnapshotStatus> =
+        Collections.synchronizedMap(WeakHashMap<View, ViewTreeSnapshotStatus>())
 
     private val passwordInputTypes =
         setOf(
@@ -180,10 +186,24 @@ public class PostHogReplayIntegration(
     private var hasPassedMinimumDuration: Boolean = false
     private var cachedMinimumDurationMs: Long? = null
 
+    // True while recording optimistically off the disk-cached session-replay flag and the first
+    // live remote config is still pending. Snapshots are buffered (not persisted) until the server
+    // confirms or rejects the flag. Always read/written under [bufferingLock].
+    private var awaitingFirstRemoteConfig: Boolean = false
+
+    // Bumped every time the gate is (re-)armed for a new session/identity. [resolveFirstRemoteConfig]
+    // captures it and re-checks before migrating/clearing the buffer, so a concurrent session
+    // rotation ([resetBufferingState]) that re-arms and clears the buffer can't have the in-flight
+    // resolution act on the wrong window. Always read/written under [bufferingLock].
+    private var bufferingGeneration: Int = 0
+
     private val replayBufferDelegate =
         object : PostHogReplayBufferDelegate {
             override val isBuffering: Boolean
                 get() = this@PostHogReplayIntegration.isBuffering
+
+            override val isActive: Boolean
+                get() = this@PostHogReplayIntegration.isSessionReplayActive
 
             override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
                 this@PostHogReplayIntegration.onReplayBufferSnapshot(replayQueue)
@@ -428,6 +448,12 @@ public class PostHogReplayIntegration(
         // Load cached minimum duration from remote config (if available)
         updateCachedMinimumDuration()
 
+        // Buffer snapshots until the first live remote config resolves, unless it already has.
+        synchronized(bufferingLock) {
+            awaitingFirstRemoteConfig = shouldAwaitFirstRemoteConfig()
+            bufferingGeneration++
+        }
+
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
         Curtains.rootViews.forEach { view ->
@@ -453,8 +479,11 @@ public class PostHogReplayIntegration(
 
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
-            decorViews.entries.forEach {
-                clearViewListeners(it.key, it.value)
+            // Snapshot first: clearViewListeners removes entries, which would structurally
+            // modify the map mid-iteration.
+            val decorViewsSnapshot = synchronized(decorViews) { decorViews.entries.map { it.toPair() } }
+            decorViewsSnapshot.forEach { (view, status) ->
+                clearViewListeners(view, status)
             }
 
             isSessionReplayActive = false
@@ -485,7 +514,8 @@ public class PostHogReplayIntegration(
         }?.toRGBColor()
     }
 
-    private fun generateSnapshot(
+    // internal (not private) so tests can drive a snapshot pass directly.
+    internal fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
     ) {
@@ -1095,6 +1125,15 @@ public class PostHogReplayIntegration(
             }
         }
 
+        // A discarded capture (PixelCopy failure, or a redraw race that
+        // invalidates mask alignment) leaves base64 null. Emitting the
+        // wireframe anyway ships an imageless "screenshot" that the player
+        // renders as its placeholder tile — a visible flash. Skip the frame
+        // instead; the caller retries on the next capture.
+        if (base64 == null) {
+            return null
+        }
+
         return RRWireframe(
             id = viewId,
             x = x,
@@ -1661,15 +1700,19 @@ public class PostHogReplayIntegration(
             // away — and incremental events (type:3) would ship under the new session before
             // the meta + full-snapshot keyframes (type:4 + type:2) needed to render them.
             mainHandler.handler.post {
-                decorViews.keys.forEach { it.postInvalidate() }
+                synchronized(decorViews) {
+                    decorViews.keys.forEach { it.postInvalidate() }
+                }
             }
         }
     }
 
     private fun clearSnapshotStates() {
         // clear state so it starts with a full snapshot again
-        decorViews.entries.forEach {
-            resetViewSnapshotStates(it.value)
+        synchronized(decorViews) {
+            decorViews.entries.forEach {
+                resetViewSnapshotStates(it.value)
+            }
         }
     }
 
@@ -1819,6 +1862,9 @@ public class PostHogReplayIntegration(
     private val isBuffering: Boolean
         get() {
             synchronized(bufferingLock) {
+                if (awaitingFirstRemoteConfig) {
+                    return true
+                }
                 val minimumDuration = cachedMinimumDurationMs
                 if (minimumDuration == null || minimumDuration <= 0) {
                     return false
@@ -1828,21 +1874,43 @@ public class PostHogReplayIntegration(
         }
 
     private fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
-        val minimumDurationMs: Long? = synchronized(bufferingLock) { cachedMinimumDurationMs }
+        // The min-duration migrate is triggered by elapsed time, independently of isBuffering's
+        // add-routing. Don't drain the buffer into the persisted queue until the first remote config
+        // has decided — otherwise a cached minimumDuration could migrate stale-cache snapshots before
+        // the flag decision and leak them to the network.
+        val awaiting = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
+        if (awaiting) {
+            return
+        }
+
+        // Only persist while recording is active: on a fresh-false resolve the buffer is cleared, and
+        // this stops an in-flight add() that began buffering before the flag flipped from migrating the
+        // stale window into the persisted queue (the migrate path bypasses the add() routing gate).
+        if (!isActive()) {
+            return
+        }
+
+        migrateBufferIfMinimumDurationMet(replayQueue)
+    }
+
+    /**
+     * Migrates the buffer to the persisted queue when it should flush now — no minimum duration is
+     * configured, or the buffered window (oldest to newest) already spans it — and otherwise leaves
+     * it buffering for the minimum-duration window. Each caller gates recording first: the snapshot
+     * callback on [isActive], the first-config resolve on [isRecordingPermittedForCurrentSession].
+     */
+    private fun migrateBufferIfMinimumDurationMet(replayQueue: PostHogReplayQueue) {
+        val minimumDurationMs = synchronized(bufferingLock) { cachedMinimumDurationMs }
+
         if (minimumDurationMs == null || minimumDurationMs <= 0) {
-            // No minimum duration configured: should not be buffering, migrate immediately.
             synchronized(bufferingLock) { hasPassedMinimumDuration = true }
             migrateBufferToQueueOnBackgroundThread(replayQueue)
             return
         }
 
-        // Check buffer content duration (oldest to newest snapshot)
-        val bufferDurationMs = replayQueue.bufferDurationMs ?: 0
-
-        // Keep buffered snapshots intact until threshold is reached.
-        // Session replay payloads may include metadata snapshots required by the player,
-        // so buffering follows an all-or-nothing migration strategy.
-        if (bufferDurationMs >= minimumDurationMs) {
+        // Session replay payloads include metadata snapshots required by the player, so migration is
+        // all-or-nothing once the buffered window spans the minimum duration.
+        if ((replayQueue.bufferDurationMs ?: 0) >= minimumDurationMs) {
             config.logger.log(
                 "[Session Replay] Minimum duration met. Migrating ${replayQueue.bufferDepth} buffered events to replay queue.",
             )
@@ -1868,8 +1936,182 @@ public class PostHogReplayIntegration(
 
     // MARK: - Remote Config
 
-    override fun onRemoteConfig() {
+    override fun onRemoteConfig(loaded: Boolean) {
+        if (!loaded) {
+            // The first remote config attempt failed (offline/error), so no live config will arrive
+            // this resolution. Fall back to the disk-cached flag via resolveFirstRemoteConfig: keep
+            // recording (migrate the buffered window) when the cache permits it, or drop the buffer
+            // and stop when it doesn't. Recording for offline-first apps is preferred over discarding
+            // a session whose cached flag was on. Log only while genuinely falling back;
+            // resolveFirstRemoteConfig re-checks the gate and no-ops if the first config already resolved.
+            val resolving = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
+            if (resolving) {
+                config.logger.log("[Session Replay] First remote config fetch failed. Falling back to the cached session replay flag.")
+            }
+            resolveFirstRemoteConfig()
+            return
+        }
+
         updateCachedMinimumDuration()
+        // Snapshot the gate state BEFORE resolveFirstRemoteConfig disarms it, so reevaluateRecordingState
+        // can tell whether this callback is the first delivery. loadRemoteConfig loads /flags nested and
+        // synchronously (notifyRemoteConfigLoaded=false) before this single callback fires, so the
+        // session-replay flag is already fresh here — resolve the buffer against it on this delivery
+        // rather than deferring to a second callback the cold-start path never produces.
+        val wasFirstDelivery = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
+        resolveFirstRemoteConfig()
+        reevaluateRecordingState(isFirstDelivery = wasFirstDelivery)
+    }
+
+    /**
+     * Resolves the buffer once the first remote config settles — either a live response, or a
+     * terminal fetch failure (onRemoteConfig with loaded = false) that falls back to the disk-cached
+     * flag — then disarms the gate. When the session is recordable now, the buffered opening window is
+     * handed to the minimum-duration gate (kept buffering, not force-flushed) so a short session
+     * isn't persisted just because the flag resolved; otherwise — flag off, master switch off, or
+     * the fresh config sampling this session out — the capturer is stopped and the buffer dropped
+     * before disarming, so an in-flight `add()` (which checks [isBuffering] and enqueues in separate
+     * steps, not atomically with the disarm) can't route a stale snapshot to the persisted queue.
+     */
+    private fun resolveFirstRemoteConfig() {
+        val generation =
+            synchronized(bufferingLock) {
+                if (!awaitingFirstRemoteConfig) {
+                    return
+                }
+                bufferingGeneration
+            }
+
+        if (isRecordingPermittedForCurrentSession()) {
+            // Disarm and migrate only if a session rotation hasn't re-armed the gate under a newer
+            // generation in the meantime; that generation owns the (re-cleared) buffer and resolves
+            // it on its own delivery, so acting here would migrate the wrong session's window.
+            val resolved =
+                synchronized(bufferingLock) {
+                    if (bufferingGeneration != generation || !awaitingFirstRemoteConfig) {
+                        false
+                    } else {
+                        awaitingFirstRemoteConfig = false
+                        true
+                    }
+                }
+            if (resolved) {
+                replayQueue?.let { migrateBufferIfMinimumDurationMet(it) }
+            }
+        } else {
+            // Bail if a session rotation superseded this resolution before we touch the buffer.
+            val superseded =
+                synchronized(bufferingLock) {
+                    bufferingGeneration != generation || !awaitingFirstRemoteConfig
+                }
+            if (superseded) {
+                return
+            }
+            // Self-gate the capturer first so no new snapshot re-enters the buffer, then drop the
+            // buffer, and only then disarm — an in-flight add() checks isBuffering and enqueues in
+            // separate steps, so it could otherwise route a stale snapshot past the disarm.
+            stop()
+            replayQueue?.clearBuffer()
+            synchronized(bufferingLock) {
+                if (bufferingGeneration == generation) {
+                    awaitingFirstRemoteConfig = false
+                }
+            }
+        }
+    }
+
+    /**
+     * Whether the live (or, on a fetch failure, disk-cached) remote config permits recording the
+     * current session right now. Mirrors the decision [reevaluateRecordingState] makes — master
+     * switch, session-replay flag, event triggers, and the sampling decision — so the buffered
+     * opening window is migrated only when the session is genuinely recordable, never for one the
+     * fresh config samples out.
+     */
+    private fun isRecordingPermittedForCurrentSession(): Boolean {
+        val remoteConfig = config.remoteConfigHolder ?: return false
+        if (!config.sessionReplay || !remoteConfig.isSessionReplayFlagActive()) {
+            return false
+        }
+        if (shouldWaitForEventTriggers()) {
+            return false
+        }
+        val currentSessionId = postHog?.getSessionId()?.toString() ?: return false
+        return remoteConfig.makeSamplingDecision(currentSessionId)
+    }
+
+    /**
+     * Re-evaluate recording against the live remote config: stop when session replay is no longer
+     * permitted (master switch off, flag off, or sampled out) and resume when it turns on. Without
+     * this, a fresh-`false` would keep recording until the next session rotation.
+     *
+     * The very first delivery is exempt from the **flag-off** stop only: on that delivery
+     * [resolveFirstRemoteConfig] already owns the stop-and-drop decision for the buffered opening
+     * window, so stopping again here would be redundant. Sampling is deterministic per session id,
+     * so the sampled-out stop is NOT exempt.
+     */
+    private fun reevaluateRecordingState(isFirstDelivery: Boolean = false) {
+        val postHog = this.postHog ?: return
+        val remoteConfig = config.remoteConfigHolder ?: return
+
+        if (!config.sessionReplay || !remoteConfig.isSessionReplayFlagActive()) {
+            if (!isFirstDelivery) {
+                stopIfActive("Remote config disabled recording. Stopping.")
+            }
+            return
+        }
+
+        if (shouldWaitForEventTriggers()) {
+            return
+        }
+
+        val currentSessionId = postHog.getSessionId()?.toString() ?: return
+        if (!remoteConfig.makeSamplingDecision(currentSessionId)) {
+            stopIfActive("Remote config sampled this session out. Stopping.")
+            return
+        }
+
+        if (!isSessionReplayActive) {
+            config.logger.log("[Session Replay] Remote config enabled recording. Resuming.")
+            mainHandler.handler.post {
+                if (!isSessionReplayActive) {
+                    // Force a fresh keyframe for the resumed segment. While stopped, per-view snapshot
+                    // state is frozen and can reference a full snapshot that was never delivered (e.g. a
+                    // first-config-off opening window that was dropped), so resuming against it would emit
+                    // orphaned incremental snapshots the player can't anchor. Clear the state and force a
+                    // redraw so the resumed segment starts with meta + full snapshot — without rotating the
+                    // session or touching the cold-start buffering state (unlike start(resumeCurrent = false)).
+                    clearSnapshotStates()
+                    start(resumeCurrent = true)
+                    synchronized(decorViews) {
+                        decorViews.keys.forEach { it.postInvalidate() }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopIfActive(reason: String) {
+        if (isSessionReplayActive) {
+            config.logger.log("[Session Replay] $reason")
+            // Flip the active gate synchronously so a concurrent add() on the replay executor stops
+            // persisting immediately (PostHogReplayQueue.shouldPersist reads isActive), instead of
+            // leaking snapshots to the send queue in the window before the posted stop() runs on main.
+            isSessionReplayActive = false
+            mainHandler.handler.post { stop() }
+        }
+    }
+
+    // Whether to buffer until the live remote config resolves: only when a remote config holder
+    // exists and hasn't resolved yet, AND a fetch will actually be attempted at setup. If neither
+    // remoteConfig nor preloadFeatureFlags is enabled, PostHog.setup dispatches no /config or /flags
+    // request, so no onRemoteConfig callback ever arrives to disarm the gate —
+    // buffering would then grow unbounded for the whole session. Don't arm in that case.
+    private fun shouldAwaitFirstRemoteConfig(): Boolean {
+        @Suppress("DEPRECATION")
+        if (!config.remoteConfig && !config.preloadFeatureFlags) {
+            return false
+        }
+        return config.remoteConfigHolder?.let { !it.hasRemoteConfigFetched() } ?: false
     }
 
     private fun updateCachedMinimumDuration() {
@@ -1888,6 +2130,12 @@ public class PostHogReplayIntegration(
     private fun resetBufferingState() {
         synchronized(bufferingLock) {
             hasPassedMinimumDuration = false
+            // Re-arm after reset()/identity change (PostHogRemoteConfig.clear() cleared its fetched
+            // flag); a plain session rotation keeps it disarmed since the config is still fetched.
+            awaitingFirstRemoteConfig = shouldAwaitFirstRemoteConfig()
+            // Supersede any in-flight resolveFirstRemoteConfig so it can't migrate or clear this
+            // session's buffer after we've re-armed and cleared it below.
+            bufferingGeneration++
         }
         // Clear any buffered events from previous session
         replayQueue?.clearBuffer()

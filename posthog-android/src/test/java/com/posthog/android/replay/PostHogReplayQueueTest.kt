@@ -63,6 +63,7 @@ internal class PostHogReplayQueueTest {
 
     private class MockReplayBufferDelegate : PostHogReplayBufferDelegate {
         override var isBuffering: Boolean = false
+        override var isActive: Boolean = true
         var didBufferSnapshotCallCount: Int = 0
         var lastReplayQueue: PostHogReplayQueue? = null
 
@@ -261,6 +262,46 @@ internal class PostHogReplayQueueTest {
     }
 
     @Test
+    fun `add drops snapshot when not buffering and delegate is inactive`() {
+        val fakeInnerQueue = createFakeQueue()
+        val queue = createReplayQueue(fakeInnerQueue)
+        val delegate =
+            MockReplayBufferDelegate().apply {
+                isBuffering = false
+                isActive = false
+            }
+        queue.bufferDelegate = delegate
+
+        queue.add(createTestEvent("after_stop"))
+
+        assertEquals(0, fakeInnerQueue.events.size)
+        assertEquals(0, queue.bufferDepth)
+    }
+
+    @Test
+    fun `add drops snapshot routed out of buffer when delegate becomes inactive`() {
+        val fakeInnerQueue = createFakeQueue()
+        val executor = createPausedExecutor()
+        val queue = createReplayQueue(fakeInnerQueue, executor = executor)
+        val delegate =
+            MockReplayBufferDelegate().apply {
+                isBuffering = true
+                isActive = true
+            }
+        queue.bufferDelegate = delegate
+
+        queue.add(createTestEvent("in_flight"))
+        // Recording stopped and buffering resolved (fresh-false) before the executor task ran.
+        delegate.isBuffering = false
+        delegate.isActive = false
+
+        executor.runNext()
+
+        assertEquals(0, fakeInnerQueue.events.size)
+        assertEquals(0, queue.bufferDepth)
+    }
+
+    @Test
     fun `flush is suppressed when buffering`() {
         val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
@@ -349,6 +390,7 @@ internal class PostHogReplayQueueTest {
         val delegate =
             object : PostHogReplayBufferDelegate {
                 override var isBuffering: Boolean = true
+                override val isActive: Boolean = true
                 private var callCount = 0
 
                 override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
@@ -396,6 +438,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(2, queue.bufferDepth)
 
         queue.clearBuffer()
+        awaitReplayExecutors()
 
         assertEquals(0, queue.bufferDepth)
     }
@@ -415,6 +458,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(1, fakeInnerQueue.events.size)
 
         queue.clearBuffer()
+        awaitReplayExecutors()
 
         assertEquals(0, queue.bufferDepth)
         assertEquals(1, fakeInnerQueue.events.size)
@@ -437,6 +481,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(1, queue.bufferDepth)
 
         queue.clear()
+        awaitReplayExecutors()
 
         assertEquals(0, queue.bufferDepth)
         assertEquals(0, fakeInnerQueue.events.size)
@@ -484,6 +529,7 @@ internal class PostHogReplayQueueTest {
         val delegate =
             object : PostHogReplayBufferDelegate {
                 override var isBuffering: Boolean = true
+                override val isActive: Boolean = true
 
                 override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
                     if (isBuffering && replayQueue.bufferDepth >= 2) {

@@ -132,6 +132,41 @@ internal class PostHogAndroidTest {
     }
 
     @Test
+    fun `overwrites sdkName and sdkVersion when not a wrapper SDK`() {
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                sdkName = "posthog"
+                sdkVersion = "0.0.0"
+            }
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertEquals("posthog-android", config.sdkName)
+        assertEquals(BuildConfig.VERSION_NAME, config.sdkVersion)
+    }
+
+    @Test
+    fun `keeps wrapper SDK sdkName and sdkVersion`() {
+        for (sdkName in listOf("posthog-flutter", "posthog-react-native", "posthog-kmp")) {
+            PostHog.close()
+            val config =
+                PostHogAndroidConfig(API_KEY).apply {
+                    this.sdkName = sdkName
+                    sdkVersion = "1.2.3"
+                }
+
+            mockContextAppStart(context, tmpDir)
+
+            PostHogAndroid.setup(context, config)
+
+            assertEquals(sdkName, config.sdkName)
+            assertEquals("1.2.3", config.sdkVersion)
+        }
+    }
+
+    @Test
     fun `adds captureApplicationLifecycleEvents integrations`() {
         val config = PostHogAndroidConfig(API_KEY)
 

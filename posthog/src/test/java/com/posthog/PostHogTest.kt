@@ -200,6 +200,40 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `successful remote config routes integrations to onRemoteConfig`() {
+        val integration = FakePostHogIntegration()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, integration.remoteConfigCount)
+        assertEquals(0, integration.remoteConfigFailedCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `failed remote config routes integrations to onRemoteConfig loaded false`() {
+        val integration = FakePostHogIntegration()
+        // Empty body -> the flags response deserializes to null -> terminal-failure branch, so the
+        // gate stays unfetched and the dispatch must route to onRemoteConfig(loaded=false).
+        val http = mockHttp(response = MockResponse().setBody(""))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, integration.remoteConfigFailedCount)
+        assertEquals(0, integration.remoteConfigCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `setup sets in memory cached preferences if not given`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -2537,6 +2571,162 @@ internal class PostHogTest {
         assertEquals("java", firstFrameMainException["platform"])
         assertTrue(firstFrameMainException["in_app"] as Boolean)
         assertTrue(firstFrameMainException["lineno"] is Number)
+
+        sut.close()
+    }
+
+    // stand-in for com.facebook.react.common.JavascriptException, so React Native
+    // stays off the test classpath
+    private class JavascriptExceptionStub(message: String) : RuntimeException(message)
+
+    @Test
+    fun `captureException drops events whose throwable matches ignoredExceptionTypes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        sut.captureException(JavascriptExceptionStub("Unhandled JS Exception"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException drops events whose cause chain contains an ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        val wrapped =
+            RuntimeException(
+                "wrapper",
+                JavascriptExceptionStub("Unhandled JS Exception"),
+            )
+        sut.captureException(wrapped)
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException keeps events whose throwable is not in ignoredExceptionTypes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        sut.captureException(IllegalStateException("normal failure"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException drops events whose throwable is a subclass of an ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        // matching is isInstance, not name equality: the stub extends RuntimeException
+        config.errorTrackingConfig.ignoredExceptionTypes.add(RuntimeException::class.java)
+
+        sut.captureException(JavascriptExceptionStub("Unhandled JS Exception"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException drops uncaught-handler wrapped throwables of an ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        // the uncaught-exception handler wraps throwables in PostHogThrowable before capture
+        sut.captureException(PostHogThrowable(JavascriptExceptionStub("Unhandled JS Exception")))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    // $exception_list entry as ThrowableCoercer serializes it: module = package,
+    // type = class name with the package prefix stripped
+    private fun exceptionListEntry(clazz: Class<out Throwable>): Map<String, Any> {
+        val module = clazz.`package`?.name
+        val type = if (module != null) clazz.name.replace("$module.", "") else clazz.name
+        return if (module != null) {
+            mapOf("type" to type, "module" to module)
+        } else {
+            mapOf("type" to type)
+        }
+    }
+
+    @Test
+    fun `capture drops externally-built exception events whose list contains an ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        // hybrid SDKs forward exceptions through capture() with a pre-serialized
+        // $exception_list instead of a throwable
+        sut.capture(
+            "\$exception",
+            properties =
+                mapOf(
+                    "\$exception_list" to
+                        listOf(
+                            exceptionListEntry(RuntimeException::class.java),
+                            exceptionListEntry(JavascriptExceptionStub::class.java),
+                        ),
+                ),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capture keeps externally-built exception events whose list has no ignored type`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        sut.capture(
+            "\$exception",
+            properties =
+                mapOf(
+                    "\$exception_list" to
+                        listOf(
+                            exceptionListEntry(IllegalStateException::class.java),
+                        ),
+                ),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, http.requestCount)
 
         sut.close()
     }

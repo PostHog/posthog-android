@@ -529,9 +529,9 @@ internal fun deleteFilesIfAPIError(
         return false
     }
     // workaround due to png images exceed our max. limit in kafka
-    if (e.statusCode == 413 && batchLimits.cap > 1) {
-        // try to reduce the batch size and flushAt until its 1
-        // and if it still throws 413 in the next retry, delete the files since we cannot handle anyway
+    if (e.statusCode == 413 && actualBatchSize > 1 && batchLimits.cap > 1) {
+        // try to reduce multi-event batches and flushAt until the cap is 1.
+        // A single event that receives 413 is not retryable because splitting cannot help.
         batchLimits.halve(actualBatchSize)
 
         logger.log("Flushing failed with ${e.statusCode}, let's try again with a smaller batch.")

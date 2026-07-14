@@ -4,7 +4,6 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.executeSafely
-import com.posthog.internal.submitSyncSafely
 import java.io.File
 import java.util.concurrent.ExecutorService
 
@@ -57,7 +56,9 @@ internal class PostHogReplayQueue internal constructor(
 
     override fun add(event: PostHogEvent) {
         if (bufferDelegate?.isBuffering != true) {
-            innerQueue.add(event)
+            if (shouldPersist()) {
+                innerQueue.add(event)
+            }
             return
         }
 
@@ -66,11 +67,16 @@ internal class PostHogReplayQueue internal constructor(
                 bufferQueue.add(event)
                 config.logger.log("Buffered replay event '${event.event}'. Buffer depth: ${bufferQueue.depth}")
                 bufferDelegate?.onReplayBufferSnapshot(this)
-            } else {
+            } else if (shouldPersist()) {
                 innerQueue.add(event)
             }
         }
     }
+
+    // A delegate that reports recording inactive means a snapshot slipped through after recording
+    // stopped (e.g. a fresh-false remote config); drop it rather than persist/send it. With no
+    // delegate (recording not yet wired) the queue persists as before.
+    private fun shouldPersist(): Boolean = bufferDelegate?.isActive != false
 
     override fun flush() {
         if (bufferDelegate?.isBuffering == true) {
@@ -114,9 +120,15 @@ internal class PostHogReplayQueue internal constructor(
 
     /**
      * Discards all buffered replay events.
+     *
+     * Scheduled fire-and-forget on the replay executor rather than blocking on the result. This is
+     * called from [onSessionIdChanged] on the caller's thread — the main thread on an identify() at
+     * login — and a blocking wait there stalls the UI long enough to ANR when the single-threaded
+     * executor is busy with snapshot disk IO. The executor is single-threaded and FIFO, so the clear
+     * still runs before any subsequently-scheduled add()/migrate; only the caller's wait is dropped.
      */
     internal fun clearBuffer() {
-        executor.submitSyncSafely {
+        executor.executeSafely {
             bufferQueue.clear()
             config.logger.log("Replay buffer cleared")
         }

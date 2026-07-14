@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.internal.PostHogFeatureFlagCalledCache
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences
@@ -52,6 +53,12 @@ internal class PostHogStatelessTest {
 
         fun testMergeGroups(givenGroups: Map<String, String>?): Map<String, String>? {
             return mergeGroups(givenGroups)
+        }
+
+        fun featureFlagsCalledCacheSize(): Int {
+            val field = PostHogStateless::class.java.getDeclaredField("featureFlagsCalled")
+            field.isAccessible = true
+            return (field.get(this) as? PostHogFeatureFlagCalledCache)?.size() ?: 0
         }
 
         fun getPreferencesPublic(): PostHogPreferences {
@@ -389,6 +396,39 @@ internal class PostHogStatelessTest {
         assertEquals(mapOf("name" to "John"), event.properties!!["\$set"])
         assertEquals(mapOf("signup_date" to "2024-01-01"), event.properties!!["\$set_once"])
         assertEquals(mapOf("company" to "acme"), event.properties!!["\$groups"])
+    }
+
+    private class IgnoredExceptionStub(message: String) : RuntimeException(message)
+
+    @Test
+    fun `captureExceptionStateless drops throwables matching ignoredExceptionTypes`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredExceptionStub::class.java)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(IgnoredExceptionStub("boom"), distinctId = "user123")
+
+        assertEquals(0, mockQueue.events.size)
+    }
+
+    @Test
+    fun `captureExceptionStateless keeps throwables not in ignoredExceptionTypes`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredExceptionStub::class.java)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(IllegalStateException("boom"), distinctId = "user123")
+
+        assertEquals(1, mockQueue.events.size)
+        assertEquals("\$exception", mockQueue.events.first().event)
     }
 
     @Test
@@ -1017,6 +1057,39 @@ internal class PostHogStatelessTest {
         assertEquals("variant_a", mockQueue.events[0].properties!!["${'$'}feature_flag_response"])
         assertEquals("user456", mockQueue.events[1].distinctId)
         assertEquals("variant_a", mockQueue.events[1].properties!!["${'$'}feature_flag_response"])
+    }
+
+    @Test
+    fun `close resets feature flag called cache before setup again`() {
+        val firstQueue = MockQueue()
+        val secondQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlag("test_flag", "variant_a")
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(firstQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        sut.getFeatureFlagStateless("user123", "test_flag")
+        sut.getFeatureFlagStateless("user123", "test_flag")
+        assertEquals(1, firstQueue.events.size)
+        assertEquals(1, sut.featureFlagsCalledCacheSize())
+
+        sut.close()
+        assertEquals(0, sut.featureFlagsCalledCacheSize())
+
+        sut.setup(config)
+        sut.setMockQueue(secondQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        sut.getFeatureFlagStateless("user123", "test_flag")
+
+        assertEquals(1, secondQueue.events.size)
+        assertEquals("user123", secondQueue.events[0].distinctId)
+        assertEquals("variant_a", secondQueue.events[0].properties!!["${'$'}feature_flag_response"])
     }
 
     @Test

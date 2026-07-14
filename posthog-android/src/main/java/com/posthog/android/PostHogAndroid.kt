@@ -117,9 +117,12 @@ public class PostHogAndroid private constructor() {
                 }
             }
             config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
-            // Flutter and RN SDKs set the sdkName and sdkVersion, so this guard is not to allow
+            // Flutter, RN, and KMP SDKs set the sdkName and sdkVersion, so this guard is not to allow
             // the values to be overwritten again
-            if (config.sdkName != "posthog-flutter" && config.sdkName != "posthog-react-native") {
+            if (config.sdkName != "posthog-flutter" &&
+                config.sdkName != "posthog-react-native" &&
+                config.sdkName != "posthog-kmp"
+            ) {
                 config.sdkName = "posthog-android"
                 config.sdkVersion = BuildConfig.VERSION_NAME
             }

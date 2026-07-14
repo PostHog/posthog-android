@@ -186,15 +186,22 @@ public class PostHog private constructor(
                     )
                 val onRemoteConfigLoaded =
                     PostHogOnRemoteConfigLoaded {
-                        try {
-                            val surveys = remoteConfig?.getSurveys() ?: emptyList()
-                            surveysHandler?.onSurveysLoaded(surveys)
-                        } catch (e: Throwable) {
-                            config.logger.log("Failed to notify surveys loaded: $e.")
-                        }
+                        // The callback fires whether the attempt succeeded or terminally failed;
+                        // hasRemoteConfigFetched() tells them apart. On a failure no fresh values
+                        // were applied, so integrations fall back to their cached state instead.
+                        if (remoteConfig?.hasRemoteConfigFetched() == true) {
+                            try {
+                                val surveys = remoteConfig?.getSurveys() ?: emptyList()
+                                surveysHandler?.onSurveysLoaded(surveys)
+                            } catch (e: Throwable) {
+                                config.logger.log("Failed to notify surveys loaded: $e.")
+                            }
 
-                        // Notify all integrations about remote config changes
-                        notifyIntegrationsRemoteConfig(config)
+                            // Notify all integrations about remote config changes
+                            notifyIntegrationsRemoteConfig(config, loaded = true)
+                        } else {
+                            notifyIntegrationsRemoteConfig(config, loaded = false)
+                        }
                     }
 
                 val featureFlags =
@@ -328,10 +335,13 @@ public class PostHog private constructor(
         }
     }
 
-    private fun notifyIntegrationsRemoteConfig(config: PostHogConfig) {
+    private fun notifyIntegrationsRemoteConfig(
+        config: PostHogConfig,
+        loaded: Boolean,
+    ) {
         config.integrations.forEach { integration ->
             try {
-                integration.onRemoteConfig()
+                integration.onRemoteConfig(loaded)
             } catch (e: Throwable) {
                 config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
             }
@@ -694,6 +704,19 @@ public class PostHog private constructor(
                 groupIdentify = true
             }
 
+            // Externally-built $exception events (e.g. the Flutter/RN bridge) carry only
+            // serialized class names, so they are matched by name instead of isInstance.
+            val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
+            if (!ignored.isNullOrEmpty() &&
+                event == PostHogEventName.EXCEPTION.event &&
+                hasIgnoredTypeInExceptionList(properties, ignored)
+            ) {
+                config?.logger?.log(
+                    "Skipping \$exception: an entry in \$exception_list matches ignoredExceptionTypes",
+                )
+                return
+            }
+
             // Attach the buffered exception steps to any $exception event (unless the caller
             // already supplied them), so externally-built exceptions (e.g. from the Flutter/RN
             // bridge) carry steps too, not only those captured via captureException(throwable).
@@ -771,6 +794,10 @@ public class PostHog private constructor(
         }
 
         try {
+            if (isIgnoredThrowable(throwable)) {
+                return
+            }
+
             val exceptionProperties =
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
@@ -789,6 +816,22 @@ public class PostHog private constructor(
             // we swallow all exceptions that the SDK has thrown by trying to convert
             // a captured exception to a PostHog exception event
             config?.logger?.log("captureException has thrown an exception: $e.")
+        }
+    }
+
+    private fun hasIgnoredTypeInExceptionList(
+        properties: Map<String, Any>?,
+        ignored: List<Class<out Throwable>>,
+    ): Boolean {
+        val exceptionList = properties?.get("\$exception_list") as? List<*> ?: return false
+        val ignoredNames = ignored.map { it.name }
+        return exceptionList.any { entry ->
+            val exception = entry as? Map<*, *> ?: return@any false
+            val type = exception["type"] as? String ?: return@any false
+            val module = exception["module"] as? String
+            // module + type rejoins the runtime class name ThrowableCoercer split apart
+            val className = if (module.isNullOrEmpty()) type else "$module.$type"
+            className in ignoredNames
         }
     }
 

@@ -1,5 +1,35 @@
 ## Next
 
+## 2.7.5
+
+### Patch Changes
+
+- aed3704: Fail closed instead of throwing when feature flag responses cannot be parsed as JSON.
+
+## 2.7.4
+
+### Patch Changes
+
+- 46008ad: Stop duplicating `distinct_id` inside `/flags` person properties.
+
+## 2.7.3
+
+### Patch Changes
+
+- cccf68b: Retry `/flags` requests once by default when the flags endpoint returns HTTP 502 or 504, respecting `featureFlagRequestMaxRetries`.
+
+## 2.7.2
+
+### Patch Changes
+
+- 15c39fd: Retry feature flag requests after transient network errors only. The feature flag request retry count defaults to 1 and can be set to 0 to disable retries.
+
+## 2.7.1
+
+### Patch Changes
+
+- 125f724: Clear the feature flag called cache when closing the SDK.
+
 ## 2.7.0
 
 ### Minor Changes

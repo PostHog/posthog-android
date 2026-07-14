@@ -111,6 +111,21 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `getFeatureFlags returns null when success response is not JSON`() {
+        val mockServer = createMockHttp(MockResponse().setBody("<html>upstream error</html>"))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val remoteConfig = PostHogFeatureFlags(config, api, 60000, 100)
+
+        val result = remoteConfig.getFeatureFlags(distinctId = "test-user")
+
+        assertNull(result)
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `getFeatureFlagPayload returns payload when available`() {
         val flagsResponse = createFlagsResponse("test-flag", payload = "test-payload")
         val mockServer = createMockHttp(jsonResponse(flagsResponse))
@@ -805,6 +820,78 @@ internal class PostHogFeatureFlagsTest {
 
         assertEquals(true, result)
         assertTrue(logger.containsLog("Local evaluation successful"))
+
+        remoteConfig.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `distinct_id is available for local evaluation only`() {
+        val logger = TestLogger()
+        val localEvalResponse =
+            """
+            {
+                "flags": [
+                    {
+                        "id": 1,
+                        "name": "distinct-id-feature",
+                        "key": "distinct-id-feature",
+                        "active": true,
+                        "filters": {
+                            "groups": [
+                                {
+                                    "properties": [
+                                        {
+                                            "key": "distinct_id",
+                                            "operator": "exact",
+                                            "value": "user-123",
+                                            "type": "person"
+                                        }
+                                    ],
+                                    "rollout_percentage": 100
+                                }
+                            ]
+                        },
+                        "version": 1
+                    }
+                ],
+                "group_type_mapping": {},
+                "cohorts": {}
+            }
+            """.trimIndent()
+
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponse),
+            )
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val remoteConfig =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+            )
+
+        Thread.sleep(1000)
+
+        val personProperties = mapOf<String, Any?>("region" to "USA")
+        val result =
+            remoteConfig.getFeatureFlag(
+                key = "distinct-id-feature",
+                defaultValue = false,
+                distinctId = "user-123",
+                personProperties = personProperties,
+            )
+
+        assertEquals(true, result)
+        assertEquals(mapOf("region" to "USA"), personProperties)
+        assertEquals(1, mockServer.requestCount, "local evaluation should not fall back to /flags")
 
         remoteConfig.shutDown()
         mockServer.shutdown()
