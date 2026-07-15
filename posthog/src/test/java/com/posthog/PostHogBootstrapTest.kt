@@ -311,14 +311,14 @@ internal class PostHogBootstrapTest {
 
     @Test
     fun `bootstrap flags fire the flags-loaded callback immediately`() {
-        var loadedCount = 0
+        var loaded = false
         val sut =
             getSut(
                 bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
-                onFeatureFlags = PostHogOnFeatureFlags { loadedCount += 1 },
+                onFeatureFlags = PostHogOnFeatureFlags { loaded = true },
             )
 
-        assertTrue(loadedCount >= 1)
+        assertTrue(loaded)
         assertEquals(true, sut.getFeatureFlag("beta-ui", sendFeatureFlagEvent = false))
 
         sut.close()
