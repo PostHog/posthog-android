@@ -7,6 +7,7 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.mockHttp
@@ -2527,6 +2528,53 @@ internal class PostHogRemoteConfigTest {
         assertNull(cached["legacy"]) // the bootstrap-only key is not
 
         sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `complete flags load persists a server-confirmed flag whose value equals its bootstrap value`() {
+        // A complete /flags response confirms beta-ui to the *same* value the caller bootstrapped.
+        // Provenance, not value equality, decides what persists: the server evaluated beta-ui, so it
+        // must reach the durable cache even though it matches bootstrap, or a later offline launch
+        // without bootstrap couldn't recover a flag the server actually confirmed.
+        val responseEqualToBootstrap =
+            """{"errorsWhileComputingFlags":false,"featureFlags":{"beta-ui":true},""" +
+                """"featureFlagPayloads":{"beta-ui":"{\"color\":\"blue\"}"}}"""
+        val http = mockHttp(response = MockResponse().setBody(responseEqualToBootstrap))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("beta-ui" to true),
+                        featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
+                    ),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // the server-confirmed flag and its payload reach the durable cache
+        @Suppress("UNCHECKED_CAST")
+        val cachedFlags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any> ?: emptyMap()
+        assertEquals(true, cachedFlags["beta-ui"])
+        @Suppress("UNCHECKED_CAST")
+        val cachedPayloads = preferences.getValue(FEATURE_FLAGS_PAYLOAD) as? Map<String, Any?> ?: emptyMap()
+        assertEquals(mapOf("color" to "blue"), cachedPayloads["beta-ui"])
+
+        // a later launch with the same cache but no bootstrap still recovers the confirmed flag/payload
+        val returning = getSut(host = http.url("/").toString())
+        assertEquals(true, returning.getFeatureFlag("beta-ui"))
+        assertEquals(mapOf("color" to "blue"), returning.getFeatureFlagPayload("beta-ui"))
+
+        sut.clear()
+        returning.clear()
         http.shutdown()
     }
 

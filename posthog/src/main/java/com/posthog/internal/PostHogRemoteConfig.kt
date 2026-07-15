@@ -87,6 +87,13 @@ public class PostHogRemoteConfig(
     private var bootstrappedPayloads: Map<String, Any?> =
         sanitizeBootstrapValues(config.bootstrap?.featureFlagPayloads).filterKeys { it in bootstrappedFlags }
 
+    // Flag/payload keys the server has evaluated at least once this session. A bootstrap-only key the
+    // server never resolved never enters these, so it's excluded from the durable cache, while a
+    // server-confirmed key is persisted even when its value equals the bootstrap value. Provenance,
+    // not value inequality, decides what persists. Guarded by featureFlagsLock; reset by clear().
+    private var serverEvaluatedFlagKeys: Set<String> = emptySet()
+    private var serverEvaluatedPayloadKeys: Set<String> = emptySet()
+
     // Flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
     private var flags: Map<String, Any>? = null
@@ -733,6 +740,10 @@ public class PostHogRemoteConfig(
                             val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                             this.featureFlagPayloads =
                                 (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads.filterKeys { it in successfulKeys }
+
+                            serverEvaluatedFlagKeys = serverEvaluatedFlagKeys + successfulKeys
+                            serverEvaluatedPayloadKeys =
+                                serverEvaluatedPayloadKeys + normalizedPayloads.keys.filter { it in successfulKeys }
                         } else {
                             // V1 response: no 'flags' property, merge all featureFlags (legacy behavior)
                             this.featureFlags =
@@ -741,6 +752,10 @@ public class PostHogRemoteConfig(
                             val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                             this.featureFlagPayloads =
                                 (this.featureFlagPayloads ?: mapOf()) + normalizedPayloads
+
+                            serverEvaluatedFlagKeys =
+                                serverEvaluatedFlagKeys + (normalizedResponse.featureFlags?.keys ?: emptySet())
+                            serverEvaluatedPayloadKeys = serverEvaluatedPayloadKeys + normalizedPayloads.keys
                         }
                     } else {
                         // Complete response: replace served flags and payloads entirely so
@@ -749,6 +764,10 @@ public class PostHogRemoteConfig(
                         this.featureFlags = normalizedResponse.featureFlags
                         val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                         this.featureFlagPayloads = normalizedPayloads
+
+                        serverEvaluatedFlagKeys =
+                            serverEvaluatedFlagKeys + (normalizedResponse.featureFlags?.keys ?: emptySet())
+                        serverEvaluatedPayloadKeys = serverEvaluatedPayloadKeys + normalizedPayloads.keys
                     }
 
                     // /flags carries flag evaluations only; session recording config comes from
@@ -768,17 +787,18 @@ public class PostHogRemoteConfig(
                     val flags = this.flags ?: mapOf()
                     preferences.setValue(FLAGS, flags)
 
-                    // Bootstrap is a first-session-only base layer: never persist a value that is
-                    // still its bootstrap value, or a partial /flags merge would leak bootstrap-only
-                    // keys into the durable cache and a later launch (bootstrap dropped, no reset())
-                    // would serve them as genuine remote flags. A key the server resolved to a
-                    // different value is kept; with no bootstrap this session the filter is a no-op.
+                    // Bootstrap is a first-session-only base layer: only persist keys the server
+                    // actually evaluated, or a partial /flags merge would leak bootstrap-only keys into
+                    // the durable cache and a later launch (bootstrap dropped, no reset()) would serve
+                    // them as genuine remote flags. Filtering by provenance rather than value inequality
+                    // keeps a server-confirmed key whose value happens to equal its bootstrap value;
+                    // with no bootstrap this session the map is persisted whole.
                     val featureFlags = this.featureFlags ?: mapOf()
                     val serverFeatureFlags =
                         if (bootstrappedFlags.isEmpty()) {
                             featureFlags
                         } else {
-                            featureFlags.filterKeys { bootstrappedFlags[it] != featureFlags[it] }
+                            featureFlags.filterKeys { it in serverEvaluatedFlagKeys }
                         }
                     preferences.setValue(FEATURE_FLAGS, serverFeatureFlags)
 
@@ -787,7 +807,7 @@ public class PostHogRemoteConfig(
                         if (bootstrappedPayloads.isEmpty()) {
                             payloads
                         } else {
-                            payloads.filterKeys { bootstrappedPayloads[it] != payloads[it] }
+                            payloads.filterKeys { it in serverEvaluatedPayloadKeys }
                         }
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, serverPayloads)
                 }
@@ -1444,6 +1464,8 @@ public class PostHogRemoteConfig(
             bootstrappedFlags = emptyMap()
             bootstrappedPayloads = emptyMap()
             flagsLoadedFromRemote = false
+            serverEvaluatedFlagKeys = emptySet()
+            serverEvaluatedPayloadKeys = emptySet()
             clearFlags()
         }
 
