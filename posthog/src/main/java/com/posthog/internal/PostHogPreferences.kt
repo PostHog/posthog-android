@@ -36,7 +36,6 @@ public interface PostHogPreferences {
         internal const val FEATURE_FLAGS_PAYLOAD = "featureFlagsPayload"
         internal const val FEATURE_FLAG_REQUEST_ID = "feature_flag_request_id"
         internal const val FEATURE_FLAG_EVALUATED_AT = "feature_flag_evaluated_at"
-        internal const val FLAGS_LOADED_FROM_REMOTE = "flagsLoadedFromRemote"
         internal const val SESSION_REPLAY = "sessionReplay"
         internal const val SURVEYS = "surveys"
         internal const val ERROR_TRACKING = "errorTracking"
@@ -70,7 +69,6 @@ public interface PostHogPreferences {
                 STRINGIFIED_KEYS,
                 FEATURE_FLAG_REQUEST_ID,
                 FEATURE_FLAG_EVALUATED_AT,
-                FLAGS_LOADED_FROM_REMOTE,
                 FLAGS,
                 PERSON_PROPERTIES_FOR_FLAGS,
                 GROUP_PROPERTIES_FOR_FLAGS,

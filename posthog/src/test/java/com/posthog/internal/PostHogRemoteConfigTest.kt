@@ -7,7 +7,6 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
-import com.posthog.internal.PostHogPreferences.Companion.FLAGS_LOADED_FROM_REMOTE
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.mockHttp
@@ -2447,9 +2446,8 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `bootstrap snapshot wins over persisted flags on a returning user`() {
-        // Simulate a prior session: a real /flags response was persisted before this launch.
+        // Simulate a prior session: a real /flags response was persisted to the flag cache.
         preferences.setValue(FEATURE_FLAGS, mapOf("beta-ui" to false))
-        preferences.setValue(FLAGS_LOADED_FROM_REMOTE, true)
 
         val http = mockHttp()
         val sut =
@@ -2461,8 +2459,9 @@ internal class PostHogRemoteConfigTest {
         // bootstrap is an initial snapshot that takes precedence over the persisted cache (spec)
         assertEquals(true, sut.getFeatureFlag("beta-ui"))
         assertEquals(true, sut.getFeatureFlag("legacy"))
-        // the persisted signal still reports a prior /flags response, so $used_bootstrap_value is false
-        assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
+        // the "loaded from remote" signal is per-session: a returning user hasn't hit /flags this
+        // launch, so while served bootstrap values $used_bootstrap_value is correctly true
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
 
         sut.clear()
         http.shutdown()

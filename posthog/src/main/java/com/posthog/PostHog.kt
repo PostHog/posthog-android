@@ -314,9 +314,8 @@ public class PostHog private constructor(
                 // only because of testing in isolation, this flag is always enabled
                 @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
-                    // Bootstrap flags were applied in RemoteConfig's init; fire the flags-loaded
-                    // callbacks immediately (matches posthog-js firing onFeatureFlags when bootstrap is
-                    // applied) so listeners aren't blocked on the first network response.
+                    // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
+                    // callbacks now so listeners aren't blocked on the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
                         notifyFeatureFlagsCallback(internalOnFeatureFlagsLoaded)
                         notifyFeatureFlagsCallback(config.onFeatureFlags)

@@ -12,7 +12,6 @@ import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_AT
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
-import com.posthog.internal.PostHogPreferences.Companion.FLAGS_LOADED_FROM_REMOTE
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
@@ -99,12 +98,12 @@ public class PostHogRemoteConfig(
     @Volatile
     private var isFeatureFlagsLoaded = false
 
-    // Whether a /flags response has ever been received (persisted across launches). Drives
-    // $used_bootstrap_value. Distinct from isFeatureFlagsLoaded, which also flips true on a
-    // cache load and so would flag bootstrap as "not used" before any network response.
+    // Whether a /flags response has been received this session. In-memory and reset each launch
+    // (matching posthog-js), so a returning user still reports $used_bootstrap_value true while served
+    // bootstrap values until this session's own /flags. Distinct from isFeatureFlagsLoaded, which also
+    // flips true on a cache load and so would flag bootstrap as "not used" before any network response.
     @Volatile
-    private var flagsLoadedFromRemote: Boolean =
-        config.cachePreferences?.getValue(FLAGS_LOADED_FROM_REMOTE) as? Boolean ?: false
+    private var flagsLoadedFromRemote: Boolean = false
 
     @Volatile
     private var sessionReplayFlagActive = false
@@ -1284,22 +1283,16 @@ public class PostHogRemoteConfig(
     public fun getBootstrappedFeatureFlagPayload(key: String): Any? = bootstrappedPayloads[key]
 
     /**
-     * Whether a `/flags` response has been received (persisted across launches). Drives
-     * `$used_bootstrap_value`: bootstrapped values are "used" until this becomes true.
+     * Whether a `/flags` response has been received this session (in-memory, reset each launch).
+     * Drives `$used_bootstrap_value`: bootstrapped values are "used" until this becomes true.
      */
     public fun hasLoadedFeatureFlagsFromRemote(): Boolean = flagsLoadedFromRemote
 
     private fun setFlagsLoadedFromRemote() {
-        // Flip the in-memory flag under the same lock clear() uses to reset it, so a late /flags
-        // completion can't interleave with a concurrent reset() and leave torn state. Persist
-        // outside the lock, matching the cache-write pattern in executeFeatureFlags.
-        val shouldPersist: Boolean
+        // Flip under the same lock clear() uses to reset it, so a late /flags completion can't
+        // interleave with a concurrent reset() and leave torn state. Per-session, not persisted.
         synchronized(featureFlagsLock) {
-            shouldPersist = !flagsLoadedFromRemote
             flagsLoadedFromRemote = true
-        }
-        if (shouldPersist) {
-            config.cachePreferences?.setValue(FLAGS_LOADED_FROM_REMOTE, true)
         }
     }
 
@@ -1412,7 +1405,6 @@ public class PostHogRemoteConfig(
             bootstrappedFlags = emptyMap()
             bootstrappedPayloads = emptyMap()
             flagsLoadedFromRemote = false
-            config.cachePreferences?.remove(FLAGS_LOADED_FROM_REMOTE)
             clearFlags()
         }
 

@@ -318,8 +318,6 @@ internal class PostHogBootstrapTest {
                 onFeatureFlags = PostHogOnFeatureFlags { loadedCount += 1 },
             )
 
-        // posthog-js fires onFeatureFlags when bootstrap is applied; the callback fires during setup,
-        // before any /flags response, so listeners aren't blocked on the network.
         assertTrue(loadedCount >= 1)
         assertEquals(true, sut.getFeatureFlag("beta-ui", sendFeatureFlagEvent = false))
 
