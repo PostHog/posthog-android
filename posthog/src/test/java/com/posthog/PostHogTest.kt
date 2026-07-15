@@ -7,9 +7,13 @@ import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
+import com.posthog.internal.PostHogPreferences.Companion.DISTINCT_ID
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.GROUP_PROPERTIES_FOR_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
+import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
@@ -3448,6 +3452,125 @@ internal class PostHogTest {
         // nothing was persisted, so the id minted while locked is kept and persists now
         assertEquals(lockedDeviceId, sut.getDeviceId())
         assertEquals(lockedDeviceId, preferences.persisted.getValue(DEVICE_ID))
+
+        sut.close()
+    }
+
+    @Test
+    fun `capture while preferences are unavailable does not clobber the persisted identified state`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = LockablePreferences()
+        preferences.persisted.setValue(ANONYMOUS_ID, "returning-anon-id")
+        preferences.persisted.setValue(DISTINCT_ID, "user-123")
+        preferences.persisted.setValue(IS_IDENTIFIED, true)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        // reads isIdentified while locked; the computed fallback must not be buffered
+        sut.capture("locked event")
+        preferences.available = true
+
+        assertEquals(true, preferences.persisted.getValue(IS_IDENTIFIED))
+
+        sut.close()
+    }
+
+    @Test
+    fun `persisted opt-out is honored once preferences become available`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = LockablePreferences()
+        preferences.persisted.setValue(OPT_OUT, true)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        // while locked the persisted choice is unreadable; the config default applies
+        assertFalse(sut.isOptOut())
+
+        preferences.available = true
+
+        assertTrue(sut.isOptOut())
+        assertEquals(true, preferences.persisted.getValue(OPT_OUT))
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut called while preferences are unavailable persists after unlock`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = LockablePreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        sut.optOut()
+        assertTrue(sut.isOptOut())
+
+        preferences.available = true
+
+        // the explicit runtime choice wins over the deferred re-read
+        assertTrue(sut.isOptOut())
+        assertEquals(true, preferences.persisted.getValue(OPT_OUT))
+
+        sut.close()
+    }
+
+    @Test
+    fun `persisted opt-out is honored after setup`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = PostHogMemoryPreferences()
+        preferences.setValue(OPT_OUT, true)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `persisted person processing is re-read once preferences become available`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = LockablePreferences()
+        preferences.persisted.setValue(PERSON_PROCESSING, true)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        // reads the flag while locked; the miss must not be cached for the process
+        sut.capture("locked event")
+        preferences.available = true
+        sut.capture("unlocked event")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        http.takeRequest()
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+        assertEquals(true, batch.batch[0].properties?.get("\$process_person_profile"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset while preferences are unavailable hands out a new transient anonymous id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = LockablePreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        val lockedAnonymousId = sut.getAnonymousId()
+        sut.reset()
+
+        assertNotEquals(lockedAnonymousId, sut.getAnonymousId())
 
         sut.close()
     }

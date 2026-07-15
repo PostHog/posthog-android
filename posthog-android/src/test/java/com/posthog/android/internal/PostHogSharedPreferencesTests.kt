@@ -363,4 +363,17 @@ internal class PostHogSharedPreferencesTests {
         assertEquals("new", sut.getValue("key"))
         assertEquals("new", directBootContext.realPreferences.getString("key", null))
     }
+
+    @Test
+    fun `serialized values written while locked survive the unlock replay`() {
+        val directBootContext = DirectBootContext()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.setValue("map", mapOf("k" to "v"))
+        directBootContext.locked = false
+
+        assertEquals(mapOf("k" to "v"), sut.getValue("map"))
+        val stringifiedKeys: Set<String>? = directBootContext.realPreferences.getStringSet(STRINGIFIED_KEYS, mutableSetOf())
+        assertEquals(setOf("map"), stringifiedKeys)
+    }
 }
