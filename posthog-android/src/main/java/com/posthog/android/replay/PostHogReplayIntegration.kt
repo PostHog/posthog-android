@@ -95,6 +95,7 @@ import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -118,8 +119,19 @@ public class PostHogReplayIntegration(
             InputType.TYPE_NUMBER_VARIATION_PASSWORD,
         )
 
-    private val executor by lazy {
-        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
+    internal constructor(
+        context: Context,
+        config: PostHogAndroidConfig,
+        mainHandler: MainHandler,
+        replayExecutor: ExecutorService,
+    ) : this(context, config, mainHandler) {
+        injectedExecutor = replayExecutor
+    }
+
+    private var injectedExecutor: ExecutorService? = null
+
+    private val executor: ExecutorService by lazy {
+        injectedExecutor ?: Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
 
     // Reuse a single HandlerThread for PixelCopy callbacks instead of
@@ -325,12 +337,15 @@ public class PostHogReplayIntegration(
         return Pair(imeVisible, event)
     }
 
-    private val onTouchEventListener =
+    internal val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
             val timestamp = config.dateProvider.currentTimeMillis()
             try {
                 val state = dispatch(motionEvent)
                 try {
+                    if (!isActive()) {
+                        return@TouchEventInterceptor state
+                    }
                     // 1. prevent MotionEvent Object Is Recycled or Invalid
                     // 2. pointerCount Changed Between Checks and Access (since we call on a background thread)
                     val safeMotionEvent = MotionEvent.obtain(motionEvent)
