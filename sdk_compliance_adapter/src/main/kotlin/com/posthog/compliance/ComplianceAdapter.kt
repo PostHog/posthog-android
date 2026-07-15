@@ -389,20 +389,23 @@ fun main() {
                         flagKeys = listOf(req.key),
                         disableGeoip = req.disable_geoip ?: false,
                     )
+                val flagDetails = response?.flags?.get(req.key)
                 val value =
                     response?.featureFlags?.get(req.key)
-                        ?: response?.flags?.get(req.key)?.let { it.variant ?: it.enabled }
+                        ?: flagDetails?.let { it.variant ?: it.enabled }
 
                 val requestsBefore = AdapterContext.lock.withLock { AdapterContext.state.requestsMade.size }
+                val flagCalledProperties =
+                    mutableMapOf<String, Any>(
+                        "\$feature_flag" to req.key,
+                        "\$feature_flag_response" to (value ?: false),
+                        "\$feature/${req.key}" to (value ?: false),
+                    )
+                flagDetails?.metadata?.hasExperiment?.let { flagCalledProperties["\$feature_flag_has_experiment"] = it }
                 ph.capture(
                     event = "\$feature_flag_called",
                     distinctId = distinctId,
-                    properties =
-                        mapOf(
-                            "\$feature_flag" to req.key,
-                            "\$feature_flag_response" to (value ?: false),
-                            "\$feature/${req.key}" to (value ?: false),
-                        ),
+                    properties = flagCalledProperties,
                 )
                 AdapterContext.lock.withLock {
                     AdapterContext.state.totalEventsCaptured++

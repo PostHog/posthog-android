@@ -25,7 +25,8 @@
       "metadata": {
         "id": 4535,
         "version": 2,
-        "payload": "true"
+        "payload": "true",
+        "has_experiment": true
       }
     },
     "IAmInactive": {
@@ -40,7 +41,8 @@
       "metadata": {
         "id": 2,
         "version": 2,
-        "payload": "false"
+        "payload": "false",
+        "has_experiment": false
       }
     },
     "splashScreenName": {

@@ -449,6 +449,7 @@ internal class PostHogTest {
         assertEquals(4535, theEvent.properties!!["\$feature_flag_id"])
         assertEquals(2, theEvent.properties!!["\$feature_flag_version"])
         assertEquals("Matched condition set 3", theEvent.properties!!["\$feature_flag_reason"])
+        assertEquals(true, theEvent.properties!!["\$feature_flag_has_experiment"])
 
         @Suppress("UNCHECKED_CAST")
         val theFlags = theEvent.properties!!["\$active_feature_flags"] as List<String>
@@ -458,6 +459,54 @@ internal class PostHogTest {
 
         assertEquals("4535-funnel-bar-viz", theEvent.properties!!["\$feature_flag"])
         assertEquals(true, theEvent.properties!!["\$feature_flag_response"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `feature flag called event reports has_experiment from flag metadata`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, flushAt = 3)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment: true in the flag metadata
+        sut.getFeatureFlag("4535-funnel-bar-viz")
+        // has_experiment: false in the flag metadata
+        sut.getFeatureFlag("IAmInactive")
+        // has_experiment absent from the flag metadata
+        sut.getFeatureFlag("splashScreenName")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val eventsByFlag = batch.batch.associateBy { it.properties!!["\$feature_flag"] }
+        assertEquals(true, eventsByFlag["4535-funnel-bar-viz"]!!.properties!!["\$feature_flag_has_experiment"])
+        assertEquals(false, eventsByFlag["IAmInactive"]!!.properties!!["\$feature_flag_has_experiment"])
+        // the property is omitted when the server did not report has_experiment
+        assertFalse(eventsByFlag["splashScreenName"]!!.properties!!.containsKey("\$feature_flag_has_experiment"))
 
         sut.close()
     }

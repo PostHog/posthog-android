@@ -1509,6 +1509,9 @@ public class PostHog private constructor(
                         props["\$feature_flag_id"] = it.metadata.id
                         props["\$feature_flag_version"] = it.metadata.version
                         props["\$feature_flag_reason"] = it.reason?.description ?: ""
+                        it.metadata.hasExperiment?.let { hasExperiment ->
+                            props["\$feature_flag_has_experiment"] = hasExperiment
+                        }
                     }
                     capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
                 }
