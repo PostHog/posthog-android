@@ -932,8 +932,6 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogFeatureFlagCalledProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun clear ()V
 	public final fun getActiveFeatureFlagKeys ()Ljava/util/List;
-	public final fun getBootstrappedFeatureFlag (Ljava/lang/String;)Ljava/lang/Object;
-	public final fun getBootstrappedFeatureFlagPayload (Ljava/lang/String;)Ljava/lang/Object;
 	public fun getEvaluatedAt (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Long;
 	public final fun getEventTriggers ()Ljava/util/Set;
 	public final fun getFeatureFlag (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Object;
@@ -950,8 +948,6 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
 	public final fun getSurveys ()Ljava/util/List;
-	public final fun hasBootstrapFlags ()Z
-	public final fun hasLoadedFeatureFlagsFromRemote ()Z
 	public final fun hasRemoteConfigFetched ()Z
 	public final fun isAutocaptureExceptionsEnabled ()Z
 	public final fun isCaptureNetworkTimingEnabled ()Z

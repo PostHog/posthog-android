@@ -1307,25 +1307,25 @@ public class PostHogRemoteConfig(
      * aren't blocked on the first network response. Stays true after a load overlays the snapshot;
      * only read once at setup, before any load completes.
      */
-    public fun hasBootstrapFlags(): Boolean = bootstrappedFlags.isNotEmpty()
+    internal fun hasBootstrapFlags(): Boolean = bootstrappedFlags.isNotEmpty()
 
     /**
      * The originally-bootstrapped value for [key], if one was provided.
      * Used to enrich `$feature_flag_called` with `$feature_flag_bootstrapped_response`.
      */
-    public fun getBootstrappedFeatureFlag(key: String): Any? = bootstrappedFlags[key]
+    internal fun getBootstrappedFeatureFlag(key: String): Any? = bootstrappedFlags[key]
 
     /**
      * The originally-bootstrapped payload for [key], if one was provided.
      * Used to enrich `$feature_flag_called` with `$feature_flag_bootstrapped_payload`.
      */
-    public fun getBootstrappedFeatureFlagPayload(key: String): Any? = bootstrappedPayloads[key]
+    internal fun getBootstrappedFeatureFlagPayload(key: String): Any? = bootstrappedPayloads[key]
 
     /**
      * Whether a `/flags` response has been received this session (in-memory, reset each launch).
      * Drives `$used_bootstrap_value`: bootstrapped values are "used" until this becomes true.
      */
-    public fun hasLoadedFeatureFlagsFromRemote(): Boolean = flagsLoadedFromRemote
+    internal fun hasLoadedFeatureFlagsFromRemote(): Boolean = flagsLoadedFromRemote
 
     // The bootstrap reporting state for one flag, snapshotted atomically for $feature_flag_called.
     internal data class BootstrapCalledValues(
