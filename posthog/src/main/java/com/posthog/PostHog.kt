@@ -218,7 +218,9 @@ public class PostHog private constructor(
 
                 // The persisted OPT_OUT is resolved lazily by isOptedOut(): at this point
                 // this.config is not assigned yet (so getPreferences() would read the in-memory
-                // fallback), and in Direct Boot the store is not readable yet either.
+                // fallback), and in Direct Boot the store is not readable yet either. The latch is
+                // per config, so a re-setup after close() re-resolves against the new config.
+                optOutLoaded = false
 
                 val sendCachedEventsIntegration =
                     PostHogSendCachedEventsIntegration(
@@ -1385,6 +1387,13 @@ public class PostHog private constructor(
         groupProperties: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
+            return
+        }
+
+        // gate here rather than relying on the stateless capture path, which reads the raw
+        // config.optOut and would miss a persisted opt-out that isOptedOut() has not resolved yet
+        if (isOptedOut()) {
+            config?.logger?.log("PostHog is in OptOut state.")
             return
         }
 

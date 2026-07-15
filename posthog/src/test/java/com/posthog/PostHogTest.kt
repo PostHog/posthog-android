@@ -3534,6 +3534,59 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `persisted opt-out gates group as the first call`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = PostHogMemoryPreferences()
+        preferences.setValue(OPT_OUT, true)
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                cachePreferences = preferences,
+                personProfiles = PersonProfiles.ALWAYS,
+            )
+
+        sut.group("company", "acme")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `persisted opt-out is honored again after close and re-setup`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val preferences = PostHogMemoryPreferences()
+        preferences.setValue(OPT_OUT, true)
+
+        // the same instance is re-setup with a fresh config (the static shared API does this),
+        // so the resolved value latched into the old config must not satisfy the new one
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+        assertTrue(sut.isOptOut())
+        sut.close()
+
+        val newConfig =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                this.storagePrefix = tmpDir.newFolder().absolutePath
+                this.preloadFeatureFlags = false
+                this.cachePreferences = preferences
+            }
+        sut.setup(newConfig)
+
+        assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
     fun `persisted person processing is re-read once preferences become available`() {
         val http = mockHttp()
         val url = http.url("/")
