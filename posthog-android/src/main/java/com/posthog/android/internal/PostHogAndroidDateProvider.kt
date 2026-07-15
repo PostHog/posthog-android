@@ -15,6 +15,10 @@ import java.util.Date
  * event) blocks the calling thread and can ANR under load. Instead the network time is sampled at
  * most once per [refreshIntervalMs] and subsequent timestamps are derived from the monotonic
  * [android.os.SystemClock.elapsedRealtime] delta since that anchor.
+ *
+ * Once a sample has succeeded, later sampling failures extend the existing anchor rather than
+ * falling back to the system wall clock: the platform's network clock derives time the same way,
+ * and the anchor stays immune to user changes of the device clock.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class PostHogAndroidDateProvider(
@@ -55,7 +59,9 @@ internal class PostHogAndroidDateProvider(
             lastAttemptElapsedMs = elapsed
             val networkNow = runCatching { clock.millis() }.getOrNull()
             if (networkNow != null) {
-                anchor = Anchor(networkNow, elapsed)
+                // re-read the monotonic clock: the sample corresponds to the moment millis()
+                // returned, and the IPC itself may have blocked long enough to skew the anchor
+                anchor = Anchor(networkNow, elapsedRealtimeMs())
                 return networkNow
             }
         }

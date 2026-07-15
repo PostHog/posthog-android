@@ -88,4 +88,72 @@ internal class PostHogAndroidDateProviderTest {
 
         assertEquals(2, clock.millisCalls.get())
     }
+
+    @Test
+    fun `does not bake a slow sample's own latency into the anchor`() {
+        var elapsed = 100L
+        // network time is defined as base + elapsedRealtime; millis() blocks for 5s before returning
+        val clock =
+            object : Clock() {
+                override fun millis(): Long {
+                    elapsed += 5_000L
+                    return 1_000_000L + elapsed
+                }
+
+                override fun instant(): Instant = Instant.ofEpochMilli(millis())
+
+                override fun getZone(): ZoneId = ZoneOffset.UTC
+
+                override fun withZone(zone: ZoneId?): Clock = this
+            }
+        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+
+        sut.currentTimeMillis()
+        elapsed += 1_000L
+
+        assertEquals(1_000_000L + elapsed, sut.currentTimeMillis())
+    }
+
+    @Test
+    fun `retries a failed network sample after the interval elapses`() {
+        val clock = ThrowingClock()
+        var elapsed = 100L
+        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+
+        sut.currentTimeMillis()
+        elapsed += 60_000L
+        sut.currentTimeMillis()
+
+        assertEquals(2, clock.millisCalls.get())
+    }
+
+    private class SucceedOnceClock(private val now: Long) : Clock() {
+        val millisCalls = AtomicInteger(0)
+
+        override fun millis(): Long {
+            if (millisCalls.incrementAndGet() > 1) {
+                throw java.time.DateTimeException("network time unavailable")
+            }
+            return now
+        }
+
+        override fun instant(): Instant = Instant.ofEpochMilli(now)
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId?): Clock = this
+    }
+
+    @Test
+    fun `a failed refresh extends the existing anchor instead of falling back to system time`() {
+        val clock = SucceedOnceClock(1_000_000L)
+        var elapsed = 100L
+        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+
+        assertEquals(1_000_000L, sut.currentTimeMillis())
+        elapsed += 65_000L
+
+        assertEquals(1_065_000L, sut.currentTimeMillis())
+        assertEquals(2, clock.millisCalls.get())
+    }
 }
