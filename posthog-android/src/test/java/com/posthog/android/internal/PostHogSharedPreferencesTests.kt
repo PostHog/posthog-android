@@ -306,4 +306,48 @@ internal class PostHogSharedPreferencesTests {
         assertEquals("value", sut.getValue("key"))
         assertEquals("value", directBootContext.realPreferences.getString("key", null))
     }
+
+    @Test
+    fun `remove while locked also removes a previously persisted value after unlock`() {
+        val directBootContext = DirectBootContext()
+        directBootContext.realPreferences.edit().putString("persisted", "old").apply()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.remove("persisted")
+        directBootContext.locked = false
+
+        assertNull(sut.getValue("persisted"))
+        assertNull(directBootContext.realPreferences.getString("persisted", null))
+    }
+
+    @Test
+    fun `clear while locked also clears previously persisted values after unlock`() {
+        val directBootContext = DirectBootContext()
+        directBootContext.realPreferences.edit()
+            .putString("persisted", "old")
+            .putString("kept", "old")
+            .apply()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.clear(except = listOf("kept"))
+        directBootContext.locked = false
+
+        assertNull(sut.getValue("persisted"))
+        assertEquals("old", sut.getValue("kept"))
+        assertNull(directBootContext.realPreferences.getString("persisted", null))
+    }
+
+    @Test
+    fun `set after remove while locked keeps the new value after unlock`() {
+        val directBootContext = DirectBootContext()
+        directBootContext.realPreferences.edit().putString("key", "old").apply()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.remove("key")
+        sut.setValue("key", "new")
+        directBootContext.locked = false
+
+        assertEquals("new", sut.getValue("key"))
+        assertEquals("new", directBootContext.realPreferences.getString("key", null))
+    }
 }

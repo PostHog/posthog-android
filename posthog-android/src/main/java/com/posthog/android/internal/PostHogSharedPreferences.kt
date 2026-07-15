@@ -15,8 +15,9 @@ import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
  *
  * The underlying [SharedPreferences] is resolved lazily: in Direct Boot mode (after a reboot,
  * before the user first unlocks the device) credential encrypted storage is unavailable and
- * `context.getSharedPreferences` throws. Until storage becomes available, writes are buffered
- * in memory and flushed on the first access after unlock.
+ * `context.getSharedPreferences` throws. Until storage becomes available, writes, removals,
+ * and clears are buffered in memory and replayed against the real preferences on the first
+ * access after unlock.
  *
  * @property context the App Context
  * @property config the Config
@@ -33,9 +34,12 @@ internal class PostHogSharedPreferences(
     @Volatile
     private var sharedPreferences: SharedPreferences? = sharedPreferences
 
-    // Writes made while credential encrypted storage is unavailable (Direct Boot),
-    // keyed by preference key. Guarded by lock.
+    // Operations made while credential encrypted storage is unavailable (Direct Boot),
+    // replayed in order (clear, then removals, then writes) on the first access after
+    // unlock so that deletions of previously persisted values are not lost. Guarded by lock.
     private val pendingWrites = mutableMapOf<String, Any>()
+    private val pendingRemovals = mutableSetOf<String>()
+    private var pendingClearExcept: List<String>? = null
 
     // Returns the SharedPreferences, creating it on first use. Returns null while the device
     // is locked (Direct Boot) and credential encrypted storage is still unavailable.
@@ -51,12 +55,16 @@ internal class PostHogSharedPreferences(
                     return null
                 } ?: return null
             sharedPreferences = prefs
-            if (pendingWrites.isNotEmpty()) {
-                val pending = pendingWrites.toMap()
-                pendingWrites.clear()
-                for ((key, value) in pending) {
-                    setValue(key, value)
-                }
+            val clearExcept = pendingClearExcept
+            pendingClearExcept = null
+            val removals = pendingRemovals.toList()
+            pendingRemovals.clear()
+            val writes = pendingWrites.toMap()
+            pendingWrites.clear()
+            clearExcept?.let { clear(it) }
+            removals.forEach { remove(it) }
+            for ((key, value) in writes) {
+                setValue(key, value)
             }
             return prefs
         }
@@ -111,6 +119,7 @@ internal class PostHogSharedPreferences(
         synchronized(lock) {
             val prefs = getSharedPrefs()
             if (prefs == null) {
+                pendingRemovals.remove(key)
                 pendingWrites[key] = value
                 return
             }
@@ -164,6 +173,9 @@ internal class PostHogSharedPreferences(
             val prefs = getSharedPrefs()
             if (prefs == null) {
                 pendingWrites.keys.retainAll { except.contains(it) }
+                // Persisted keys can't be enumerated while locked; record the clear and
+                // apply it against the real preferences on the first access after unlock.
+                pendingClearExcept = except
                 return
             }
             val edit = prefs.edit()
@@ -250,6 +262,8 @@ internal class PostHogSharedPreferences(
             val prefs = getSharedPrefs()
             if (prefs == null) {
                 pendingWrites.remove(key)
+                // Tombstone so a previously persisted value is also removed after unlock.
+                pendingRemovals.add(key)
                 return
             }
             val edit = prefs.edit()
