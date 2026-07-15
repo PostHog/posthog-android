@@ -505,7 +505,8 @@ internal class PostHogTest {
         val eventsByFlag = batch.batch.associateBy { it.properties!!["\$feature_flag"] }
         assertEquals(true, eventsByFlag["4535-funnel-bar-viz"]!!.properties!!["\$feature_flag_has_experiment"])
         assertEquals(false, eventsByFlag["IAmInactive"]!!.properties!!["\$feature_flag_has_experiment"])
-        assertEquals(false, eventsByFlag["splashScreenName"]!!.properties!!["\$feature_flag_has_experiment"])
+        // the property is omitted when the server did not report has_experiment
+        assertFalse(eventsByFlag["splashScreenName"]!!.properties!!.containsKey("\$feature_flag_has_experiment"))
 
         sut.close()
     }

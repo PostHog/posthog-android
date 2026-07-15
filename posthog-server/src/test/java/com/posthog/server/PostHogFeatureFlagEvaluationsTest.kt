@@ -46,7 +46,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         version: Int = 3,
         payload: String? = null,
         reason: EvaluationReason? = EvaluationReason("condition_match", "Condition matched", 0),
-        hasExperiment: Boolean = false,
+        hasExperiment: Boolean? = null,
     ): FeatureFlag =
         FeatureFlag(
             key = key,
@@ -159,7 +159,8 @@ internal class PostHogFeatureFlagEvaluationsTest {
         assertEquals(4, call.properties["\$feature_flag_version"])
         assertEquals("Condition matched", call.properties["\$feature_flag_reason"])
         assertEquals("req-1", call.properties["\$feature_flag_request_id"])
-        assertEquals(false, call.properties["\$feature_flag_has_experiment"])
+        // the metadata did not report has_experiment, so the property is omitted
+        assertFalse(call.properties.containsKey("\$feature_flag_has_experiment"))
     }
 
     @Test
@@ -182,8 +183,8 @@ internal class PostHogFeatureFlagEvaluationsTest {
         assertEquals(3, host.captures.size)
         assertEquals(true, host.captures[0].properties["\$feature_flag_has_experiment"])
         assertEquals(false, host.captures[1].properties["\$feature_flag_has_experiment"])
-        // unknown flags have no metadata, so has_experiment defaults to false
-        assertEquals(false, host.captures[2].properties["\$feature_flag_has_experiment"])
+        // unknown flags have no metadata, so the property is omitted
+        assertFalse(host.captures[2].properties.containsKey("\$feature_flag_has_experiment"))
     }
 
     @Test

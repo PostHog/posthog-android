@@ -128,8 +128,8 @@ internal class PostHogEvaluateFlagsTest {
         assertEquals(4.0, props["\$feature_flag_version"])
         assertEquals("Matched", props["\$feature_flag_reason"])
         assertEquals("req-fixture", props["\$feature_flag_request_id"])
-        // has_experiment absent from the response metadata defaults to false
-        assertEquals(false, props["\$feature_flag_has_experiment"])
+        // has_experiment absent from the response metadata, so the property is omitted
+        assertFalse(props.containsKey("\$feature_flag_has_experiment"))
 
         postHog.close()
         mockServer.shutdown()

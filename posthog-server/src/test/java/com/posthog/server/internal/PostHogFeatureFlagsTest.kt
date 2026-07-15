@@ -493,7 +493,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `local evaluation defaults has_experiment to false when definitions omit it`() {
+    fun `local evaluation leaves has_experiment null when definitions omit it`() {
         val localEvalResponse = createLocalEvaluationResponse(flagKey = "plain-flag")
 
         val mockServer = createMockHttp(jsonResponse(localEvalResponse))
@@ -526,7 +526,7 @@ internal class PostHogFeatureFlagsTest {
                 disableGeoip = false,
             )
 
-        assertEquals(false, result.flags["plain-flag"]?.metadata?.hasExperiment)
+        assertNull(result.flags.getValue("plain-flag").metadata.hasExperiment)
 
         featureFlags.shutDown()
         mockServer.shutdown()

@@ -642,8 +642,8 @@ internal class PostHogStatelessTest {
         assertEquals("user123", event.distinctId)
         assertEquals("test_flag", event.properties!!["\$feature_flag"])
         assertEquals(true, event.properties!!["\$feature_flag_response"])
-        // no flag details available, so has_experiment defaults to false
-        assertEquals(false, event.properties!!["\$feature_flag_has_experiment"])
+        // no flag details available, so the has_experiment property is omitted
+        assertFalse(event.properties!!.containsKey("\$feature_flag_has_experiment"))
     }
 
     @Test
@@ -684,6 +684,34 @@ internal class PostHogStatelessTest {
         assertEquals(2, mockQueue.events.size)
         assertEquals(true, mockQueue.events[0].properties!!["\$feature_flag_has_experiment"])
         assertEquals(false, mockQueue.events[1].properties!!["\$feature_flag_has_experiment"])
+    }
+
+    @Test
+    fun `feature flag called event omits has_experiment when metadata does not report it`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlagDetails(
+            "unreported_flag",
+            FeatureFlag(
+                key = "unreported_flag",
+                enabled = true,
+                variant = null,
+                metadata = FeatureFlagMetadata(id = 3, payload = null, version = 1),
+                reason = null,
+            ),
+        )
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        sut.getFeatureFlagResultStateless("user123", "unreported_flag")
+
+        assertEquals(1, mockQueue.events.size)
+        assertFalse(mockQueue.events.first().properties!!.containsKey("\$feature_flag_has_experiment"))
     }
 
     @Test

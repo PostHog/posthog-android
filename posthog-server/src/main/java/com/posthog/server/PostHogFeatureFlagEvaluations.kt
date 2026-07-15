@@ -216,7 +216,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
                 props["locally_evaluated"] = true
             }
         }
-        props["\$feature_flag_has_experiment"] = flag?.metadata?.hasExperiment ?: false
+        flag?.metadata?.hasExperiment?.let { props["\$feature_flag_has_experiment"] = it }
         requestId?.let { props["\$feature_flag_request_id"] = it }
         evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
         definitionsLoadedAt?.let { props["\$feature_flag_definitions_loaded_at"] = it }
