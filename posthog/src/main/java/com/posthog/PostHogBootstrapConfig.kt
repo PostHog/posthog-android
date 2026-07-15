@@ -1,8 +1,9 @@
 package com.posthog
 
 /**
- * Pre-seeded identity and feature-flag state applied on the very first SDK launch,
- * before any network request completes.
+ * Pre-seeded identity and feature-flag state applied before any network request completes:
+ * identity only on the very first SDK launch, and the feature-flag base layer on every launch
+ * until `reset()`.
  *
  * Set [PostHogConfig.bootstrap] before calling setup to seed the distinct id and feature
  * flag state. Events captured synchronously during initialization then carry a
@@ -41,6 +42,9 @@ public class PostHogBootstrapConfig
         /**
          * Feature flag values served until the first `/flags` response arrives, keyed by flag
          * key. Each value is a [Boolean] for boolean flags or a [String] for multivariate flags.
+         * Only enabled values are served — `true` or a non-empty [String]; a `false` or
+         * empty-string entry is treated as not bootstrapped (matching posthog-js's `!!value`
+         * check) and dropped, indistinguishable from a key that was never provided.
          * Values must be JSON-serializable; any non-serializable entry (e.g. NaN) is dropped with
          * a logged warning rather than surfaced.
          */
