@@ -1607,13 +1607,16 @@ public class PostHog private constructor(
                         props["\$feature_flag_version"] = it.metadata.version
                         props["\$feature_flag_reason"] = it.reason?.description ?: ""
                     }
-                    val bootstrappedResponse = it.getBootstrappedFeatureFlag(key)
-                    if (bootstrappedResponse != null) {
-                        props["\$feature_flag_bootstrapped_response"] = bootstrappedResponse
-                        it.getBootstrappedFeatureFlagPayload(key)?.let { payload ->
+                    // Snapshot the three bootstrap fields under one lock so a concurrent reset()
+                    // can't tear this event (a response present but its payload dropped, or a
+                    // $used_bootstrap_value from a different instant). Null when the key had no
+                    // bootstrap value, preserving the per-key gating of these properties.
+                    it.getBootstrapCalledValues(key)?.let { bootstrap ->
+                        props["\$feature_flag_bootstrapped_response"] = bootstrap.response
+                        bootstrap.payload?.let { payload ->
                             props["\$feature_flag_bootstrapped_payload"] = payload
                         }
-                        props["\$used_bootstrap_value"] = !it.hasLoadedFeatureFlagsFromRemote()
+                        props["\$used_bootstrap_value"] = bootstrap.usedBootstrapValue
                     }
                     capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
                 }

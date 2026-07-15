@@ -154,7 +154,9 @@ public class PostHogRemoteConfig(
         preloadCapturePerformanceConfig()
         loadCachedPropertiesForFlags()
         // Apply the bootstrap snapshot before any network load so reads serve it immediately.
-        applyBootstrapSnapshotIfNeeded()
+        synchronized(featureFlagsLock) {
+            applyBootstrapSnapshotLocked()
+        }
     }
 
     private fun isRecordingActive(
@@ -766,11 +768,28 @@ public class PostHogRemoteConfig(
                     val flags = this.flags ?: mapOf()
                     preferences.setValue(FLAGS, flags)
 
+                    // Bootstrap is a first-session-only base layer: never persist a value that is
+                    // still its bootstrap value, or a partial /flags merge would leak bootstrap-only
+                    // keys into the durable cache and a later launch (bootstrap dropped, no reset())
+                    // would serve them as genuine remote flags. A key the server resolved to a
+                    // different value is kept; with no bootstrap this session the filter is a no-op.
                     val featureFlags = this.featureFlags ?: mapOf()
-                    preferences.setValue(FEATURE_FLAGS, featureFlags)
+                    val serverFeatureFlags =
+                        if (bootstrappedFlags.isEmpty()) {
+                            featureFlags
+                        } else {
+                            featureFlags.filterKeys { bootstrappedFlags[it] != featureFlags[it] }
+                        }
+                    preferences.setValue(FEATURE_FLAGS, serverFeatureFlags)
 
                     val payloads = this.featureFlagPayloads ?: mapOf()
-                    preferences.setValue(FEATURE_FLAGS_PAYLOAD, payloads)
+                    val serverPayloads =
+                        if (bootstrappedPayloads.isEmpty()) {
+                            payloads
+                        } else {
+                            payloads.filterKeys { bootstrappedPayloads[it] != payloads[it] }
+                        }
+                    preferences.setValue(FEATURE_FLAGS_PAYLOAD, serverPayloads)
                 }
                 isFeatureFlagsLoaded = true
                 setFlagsLoadedFromRemote()
@@ -1229,27 +1248,27 @@ public class PostHogRemoteConfig(
                 }
             }
         } catch (e: Throwable) {
+            config.logger.log("Sanitizing bootstrapped values failed: $e. All bootstrapped values for this call were dropped.")
             emptyMap()
         }
     }
 
     // Only enabled bootstrap flags are served (posthog-js `!!value`): a boolean `true` or a non-empty
-    // variant string. A `false` or empty value is dropped so it isn't served or reported.
+    // variant string. A `false` or empty value is dropped so it isn't served or reported. Self-guarded
+    // like sanitizeBootstrapValues: it runs in a property initializer, before init{}, so a throw here
+    // (a concurrently-mutated input map) would otherwise escape into construction.
     private fun enabledBootstrapFlags(flags: Map<String, Any>): Map<String, Any> =
-        flags.filterValues { it == true || (it is String && it.isNotEmpty()) }
+        try {
+            flags.filterValues { it == true || (it is String && it.isNotEmpty()) }
+        } catch (e: Throwable) {
+            config.logger.log("Filtering bootstrapped flags failed: $e. All bootstrapped flags were dropped.")
+            emptyMap()
+        }
 
     // Applies the configured bootstrap as the served snapshot, replacing whatever is there. Bootstrap
     // is an initial snapshot served before the first /flags response and wins over persisted flags; a
     // complete /flags response replaces it (see executeFeatureFlags). The bootstrappedFlags/Payloads
-    // copies are kept separately for $feature_flag_called reporting.
-    private fun applyBootstrapSnapshotIfNeeded() {
-        if (bootstrappedFlags.isEmpty()) return
-        synchronized(featureFlagsLock) {
-            applyBootstrapSnapshotLocked()
-        }
-    }
-
-    // Caller must hold featureFlagsLock.
+    // copies are kept separately for $feature_flag_called reporting. Caller must hold featureFlagsLock.
     private fun applyBootstrapSnapshotLocked() {
         if (bootstrappedFlags.isEmpty()) return
         this.featureFlags = bootstrappedFlags
@@ -1287,6 +1306,26 @@ public class PostHogRemoteConfig(
      * Drives `$used_bootstrap_value`: bootstrapped values are "used" until this becomes true.
      */
     public fun hasLoadedFeatureFlagsFromRemote(): Boolean = flagsLoadedFromRemote
+
+    // The bootstrap reporting state for one flag, snapshotted atomically for $feature_flag_called.
+    internal data class BootstrapCalledValues(
+        val response: Any,
+        val payload: Any?,
+        val usedBootstrapValue: Boolean,
+    )
+
+    /**
+     * Atomically snapshots the bootstrap reporting state for [key] under featureFlagsLock, so a
+     * concurrent clear() can't tear a `$feature_flag_called` event across the three bootstrap fields.
+     * Returns null when [key] had no bootstrap value, preserving the per-key gating of the
+     * `$feature_flag_bootstrapped_*` / `$used_bootstrap_value` properties.
+     */
+    internal fun getBootstrapCalledValues(key: String): BootstrapCalledValues? {
+        synchronized(featureFlagsLock) {
+            val response = bootstrappedFlags[key] ?: return null
+            return BootstrapCalledValues(response, bootstrappedPayloads[key], !flagsLoadedFromRemote)
+        }
+    }
 
     private fun setFlagsLoadedFromRemote() {
         // Flip under the same lock clear() uses to reset it, so a late /flags completion can't

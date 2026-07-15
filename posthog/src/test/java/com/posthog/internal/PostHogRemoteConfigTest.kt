@@ -2497,6 +2497,40 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `errorsWhileComputingFlags load does not persist bootstrapped-only keys`() {
+        // V1 partial-failure response returns {"foo": true} with errorsWhileComputingFlags=true.
+        val withErrors = File("src/test/resources/json/flags-v1/basic-flags-with-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(withErrors))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("legacy" to true)),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // in-memory, the bootstrapped-only key is still served this session (base-layer contract)
+        assertEquals(true, sut.getFeatureFlag("legacy"))
+
+        // but it must NOT reach the durable cache: a later launch without bootstrap would otherwise
+        // load it from cache and serve it as a genuine remote flag (bootstrap is first-session-only)
+        @Suppress("UNCHECKED_CAST")
+        val cached = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any> ?: emptyMap()
+        assertEquals(true, cached["foo"]) // the server-confirmed key is persisted
+        assertNull(cached["legacy"]) // the bootstrap-only key is not
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
     fun `bootstrapped flags are not resurrected after clear`() {
         // fixture returns featureFlags {"4535-funnel-bar-viz": true}, not the bootstrapped key
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
