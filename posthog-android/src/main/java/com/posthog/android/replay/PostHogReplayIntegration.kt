@@ -339,13 +339,13 @@ public class PostHogReplayIntegration(
 
     internal val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
-            val timestamp = config.dateProvider.currentTimeMillis()
             try {
                 val state = dispatch(motionEvent)
                 try {
                     if (!isActive()) {
                         return@TouchEventInterceptor state
                     }
+                    val timestamp = config.dateProvider.currentTimeMillis()
                     // 1. prevent MotionEvent Object Is Recycled or Invalid
                     // 2. pointerCount Changed Between Checks and Access (since we call on a background thread)
                     val safeMotionEvent = MotionEvent.obtain(motionEvent)

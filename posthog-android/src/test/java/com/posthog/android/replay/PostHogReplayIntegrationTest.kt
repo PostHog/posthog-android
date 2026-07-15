@@ -19,6 +19,8 @@ import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
@@ -40,6 +42,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowPixelCopy
 import java.lang.ref.WeakReference
+import java.util.Date
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
@@ -207,10 +210,30 @@ internal class PostHogReplayIntegrationTest {
         return PostHogReplayIntegration(context, config, MainHandler(), executor)
     }
 
+    // currentTimeMillis() on Android does a network-time lookup; count how often the touch path
+    // invokes it so we can prove it is skipped when replay is inactive.
+    private class CountingDateProvider(val calls: AtomicInteger) : PostHogDateProvider {
+        private val delegate = PostHogDeviceDateProvider()
+
+        override fun currentTimeMillis(): Long {
+            calls.incrementAndGet()
+            return delegate.currentTimeMillis()
+        }
+
+        override fun currentDate(): Date = delegate.currentDate()
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date = delegate.addSecondsToCurrentDate(seconds)
+
+        override fun nanoTime(): Long = delegate.nanoTime()
+    }
+
     @Test
     fun `touch does not submit capture work to the replay executor when inactive`() {
         val submits = AtomicInteger(0)
-        val sut = getSutWithExecutor(configWithSampling(flagActive = false, samplingPasses = true), countingReplayExecutor(submits))
+        val dateCalls = AtomicInteger(0)
+        val config = configWithSampling(flagActive = false, samplingPasses = true)
+        config.dateProvider = CountingDateProvider(dateCalls)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
         val fake = createPostHogFake()
         sut.install(fake)
         try {
@@ -223,6 +246,7 @@ internal class PostHogReplayIntegrationTest {
 
             assertEquals(DispatchState.Consumed, state)
             assertEquals(0, submits.get())
+            assertEquals(0, dateCalls.get())
         } finally {
             sut.uninstall()
         }
@@ -231,7 +255,10 @@ internal class PostHogReplayIntegrationTest {
     @Test
     fun `touch submits capture work and still dispatches when active`() {
         val submits = AtomicInteger(0)
-        val sut = getSutWithExecutor(configWithSampling(flagActive = true, samplingPasses = true), countingReplayExecutor(submits))
+        val dateCalls = AtomicInteger(0)
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        config.dateProvider = CountingDateProvider(dateCalls)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
         val fake = createPostHogFake()
         fake.sessionReplayActive = false
         sut.install(fake)
@@ -248,6 +275,7 @@ internal class PostHogReplayIntegrationTest {
 
             assertEquals(DispatchState.Consumed, state)
             assertTrue(submits.get() >= 1)
+            assertTrue(dateCalls.get() >= 1)
         } finally {
             sut.uninstall()
         }
