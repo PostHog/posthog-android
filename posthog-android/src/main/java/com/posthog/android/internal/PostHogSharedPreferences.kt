@@ -70,6 +70,10 @@ internal class PostHogSharedPreferences(
         }
     }
 
+    override fun isAvailable(): Boolean {
+        return getSharedPrefs() != null
+    }
+
     override fun getValue(
         key: String,
         defaultValue: Any?,

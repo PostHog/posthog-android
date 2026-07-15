@@ -414,18 +414,35 @@ public class PostHog private constructor(
         }
     }
 
+    // An anonymousId generated while the preferences store was unavailable (see
+    // PostHogPreferences.isAvailable): kept in memory only, so it cannot overwrite a persisted
+    // id that was merely unreadable at the time. Guarded by anonymousLock.
+    private var transientAnonymousId: String? = null
+
     @get:JvmName("getAnonymousIdInternal")
     private var anonymousId: String
         get() {
             var anonymousId: String?
             synchronized(anonymousLock) {
+                // read availability before the value: if the store becomes readable in between,
+                // this call stays on the transient path and the persisted id is never overwritten
+                val preferencesAvailable = getPreferences().isAvailable()
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
                 if (anonymousId.isNullOrBlank()) {
-                    var uuid = TimeBasedEpochGenerator.generate()
-                    // when getAnonymousId method is available, pass-through the value for modification
-                    config?.getAnonymousId?.let { uuid = it(uuid) }
-                    anonymousId = uuid.toString()
-                    this.anonymousId = anonymousId ?: ""
+                    anonymousId = transientAnonymousId ?: run {
+                        var uuid = TimeBasedEpochGenerator.generate()
+                        // when getAnonymousId method is available, pass-through the value for modification
+                        config?.getAnonymousId?.let { uuid = it(uuid) }
+                        uuid.toString()
+                    }
+                    if (preferencesAvailable) {
+                        this.anonymousId = anonymousId ?: ""
+                        transientAnonymousId = null
+                    } else {
+                        // an absent value is indistinguishable from an unreadable one, so persisting
+                        // now could overwrite a returning user's id once the store unlocks
+                        transientAnonymousId = anonymousId
+                    }
                 }
             }
             return anonymousId ?: ""
@@ -1655,6 +1672,9 @@ public class PostHog private constructor(
         synchronized(personProcessingLock) {
             isPersonProcessingLoaded = false
         }
+        synchronized(anonymousLock) {
+            transientAnonymousId = null
+        }
 
         endSession()
         startSession()
@@ -1706,12 +1726,16 @@ public class PostHog private constructor(
             return ""
         }
         synchronized(deviceIdLock) {
+            // read availability before the value (see the anonymousId getter)
+            val preferencesAvailable = getPreferences().isAvailable()
             val deviceId = getPreferences().getValue(DEVICE_ID) as? String
             if (deviceId.isNullOrBlank()) {
                 // Lazy init for upgrades: existing installs won't have a device_id yet
                 val anonId = anonymousId
                 if (anonId.isNotBlank()) {
-                    getPreferences().setValue(DEVICE_ID, anonId)
+                    if (preferencesAvailable) {
+                        getPreferences().setValue(DEVICE_ID, anonId)
+                    }
                     return anonId
                 }
                 return ""

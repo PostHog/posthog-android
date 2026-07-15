@@ -13,6 +13,7 @@ import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -268,6 +269,18 @@ internal class PostHogSharedPreferencesTests {
     private fun getDirectBootSut(directBootContext: DirectBootContext): PostHogSharedPreferences {
         val config = PostHogAndroidConfig(API_KEY)
         return PostHogSharedPreferences(directBootContext.context, config)
+    }
+
+    @Test
+    fun `preferences are unavailable while locked and available after unlock`() {
+        val directBootContext = DirectBootContext()
+        val sut = getDirectBootSut(directBootContext)
+
+        assertFalse(sut.isAvailable())
+
+        directBootContext.locked = false
+
+        assertTrue(sut.isAvailable())
     }
 
     @Test
