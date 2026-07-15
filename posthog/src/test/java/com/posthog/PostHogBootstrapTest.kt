@@ -42,6 +42,7 @@ internal class PostHogBootstrapTest {
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         logger: TestLogger? = null,
         optOut: Boolean = false,
+        onFeatureFlags: PostHogOnFeatureFlags? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -55,6 +56,7 @@ internal class PostHogBootstrapTest {
                 this.remoteConfig = false
                 this.bootstrap = bootstrap
                 this.optOut = optOut
+                this.onFeatureFlags = onFeatureFlags
                 if (logger != null) {
                     this.logger = logger
                 }
@@ -305,6 +307,23 @@ internal class PostHogBootstrapTest {
 
         sut.close()
         http.shutdown()
+    }
+
+    @Test
+    fun `bootstrap flags fire the flags-loaded callback immediately`() {
+        var loadedCount = 0
+        val sut =
+            getSut(
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
+                onFeatureFlags = PostHogOnFeatureFlags { loadedCount += 1 },
+            )
+
+        // posthog-js fires onFeatureFlags when bootstrap is applied; the callback fires during setup,
+        // before any /flags response, so listeners aren't blocked on the network.
+        assertTrue(loadedCount >= 1)
+        assertEquals(true, sut.getFeatureFlag("beta-ui", sendFeatureFlagEvent = false))
+
+        sut.close()
     }
 
     private fun firstEvent(

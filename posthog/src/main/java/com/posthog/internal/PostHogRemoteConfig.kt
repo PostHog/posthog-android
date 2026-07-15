@@ -1264,6 +1264,14 @@ public class PostHogRemoteConfig(
     }
 
     /**
+     * Whether a bootstrap snapshot was applied at init. Lets setup fire the flags-loaded callbacks
+     * immediately (matching posthog-js firing onFeatureFlags when bootstrap is applied) so listeners
+     * aren't blocked on the first network response. Stays true after a load overlays the snapshot;
+     * only read once at setup, before any load completes.
+     */
+    public fun hasBootstrapFlags(): Boolean = bootstrappedFlags.isNotEmpty()
+
+    /**
      * The originally-bootstrapped value for [key], if one was provided.
      * Used to enrich `$feature_flag_called` with `$feature_flag_bootstrapped_response`.
      */
