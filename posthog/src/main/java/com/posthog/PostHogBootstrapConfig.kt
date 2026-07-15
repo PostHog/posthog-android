@@ -16,8 +16,10 @@ package com.posthog
  * otherwise ignored. An identified bootstrap ([isIdentifiedId] true) seeds the distinct id on
  * a fresh install; if a local anonymous user already exists it is merged into the identified
  * id via `identify()`, while a different already-identified user is preserved and a warning is
- * logged. Bootstrapped feature flags form a base layer only: values from `/flags` overlay them
- * for overlapping keys, while bootstrapped-only keys remain available.
+ * logged. Bootstrapped feature flags are an initial snapshot, not a permanent base: they win over
+ * any persisted flag cache at setup and are served until the first `/flags` response, which then
+ * replaces them entirely — a complete response drops bootstrapped-only keys, while only a partial or
+ * errored response preserves the keys it did not recompute. `reset()` drops the snapshot.
  */
 public class PostHogBootstrapConfig
     @JvmOverloads

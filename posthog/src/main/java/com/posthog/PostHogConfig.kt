@@ -316,10 +316,11 @@ public open class PostHogConfig(
     /**
      * Optional bootstrap configuration that seeds identity and feature-flag state before any
      * network request completes. Identity is seeded only on the very first launch, when nothing
-     * has been persisted yet. The feature-flag snapshot is applied on every launch as a base
+     * has been persisted yet. The feature-flag snapshot is applied on every launch as the initial
      * layer — served immediately and taking precedence over any persisted flag cache — until the
-     * first `/flags` response overlays it or `reset()` drops it. See [PostHogBootstrapConfig] for
-     * the precedence rules.
+     * first `/flags` response replaces it (a complete response drops bootstrapped-only keys; a
+     * partial or errored one keeps the keys it did not recompute) or `reset()` drops it. See
+     * [PostHogBootstrapConfig] for the precedence rules.
      *
      * Must be set before [PostHog.setup]; it is read once during setup, so mutating it afterward
      * has no effect.
