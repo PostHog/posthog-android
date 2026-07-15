@@ -670,11 +670,13 @@ public class PostHogRemoteConfig(
 
             var quotaLimited = false
             response?.let {
-                // Read the cached /config values before taking featureFlagsLock: getValue can hit disk
-                // (the first access loads the whole prefs file), and holding the lock across that read
-                // blocks a concurrent reset()/clear() on the main thread long enough to ANR. The
-                // in-memory re-evaluation below still runs under the lock, so its read of featureFlags
-                // stays consistent with the flag-map updates.
+                // Read the cached /config values before taking featureFlagsLock: getValue can be slow
+                // (per-read deserialization of stringified configs, contention on the preferences lock
+                // with a serializing writer, or custom PostHogPreferences implementations that do real
+                // I/O), and holding the lock across that read blocks a concurrent reset()/clear() on
+                // the main thread long enough to ANR. The in-memory re-evaluation below still runs
+                // under the lock, so its read of featureFlags stays consistent with the flag-map
+                // updates.
                 val cachedSessionReplay = config.cachePreferences?.getValue(SESSION_REPLAY)
                 val cachedCapturePerformance = config.cachePreferences?.getValue(CAPTURE_PERFORMANCE)
                 val cachedErrorTracking = config.cachePreferences?.getValue(ERROR_TRACKING)
