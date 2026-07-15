@@ -904,11 +904,12 @@ internal class PostHogReplayIntegrationTest {
             whenever(fx.remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
             fx.sut.onRemoteConfig()
 
-            // onRemoteConfig() schedules the buffer migration on the replay executor. Await it before
-            // idling the looper: idle() runs the posted resume-start(), whose resetBufferingState()
-            // clears the buffer on the replay executor — a clear that races the in-flight migration on
-            // a separate executor and, if it wins, discards the window before it migrates. Awaiting the
-            // migrated result first makes that clear a no-op on an already-empty buffer.
+            // onRemoteConfig() schedules the buffer migration on the replay executor. Await its result
+            // before idling the looper: idle() runs the posted resume-start(resumeCurrent = true), and
+            // because replaySessionId is still null here that routes through resetSessionStateIfNeeded
+            // -> resetBufferingState -> clearBuffer on the replay executor. That clear races the
+            // in-flight migration on a separate executor and, if it wins, discards the window before it
+            // migrates. Awaiting the migrated result first makes the clear a no-op on an empty buffer.
             awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
             shadowOf(Looper.getMainLooper()).idle()
 
