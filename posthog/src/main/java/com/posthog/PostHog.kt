@@ -325,9 +325,11 @@ public class PostHog private constructor(
                     }
                 }
 
-                // Reconcile a differing identified bootstrap now that the SDK is enabled. Runs under
-                // setupLock — safe on Android because identify() never takes it (unlike iOS) — which
-                // keeps it mutually exclusive with close() and guarded by the catch below.
+                // Reconcile a differing identified bootstrap after the setup reload is dispatched.
+                // Kept here (not before integrations) so the identify()-triggered flags reload can't
+                // resolve remote config ahead of setup's own /config load on the single-threaded
+                // remote-config executor. The $identify merge links any setup-time events captured
+                // under the prior anonymous id to the identified user server-side.
                 reconcileBootstrapIdentityIfNeeded(config)
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
@@ -418,8 +420,8 @@ public class PostHog private constructor(
 
     /**
      * Reconciles a differing identified bootstrap against the local identity — fresh installs are
-     * already seeded by [applyBootstrapIfNeeded]. Must run after setup: [identify] needs the SDK
-     * enabled and captures an event.
+     * already seeded by [applyBootstrapIfNeeded]. Runs at the end of setup, after the initial flag
+     * reload: [identify] needs the SDK enabled and captures an event.
      */
     private fun reconcileBootstrapIdentityIfNeeded(config: PostHogConfig) {
         val bootstrap = config.bootstrap ?: return
@@ -435,7 +437,12 @@ public class PostHog private constructor(
         // an event) must not abort setup.
         try {
             if (distinctId == bootstrapId) {
-                // Already this identity (fresh-install seed, or unchanged); reconciling would only warn spuriously.
+                // Matching id with an identified bootstrap: upgrade an anonymous user to identified
+                // without a redundant $identify or re-link (spec). A fresh-install seed is already
+                // identified, so this only fires for a returning anonymous user with the same id.
+                if (!isIdentified) {
+                    this.isIdentified = true
+                }
                 return
             }
             if (isIdentified) {

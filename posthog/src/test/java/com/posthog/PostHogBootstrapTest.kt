@@ -206,6 +206,24 @@ internal class PostHogBootstrapTest {
     }
 
     @Test
+    fun `identified bootstrap upgrades a matching anonymous id to identified`() {
+        val prefs = PostHogMemoryPreferences()
+        prefs.setValue(ANONYMOUS_ID, "user-123")
+        val sut =
+            getSut(
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123", isIdentifiedId = true),
+                cachePreferences = prefs,
+                reloadFeatureFlags = false,
+            )
+
+        // matching id + identified bootstrap: mark identified, keep the id, no redundant $identify
+        assertEquals("user-123", sut.distinctId())
+        assertEquals(true, prefs.getValue(IS_IDENTIFIED))
+
+        sut.close()
+    }
+
+    @Test
     fun `blank bootstrap distinct id is a no-op`() {
         val sut = getSut(bootstrap = PostHogBootstrapConfig(distinctId = "   "))
 

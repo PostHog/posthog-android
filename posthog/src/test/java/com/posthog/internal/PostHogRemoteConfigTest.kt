@@ -2294,7 +2294,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `bootstrapped-only keys survive a flags load`() {
+    fun `complete flags load drops bootstrapped-only keys`() {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
         val sut =
             getSut(
@@ -2314,9 +2314,46 @@ internal class PostHogRemoteConfigTest {
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
-        // loaded value wins for the overlapping key, the bootstrapped-only key survives
+        // a complete /flags response replaces the served flags: the loaded value wins, and the
+        // bootstrapped-only key the server didn't return is dropped (not served)
         assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
-        assertEquals(true, sut.getFeatureFlag("legacy"))
+        assertNull(sut.getFeatureFlag("legacy"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `complete flags load replaces the bootstrapped payload`() {
+        // complete response returns the flag with a new value and no payload for it
+        val responseNoPayload =
+            """{"errorsWhileComputingFlags":false,"featureFlags":{"beta-ui":"variant-b"},"featureFlagPayloads":{}}"""
+        val http = mockHttp(response = MockResponse().setBody(responseNoPayload))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("beta-ui" to "variant-a"),
+                        featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
+                    ),
+            )
+
+        // before load, the bootstrapped payload is served
+        assertEquals(mapOf("color" to "blue"), sut.getFeatureFlagPayload("beta-ui"))
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // the complete response replaces flags and payloads: new value, no stale bootstrapped payload
+        assertEquals("variant-b", sut.getFeatureFlag("beta-ui"))
+        assertNull(sut.getFeatureFlagPayload("beta-ui"))
 
         sut.clear()
         http.shutdown()
@@ -2385,7 +2422,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `returning user serves cached flags over bootstrap with used_bootstrap_value already false`() {
+    fun `bootstrap snapshot wins over persisted flags on a returning user`() {
         // Simulate a prior session: a real /flags response was persisted before this launch.
         preferences.setValue(FEATURE_FLAGS, mapOf("beta-ui" to false))
         preferences.setValue(FLAGS_LOADED_FROM_REMOTE, true)
@@ -2397,10 +2434,10 @@ internal class PostHogRemoteConfigTest {
                 bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true, "legacy" to true)),
             )
 
-        // cached value wins over bootstrap for the overlapping key; bootstrapped-only key still serves
-        assertEquals(false, sut.getFeatureFlag("beta-ui"))
+        // bootstrap is an initial snapshot that takes precedence over the persisted cache (spec)
+        assertEquals(true, sut.getFeatureFlag("beta-ui"))
         assertEquals(true, sut.getFeatureFlag("legacy"))
-        // the persisted signal reports bootstrap was already superseded, without a /flags call this session
+        // the persisted signal still reports a prior /flags response, so $used_bootstrap_value is false
         assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
 
         sut.clear()
@@ -2455,11 +2492,11 @@ internal class PostHogRemoteConfigTest {
             onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
         )
         assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
-        // bootstrapped-only key is served as the base layer alongside the loaded flags
-        assertEquals(true, sut.getFeatureFlag("legacy"))
+        // a complete /flags response replaces the served flags, so the bootstrapped-only key is dropped
+        assertNull(sut.getFeatureFlag("legacy"))
         assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
 
-        // reset() calls clear(): bootstrap is first-session only, so the base layer is dropped
+        // reset() calls clear(): bootstrap is first-session only, so the retained reporting copy is dropped
         sut.clear()
         assertNull(sut.getBootstrappedFeatureFlag("legacy"))
         assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
