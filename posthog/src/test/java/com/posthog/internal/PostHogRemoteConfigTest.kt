@@ -2269,11 +2269,11 @@ internal class PostHogRemoteConfigTest {
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to false)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to "variant-old")),
             )
 
         // before load, the bootstrapped value is served
-        assertEquals(false, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertEquals("variant-old", sut.getFeatureFlag("4535-funnel-bar-viz"))
         assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
 
         val latch = CountDownLatch(1)
@@ -2301,7 +2301,7 @@ internal class PostHogRemoteConfigTest {
                 host = http.url("/").toString(),
                 bootstrap =
                     PostHogBootstrapConfig(
-                        featureFlags = mapOf("4535-funnel-bar-viz" to false, "legacy" to true),
+                        featureFlags = mapOf("legacy" to true),
                     ),
             )
 
@@ -2360,6 +2360,30 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `disabled bootstrap flag and its payload are not served`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("enabled" to true, "disabled" to false),
+                        featureFlagPayloads = mapOf("disabled" to mapOf("k" to "v")),
+                    ),
+            )
+
+        // only enabled bootstrap flags are served (posthog-js !!value): a false flag and its payload
+        // are dropped, and the disabled key isn't retained for reporting either
+        assertEquals(true, sut.getFeatureFlag("enabled"))
+        assertNull(sut.getFeatureFlag("disabled"))
+        assertNull(sut.getFeatureFlagPayload("disabled"))
+        assertNull(sut.getBootstrappedFeatureFlag("disabled"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
     fun `retains bootstrapped values for reporting after a load overrides them`() {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
         val sut =
@@ -2367,7 +2391,7 @@ internal class PostHogRemoteConfigTest {
                 host = http.url("/").toString(),
                 bootstrap =
                     PostHogBootstrapConfig(
-                        featureFlags = mapOf("4535-funnel-bar-viz" to false),
+                        featureFlags = mapOf("4535-funnel-bar-viz" to "variant-old"),
                         featureFlagPayloads = mapOf("4535-funnel-bar-viz" to mapOf("k" to "v")),
                     ),
             )
@@ -2383,7 +2407,7 @@ internal class PostHogRemoteConfigTest {
 
         // served value is the loaded one, but the retained bootstrap copy is unchanged
         assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
-        assertEquals(false, sut.getBootstrappedFeatureFlag("4535-funnel-bar-viz"))
+        assertEquals("variant-old", sut.getBootstrappedFeatureFlag("4535-funnel-bar-viz"))
         assertEquals(mapOf("k" to "v"), sut.getBootstrappedFeatureFlagPayload("4535-funnel-bar-viz"))
         assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
 

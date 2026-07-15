@@ -76,14 +76,17 @@ public class PostHogRemoteConfig(
     private var featureFlags: Map<String, Any>? = null
     private var featureFlagPayloads: Map<String, Any?>? = null
 
-    // JSON-sanitized, immutable copies of config.bootstrap's flags, kept for $feature_flag_called
-    // enrichment. Sanitized so a non-serializable host value can't fail the whole flags-cache write;
-    // copied to avoid CME. @Volatile so the clear()-time swap to empty is visible to unlocked reads.
+    // The served, enabled-only bootstrap flags, kept for $feature_flag_called enrichment. Only enabled
+    // values are retained (see enabledBootstrapFlags); payloads are kept only for served flags.
+    // Sanitized so a non-serializable host value can't fail the whole flags-cache write; copied to
+    // avoid CME. @Volatile so the clear()-time swap to empty is visible to unlocked reads.
     @Volatile
-    private var bootstrappedFlags: Map<String, Any> = sanitizeBootstrapValues(config.bootstrap?.featureFlags)
+    private var bootstrappedFlags: Map<String, Any> =
+        enabledBootstrapFlags(sanitizeBootstrapValues(config.bootstrap?.featureFlags))
 
     @Volatile
-    private var bootstrappedPayloads: Map<String, Any?> = sanitizeBootstrapValues(config.bootstrap?.featureFlagPayloads)
+    private var bootstrappedPayloads: Map<String, Any?> =
+        sanitizeBootstrapValues(config.bootstrap?.featureFlagPayloads).filterKeys { it in bootstrappedFlags }
 
     // Flags v2 flags. These will later supersede featureFlags and featureFlagPayloads
     // But for now, we need to support both for back compatibility
@@ -1230,6 +1233,11 @@ public class PostHogRemoteConfig(
             emptyMap()
         }
     }
+
+    // Only enabled bootstrap flags are served (posthog-js `!!value`): a boolean `true` or a non-empty
+    // variant string. A `false` or empty value is dropped so it isn't served or reported.
+    private fun enabledBootstrapFlags(flags: Map<String, Any>): Map<String, Any> =
+        flags.filterValues { it == true || (it is String && it.isNotEmpty()) }
 
     // Applies the configured bootstrap as the served snapshot, replacing whatever is there. Bootstrap
     // is an initial snapshot served before the first /flags response and wins over persisted flags; a

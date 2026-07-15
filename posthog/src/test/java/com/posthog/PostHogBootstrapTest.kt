@@ -277,14 +277,14 @@ internal class PostHogBootstrapTest {
 
     @Test
     fun `flag call after a flags response reports bootstrap not used`() {
-        // fixture returns featureFlags {"4535-funnel-bar-viz": true}; bootstrap the same key as false
+        // fixture returns featureFlags {"4535-funnel-bar-viz": true}; bootstrap the same key as a variant
         val flags = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
         val http = mockHttp(response = MockResponse().setBody(flags))
         http.enqueue(MockResponse().setBody(""))
         val sut =
             getSut(
                 host = http.url("/").toString(),
-                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to false)),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to "variant-old")),
             )
 
         sut.reloadFeatureFlags()
@@ -299,7 +299,7 @@ internal class PostHogBootstrapTest {
         val event = firstFeatureFlagCalled(http)
         assertEquals(true, event.properties?.get("\$feature_flag_response"))
         // the bootstrapped value is still reported for context
-        assertEquals(false, event.properties?.get("\$feature_flag_bootstrapped_response"))
+        assertEquals("variant-old", event.properties?.get("\$feature_flag_bootstrapped_response"))
         // but a real /flags response has arrived, so bootstrap was not used
         assertEquals(false, event.properties?.get("\$used_bootstrap_value"))
 
