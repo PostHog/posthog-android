@@ -445,10 +445,17 @@ public fun createLocalEvaluationResponse(
     flagKey: String,
     aggregationGroupTypeIndex: Int? = null,
     rolloutPercentage: Int = 100,
+    hasExperiment: Boolean? = null,
 ): String {
     val aggregationGroupJson =
         if (aggregationGroupTypeIndex != null) {
             "\"aggregation_group_type_index\": $aggregationGroupTypeIndex,"
+        } else {
+            ""
+        }
+    val hasExperimentJson =
+        if (hasExperiment != null) {
+            "\"has_experiment\": $hasExperiment,"
         } else {
             ""
         }
@@ -461,6 +468,7 @@ public fun createLocalEvaluationResponse(
                     "name": "$flagKey",
                     "key": "$flagKey",
                     "active": true,
+                    $hasExperimentJson
                     "filters": {
                         $aggregationGroupJson
                         "groups": [

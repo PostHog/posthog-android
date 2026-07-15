@@ -27,6 +27,8 @@ public class FlagDefinition(
     public val version: Int,
     @SerializedName("ensure_experience_continuity")
     public val ensureExperienceContinuity: Boolean = false,
+    @SerializedName("has_experiment")
+    public val hasExperiment: Boolean = false,
 )
 
 /**

@@ -676,6 +676,7 @@ internal class PostHogFeatureFlags(
                     id = flagDef.id,
                     payload = payload,
                     version = flagDef.version,
+                    hasExperiment = flagDef.hasExperiment,
                 ),
             reason =
                 com.posthog.internal.EvaluationReason(

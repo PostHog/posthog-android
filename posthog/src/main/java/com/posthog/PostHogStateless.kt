@@ -453,11 +453,13 @@ public open class PostHogStateless protected constructor(
             ?.let { props["\$feature_flag_evaluated_at"] = it }
         featureFlags?.getFeatureFlagError(key, distinctId, groups, personProperties, groupProperties)
             ?.let { props["\$feature_flag_error"] = it }
-        featureFlags?.getFeatureFlagDetails(key, distinctId, groups, personProperties, groupProperties)?.let { details ->
-            props["\$feature_flag_id"] = details.metadata.id
-            props["\$feature_flag_version"] = details.metadata.version
-            details.reason?.description?.let { props["\$feature_flag_reason"] = it }
+        val details = featureFlags?.getFeatureFlagDetails(key, distinctId, groups, personProperties, groupProperties)
+        details?.let {
+            props["\$feature_flag_id"] = it.metadata.id
+            props["\$feature_flag_version"] = it.metadata.version
+            it.reason?.description?.let { reason -> props["\$feature_flag_reason"] = reason }
         }
+        props["\$feature_flag_has_experiment"] = details?.metadata?.hasExperiment ?: false
 
         captureFeatureFlagCalledEvent(distinctId, key, value, props, groups)
     }

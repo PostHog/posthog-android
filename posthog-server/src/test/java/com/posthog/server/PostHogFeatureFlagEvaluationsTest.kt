@@ -46,12 +46,13 @@ internal class PostHogFeatureFlagEvaluationsTest {
         version: Int = 3,
         payload: String? = null,
         reason: EvaluationReason? = EvaluationReason("condition_match", "Condition matched", 0),
+        hasExperiment: Boolean = false,
     ): FeatureFlag =
         FeatureFlag(
             key = key,
             enabled = enabled,
             variant = variant,
-            metadata = FeatureFlagMetadata(id = id, payload = payload, version = version),
+            metadata = FeatureFlagMetadata(id = id, payload = payload, version = version, hasExperiment = hasExperiment),
             reason = reason,
         )
 
@@ -158,6 +159,31 @@ internal class PostHogFeatureFlagEvaluationsTest {
         assertEquals(4, call.properties["\$feature_flag_version"])
         assertEquals("Condition matched", call.properties["\$feature_flag_reason"])
         assertEquals("req-1", call.properties["\$feature_flag_request_id"])
+        assertEquals(false, call.properties["\$feature_flag_has_experiment"])
+    }
+
+    @Test
+    fun `feature flag called event reports has_experiment from flag metadata`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "experiment-flag" to flag("experiment-flag", hasExperiment = true),
+                        "plain-flag" to flag("plain-flag", hasExperiment = false),
+                    ),
+            )
+
+        snapshot.isEnabled("experiment-flag")
+        snapshot.isEnabled("plain-flag")
+        snapshot.isEnabled("missing-flag")
+
+        assertEquals(3, host.captures.size)
+        assertEquals(true, host.captures[0].properties["\$feature_flag_has_experiment"])
+        assertEquals(false, host.captures[1].properties["\$feature_flag_has_experiment"])
+        // unknown flags have no metadata, so has_experiment defaults to false
+        assertEquals(false, host.captures[2].properties["\$feature_flag_has_experiment"])
     }
 
     @Test
