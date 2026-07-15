@@ -51,6 +51,31 @@ internal class PostHogAndroidDateProviderTest {
         assertEquals(1, clock.millisCalls.get())
     }
 
+    private class ThrowingClock : Clock() {
+        val millisCalls = AtomicInteger(0)
+
+        override fun millis(): Long {
+            millisCalls.incrementAndGet()
+            throw java.time.DateTimeException("network time unavailable")
+        }
+
+        override fun instant(): Instant = throw java.time.DateTimeException("network time unavailable")
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId?): Clock = this
+    }
+
+    @Test
+    fun `does not retry the network clock on every call when sampling fails`() {
+        val clock = ThrowingClock()
+        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { 100L }, refreshIntervalMs = 60_000L)
+
+        repeat(50) { sut.currentTimeMillis() }
+
+        assertEquals(1, clock.millisCalls.get())
+    }
+
     @Test
     fun `refreshes the anchor after the interval elapses`() {
         val clock = CountingClock(1_000_000L)

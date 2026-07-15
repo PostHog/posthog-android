@@ -23,14 +23,18 @@ internal class PostHogAndroidDateProvider(
     private val elapsedRealtimeMs: () -> Long = SystemClock::elapsedRealtime,
     private val refreshIntervalMs: Long = REFRESH_INTERVAL_MS,
 ) : PostHogDateProvider {
-    @Volatile
-    private var anchorNetworkMs = 0L
+    // A network-time sample and the elapsedRealtime at which it was taken, published together as a
+    // single immutable value so readers never observe a mixed (torn) anchor.
+    private class Anchor(val networkMs: Long, val elapsedMs: Long)
 
     @Volatile
-    private var anchorElapsedMs = 0L
+    private var anchor: Anchor? = null
 
+    // elapsedRealtime of the last IPC attempt (success or failure), throttling attempts to at most
+    // one per refreshIntervalMs even when network time is unavailable, so a failing clock does not
+    // re-run the Binder IPC on every call.
     @Volatile
-    private var hasAnchor = false
+    private var lastAttemptElapsedMs: Long? = null
 
     override fun currentDate(): Date {
         return Date(currentTimeMillis())
@@ -43,16 +47,20 @@ internal class PostHogAndroidDateProvider(
     override fun currentTimeMillis(): Long {
         val clock = networkClock ?: return System.currentTimeMillis()
         val elapsed = elapsedRealtimeMs()
-        if (!hasAnchor || elapsed - anchorElapsedMs >= refreshIntervalMs) {
+        val current = anchor
+        val anchorStale = current == null || elapsed - current.elapsedMs >= refreshIntervalMs
+        val lastAttempt = lastAttemptElapsedMs
+        val mayAttempt = lastAttempt == null || elapsed - lastAttempt >= refreshIntervalMs
+        if (anchorStale && mayAttempt) {
+            lastAttemptElapsedMs = elapsed
             val networkNow = runCatching { clock.millis() }.getOrNull()
             if (networkNow != null) {
-                anchorNetworkMs = networkNow
-                anchorElapsedMs = elapsed
-                hasAnchor = true
+                anchor = Anchor(networkNow, elapsed)
                 return networkNow
             }
         }
-        return if (hasAnchor) anchorNetworkMs + (elapsed - anchorElapsedMs) else System.currentTimeMillis()
+        val latest = anchor
+        return if (latest != null) latest.networkMs + (elapsed - latest.elapsedMs) else System.currentTimeMillis()
     }
 
     override fun nanoTime(): Long {
