@@ -1004,9 +1004,15 @@ internal class PostHogReplayIntegrationTest {
             // hasRemoteConfigFetched before notifying), so the gate stays disarmed after this delivery.
             whenever(fx.remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
             fx.sut.onRemoteConfig()
-            shadowOf(Looper.getMainLooper()).idle()
 
+            // onRemoteConfig() schedules the buffer migration on the replay executor. Await its result
+            // before idling the looper: idle() runs the posted resume-start(resumeCurrent = true), and
+            // because replaySessionId is still null here that routes through resetSessionStateIfNeeded
+            // -> resetBufferingState -> clearBuffer on the replay executor. That clear races the
+            // in-flight migration on a separate executor and, if it wins, discards the window before it
+            // migrates. Awaiting the migrated result first makes the clear a no-op on an empty buffer.
             awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            shadowOf(Looper.getMainLooper()).idle()
 
             // Gate disarmed on the single delivery: a snapshot added afterwards persists straight to
             // the inner queue instead of routing back into the buffer.
