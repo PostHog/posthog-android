@@ -262,6 +262,19 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `flags returns null when success response is not JSON`() {
+        val http = mockHttp(response = MockResponse().setBody("<html>upstream error</html>"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val response = sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
+
+        assertNull(response)
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
     fun `flags retries transient IOException and returns successful response`() {
         val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
         val responseFlagsApi = file.readText()

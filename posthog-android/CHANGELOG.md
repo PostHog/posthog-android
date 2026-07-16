@@ -1,5 +1,68 @@
 ## Next
 
+## 3.55.1
+
+### Patch Changes
+
+- 4664efd: Stop querying network time on every timestamp. `PostHogAndroidDateProvider.currentTimeMillis()` called `SystemClock.currentNetworkTimeClock().millis()` on each invocation, which performs a Binder IPC to a system service — so hot paths like the session-replay touch interceptor did an IPC on the main thread for every touch and could ANR under load. Network time is now sampled at most once per minute and intermediate timestamps are derived from the monotonic `elapsedRealtime` delta, preserving network-time correction without the per-call IPC.
+- d341719: Fix a crash when `PostHogAndroid.setup()` runs in Direct Boot mode (after a reboot, before the user first unlocks the device): accessing SharedPreferences in credential encrypted storage threw `IllegalStateException` and took the host app down. The SDK now resolves SharedPreferences lazily, buffers writes in memory while storage is locked, and flushes them on the first access after unlock.
+- d341719: Don't let state read while the preferences store is temporarily unreadable (Direct Boot, before the first unlock) overwrite or shadow persisted values. `PostHogPreferences` now exposes `isAvailable()`, and while it is false:
+
+  - auto-generated `anonymousId`/`deviceId` stay transient (in memory only) — after unlock a previously persisted identity wins; on a fresh install the transient id is persisted on first use
+  - the `isIdentified` and person-processing fallbacks are neither persisted nor cached, so the persisted values are re-resolved once the store unlocks
+  - the persisted opt-out choice is resolved lazily on the capture path once the store is readable (gating on the `config.optOut` default until then) instead of being baked in at `setup()` — this also fixes a latent bug where the setup-time read consulted the in-memory fallback store and never honored a persisted opt-out
+  - the Android app-install integration defers install/update detection instead of firing a spurious `Application Installed` for an existing install and overwriting the stored previous version
+
+  Behavior change: `group()` now early-returns when the user is opted out, so it no longer registers `$groups` or reloads feature flags in that case (previously only the downstream `$groupidentify` event was suppressed). This is required for the lazy opt-out gating above to honor a persisted opt-out, and matches `posthog-ios`.
+
+## 3.55.0
+
+### Minor Changes
+
+- 84125fc: Add a `bootstrap` option to `PostHogConfig` for pre-seeding identity and feature flags before the first `/flags` response. Set `config.bootstrap = PostHogBootstrapConfig(...)` before `setup()` so early events carry a caller-controlled distinct ID and flag reads return your values during cold start. Mirrors the `bootstrap` option in posthog-js.
+
+## 3.54.1
+
+### Patch Changes
+
+- 5618eb2: Session Replay: skip per-touch capture work when replay is not actively recording. The touch interceptor previously copied the `MotionEvent` and submitted a task to the replay executor on every touch, gating on the recording state only inside the submitted task. For sessions that are sampled out (the common case) this ran on the main thread and contended on the single replay executor's work-queue lock, which could stall the UI under load. The recording state is now checked before any allocation or executor submission.
+
+## 3.54.0
+
+### Minor Changes
+
+- 233b405: Add `PostHogReplayIntegration.captureSessionReplaySnapshot(...)`, an internal opt-in session-replay hook (`@PostHogInternalReplayApi`) that lets first-party PostHog wrapper SDKs (e.g. posthog-flutter) capture the current native window on their own cadence — used to record native screens that cover an out-of-engine UI. Not a public API: it requires an explicit opt-in and carries no stability guarantees.
+
+## 3.53.7
+
+### Patch Changes
+
+- d8cab1c: Session Replay: fix a main-thread ANR triggered when the session id rotates (e.g. on `identify()` at login) while replay is active. The buffer clear on session reset no longer blocks the caller's thread waiting on the single-threaded replay executor; it is now scheduled fire-and-forget, so a busy executor (mid snapshot disk IO) can't stall the UI thread.
+
+## 3.53.6
+
+### Patch Changes
+
+- 208e716: Re-pin the core dependency so `errorTrackingConfig.ignoredExceptionTypes` (core 6.24.0) is reachable for posthog-android consumers without an explicit core override.
+
+## 3.53.5
+
+### Patch Changes
+
+- 7562890: Session Replay: fix a thread-safety race on the internal decor-view snapshot map between main-thread view registration and capture-executor reads.
+
+## 3.53.4
+
+### Patch Changes
+
+- 59725fc: Session Replay (screenshot mode): skip a frame when the screenshot capture is discarded instead of sending an imageless `screenshot` wireframe. An empty wireframe was rendered by the player as a placeholder tile, causing a brief visual flash before the next successful capture.
+
+## 3.53.3
+
+### Patch Changes
+
+- aed3704: Fail closed instead of throwing when feature flag responses cannot be parsed as JSON.
+
 ## 3.53.2
 
 ### Patch Changes

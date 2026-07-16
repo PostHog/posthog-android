@@ -54,6 +54,9 @@ public abstract interface class com/posthog/android/replay/PostHogDrawableConver
 	public abstract fun convert (Landroid/graphics/drawable/Drawable;)Landroid/graphics/Bitmap;
 }
 
+public abstract interface annotation class com/posthog/android/replay/PostHogInternalReplayApi : java/lang/annotation/Annotation {
+}
+
 public final class com/posthog/android/replay/PostHogMaskModifier {
 	public static final field INSTANCE Lcom/posthog/android/replay/PostHogMaskModifier;
 	public final fun postHogMask (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
@@ -68,6 +71,7 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public static final field PH_NO_CAPTURE_LABEL Ljava/lang/String;
 	public static final field PH_NO_MASK_LABEL Ljava/lang/String;
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;Lcom/posthog/android/internal/MainHandler;)V
+	public final fun captureSessionReplaySnapshot (Landroid/view/View;ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;)Z
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun isActive ()Z
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V

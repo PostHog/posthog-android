@@ -1,5 +1,44 @@
 ## Next
 
+## 6.26.1
+
+### Patch Changes
+
+- d341719: Don't let state read while the preferences store is temporarily unreadable (Direct Boot, before the first unlock) overwrite or shadow persisted values. `PostHogPreferences` now exposes `isAvailable()`, and while it is false:
+
+  - auto-generated `anonymousId`/`deviceId` stay transient (in memory only) — after unlock a previously persisted identity wins; on a fresh install the transient id is persisted on first use
+  - the `isIdentified` and person-processing fallbacks are neither persisted nor cached, so the persisted values are re-resolved once the store unlocks
+  - the persisted opt-out choice is resolved lazily on the capture path once the store is readable (gating on the `config.optOut` default until then) instead of being baked in at `setup()` — this also fixes a latent bug where the setup-time read consulted the in-memory fallback store and never honored a persisted opt-out
+  - the Android app-install integration defers install/update detection instead of firing a spurious `Application Installed` for an existing install and overwriting the stored previous version
+
+  Behavior change: `group()` now early-returns when the user is opted out, so it no longer registers `$groups` or reloads feature flags in that case (previously only the downstream `$groupidentify` event was suppressed). This is required for the lazy opt-out gating above to honor a persisted opt-out, and matches `posthog-ios`.
+
+- 511e827: Feature Flags: stop holding `featureFlagsLock` across the cached-config preference reads during a flags reload. `PostHog.reset()` (commonly called from a UI thread, e.g. a logout tap) calls `PostHogRemoteConfig.clear()`, which acquires `featureFlagsLock`; a concurrent flags reload held that same lock while reading the cached session replay / capture performance / error tracking config from preferences — reads that can be slow (per-read deserialization, contention on the preferences lock with a serializing writer, or custom `PostHogPreferences` implementations that do real I/O) — so `reset()` could block the calling thread long enough to ANR. The cached config is now read before the lock is taken; the in-memory re-evaluation (which reads the flag maps) still runs under the lock.
+
+## 6.26.0
+
+### Minor Changes
+
+- 44847b0: Add a `bootstrap` option to `PostHogConfig` for pre-seeding identity and feature flags before the first `/flags` response. Set `config.bootstrap = PostHogBootstrapConfig(...)` before `setup()` so early events carry a caller-controlled distinct ID and flag reads return your values during cold start. Mirrors the `bootstrap` option in posthog-js.
+
+## 6.25.0
+
+### Minor Changes
+
+- 2cdc0d7: Add a `$feature_flag_has_experiment` boolean property to `$feature_flag_called` events, sourced from the `has_experiment` field the server reports in each flag's metadata (`/flags?v=2` and `/local_evaluation`). The property is only sent when the server explicitly reported `has_experiment`; it is omitted when the server did not report it (older deployments) or when flag details are unavailable.
+
+## 6.24.0
+
+### Minor Changes
+
+- ef8f1d6: Add `errorTrackingConfig.ignoredExceptionTypes`: throwable classes to drop from `$exception` capture. Matched via `Class.isInstance` across the cause chain in `captureException` (autocapture and manual callers), and by class name in `$exception_list` for the generic capture path. Defaults to empty.
+
+## 6.23.3
+
+### Patch Changes
+
+- aed3704: Fail closed instead of throwing when feature flag responses cannot be parsed as JSON.
+
 ## 6.23.2
 
 ### Patch Changes

@@ -37,4 +37,12 @@ public class PostHogErrorTrackingConfig
          * Record steps with [PostHog.addExceptionStep].
          */
         public val exceptionSteps: PostHogExceptionStepsConfig = PostHogExceptionStepsConfig(),
+        /**
+         * Throwable classes to drop during capture. The throwable and every cause in
+         * its chain are matched via [Class.isInstance]. Also applies to `$exception`
+         * events sent through the generic capture path (matched by class name).
+         *
+         * Defaults to empty.
+         */
+        public val ignoredExceptionTypes: MutableList<Class<out Throwable>> = mutableListOf(),
     )

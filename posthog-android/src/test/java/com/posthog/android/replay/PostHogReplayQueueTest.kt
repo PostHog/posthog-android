@@ -438,6 +438,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(2, queue.bufferDepth)
 
         queue.clearBuffer()
+        awaitReplayExecutors()
 
         assertEquals(0, queue.bufferDepth)
     }
@@ -457,6 +458,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(1, fakeInnerQueue.events.size)
 
         queue.clearBuffer()
+        awaitReplayExecutors()
 
         assertEquals(0, queue.bufferDepth)
         assertEquals(1, fakeInnerQueue.events.size)
@@ -479,6 +481,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(1, queue.bufferDepth)
 
         queue.clear()
+        awaitReplayExecutors()
 
         assertEquals(0, queue.bufferDepth)
         assertEquals(0, fakeInnerQueue.events.size)

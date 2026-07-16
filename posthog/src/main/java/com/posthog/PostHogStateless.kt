@@ -457,6 +457,7 @@ public open class PostHogStateless protected constructor(
             props["\$feature_flag_id"] = details.metadata.id
             props["\$feature_flag_version"] = details.metadata.version
             details.reason?.description?.let { props["\$feature_flag_reason"] = it }
+            details.metadata.hasExperiment?.let { props["\$feature_flag_has_experiment"] = it }
         }
 
         captureFeatureFlagCalledEvent(distinctId, key, value, props, groups)
@@ -577,6 +578,33 @@ public open class PostHogStateless protected constructor(
         return config as? T
     }
 
+    internal fun isIgnoredThrowable(throwable: Throwable): Boolean {
+        val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
+        if (ignored.isNullOrEmpty()) {
+            return false
+        }
+        val match = findIgnoredTypeInCauseChain(throwable, ignored) ?: return false
+        config?.logger?.log(
+            "Skipping \$exception: ${match.name} (or a cause in its chain) matches ignoredExceptionTypes",
+        )
+        return true
+    }
+
+    private fun findIgnoredTypeInCauseChain(
+        throwable: Throwable,
+        ignored: List<Class<out Throwable>>,
+    ): Class<out Throwable>? {
+        // same cycle detection as ThrowableCoercer, so both walks cover the same chain
+        val seen = hashSetOf<Throwable>()
+        var current: Throwable? = throwable
+        while (current != null && seen.add(current)) {
+            val link = current
+            ignored.firstOrNull { it.isInstance(link) }?.let { return it }
+            current = link.cause
+        }
+        return null
+    }
+
     override fun captureExceptionStateless(
         throwable: Throwable,
         distinctId: String?,
@@ -587,6 +615,10 @@ public open class PostHogStateless protected constructor(
         }
 
         try {
+            if (isIgnoredThrowable(throwable)) {
+                return
+            }
+
             val exceptionProperties =
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,

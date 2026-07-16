@@ -31,6 +31,7 @@ import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
+import android.view.WindowManager
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
@@ -91,8 +92,10 @@ import curtains.phoneWindow
 import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.lang.ref.WeakReference
+import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -102,7 +105,11 @@ public class PostHogReplayIntegration(
     private val mainHandler: MainHandler,
 ) : PostHogIntegration, PostHogSessionReplayHandler {
     // internal (not private) so tests can assert the resume path resets per-view snapshot state.
-    internal val decorViews = WeakHashMap<View, ViewTreeSnapshotStatus>()
+    // Main-thread writes race the capture executor's reads, and even WeakHashMap.get()
+    // structurally modifies the map (stale-entry expunge), so accesses must be synchronized
+    // and iteration must hold the map's monitor.
+    internal val decorViews: MutableMap<View, ViewTreeSnapshotStatus> =
+        Collections.synchronizedMap(WeakHashMap<View, ViewTreeSnapshotStatus>())
 
     private val passwordInputTypes =
         setOf(
@@ -112,8 +119,19 @@ public class PostHogReplayIntegration(
             InputType.TYPE_NUMBER_VARIATION_PASSWORD,
         )
 
-    private val executor by lazy {
-        Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
+    internal constructor(
+        context: Context,
+        config: PostHogAndroidConfig,
+        mainHandler: MainHandler,
+        replayExecutor: ExecutorService,
+    ) : this(context, config, mainHandler) {
+        injectedExecutor = replayExecutor
+    }
+
+    private var injectedExecutor: ExecutorService? = null
+
+    private val executor: ExecutorService by lazy {
+        injectedExecutor ?: Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("PostHogReplayThread"))
     }
 
     // Reuse a single HandlerThread for PixelCopy callbacks instead of
@@ -319,12 +337,15 @@ public class PostHogReplayIntegration(
         return Pair(imeVisible, event)
     }
 
-    private val onTouchEventListener =
+    internal val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
-            val timestamp = config.dateProvider.currentTimeMillis()
             try {
                 val state = dispatch(motionEvent)
                 try {
+                    if (!isActive()) {
+                        return@TouchEventInterceptor state
+                    }
+                    val timestamp = config.dateProvider.currentTimeMillis()
                     // 1. prevent MotionEvent Object Is Recycled or Invalid
                     // 2. pointerCount Changed Between Checks and Access (since we call on a background thread)
                     val safeMotionEvent = MotionEvent.obtain(motionEvent)
@@ -474,8 +495,11 @@ public class PostHogReplayIntegration(
 
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
 
-            decorViews.entries.forEach {
-                clearViewListeners(it.key, it.value)
+            // Snapshot first: clearViewListeners removes entries, which would structurally
+            // modify the map mid-iteration.
+            val decorViewsSnapshot = synchronized(decorViews) { decorViews.entries.map { it.toPair() } }
+            decorViewsSnapshot.forEach { (view, status) ->
+                clearViewListeners(view, status)
             }
 
             isSessionReplayActive = false
@@ -494,6 +518,103 @@ public class PostHogReplayIntegration(
         }
     }
 
+    /**
+     * One-shot capture of the top-most native activity window, for first-party
+     * PostHog wrapper SDKs (e.g. posthog-flutter) driving out-of-engine capture
+     * on their own cadence. Not for app use: it shares snapshot state with the
+     * normal timer-driven capture. Must be called on the main thread.
+     *
+     * [excludeView] (the caller's own decor view) is never captured.
+     * [forceFullSnapshot] resets the decor view's snapshot state so an episode's
+     * first capture is a full snapshot, not incremental mutations against a
+     * player mirror that interleaved frames have invalidated. [isStillValid] is
+     * re-checked on the capture thread, so work queued on an episode's last tick
+     * self-drops instead of emitting a late frame.
+     *
+     * The return value only means the capture was scheduled; [onResult] fires on
+     * the capture thread with whether a frame was actually delivered — callers
+     * must treat that, not the return value, as the retry signal.
+     */
+    @PostHogInternalReplayApi
+    public fun captureSessionReplaySnapshot(
+        excludeView: View?,
+        forceFullSnapshot: Boolean,
+        isStillValid: () -> Boolean,
+        onResult: (delivered: Boolean) -> Unit,
+    ): Boolean {
+        if (!isActive()) {
+            return false
+        }
+        try {
+            // Topmost ACTIVITY window only: a Dialog's decor on top would
+            // collapse the replay viewport to the dialog, and a PopupWindow
+            // has no phoneWindow at all — both are treated as overlays of the
+            // activity window beneath them. Identified by window type
+            // (callbacks are wrapped by Curtains, so `callback is Activity`
+            // does not hold).
+            val decorView =
+                Curtains.rootViews.lastOrNull {
+                    it.isAliveAndAttachedToWindow() &&
+                        it.phoneWindow != null &&
+                        (it.layoutParams as? WindowManager.LayoutParams)?.type ==
+                        WindowManager.LayoutParams.TYPE_BASE_APPLICATION
+                } ?: return false
+            if (decorView === excludeView) {
+                return false
+            }
+            val window = decorView.phoneWindow ?: return false
+            if (decorViews[decorView] == null) {
+                // Not tracked yet (onDecorViewReady pending): generateSnapshot
+                // would bail silently — report failure so the caller retries
+                // and the first-of-episode reset is not consumed.
+                return false
+            }
+            executor.submit {
+                // A throwing onResult would land in the catch below and fire a
+                // second time — report exactly once per scheduled capture.
+                var resultReported = false
+
+                fun report(delivered: Boolean) {
+                    if (resultReported) return
+                    resultReported = true
+                    onResult(delivered)
+                }
+                try {
+                    // Validity and the first-of-episode reset both happen on
+                    // the capture thread: the reset mutates snapshot status
+                    // fields that are otherwise only touched here, and a
+                    // stale queued capture must not emit after the episode.
+                    if (!isStillValid()) {
+                        // The contract promises onResult for every scheduled
+                        // capture; a silent self-drop would leave the caller's
+                        // in-flight tracking latched forever.
+                        report(false)
+                        return@submit
+                    }
+                    if (forceFullSnapshot) {
+                        decorViews[decorView]?.let { status ->
+                            status.sentFullSnapshot = false
+                            status.sentMetaEvent = false
+                            status.lastSnapshot = null
+                        }
+                    }
+                    val delivered = generateSnapshot(WeakReference(decorView), WeakReference(window), forceScreenshot = true)
+                    if (!delivered) {
+                        config.logger.log("Session Replay bridge capture produced no frame (will retry next tick).")
+                    }
+                    report(delivered)
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay bridge capture failed: $e.")
+                    report(false)
+                }
+            }
+            return true
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay bridge capture failed: $e.")
+            return false
+        }
+    }
+
     private fun Resources.Theme.toRGBColor(): String? {
         val value = TypedValue()
         resolveAttribute(android.R.attr.windowBackground, value, true)
@@ -506,34 +627,39 @@ public class PostHogReplayIntegration(
         }?.toRGBColor()
     }
 
-    private fun generateSnapshot(
+    // internal (not private) so tests can drive a snapshot pass directly.
+    // Returns whether a frame was actually produced (false on every early bail),
+    // so the bridge caller can tell "captured" from "silently skipped".
+    internal fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
-    ) {
+        forceScreenshot: Boolean = false,
+    ): Boolean {
         // Early bail if stopped and this is processing previous generateSnapshot() from executor.submit
-        if (!isActive()) return
+        if (!isActive()) return false
 
-        val view = viewRef.get() ?: return
-        val status = decorViews[view] ?: return
-        val window = windowRef.get() ?: return
+        val view = viewRef.get() ?: return false
+        val status = decorViews[view] ?: return false
+        val window = windowRef.get() ?: return false
 
         // Check view is still alive to avoid native crashes
-        if (!view.isAlive()) return
+        if (!view.isAlive()) return false
 
         val timestamp = config.dateProvider.currentTimeMillis()
 
+        val useScreenshot = config.sessionReplayConfig.screenshot || forceScreenshot
         val wireframe =
-            if (config.sessionReplayConfig.screenshot) {
+            if (useScreenshot) {
                 view.toScreenshotWireframe(
                     window,
-                ) ?: return
+                ) ?: return false
             } else {
-                view.toWireframe() ?: return
+                view.toWireframe() ?: return false
             }
 
         // if the decorView has no backgroundColor, we use the theme color
         // no need to do this if we are capturing a screenshot
-        if (wireframe.style?.backgroundColor == null && !config.sessionReplayConfig.screenshot) {
+        if (wireframe.style?.backgroundColor == null && !useScreenshot) {
             context.theme?.toRGBColor()?.let {
                 wireframe.style?.backgroundColor = it
             }
@@ -545,7 +671,7 @@ public class PostHogReplayIntegration(
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
             // TODO: cache and compare, if size changes, we send a ViewportResize event
 
-            val screenSizeInfo = view.context.screenSize() ?: return
+            val screenSizeInfo = view.context.screenSize() ?: return false
 
             val metaEvent =
                 RRMetaEvent(
@@ -624,6 +750,7 @@ public class PostHogReplayIntegration(
         }
 
         status.lastSnapshot = wireframe
+        return true
     }
 
     /**
@@ -1114,6 +1241,15 @@ public class PostHogReplayIntegration(
             if (callbackCompleted && !bitmap.isRecycled) {
                 bitmap.recycle()
             }
+        }
+
+        // A discarded capture (PixelCopy failure, or a redraw race that
+        // invalidates mask alignment) leaves base64 null. Emitting the
+        // wireframe anyway ships an imageless "screenshot" that the player
+        // renders as its placeholder tile — a visible flash. Skip the frame
+        // instead; the caller retries on the next capture.
+        if (base64 == null) {
+            return null
         }
 
         return RRWireframe(
@@ -1682,15 +1818,19 @@ public class PostHogReplayIntegration(
             // away — and incremental events (type:3) would ship under the new session before
             // the meta + full-snapshot keyframes (type:4 + type:2) needed to render them.
             mainHandler.handler.post {
-                decorViews.keys.forEach { it.postInvalidate() }
+                synchronized(decorViews) {
+                    decorViews.keys.forEach { it.postInvalidate() }
+                }
             }
         }
     }
 
     private fun clearSnapshotStates() {
         // clear state so it starts with a full snapshot again
-        decorViews.entries.forEach {
-            resetViewSnapshotStates(it.value)
+        synchronized(decorViews) {
+            decorViews.entries.forEach {
+                resetViewSnapshotStates(it.value)
+            }
         }
     }
 
@@ -2060,7 +2200,9 @@ public class PostHogReplayIntegration(
                     // session or touching the cold-start buffering state (unlike start(resumeCurrent = false)).
                     clearSnapshotStates()
                     start(resumeCurrent = true)
-                    decorViews.keys.forEach { it.postInvalidate() }
+                    synchronized(decorViews) {
+                        decorViews.keys.forEach { it.postInvalidate() }
+                    }
                 }
             }
         }

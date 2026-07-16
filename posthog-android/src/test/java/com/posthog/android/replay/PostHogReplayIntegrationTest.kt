@@ -1,11 +1,15 @@
 package com.posthog.android.replay
 
+import android.app.Activity
 import android.content.Context
 import android.os.Looper
+import android.view.MotionEvent
 import android.view.View
+import android.view.Window
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogEvent
+import com.posthog.PostHogFake
 import com.posthog.PostHogInterface
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
@@ -15,6 +19,8 @@ import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
@@ -23,6 +29,7 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
+import curtains.DispatchState
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -30,19 +37,29 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowPixelCopy
+import java.lang.ref.WeakReference
+import java.util.Date
 import java.util.UUID
+import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -169,6 +186,99 @@ internal class PostHogReplayIntegrationTest {
 
     private fun getSut(config: PostHogAndroidConfig = PostHogAndroidConfig(API_KEY)): PostHogReplayIntegration {
         return PostHogReplayIntegration(context, config, MainHandler())
+    }
+
+    private fun countingReplayExecutor(counter: AtomicInteger): ExecutorService {
+        val delegate = createReplayExecutor()
+        return object : ExecutorService by delegate {
+            override fun submit(task: Runnable): Future<*> {
+                counter.incrementAndGet()
+                return delegate.submit(task)
+            }
+
+            override fun <T> submit(task: Callable<T>): Future<T> {
+                counter.incrementAndGet()
+                return delegate.submit(task)
+            }
+        }
+    }
+
+    private fun getSutWithExecutor(
+        config: PostHogAndroidConfig,
+        executor: ExecutorService,
+    ): PostHogReplayIntegration {
+        return PostHogReplayIntegration(context, config, MainHandler(), executor)
+    }
+
+    // currentTimeMillis() on Android does a network-time lookup; count how often the touch path
+    // invokes it so we can prove it is skipped when replay is inactive.
+    private class CountingDateProvider(val calls: AtomicInteger) : PostHogDateProvider {
+        private val delegate = PostHogDeviceDateProvider()
+
+        override fun currentTimeMillis(): Long {
+            calls.incrementAndGet()
+            return delegate.currentTimeMillis()
+        }
+
+        override fun currentDate(): Date = delegate.currentDate()
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date = delegate.addSecondsToCurrentDate(seconds)
+
+        override fun nanoTime(): Long = delegate.nanoTime()
+    }
+
+    @Test
+    fun `touch does not submit capture work to the replay executor when inactive`() {
+        val submits = AtomicInteger(0)
+        val dateCalls = AtomicInteger(0)
+        val config = configWithSampling(flagActive = false, samplingPasses = true)
+        config.dateProvider = CountingDateProvider(dateCalls)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            assertFalse(sut.isActive())
+
+            val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
+            val state = sut.onTouchEventListener.intercept(event) { DispatchState.Consumed }
+            event.recycle()
+            awaitReplayExecutors()
+
+            assertEquals(DispatchState.Consumed, state)
+            assertEquals(0, submits.get())
+            assertEquals(0, dateCalls.get())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `touch submits capture work and still dispatches when active`() {
+        val submits = AtomicInteger(0)
+        val dateCalls = AtomicInteger(0)
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        config.dateProvider = CountingDateProvider(dateCalls)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+
+            val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
+            val state = sut.onTouchEventListener.intercept(event) { DispatchState.Consumed }
+            event.recycle()
+            awaitReplayExecutors()
+
+            assertEquals(DispatchState.Consumed, state)
+            assertTrue(submits.get() >= 1)
+            assertTrue(dateCalls.get() >= 1)
+        } finally {
+            sut.uninstall()
+        }
     }
 
     @Test
@@ -330,6 +440,7 @@ internal class PostHogReplayIntegrationTest {
 
         val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
         sut.install(mock<PostHogInterface>())
+        awaitReplayExecutors()
 
         assertEquals(0, replayQueue.bufferDepth)
 
@@ -399,6 +510,7 @@ internal class PostHogReplayIntegrationTest {
         PostHogSessionManager.setSessionId(secondSessionId)
         whenever(postHog.getSessionId()).thenReturn(secondSessionId)
         sut.onSessionIdChanged()
+        awaitReplayExecutors()
 
         assertEquals(0, replayQueue.bufferDepth)
 
@@ -424,6 +536,7 @@ internal class PostHogReplayIntegrationTest {
         sessionReplay: Boolean = true,
         samplingPasses: Boolean = true,
         preloadFeatureFlags: Boolean = true,
+        integrationContext: Context = mock<Context>(),
     ): RealQueueFixture {
         val remoteConfig =
             mock<PostHogRemoteConfig> {
@@ -449,7 +562,7 @@ internal class PostHogReplayIntegrationTest {
             )
         val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
         config.replayQueueHolder = replayQueue
-        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
+        val sut = PostHogReplayIntegration(integrationContext, config, MainHandler())
         return RealQueueFixture(sut, replayQueue, innerQueue, config, remoteConfig)
     }
 
@@ -520,6 +633,7 @@ internal class PostHogReplayIntegrationTest {
 
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -550,6 +664,7 @@ internal class PostHogReplayIntegrationTest {
 
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             // The pre-existing persisted events survive — clearBuffer() only drops the buffer.
@@ -770,6 +885,7 @@ internal class PostHogReplayIntegrationTest {
             // discarded, not migrated to the persisted (and sent) queue.
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -824,6 +940,7 @@ internal class PostHogReplayIntegrationTest {
             // First config fetch failed and the cached flag is off: drop the buffer and stop.
             fx.sut.onRemoteConfig(loaded = false)
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -857,6 +974,7 @@ internal class PostHogReplayIntegrationTest {
             // the fallback must respect sampling and drop + stop, not migrate.
             fx.sut.onRemoteConfig(loaded = false)
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
@@ -886,9 +1004,15 @@ internal class PostHogReplayIntegrationTest {
             // hasRemoteConfigFetched before notifying), so the gate stays disarmed after this delivery.
             whenever(fx.remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
             fx.sut.onRemoteConfig()
-            shadowOf(Looper.getMainLooper()).idle()
 
+            // onRemoteConfig() schedules the buffer migration on the replay executor. Await its result
+            // before idling the looper: idle() runs the posted resume-start(resumeCurrent = true), and
+            // because replaySessionId is still null here that routes through resetSessionStateIfNeeded
+            // -> resetBufferingState -> clearBuffer on the replay executor. That clear races the
+            // in-flight migration on a separate executor and, if it wins, discards the window before it
+            // migrates. Awaiting the migrated result first makes the clear a no-op on an empty buffer.
             awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            shadowOf(Looper.getMainLooper()).idle()
 
             // Gate disarmed on the single delivery: a snapshot added afterwards persists straight to
             // the inner queue instead of routing back into the buffer.
@@ -1017,6 +1141,52 @@ internal class PostHogReplayIntegrationTest {
         } finally {
             fx.sut.uninstall()
         }
+    }
+
+    @Test(timeout = 20_000)
+    fun `decorViews survives capture-executor reads racing main-thread registration`() {
+        // generateSnapshot() reads decorViews on the capture executor while decor views are
+        // registered on the main thread. WeakHashMap.get() expunges stale entries — a structural
+        // modification — so an unsynchronized map can corrupt under this race (lost entries or an
+        // infinite bucket-chain loop; the timeout catches the latter).
+        val sut = getSut()
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val listener = mock<NextDrawListener>()
+        val probe = View(appContext)
+        sut.decorViews[probe] = ViewTreeSnapshotStatus(listener)
+
+        val stopReading = AtomicBoolean(false)
+        val readerFailure = AtomicReference<Throwable>()
+        val reader =
+            Thread {
+                try {
+                    while (!stopReading.get()) {
+                        sut.decorViews[probe]
+                    }
+                } catch (e: Throwable) {
+                    readerFailure.set(e)
+                }
+            }
+        reader.start()
+
+        repeat(5_000) { i ->
+            // Unreferenced views become stale entries for the reader's get() to expunge.
+            sut.decorViews[View(appContext)] = ViewTreeSnapshotStatus(listener)
+            if (i % 500 == 0) {
+                System.gc()
+            }
+        }
+
+        assertNotNull(sut.decorViews[probe])
+
+        // uninstall() iterates and clears the map while the reader races get(); cleanup must
+        // complete and leave the map empty (a mid-iteration expunge would abort it early).
+        sut.uninstall()
+        assertTrue(sut.decorViews.isEmpty())
+
+        stopReading.set(true)
+        reader.join()
+        readerFailure.get()?.let { throw it }
     }
 
     @Test
@@ -1206,10 +1376,84 @@ internal class PostHogReplayIntegrationTest {
 
             fx.sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
 
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
             assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    // Robolectric never runs the ViewRootImpl traversal that copies the window's
+    // visibility into AttachInfo, so getWindowVisibility() stays GONE and the
+    // integration treats the decor view as invisible. Set it directly.
+    private fun makeWindowVisible(decorView: View) {
+        val attachInfo =
+            View::class.java.getDeclaredField("mAttachInfo")
+                .apply { isAccessible = true }
+                .get(decorView)
+        attachInfo.javaClass.getDeclaredField("mWindowVisibility")
+            .apply { isAccessible = true }
+            .setInt(attachInfo, View.VISIBLE)
+    }
+
+    private fun screenshotFixture(): Pair<RealQueueFixture, PostHogFake> {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = ApplicationProvider.getApplicationContext(),
+            )
+        fx.config.sessionReplayConfig.screenshot = true
+        val fake = PostHogFake()
+        fx.sut.install(fake)
+        fx.sut.start(resumeCurrent = true)
+        return fx to fake
+    }
+
+    @Test
+    fun `screenshot mode skips the frame when the capture is discarded`() {
+        // A window without a decor view makes PixelCopy.request throw, so the capture is
+        // discarded (the same outcome as a PixelCopy failure or a redraw race in
+        // production). No event may be emitted: an imageless "screenshot" wireframe is
+        // rendered by the player as a placeholder tile, flashing until the next capture.
+        val (fx, fake) = screenshotFixture()
+        try {
+            assertTrue(fx.sut.isActive())
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+
+            assertEquals(0, fake.captures)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `screenshot mode emits meta and full snapshot when the capture succeeds`() {
+        // Control for the discarded-capture test: with PixelCopy succeeding, the same
+        // pipeline must emit the snapshot event.
+        val (fx, fake) = screenshotFixture()
+        try {
+            assertTrue(fx.sut.isActive())
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(activity.window))
+
+            assertEquals(1, fake.captures)
+            assertEquals("\$snapshot", fake.event)
         } finally {
             fx.sut.uninstall()
         }

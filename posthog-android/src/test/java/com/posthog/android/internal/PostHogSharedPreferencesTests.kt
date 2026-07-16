@@ -8,9 +8,12 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -242,5 +245,135 @@ internal class PostHogSharedPreferencesTests {
         assertEquals("value", sut.getValue("key") as String)
         assertEquals("value", sut.getValue("somethingElse") as String)
         assertEquals(2, sut.getAll().size)
+    }
+
+    // Direct Boot: before the user first unlocks the device, credential encrypted storage is
+    // unavailable and context.getSharedPreferences throws IllegalStateException.
+
+    private class DirectBootContext {
+        var locked = true
+        val realPreferences = FakeSharedPreferences()
+        val context =
+            mock<Context> {
+                on { getSharedPreferences(any(), any()) } doAnswer {
+                    if (locked) {
+                        throw IllegalStateException(
+                            "SharedPreferences in credential encrypted storage are not available until after user (id 0) is unlocked",
+                        )
+                    }
+                    realPreferences
+                }
+            }
+    }
+
+    private fun getDirectBootSut(directBootContext: DirectBootContext): PostHogSharedPreferences {
+        val config = PostHogAndroidConfig(API_KEY)
+        return PostHogSharedPreferences(directBootContext.context, config)
+    }
+
+    @Test
+    fun `preferences are unavailable while locked and available after unlock`() {
+        val directBootContext = DirectBootContext()
+        val sut = getDirectBootSut(directBootContext)
+
+        assertFalse(sut.isAvailable())
+
+        directBootContext.locked = false
+
+        assertTrue(sut.isAvailable())
+    }
+
+    @Test
+    fun `preferences do not crash while device is locked`() {
+        val sut = getDirectBootSut(DirectBootContext())
+
+        sut.setValue("key", "value")
+
+        assertEquals("value", sut.getValue("key"))
+        assertEquals(mapOf<String, Any>("key" to "value"), sut.getAll())
+    }
+
+    @Test
+    fun `preferences remove and clear pending writes while device is locked`() {
+        val sut = getDirectBootSut(DirectBootContext())
+
+        sut.setValue("removed", "value")
+        sut.remove("removed")
+        sut.setValue("cleared", "value")
+        sut.setValue("kept", "value")
+        sut.clear(except = listOf("kept"))
+
+        assertNull(sut.getValue("removed"))
+        assertNull(sut.getValue("cleared"))
+        assertEquals("value", sut.getValue("kept"))
+    }
+
+    @Test
+    fun `preferences flush pending writes once the device is unlocked`() {
+        val directBootContext = DirectBootContext()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.setValue("key", "value")
+        directBootContext.locked = false
+
+        assertEquals("value", sut.getValue("key"))
+        assertEquals("value", directBootContext.realPreferences.getString("key", null))
+    }
+
+    @Test
+    fun `remove while locked also removes a previously persisted value after unlock`() {
+        val directBootContext = DirectBootContext()
+        directBootContext.realPreferences.edit().putString("persisted", "old").apply()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.remove("persisted")
+        directBootContext.locked = false
+
+        assertNull(sut.getValue("persisted"))
+        assertNull(directBootContext.realPreferences.getString("persisted", null))
+    }
+
+    @Test
+    fun `clear while locked also clears previously persisted values after unlock`() {
+        val directBootContext = DirectBootContext()
+        directBootContext.realPreferences.edit()
+            .putString("persisted", "old")
+            .putString("kept", "old")
+            .apply()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.clear(except = listOf("kept"))
+        directBootContext.locked = false
+
+        assertNull(sut.getValue("persisted"))
+        assertEquals("old", sut.getValue("kept"))
+        assertNull(directBootContext.realPreferences.getString("persisted", null))
+    }
+
+    @Test
+    fun `set after remove while locked keeps the new value after unlock`() {
+        val directBootContext = DirectBootContext()
+        directBootContext.realPreferences.edit().putString("key", "old").apply()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.remove("key")
+        sut.setValue("key", "new")
+        directBootContext.locked = false
+
+        assertEquals("new", sut.getValue("key"))
+        assertEquals("new", directBootContext.realPreferences.getString("key", null))
+    }
+
+    @Test
+    fun `serialized values written while locked survive the unlock replay`() {
+        val directBootContext = DirectBootContext()
+        val sut = getDirectBootSut(directBootContext)
+
+        sut.setValue("map", mapOf("k" to "v"))
+        directBootContext.locked = false
+
+        assertEquals(mapOf("k" to "v"), sut.getValue("map"))
+        val stringifiedKeys: Set<String>? = directBootContext.realPreferences.getStringSet(STRINGIFIED_KEYS, mutableSetOf())
+        assertEquals(setOf("map"), stringifiedKeys)
     }
 }

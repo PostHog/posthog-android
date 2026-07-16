@@ -1,5 +1,7 @@
 package com.posthog
 
+import com.posthog.internal.FeatureFlag
+import com.posthog.internal.FeatureFlagMetadata
 import com.posthog.internal.PostHogFeatureFlagCalledCache
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogMemoryPreferences
@@ -97,12 +99,21 @@ internal class PostHogStatelessTest {
     private class MockFeatureFlags : PostHogFeatureFlagsInterface {
         private val flags = mutableMapOf<String, Any>()
         private val payloads = mutableMapOf<String, Any?>()
+        private val details = mutableMapOf<String, FeatureFlag>()
 
         fun setFlag(
             key: String,
             value: Any,
         ) {
             flags[key] = value
+        }
+
+        fun setFlagDetails(
+            key: String,
+            flag: FeatureFlag,
+        ) {
+            flags[key] = flag.variant ?: flag.enabled
+            details[key] = flag
         }
 
         fun setFlagWithPayload(
@@ -189,9 +200,20 @@ internal class PostHogStatelessTest {
             return null
         }
 
+        override fun getFeatureFlagDetails(
+            key: String,
+            distinctId: String?,
+            groups: Map<String, String>?,
+            personProperties: Map<String, Any?>?,
+            groupProperties: Map<String, Map<String, Any?>>?,
+        ): FeatureFlag? {
+            return details[key]
+        }
+
         override fun clear() {
             flags.clear()
             payloads.clear()
+            details.clear()
         }
     }
 
@@ -398,6 +420,39 @@ internal class PostHogStatelessTest {
         assertEquals(mapOf("company" to "acme"), event.properties!!["\$groups"])
     }
 
+    private class IgnoredExceptionStub(message: String) : RuntimeException(message)
+
+    @Test
+    fun `captureExceptionStateless drops throwables matching ignoredExceptionTypes`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredExceptionStub::class.java)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(IgnoredExceptionStub("boom"), distinctId = "user123")
+
+        assertEquals(0, mockQueue.events.size)
+    }
+
+    @Test
+    fun `captureExceptionStateless keeps throwables not in ignoredExceptionTypes`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredExceptionStub::class.java)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(IllegalStateException("boom"), distinctId = "user123")
+
+        assertEquals(1, mockQueue.events.size)
+        assertEquals("\$exception", mockQueue.events.first().event)
+    }
+
     @Test
     fun `captureStateless does nothing when not enabled`() {
         val mockQueue = MockQueue()
@@ -587,6 +642,76 @@ internal class PostHogStatelessTest {
         assertEquals("user123", event.distinctId)
         assertEquals("test_flag", event.properties!!["\$feature_flag"])
         assertEquals(true, event.properties!!["\$feature_flag_response"])
+        // no flag details available, so the has_experiment property is omitted
+        assertFalse(event.properties!!.containsKey("\$feature_flag_has_experiment"))
+    }
+
+    @Test
+    fun `feature flag called event reports has_experiment from flag metadata`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlagDetails(
+            "experiment_flag",
+            FeatureFlag(
+                key = "experiment_flag",
+                enabled = true,
+                variant = null,
+                metadata = FeatureFlagMetadata(id = 1, payload = null, version = 1, hasExperiment = true),
+                reason = null,
+            ),
+        )
+        mockFeatureFlags.setFlagDetails(
+            "plain_flag",
+            FeatureFlag(
+                key = "plain_flag",
+                enabled = true,
+                variant = null,
+                metadata = FeatureFlagMetadata(id = 2, payload = null, version = 1, hasExperiment = false),
+                reason = null,
+            ),
+        )
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        sut.getFeatureFlagResultStateless("user123", "experiment_flag")
+        sut.getFeatureFlagResultStateless("user123", "plain_flag")
+
+        assertEquals(2, mockQueue.events.size)
+        assertEquals(true, mockQueue.events[0].properties!!["\$feature_flag_has_experiment"])
+        assertEquals(false, mockQueue.events[1].properties!!["\$feature_flag_has_experiment"])
+    }
+
+    @Test
+    fun `feature flag called event omits has_experiment when metadata does not report it`() {
+        val mockQueue = MockQueue()
+        val mockFeatureFlags = MockFeatureFlags()
+        mockFeatureFlags.setFlagDetails(
+            "unreported_flag",
+            FeatureFlag(
+                key = "unreported_flag",
+                enabled = true,
+                variant = null,
+                metadata = FeatureFlagMetadata(id = 3, payload = null, version = 1),
+                reason = null,
+            ),
+        )
+
+        sut = createStatelessInstance()
+        config = createConfig(sendFeatureFlagEvent = true)
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+        sut.setMockFeatureFlags(mockFeatureFlags)
+
+        sut.getFeatureFlagResultStateless("user123", "unreported_flag")
+
+        assertEquals(1, mockQueue.events.size)
+        assertFalse(mockQueue.events.first().properties!!.containsKey("\$feature_flag_has_experiment"))
     }
 
     @Test
