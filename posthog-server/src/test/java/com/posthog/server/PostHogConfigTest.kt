@@ -216,9 +216,9 @@ internal class PostHogConfigTest {
         assertEquals("https://us.i.posthog.com", PostHogConfig.DEFAULT_HOST)
         assertEquals("https://eu.i.posthog.com", PostHogConfig.DEFAULT_EU_HOST)
         assertEquals("https://eu-assets.i.posthog.com", PostHogConfig.DEFAULT_EU_ASSETS_HOST)
-        assertEquals(20, PostHogConfig.DEFAULT_FLUSH_AT)
+        assertEquals(100, PostHogConfig.DEFAULT_FLUSH_AT)
         assertEquals(1000, PostHogConfig.DEFAULT_MAX_QUEUE_SIZE)
-        assertEquals(50, PostHogConfig.DEFAULT_MAX_BATCH_SIZE)
+        assertEquals(100, PostHogConfig.DEFAULT_MAX_BATCH_SIZE)
         assertEquals(30, PostHogConfig.DEFAULT_FLUSH_INTERVAL_SECONDS)
         assertEquals(1000, PostHogConfig.DEFAULT_FEATURE_FLAG_CACHE_SIZE)
         assertEquals(300000, PostHogConfig.DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS) // 5 minutes
