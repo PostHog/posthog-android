@@ -5,6 +5,7 @@ import com.posthog.PostHogConfig
 import com.posthog.awaitExecution
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
+import com.posthog.internal.PostHogPreferences.Companion.MINIMAL_FLAG_CALLED_EVENTS
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
@@ -121,6 +122,87 @@ internal class PostHogFeatureFlagsTest {
         assertNull(sut.getFeatureFlags())
         assertNull(preferences.getValue(FEATURE_FLAGS))
         assertNull(preferences.getValue(FEATURE_FLAGS_PAYLOAD))
+    }
+
+    @Test
+    fun `minimal flag called events gate is parsed from the flags response and persisted`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isMinimalFlagCalledEventsEnabled())
+        assertEquals(true, preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS))
+    }
+
+    @Test
+    fun `minimal flag called events gate is disabled when the response does not carry it`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        // the next response no longer carries the gate
+        http.enqueue(
+            MockResponse()
+                .setBody(responseFlagsApi),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.awaitExecution()
+
+        assertTrue(sut.isMinimalFlagCalledEventsEnabled())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isMinimalFlagCalledEventsEnabled())
+        assertNull(preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS))
+    }
+
+    @Test
+    fun `clear removes the minimal flag called events gate`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(file.readText()),
+            )
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isMinimalFlagCalledEventsEnabled())
+
+        sut.clear()
+
+        assertFalse(sut.isMinimalFlagCalledEventsEnabled())
+        assertNull(preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS))
     }
 
     @Test

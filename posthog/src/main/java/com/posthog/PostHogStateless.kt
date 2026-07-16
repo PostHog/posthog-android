@@ -253,11 +253,18 @@ public open class PostHogStateless protected constructor(
                     appendGroups = !groupIdentify,
                 )
 
+            val eventProperties =
+                if (event == PostHogEventName.FEATURE_FLAG_CALLED.event) {
+                    minimizeFeatureFlagCalledProperties(mergedProperties)
+                } else {
+                    mergedProperties
+                }
+
             val postHogEvent =
                 buildEvent(
                     event,
                     distinctId,
-                    mergedProperties.toMutableMap(),
+                    eventProperties.toMutableMap(),
                     timestamp,
                 )
             if (postHogEvent == null) {
@@ -493,6 +500,37 @@ public open class PostHogStateless protected constructor(
         captureStateless(PostHogEventName.FEATURE_FLAG_CALLED.event, distinctId, properties = props, groups = groups)
     }
 
+    /**
+     * Reduces a `$feature_flag_called` event to the cross-SDK minimal allowlist when the server
+     * enabled minimal flag-called events for this team AND the evaluated flag is not linked to an
+     * experiment. Any missing signal (gate absent from the response or cache, `has_experiment`
+     * unknown) keeps the full legacy shape, and experiment-linked flags always send the full
+     * envelope because experiment exposure analysis reads it.
+     */
+    private fun minimizeFeatureFlagCalledProperties(properties: Map<String, Any>): Map<String, Any> {
+        if (!isMinimalFlagCalledEventsEnabled()) {
+            return properties
+        }
+        if (properties["\$feature_flag_has_experiment"] != false) {
+            return properties
+        }
+
+        val minimalProperties = mutableMapOf<String, Any>()
+        for (key in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES) {
+            properties[key]?.let { minimalProperties[key] = it }
+        }
+        return minimalProperties
+    }
+
+    /**
+     * Whether the server enabled minimal `$feature_flag_called` events for this team. The client
+     * SDK stores its remote config on [PostHogConfig] rather than on [featureFlags], so it
+     * overrides this to consult it there.
+     */
+    protected open fun isMinimalFlagCalledEventsEnabled(): Boolean {
+        return featureFlags?.isMinimalFlagCalledEventsEnabled() == true
+    }
+
     public override fun getFeatureFlagStateless(
         distinctId: String,
         key: String,
@@ -648,6 +686,29 @@ public open class PostHogStateless protected constructor(
         private var defaultSharedInstance = shared
 
         private const val GROUP_IDENTIFY = "\$groupidentify"
+
+        // Strict allowlist for minimal $feature_flag_called events, from the cross-SDK contract:
+        // everything else is stripped, including registered super properties and the static and
+        // dynamic context envelope. Only properties this SDK sets today are listed.
+        private val MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES =
+            setOf(
+                "\$feature_flag",
+                "\$feature_flag_response",
+                "\$feature_flag_has_experiment",
+                "\$feature_flag_id",
+                "\$feature_flag_version",
+                "\$feature_flag_reason",
+                "\$feature_flag_request_id",
+                "\$feature_flag_evaluated_at",
+                "\$feature_flag_error",
+                "locally_evaluated",
+                "\$groups",
+                "\$process_person_profile",
+                "\$session_id",
+                "\$window_id",
+                "\$lib",
+                "\$lib_version",
+            )
 
         private val apiKeys = mutableSetOf<String>()
 

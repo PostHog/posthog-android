@@ -519,6 +519,226 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `feature flag called event is minimal when gated and the flag has no experiment`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(GROUPS, groups)
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                cachePreferences = myPrefs,
+                context = TestPostHogContext(),
+            )
+
+        // a registered super property must be stripped from the minimal event
+        sut.register("myCustomProp", "value")
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment: false in the flag metadata
+        assertFalse(sut.getFeatureFlag("IAmInactive") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+
+        // strict allowlist: everything else (super props, context envelope, $feature/<key>
+        // enumeration, $active_feature_flags, $is_identified, ...) is stripped
+        val expectedKeys =
+            setOf(
+                "\$feature_flag",
+                "\$feature_flag_response",
+                "\$feature_flag_has_experiment",
+                "\$feature_flag_id",
+                "\$feature_flag_version",
+                "\$feature_flag_reason",
+                "\$feature_flag_request_id",
+                "\$groups",
+                "\$process_person_profile",
+                "\$session_id",
+                "\$lib",
+                "\$lib_version",
+            )
+        assertEquals(expectedKeys, theEvent.properties!!.keys)
+
+        assertEquals("IAmInactive", theEvent.properties!!["\$feature_flag"])
+        assertEquals(false, theEvent.properties!!["\$feature_flag_response"])
+        assertEquals(false, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_id"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_version"])
+        assertEquals("No matching condition set", theEvent.properties!!["\$feature_flag_reason"])
+        assertEquals("171d83c3-4ac2-4bff-961d-efe3a0c3539c", theEvent.properties!!["\$feature_flag_request_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `feature flag called event keeps the full shape when gated and the flag has an experiment`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment: true in the flag metadata, so the full envelope is kept
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals(true, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
+        assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `feature flag called event keeps the full shape when the server does not send the gate`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment: false, but the response has no minimalFlagCalledEvents field
+        assertFalse(sut.getFeatureFlag("IAmInactive") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals(false, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `minimal flag called gate persists across SDK restarts`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        sut.close()
+
+        // re-init with the same preferences, serving flags and the gate from the cache
+        val sut2 = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        assertFalse(sut2.getFeatureFlag("IAmInactive") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals(false, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_id"])
+        assertFalse(theEvent.properties!!.containsKey("\$active_feature_flags"))
+        assertFalse(theEvent.properties!!.containsKey("\$feature/IAmInactive"))
+        assertFalse(theEvent.properties!!.containsKey("\$is_identified"))
+
+        sut2.close()
+    }
+
+    @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
