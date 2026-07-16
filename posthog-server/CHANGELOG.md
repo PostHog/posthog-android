@@ -1,5 +1,11 @@
 ## Next
 
+## 2.8.1
+
+### Patch Changes
+
+- 27a7c3d: Standardize event buffering defaults at a 10,000-event queue, 100-event flush threshold, 100-event maximum batch size, and 5-second flush interval.
+
 ## 2.8.0
 
 ### Minor Changes
