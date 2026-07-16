@@ -1,10 +1,13 @@
 package com.posthog.internal
 
 import com.posthog.API_KEY
+import com.posthog.PostHogBootstrapConfig
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.mockHttp
@@ -36,12 +39,14 @@ internal class PostHogRemoteConfigTest {
         host: String,
         networkStatus: PostHogNetworkStatus? = null,
         surveys: Boolean = false,
+        bootstrap: PostHogBootstrapConfig? = null,
         onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
     ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
                 this.networkStatus = networkStatus
                 this.surveys = surveys
+                this.bootstrap = bootstrap
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
@@ -2231,6 +2236,414 @@ internal class PostHogRemoteConfigTest {
         val sut = getSut(host = url.toString())
 
         assertEquals(triggers.toSet(), sut.getEventTriggers())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `serves bootstrapped flags and payloads before the first flags response`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("beta-ui" to "variant-a"),
+                        featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
+                    ),
+            )
+
+        assertEquals("variant-a", sut.getFeatureFlag("beta-ui"))
+        assertEquals(mapOf("color" to "blue"), sut.getFeatureFlagPayload("beta-ui"))
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `loaded flags override bootstrapped flags`() {
+        // fixture returns featureFlags {"4535-funnel-bar-viz": true}
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to "variant-old")),
+            )
+
+        // before load, the bootstrapped value is served
+        assertEquals("variant-old", sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // the freshly loaded value wins
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `complete flags load drops bootstrapped-only keys`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("legacy" to true),
+                    ),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // a complete /flags response replaces the served flags: the loaded value wins, and the
+        // bootstrapped-only key the server didn't return is dropped (not served)
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertNull(sut.getFeatureFlag("legacy"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `complete flags load replaces the bootstrapped payload`() {
+        // complete response returns the flag with a new value and no payload for it
+        val responseNoPayload =
+            """{"errorsWhileComputingFlags":false,"featureFlags":{"beta-ui":"variant-b"},"featureFlagPayloads":{}}"""
+        val http = mockHttp(response = MockResponse().setBody(responseNoPayload))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("beta-ui" to "variant-a"),
+                        featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
+                    ),
+            )
+
+        // before load, the bootstrapped payload is served
+        assertEquals(mapOf("color" to "blue"), sut.getFeatureFlagPayload("beta-ui"))
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // the complete response replaces flags and payloads: new value, no stale bootstrapped payload
+        assertEquals("variant-b", sut.getFeatureFlag("beta-ui"))
+        assertNull(sut.getFeatureFlagPayload("beta-ui"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `disabled bootstrap flag and its payload are not served`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("enabled" to true, "disabled" to false),
+                        featureFlagPayloads = mapOf("disabled" to mapOf("k" to "v")),
+                    ),
+            )
+
+        // only enabled bootstrap flags are served (posthog-js !!value): a false flag and its payload
+        // are dropped, and the disabled key isn't retained for reporting either
+        assertEquals(true, sut.getFeatureFlag("enabled"))
+        assertNull(sut.getFeatureFlag("disabled"))
+        assertNull(sut.getFeatureFlagPayload("disabled"))
+        assertNull(sut.getBootstrappedFeatureFlag("disabled"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `retains bootstrapped values for reporting after a load overrides them`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("4535-funnel-bar-viz" to "variant-old"),
+                        featureFlagPayloads = mapOf("4535-funnel-bar-viz" to mapOf("k" to "v")),
+                    ),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // served value is the loaded one, but the retained bootstrap copy is unchanged
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertEquals("variant-old", sut.getBootstrappedFeatureFlag("4535-funnel-bar-viz"))
+        assertEquals(mapOf("k" to "v"), sut.getBootstrappedFeatureFlagPayload("4535-funnel-bar-viz"))
+        assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `re-seeds bootstrapped flags when remote config reports no feature flags`() {
+        // /config with hasFeatureFlags=false clears the flag cache; bootstrapped flags are a
+        // caller-provided base layer, not server state, so they must be re-seeded and stay served.
+        val noFlags = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(noFlags))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadRemoteConfig(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "remote config load should complete")
+
+        // bootstrapped flag survives the hasFeatureFlags=false clear, and no /flags response
+        // arrived so $used_bootstrap_value stays true.
+        assertEquals(true, sut.getFeatureFlag("beta-ui"))
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `bootstrap snapshot wins over persisted flags on a returning user`() {
+        // Simulate a prior session: a real /flags response was persisted to the flag cache.
+        preferences.setValue(FEATURE_FLAGS, mapOf("beta-ui" to false))
+
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true, "legacy" to true)),
+            )
+
+        // bootstrap is an initial snapshot that takes precedence over the persisted cache (spec)
+        assertEquals(true, sut.getFeatureFlag("beta-ui"))
+        assertEquals(true, sut.getFeatureFlag("legacy"))
+        // the "loaded from remote" signal is per-session: a returning user hasn't hit /flags this
+        // launch, so while served bootstrap values $used_bootstrap_value is correctly true
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `errorsWhileComputingFlags load keeps bootstrapped-only keys`() {
+        // V1 partial-failure response returns {"foo": true} with errorsWhileComputingFlags=true.
+        val withErrors = File("src/test/resources/json/flags-v1/basic-flags-with-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(withErrors))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("legacy" to true)),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // loaded key is served through the upsert path, and the bootstrapped-only key survives
+        assertEquals(true, sut.getFeatureFlag("foo"))
+        assertEquals(true, sut.getFeatureFlag("legacy"))
+        assertTrue(sut.hasLoadedFeatureFlagsFromRemote())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `errorsWhileComputingFlags load does not persist bootstrapped-only keys`() {
+        // V1 partial-failure response returns {"foo": true} with errorsWhileComputingFlags=true.
+        val withErrors = File("src/test/resources/json/flags-v1/basic-flags-with-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(withErrors))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("legacy" to true)),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // in-memory, the bootstrapped-only key is still served this session (base-layer contract)
+        assertEquals(true, sut.getFeatureFlag("legacy"))
+
+        // but it must NOT reach the durable cache: a later launch without bootstrap would otherwise
+        // load it from cache and serve it as a genuine remote flag (bootstrap is first-session-only)
+        @Suppress("UNCHECKED_CAST")
+        val cached = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any> ?: emptyMap()
+        assertEquals(true, cached["foo"]) // the server-confirmed key is persisted
+        assertNull(cached["legacy"]) // the bootstrap-only key is not
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `complete flags load persists a server-confirmed flag whose value equals its bootstrap value`() {
+        // A complete /flags response confirms beta-ui to the *same* value the caller bootstrapped.
+        // Provenance, not value equality, decides what persists: the server evaluated beta-ui, so it
+        // must reach the durable cache even though it matches bootstrap, or a later offline launch
+        // without bootstrap couldn't recover a flag the server actually confirmed.
+        val responseEqualToBootstrap =
+            """{"errorsWhileComputingFlags":false,"featureFlags":{"beta-ui":true},""" +
+                """"featureFlagPayloads":{"beta-ui":"{\"color\":\"blue\"}"}}"""
+        val http = mockHttp(response = MockResponse().setBody(responseEqualToBootstrap))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("beta-ui" to true),
+                        featureFlagPayloads = mapOf("beta-ui" to mapOf("color" to "blue")),
+                    ),
+            )
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // the server-confirmed flag and its payload reach the durable cache
+        @Suppress("UNCHECKED_CAST")
+        val cachedFlags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any> ?: emptyMap()
+        assertEquals(true, cachedFlags["beta-ui"])
+        @Suppress("UNCHECKED_CAST")
+        val cachedPayloads = preferences.getValue(FEATURE_FLAGS_PAYLOAD) as? Map<String, Any?> ?: emptyMap()
+        assertEquals(mapOf("color" to "blue"), cachedPayloads["beta-ui"])
+
+        // a later launch with the same cache but no bootstrap still recovers the confirmed flag/payload
+        val returning = getSut(host = http.url("/").toString())
+        assertEquals(true, returning.getFeatureFlag("beta-ui"))
+        assertEquals(mapOf("color" to "blue"), returning.getFeatureFlagPayload("beta-ui"))
+
+        sut.clear()
+        returning.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `bootstrapped flags are not resurrected after clear`() {
+        // fixture returns featureFlags {"4535-funnel-bar-viz": true}, not the bootstrapped key
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        http.enqueue(MockResponse().setBody(responseFlagsApi))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("legacy" to true)),
+            )
+
+        val firstLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "user-1",
+            anonymousId = "anon-1",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+        )
+        assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
+        // a complete /flags response replaces the served flags, so the bootstrapped-only key is dropped
+        assertNull(sut.getFeatureFlag("legacy"))
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+
+        // reset() calls clear(): bootstrap is first-session only, so the retained reporting copy is dropped
+        sut.clear()
+        assertNull(sut.getBootstrappedFeatureFlag("legacy"))
+        assertFalse(sut.hasLoadedFeatureFlagsFromRemote())
+
+        val secondLatch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "user-2",
+            anonymousId = "anon-2",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+        )
+        assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
+
+        // the new user is never served the previous user's bootstrapped-only key
+        assertNull(sut.getFeatureFlag("legacy"))
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `drops non-serializable bootstrapped values and keeps valid ones`() {
+        // A non-serializable host value (NaN/Infinity) would otherwise fail the whole FEATURE_FLAGS
+        // cache write; it is dropped at construction while valid entries stay served.
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap =
+                    PostHogBootstrapConfig(
+                        featureFlags = mapOf("good" to true, "bad" to Double.NaN),
+                        featureFlagPayloads =
+                            mapOf("good" to mapOf("k" to "v"), "bad" to mapOf("n" to Double.POSITIVE_INFINITY)),
+                    ),
+            )
+
+        assertEquals(true, sut.getFeatureFlag("good"))
+        assertEquals(mapOf("k" to "v"), sut.getFeatureFlagPayload("good"))
+        assertNull(sut.getFeatureFlag("bad"))
+        assertNull(sut.getBootstrappedFeatureFlag("bad"))
+        assertNull(sut.getBootstrappedFeatureFlagPayload("bad"))
 
         sut.clear()
         http.shutdown()
