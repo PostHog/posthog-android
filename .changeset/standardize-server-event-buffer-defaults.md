@@ -2,4 +2,4 @@
 "posthog-server": patch
 ---
 
-Standardize the default event flush threshold and maximum batch size at 100 events.
+Standardize event buffering defaults at a 10,000-event queue, 100-event flush threshold, and 100-event maximum batch size.

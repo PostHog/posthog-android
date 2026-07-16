@@ -63,7 +63,7 @@ public open class PostHogConfig constructor(
     /**
      * Number of maximum events in memory and disk, when the maximum is exceed, the oldest
      * event is deleted and the new one takes place
-     * Defaults to 1000
+     * Defaults to 10000
      */
     public var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE,
     /**
@@ -259,7 +259,7 @@ public open class PostHogConfig constructor(
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
 
         public const val DEFAULT_FLUSH_AT: Int = 100
-        public const val DEFAULT_MAX_QUEUE_SIZE: Int = 1000
+        public const val DEFAULT_MAX_QUEUE_SIZE: Int = 10000
         public const val DEFAULT_MAX_BATCH_SIZE: Int = 100
         public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
         public const val DEFAULT_FEATURE_FLAG_CACHE_SIZE: Int = 1000
