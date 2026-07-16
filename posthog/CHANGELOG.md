@@ -1,5 +1,11 @@
 ## Next
 
+## 6.26.0
+
+### Minor Changes
+
+- 44847b0: Add a `bootstrap` option to `PostHogConfig` for pre-seeding identity and feature flags before the first `/flags` response. Set `config.bootstrap = PostHogBootstrapConfig(...)` before `setup()` so early events carry a caller-controlled distinct ID and flag reads return your values during cold start. Mirrors the `bootstrap` option in posthog-js.
+
 ## 6.25.0
 
 ### Minor Changes
