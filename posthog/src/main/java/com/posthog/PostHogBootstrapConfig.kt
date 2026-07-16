@@ -23,7 +23,7 @@ package com.posthog
  */
 public class PostHogBootstrapConfig
     @JvmOverloads
-    constructor(
+    public constructor(
         /**
          * The distinct id to seed on first launch.
          *
