@@ -1,5 +1,20 @@
 ## Next
 
+## 3.55.1
+
+### Patch Changes
+
+- 4664efd: Stop querying network time on every timestamp. `PostHogAndroidDateProvider.currentTimeMillis()` called `SystemClock.currentNetworkTimeClock().millis()` on each invocation, which performs a Binder IPC to a system service — so hot paths like the session-replay touch interceptor did an IPC on the main thread for every touch and could ANR under load. Network time is now sampled at most once per minute and intermediate timestamps are derived from the monotonic `elapsedRealtime` delta, preserving network-time correction without the per-call IPC.
+- d341719: Fix a crash when `PostHogAndroid.setup()` runs in Direct Boot mode (after a reboot, before the user first unlocks the device): accessing SharedPreferences in credential encrypted storage threw `IllegalStateException` and took the host app down. The SDK now resolves SharedPreferences lazily, buffers writes in memory while storage is locked, and flushes them on the first access after unlock.
+- d341719: Don't let state read while the preferences store is temporarily unreadable (Direct Boot, before the first unlock) overwrite or shadow persisted values. `PostHogPreferences` now exposes `isAvailable()`, and while it is false:
+
+  - auto-generated `anonymousId`/`deviceId` stay transient (in memory only) — after unlock a previously persisted identity wins; on a fresh install the transient id is persisted on first use
+  - the `isIdentified` and person-processing fallbacks are neither persisted nor cached, so the persisted values are re-resolved once the store unlocks
+  - the persisted opt-out choice is resolved lazily on the capture path once the store is readable (gating on the `config.optOut` default until then) instead of being baked in at `setup()` — this also fixes a latent bug where the setup-time read consulted the in-memory fallback store and never honored a persisted opt-out
+  - the Android app-install integration defers install/update detection instead of firing a spurious `Application Installed` for an existing install and overwriting the stored previous version
+
+  Behavior change: `group()` now early-returns when the user is opted out, so it no longer registers `$groups` or reloads feature flags in that case (previously only the downstream `$groupidentify` event was suppressed). This is required for the lazy opt-out gating above to honor a persisted opt-out, and matches `posthog-ios`.
+
 ## 3.55.0
 
 ### Minor Changes
