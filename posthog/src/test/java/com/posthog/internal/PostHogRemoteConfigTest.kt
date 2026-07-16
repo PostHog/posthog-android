@@ -41,13 +41,14 @@ internal class PostHogRemoteConfigTest {
         surveys: Boolean = false,
         bootstrap: PostHogBootstrapConfig? = null,
         onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
+        cachePreferences: PostHogPreferences = preferences,
     ): PostHogRemoteConfig {
         config =
             PostHogConfig(API_KEY, host).apply {
                 this.networkStatus = networkStatus
                 this.surveys = surveys
                 this.bootstrap = bootstrap
-                cachePreferences = preferences
+                this.cachePreferences = cachePreferences
             }
         val api = PostHogApi(config!!)
         return PostHogRemoteConfig(
@@ -65,6 +66,80 @@ internal class PostHogRemoteConfigTest {
         // isReactNative is a process-global flag on the PostHogSessionManager singleton; reset it so a
         // test in another suite that sets it true can't leak into these (e.g. flip getEventTriggers to null).
         PostHogSessionManager.isReactNative = false
+    }
+
+    // Delegates to an in-memory store but parks the reader inside getValue(ERROR_TRACKING), standing in
+    // for a slow disk read of the cached /config while a flags load re-arms it. ERROR_TRACKING is read
+    // only on the flags-load re-arm path, so parking on it isolates that critical section (SESSION_REPLAY
+    // is also read by the preload path, which would entangle the test).
+    private class BlockingPreferences(private val delegate: PostHogPreferences) : PostHogPreferences {
+        // Armed only after construction, so the init-block preload reads pass through and only the
+        // flags-load re-arm read is parked.
+        @Volatile
+        var armed = false
+        val enteredRead = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        override fun getValue(
+            key: String,
+            defaultValue: Any?,
+        ): Any? {
+            if (armed && key == ERROR_TRACKING) {
+                enteredRead.countDown()
+                release.await(5, TimeUnit.SECONDS)
+            }
+            return delegate.getValue(key, defaultValue)
+        }
+
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) = delegate.setValue(key, value)
+
+        override fun clear(except: List<String>) = delegate.clear(except)
+
+        override fun remove(key: String) = delegate.remove(key)
+
+        override fun getAll(): Map<String, Any> = delegate.getAll()
+    }
+
+    @Test
+    fun `clear does not block on the feature flags lock while a flags load reads cached config`() {
+        // A flags reload re-arms session replay from the cached /config. Reading that cache can hit
+        // disk, and it must not happen while holding featureFlagsLock, or a concurrent reset()/clear()
+        // on the main thread blocks acquiring the lock and ANRs.
+        val delegate = PostHogMemoryPreferences()
+        delegate.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
+        val blockingPreferences = BlockingPreferences(delegate)
+
+        val flags = File("src/test/resources/json/basic-flags-no-session-recording.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(host = http.url("/").toString(), cachePreferences = blockingPreferences)
+
+        // Arm only now, so the init-block preloads completed above without parking.
+        blockingPreferences.armed = true
+
+        // Kick off a flags load; it parks in the cached-config read on the executor thread.
+        sut.loadFeatureFlags("distinct", anonymousId = "anon", groups = emptyMap())
+        assertTrue(
+            blockingPreferences.enteredRead.await(5, TimeUnit.SECONDS),
+            "the flags load should reach the cached error tracking read",
+        )
+
+        // While the load is parked in that read, clear() must complete without blocking on the lock.
+        val cleared = CountDownLatch(1)
+        Thread {
+            sut.clear()
+            cleared.countDown()
+        }.apply { isDaemon = true }.start()
+
+        val completedWhileParked = cleared.await(2, TimeUnit.SECONDS)
+        blockingPreferences.release.countDown()
+
+        assertTrue(
+            completedWhileParked,
+            "clear() blocked on featureFlagsLock held across the cached-config disk read",
+        )
     }
 
     @Test

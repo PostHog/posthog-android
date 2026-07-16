@@ -455,8 +455,9 @@ public class PostHogRemoteConfig(
     }
 
     // Restores the full recording config from cache (survives reset), re-evaluated against current flags.
-    private fun reevaluateSessionReplayFromCachedConfig() {
-        val recordingConfig = config.cachePreferences?.getValue(SESSION_REPLAY)
+    // recordingConfig is read from the cache by the caller (off featureFlagsLock, since that read can
+    // hit disk); this only re-evaluates it in memory, so it is safe to call while holding the lock.
+    private fun reevaluateSessionReplayFromCachedConfig(recordingConfig: Any?) {
         if (recordingConfig == null) {
             config.logger.log("No cached session replay config to re-evaluate; replay stays disabled.")
             return
@@ -562,8 +563,9 @@ public class PostHogRemoteConfig(
     }
 
     // Restores error tracking config from cache (survives reset); re-armed on a /flags reload.
-    private fun reevaluateErrorTrackingFromCachedConfig() {
-        val errorTracking = config.cachePreferences?.getValue(ERROR_TRACKING)
+    // errorTracking is read from the cache by the caller (off featureFlagsLock, since that read can
+    // hit disk); this only re-evaluates it in memory.
+    private fun reevaluateErrorTrackingFromCachedConfig(errorTracking: Any?) {
         if (errorTracking == null) {
             config.logger.log("No cached error tracking config to re-evaluate; autocapture stays disabled.")
             return
@@ -615,8 +617,9 @@ public class PostHogRemoteConfig(
     }
 
     // Restores capture performance config from cache (survives reset); re-armed on a /flags reload.
-    private fun reevaluateCapturePerformanceFromCachedConfig() {
-        val capturePerformance = config.cachePreferences?.getValue(CAPTURE_PERFORMANCE)
+    // capturePerformance is read from the cache by the caller (off featureFlagsLock, since that read
+    // can hit disk); this only re-evaluates it in memory.
+    private fun reevaluateCapturePerformanceFromCachedConfig(capturePerformance: Any?) {
         if (capturePerformance == null) {
             config.logger.log("No cached capture performance config to re-evaluate; network timing stays disabled.")
             return
@@ -700,6 +703,16 @@ public class PostHogRemoteConfig(
 
             var quotaLimited = false
             response?.let {
+                // Read the cached /config values before taking featureFlagsLock: getValue can be slow
+                // (per-read deserialization of stringified configs, contention on the preferences lock
+                // with a serializing writer, or custom PostHogPreferences implementations that do real
+                // I/O), and holding the lock across that read blocks a concurrent reset()/clear() on
+                // the main thread long enough to ANR. The in-memory re-evaluation below still runs
+                // under the lock, so its read of featureFlags stays consistent with the flag-map
+                // updates.
+                val cachedSessionReplay = config.cachePreferences?.getValue(SESSION_REPLAY)
+                val cachedCapturePerformance = config.cachePreferences?.getValue(CAPTURE_PERFORMANCE)
+                val cachedErrorTracking = config.cachePreferences?.getValue(ERROR_TRACKING)
                 synchronized(featureFlagsLock) {
                     if (it.quotaLimited?.contains("feature_flags") == true) {
                         config.logger.log(
@@ -709,9 +722,9 @@ public class PostHogRemoteConfig(
                         // Flags are quota limited, but session replay / error tracking / capture
                         // performance config come from /config (not flags), so still re-arm them from
                         // the cache against the flags we already have, instead of leaving them disabled.
-                        reevaluateSessionReplayFromCachedConfig()
-                        reevaluateCapturePerformanceFromCachedConfig()
-                        reevaluateErrorTrackingFromCachedConfig()
+                        reevaluateSessionReplayFromCachedConfig(cachedSessionReplay)
+                        reevaluateCapturePerformanceFromCachedConfig(cachedCapturePerformance)
+                        reevaluateErrorTrackingFromCachedConfig(cachedErrorTracking)
                         // The server responded and the cached config was re-armed, so this resolves the
                         // remote config for the current identity — mark fetched + notify (outside the
                         // lock) so the replay buffer-and-decide gate disarms instead of staying stuck.
@@ -772,7 +785,7 @@ public class PostHogRemoteConfig(
 
                     // /flags carries flag evaluations only; session recording config comes from
                     // /config. Re-arm from the cached config, re-evaluated against the new flags.
-                    reevaluateSessionReplayFromCachedConfig()
+                    reevaluateSessionReplayFromCachedConfig(cachedSessionReplay)
 
                     // TODO: surveys depends on remoteConfig for now
                     // otherwise surveysHandler?.onSurveysLoaded will be called multiple times
@@ -780,8 +793,8 @@ public class PostHogRemoteConfig(
 
                     // error tracking & capture performance config come from /config, not /flags;
                     // re-arm from the cached config like session replay above.
-                    reevaluateCapturePerformanceFromCachedConfig()
-                    reevaluateErrorTrackingFromCachedConfig()
+                    reevaluateCapturePerformanceFromCachedConfig(cachedCapturePerformance)
+                    reevaluateErrorTrackingFromCachedConfig(cachedErrorTracking)
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
