@@ -17,6 +17,10 @@ import java.util.UUID
  * @property properties All the event properties
  * @property timestamp The timestamp is automatically generated
  * @property uuid the UUID v4 is automatically generated and used for deduplication
+ * @property type Deprecated legacy event type field. Do not use.
+ * @property messageId Deprecated legacy message identifier. Prefer [uuid].
+ * @property set Deprecated `$set` payload. Prefer [properties].
+ * @property apiKey The PostHog project API key. Only set on session replay snapshot events.
  */
 public data class PostHogEvent(
     val event: String,

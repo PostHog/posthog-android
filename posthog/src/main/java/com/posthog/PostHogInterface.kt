@@ -412,6 +412,10 @@ public interface PostHogInterface : PostHogCoreInterface {
         flagVariant: String? = null,
     )
 
+    /**
+     * Returns the active SDK configuration, or null if the SDK has not been set up
+     * or the stored config is not of the requested type.
+     */
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
 }

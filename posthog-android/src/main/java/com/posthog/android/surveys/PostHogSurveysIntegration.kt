@@ -35,6 +35,12 @@ import com.posthog.surveys.SurveyType
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Android integration that surfaces PostHog surveys and reports survey lifecycle events.
+ *
+ * Evaluates each survey's targeting conditions (device, event, and property matchers) and hands
+ * matching surveys to the configured display delegate.
+ */
 public class PostHogSurveysIntegration(
     context: Context,
     private val config: PostHogConfig,

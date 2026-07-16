@@ -249,22 +249,43 @@ public open class PostHogConfig constructor(
     }
 
     public companion object {
+        /** Ingestion host for the US cloud region. */
         public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"
+
+        /** Static assets host for the US cloud region. */
         public const val DEFAULT_US_ASSETS_HOST: String = "https://us-assets.i.posthog.com"
 
-        // flutter uses it
+        /** Default ingestion host when none is provided (US cloud region). */
         public const val DEFAULT_HOST: String = DEFAULT_US_HOST
 
+        /** Ingestion host for the EU cloud region. */
         public const val DEFAULT_EU_HOST: String = "https://eu.i.posthog.com"
+
+        /** Static assets host for the EU cloud region. */
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
 
+        /** Default value for [flushAt]. */
         public const val DEFAULT_FLUSH_AT: Int = 100
+
+        /** Default value for [maxQueueSize]. */
         public const val DEFAULT_MAX_QUEUE_SIZE: Int = 10000
+
+        /** Default value for [maxBatchSize]. */
         public const val DEFAULT_MAX_BATCH_SIZE: Int = 100
+
+        /** Default value for [flushIntervalSeconds]. */
         public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 5
+
+        /** Default value for [featureFlagCacheSize]. */
         public const val DEFAULT_FEATURE_FLAG_CACHE_SIZE: Int = 1000
+
+        /** Default value for [featureFlagCacheMaxAgeMs]. */
         public const val DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS: Int = 5 * 60 * 1000 // 5 minutes
+
+        /** Default value for [featureFlagCalledCacheSize]. */
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
+
+        /** Default value for [pollIntervalSeconds]. */
         public const val DEFAULT_POLL_INTERVAL_SECONDS: Int = 30
 
         /**

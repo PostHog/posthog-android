@@ -6,6 +6,13 @@ import com.posthog.PostHogInterface
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
 
+/**
+ * Integration that captures uncaught exceptions as PostHog `$exception` events.
+ *
+ * When exception autocapture is enabled via remote config, it installs itself as the JVM-wide
+ * default uncaught exception handler, reports and flushes the exception, then delegates to the
+ * previously installed handler.
+ */
 public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler {
     private val config: PostHogConfig
     private val adapterExceptionHandler: UncaughtExceptionHandlerAdapter

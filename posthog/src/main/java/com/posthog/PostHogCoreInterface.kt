@@ -1,5 +1,8 @@
 package com.posthog
 
+/**
+ * Core PostHog SDK operations shared by the stateful and stateless SDK entry points.
+ */
 public interface PostHogCoreInterface {
     /**
      * Setup the SDK

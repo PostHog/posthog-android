@@ -18,6 +18,10 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+/**
+ * Base implementation of the stateless PostHog SDK, where the distinct id is supplied on every
+ * call rather than persisted on the client. Serves as the foundation for server-side SDK clients.
+ */
 public open class PostHogStateless protected constructor(
     private val queueExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -651,11 +655,17 @@ public open class PostHogStateless protected constructor(
 
         private val apiKeys = mutableSetOf<String>()
 
+        /**
+         * Replaces the shared instance. Intended for tests only.
+         */
         @PostHogVisibleForTesting
         public fun overrideSharedInstance(postHog: PostHogStatelessInterface) {
             shared = postHog
         }
 
+        /**
+         * Restores the shared instance to its default. Intended for tests only.
+         */
         @PostHogVisibleForTesting
         public fun resetSharedInstance() {
             shared = defaultSharedInstance

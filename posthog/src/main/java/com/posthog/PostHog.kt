@@ -44,6 +44,13 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+/**
+ * The main PostHog SDK client.
+ *
+ * Most apps use the shared instance through the static companion methods (e.g. `capture`,
+ * `identify`, `reset`) after calling `setup`. Use `with` to create a standalone instance you can
+ * hold and pass around instead.
+ */
 public class PostHog private constructor(
     private val queueExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -2054,11 +2061,17 @@ public class PostHog private constructor(
             shared.captureLog(message, severity, attributes, traceId, spanId, traceFlags)
         }
 
+        /**
+         * Replaces the shared instance. Intended for tests only.
+         */
         @PostHogVisibleForTesting
         public fun overrideSharedInstance(postHog: PostHogInterface) {
             shared = postHog
         }
 
+        /**
+         * Restores the shared instance to its default. Intended for tests only.
+         */
         @PostHogVisibleForTesting
         public fun resetSharedInstance() {
             shared = defaultSharedInstance

@@ -393,20 +393,37 @@ public open class PostHogConfig(
      */
     public val host: String = host.trim().ifBlank { DEFAULT_HOST }
 
+    /**
+     * Logger used by the SDK to emit debug output when [debug] is enabled.
+     * Set by platform modules; replaced with a print logger during setup when left unset.
+     */
     @PostHogInternal
     public var logger: PostHogLogger = PostHogNoOpLogger()
 
+    /**
+     * JSON serializer used to encode and decode events and API payloads.
+     */
     @PostHogInternal
     public val serializer: PostHogSerializer by lazy {
         PostHogSerializer(this)
     }
 
+    /**
+     * Platform context that supplies static and dynamic device and app properties.
+     * Set by platform-specific modules (e.g. Android).
+     */
     @PostHogInternal
     public var context: PostHogContext? = null
 
+    /**
+     * SDK identifier reported as the `$lib` property. Overridden per platform.
+     */
     @PostHogInternal
     public var sdkName: String = "posthog-java"
 
+    /**
+     * SDK version reported as the `$lib_version` property. Overridden per platform.
+     */
     @PostHogInternal
     public var sdkVersion: String = BuildConfig.VERSION_NAME
 
@@ -415,24 +432,49 @@ public open class PostHogConfig(
             return "$sdkName/$sdkVersion"
         }
 
+    /**
+     * Filesystem path prefix for storage written by older SDK versions, used to migrate
+     * existing installs. Set by platform modules.
+     */
     @PostHogInternal
     public var legacyStoragePrefix: String? = null
 
+    /**
+     * Filesystem path prefix for the SDK's on-disk storage. Set by platform modules.
+     */
     @PostHogInternal
     public var storagePrefix: String? = null
 
+    /**
+     * Filesystem path prefix for session replay on-disk storage. Set by platform modules.
+     */
     @PostHogInternal
     public var replayStoragePrefix: String? = null
 
+    /**
+     * Filesystem path prefix for the logs subsystem's on-disk storage. Set by platform modules.
+     */
     @PostHogInternal
     public var logsStoragePrefix: String? = null
 
+    /**
+     * Key-value store used to persist SDK state such as the distinct id, feature flags,
+     * and cached remote config. Set by platform modules.
+     */
     @PostHogInternal
     public var cachePreferences: PostHogPreferences? = null
 
+    /**
+     * Hook used to check network availability before making network calls
+     * (event flushing, remote config and feature flag fetches).
+     * Set by platform modules.
+     */
     @PostHogInternal
     public var networkStatus: PostHogNetworkStatus? = null
 
+    /**
+     * API endpoint path used to upload session replay snapshots.
+     */
     @PostHogInternal
     public var snapshotEndpoint: String = "/s/"
 
@@ -451,6 +493,10 @@ public open class PostHogConfig(
     @PostHogInternal
     public var remoteConfigHolder: PostHogRemoteConfig? = null
 
+    /**
+     * Provider for the current date and time used when stamping events.
+     * Overridable so tests can supply a deterministic clock.
+     */
     @PostHogInternal
     public var dateProvider: PostHogDateProvider = PostHogDeviceDateProvider()
 
@@ -555,15 +601,22 @@ public open class PostHogConfig(
         /** Shared default for [flushIntervalSeconds] and [PostHogLogsConfig.flushIntervalSeconds]. */
         public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
 
+        /** Ingestion host for the US cloud region. */
         public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"
+
+        /** Static assets host for the US cloud region. */
         public const val DEFAULT_US_ASSETS_HOST: String = "https://us-assets.i.posthog.com"
 
-        // flutter uses it
+        /** Default ingestion host when none is provided (US cloud region). Referenced by the Flutter SDK. */
         public const val DEFAULT_HOST: String = DEFAULT_US_HOST
 
+        /** Ingestion host for the EU cloud region. */
         public const val DEFAULT_EU_HOST: String = "https://eu.i.posthog.com"
+
+        /** Static assets host for the EU cloud region. */
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
 
+        /** Default value for [featureFlagCalledCacheSize]. */
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
     }
 }

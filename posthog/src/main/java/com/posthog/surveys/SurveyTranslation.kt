@@ -7,8 +7,12 @@ package com.posthog.surveys
  * used for internal previews and never rendered to end users.
  */
 public data class SurveyTranslation(
+    /** Localized survey name. */
     val name: String? = null,
+    /** Localized header for the confirmation message. */
     val thankYouMessageHeader: String? = null,
+    /** Localized body for the confirmation message. */
     val thankYouMessageDescription: String? = null,
+    /** Localized label for the confirmation message's close button. */
     val thankYouMessageCloseButtonText: String? = null,
 )

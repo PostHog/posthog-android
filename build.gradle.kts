@@ -28,6 +28,21 @@ subprojects {
     dependencyLocking {
         lockAllConfigurations()
     }
+
+    if (name in setOf("posthog", "posthog-android", "posthog-server")) {
+        apply(plugin = "io.gitlab.arturbosch.detekt")
+
+        configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
+            buildUponDefaultConfig = true
+            allRules = false
+            config.setFrom(rootProject.file("detekt.yml"))
+        }
+    }
+
+    tasks.withType<Detekt>().configureEach {
+        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
+        languageVersion = PosthogBuildConfig.Kotlin.KOTLIN_COMPATIBILITY
+    }
 }
 
 spotless {

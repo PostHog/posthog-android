@@ -1,0 +1,52 @@
+# Scoped to public-API documentation enforcement only.
+# The other rulesets are disabled for now: the codebase predates detekt and
+# carries ~800 findings against the default rules; adopting them is a separate
+# effort (baseline or cleanup) from guarding the public API docs.
+
+# The com.posthog.internal / android.internal packages are Kotlin-public only
+# because internal visibility does not span the multi-module architecture
+# (see the PostHogInternal annotation) — they are not supported API, so the
+# docs rules skip them, along with test sources and vendored code.
+comments:
+  active: true
+  excludes:
+    [
+      '**/test/**',
+      '**/androidTest/**',
+      '**/commonTest/**',
+      '**/jvmTest/**',
+      '**/jsTest/**',
+      '**/iosTest/**',
+      '**/internal/**',
+      '**/vendor/**',
+    ]
+  UndocumentedPublicClass:
+    active: true
+  UndocumentedPublicFunction:
+    active: true
+  UndocumentedPublicProperty:
+    active: true
+
+complexity:
+  active: false
+
+coroutines:
+  active: false
+
+empty-blocks:
+  active: false
+
+exceptions:
+  active: false
+
+naming:
+  active: false
+
+performance:
+  active: false
+
+potential-bugs:
+  active: false
+
+style:
+  active: false

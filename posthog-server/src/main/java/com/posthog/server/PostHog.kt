@@ -6,6 +6,13 @@ import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
 import com.posthog.server.internal.PostHogFeatureFlags
 
+/**
+ * Server-side PostHog SDK client.
+ *
+ * Captures events with request-scoped context resolved from [PostHogRequestContext] and evaluates
+ * feature flags (locally when local evaluation is configured, otherwise via the API). Create an
+ * instance with [with].
+ */
 @Suppress("DEPRECATION")
 public class PostHog : PostHogStateless(), PostHogInterface {
     private val evaluationsHost: EvaluationsHost =

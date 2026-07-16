@@ -99,6 +99,10 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+/**
+ * Android integration that records session replay snapshots of the app's view hierarchy and
+ * forwards them to PostHog.
+ */
 public class PostHogReplayIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,

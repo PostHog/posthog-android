@@ -15,7 +15,10 @@ import java.util.UUID
  */
 public class PostHogRequestContext private constructor() {
     public companion object {
+        /** Request header carrying the distinct id to associate with captures in the scope. */
         public const val DISTINCT_ID_HEADER: String = "X-PostHog-Distinct-Id"
+
+        /** Request header carrying the session id to attach as `$session_id` to captures. */
         public const val SESSION_ID_HEADER: String = "X-PostHog-Session-Id"
 
         private const val SESSION_ID_PROPERTY = "\$session_id"

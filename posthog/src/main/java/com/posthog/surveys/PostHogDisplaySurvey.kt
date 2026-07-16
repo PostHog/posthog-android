@@ -62,7 +62,10 @@ public data class PostHogDisplaySurvey(
 /**
  * Type of rating display for survey rating questions
  */
-public enum class PostHogDisplaySurveyRatingType(public val value: Int) {
+public enum class PostHogDisplaySurveyRatingType(
+    /** Stable integer identifier for this rating type. */
+    public val value: Int,
+) {
     /**
      * Display numeric rating options
      */
@@ -77,7 +80,10 @@ public enum class PostHogDisplaySurveyRatingType(public val value: Int) {
 /**
  * Content type for text-based survey elements (e.g Question description, Thank you message description)
  */
-public enum class PostHogDisplaySurveyTextContentType(public val value: Int) {
+public enum class PostHogDisplaySurveyTextContentType(
+    /** Stable integer identifier for this content type. */
+    public val value: Int,
+) {
     /**
      * Content should be rendered as HTML
      */
