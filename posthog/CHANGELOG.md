@@ -1,5 +1,17 @@
 ## Next
 
+## 6.26.0
+
+### Minor Changes
+
+- 44847b0: Add a `bootstrap` option to `PostHogConfig` for pre-seeding identity and feature flags before the first `/flags` response. Set `config.bootstrap = PostHogBootstrapConfig(...)` before `setup()` so early events carry a caller-controlled distinct ID and flag reads return your values during cold start. Mirrors the `bootstrap` option in posthog-js.
+
+## 6.25.0
+
+### Minor Changes
+
+- 2cdc0d7: Add a `$feature_flag_has_experiment` boolean property to `$feature_flag_called` events, sourced from the `has_experiment` field the server reports in each flag's metadata (`/flags?v=2` and `/local_evaluation`). The property is only sent when the server explicitly reported `has_experiment`; it is omitted when the server did not report it (older deployments) or when flag details are unavailable.
+
 ## 6.24.0
 
 ### Minor Changes

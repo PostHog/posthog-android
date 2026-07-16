@@ -261,6 +261,8 @@ public class PostHog private constructor(
 
                 legacyPreferences(config, config.serializer)
 
+                applyBootstrapIfNeeded(config)
+
                 super.enabled = true
 
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
@@ -312,6 +314,12 @@ public class PostHog private constructor(
                 // only because of testing in isolation, this flag is always enabled
                 @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
+                    // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
+                    // callbacks now so listeners aren't blocked on the first network response.
+                    if (remoteConfig?.hasBootstrapFlags() == true) {
+                        notifyFeatureFlagsCallback(internalOnFeatureFlagsLoaded)
+                        notifyFeatureFlagsCallback(config.onFeatureFlags)
+                    }
                     when {
                         config.remoteConfig ->
                             loadRemoteConfigRequest(
@@ -322,6 +330,13 @@ public class PostHog private constructor(
                         config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
                     }
                 }
+
+                // Reconcile a differing identified bootstrap after the setup reload is dispatched.
+                // Kept here (not before integrations) so the identify()-triggered flags reload can't
+                // resolve remote config ahead of setup's own /config load on the single-threaded
+                // remote-config executor. The $identify merge links any setup-time events captured
+                // under the prior anonymous id to the identified user server-side.
+                reconcileBootstrapIdentityIfNeeded(config)
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
             }
@@ -364,6 +379,88 @@ public class PostHog private constructor(
             } catch (e: Throwable) {
                 config.logger.log("Legacy cached prefs: $cachedPrefs failed to parse: $e.")
             }
+        }
+    }
+
+    /**
+     * Seeds the bootstrap distinct id on first launch only. Skipped once any identity is persisted
+     * so a returning user is never reassigned.
+     */
+    private fun applyBootstrapIfNeeded(config: PostHogConfig) {
+        val bootstrap = config.bootstrap ?: return
+        val bootstrapId = bootstrap.distinctId
+        if (bootstrapId.isNullOrBlank()) {
+            return
+        }
+
+        // Self-guard like legacyPreferences: a failure here must only skip bootstrap seeding,
+        // not abort the rest of setup() (queue start, integrations, flag reload).
+        try {
+            val preferences = getPreferences()
+            // Persisted identity wins — never overwrite an existing anonymous id, and never
+            // re-link traffic across a previous anon→identified merge.
+            val persistedAnonymousId = preferences.getValue(ANONYMOUS_ID) as? String
+            val persistedDistinctId = preferences.getValue(DISTINCT_ID) as? String
+            val alreadyIdentified = preferences.getValue(IS_IDENTIFIED) as? Boolean == true
+
+            if (!persistedAnonymousId.isNullOrBlank() ||
+                !persistedDistinctId.isNullOrBlank() ||
+                alreadyIdentified
+            ) {
+                return
+            }
+
+            if (bootstrap.isIdentifiedId) {
+                // Already-identified user: seed the distinct id and mark identified, but leave the
+                // anonymous id to generate on its own so device_id isn't derived from a real user id
+                // (device_id survives reset() and would otherwise leak onto later users).
+                this.distinctId = bootstrapId
+                this.isIdentified = true
+            } else {
+                this.anonymousId = bootstrapId
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Applying bootstrap identity failed: $e.")
+        }
+    }
+
+    /**
+     * Reconciles a differing identified bootstrap against the local identity — fresh installs are
+     * already seeded by [applyBootstrapIfNeeded]. Runs at the end of setup, after the initial flag
+     * reload: [identify] needs the SDK enabled and captures an event.
+     */
+    private fun reconcileBootstrapIdentityIfNeeded(config: PostHogConfig) {
+        val bootstrap = config.bootstrap ?: return
+        if (!bootstrap.isIdentifiedId) {
+            return
+        }
+        val bootstrapId = bootstrap.distinctId
+        if (bootstrapId.isNullOrBlank() || !isEnabled()) {
+            return
+        }
+
+        // Self-guard like applyBootstrapIfNeeded: the identity reads and identify() (which captures
+        // an event) must not abort setup.
+        try {
+            if (distinctId == bootstrapId) {
+                // Matching id with an identified bootstrap: upgrade an anonymous user to identified
+                // without a redundant $identify or re-link (spec). A fresh-install seed is already
+                // identified, so this only fires for a returning anonymous user with the same id.
+                if (!isIdentified) {
+                    this.isIdentified = true
+                }
+                return
+            }
+            if (isIdentified) {
+                config.logger.log(
+                    "Bootstrap distinctId differs from an already-identified user. The existing identity " +
+                        "is preserved. Call reset() before reinitializing to switch users.",
+                )
+            } else {
+                identify(bootstrapId)
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Reconciling bootstrap identity failed: $e.")
         }
     }
 
@@ -1509,6 +1606,20 @@ public class PostHog private constructor(
                         props["\$feature_flag_id"] = it.metadata.id
                         props["\$feature_flag_version"] = it.metadata.version
                         props["\$feature_flag_reason"] = it.reason?.description ?: ""
+                        it.metadata.hasExperiment?.let { hasExperiment ->
+                            props["\$feature_flag_has_experiment"] = hasExperiment
+                        }
+                    }
+                    // Snapshot the three bootstrap fields under one lock so a concurrent reset()
+                    // can't tear this event (a response present but its payload dropped, or a
+                    // $used_bootstrap_value from a different instant). Null when the key had no
+                    // bootstrap value, preserving the per-key gating of these properties.
+                    it.getBootstrapCalledValues(key)?.let { bootstrap ->
+                        props["\$feature_flag_bootstrapped_response"] = bootstrap.response
+                        bootstrap.payload?.let { payload ->
+                            props["\$feature_flag_bootstrapped_payload"] = payload
+                        }
+                        props["\$used_bootstrap_value"] = bootstrap.usedBootstrapValue
                     }
                     capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = props)
                 }
