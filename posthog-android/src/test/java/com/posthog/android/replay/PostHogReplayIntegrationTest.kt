@@ -3,6 +3,7 @@ package com.posthog.android.replay
 import android.app.Activity
 import android.content.Context
 import android.os.Looper
+import android.view.MotionEvent
 import android.view.View
 import android.view.Window
 import androidx.test.core.app.ApplicationProvider
@@ -18,6 +19,8 @@ import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
@@ -26,6 +29,7 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
+import curtains.DispatchState
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -38,12 +42,16 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowPixelCopy
 import java.lang.ref.WeakReference
+import java.util.Date
 import java.util.UUID
+import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -178,6 +186,99 @@ internal class PostHogReplayIntegrationTest {
 
     private fun getSut(config: PostHogAndroidConfig = PostHogAndroidConfig(API_KEY)): PostHogReplayIntegration {
         return PostHogReplayIntegration(context, config, MainHandler())
+    }
+
+    private fun countingReplayExecutor(counter: AtomicInteger): ExecutorService {
+        val delegate = createReplayExecutor()
+        return object : ExecutorService by delegate {
+            override fun submit(task: Runnable): Future<*> {
+                counter.incrementAndGet()
+                return delegate.submit(task)
+            }
+
+            override fun <T> submit(task: Callable<T>): Future<T> {
+                counter.incrementAndGet()
+                return delegate.submit(task)
+            }
+        }
+    }
+
+    private fun getSutWithExecutor(
+        config: PostHogAndroidConfig,
+        executor: ExecutorService,
+    ): PostHogReplayIntegration {
+        return PostHogReplayIntegration(context, config, MainHandler(), executor)
+    }
+
+    // currentTimeMillis() on Android does a network-time lookup; count how often the touch path
+    // invokes it so we can prove it is skipped when replay is inactive.
+    private class CountingDateProvider(val calls: AtomicInteger) : PostHogDateProvider {
+        private val delegate = PostHogDeviceDateProvider()
+
+        override fun currentTimeMillis(): Long {
+            calls.incrementAndGet()
+            return delegate.currentTimeMillis()
+        }
+
+        override fun currentDate(): Date = delegate.currentDate()
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date = delegate.addSecondsToCurrentDate(seconds)
+
+        override fun nanoTime(): Long = delegate.nanoTime()
+    }
+
+    @Test
+    fun `touch does not submit capture work to the replay executor when inactive`() {
+        val submits = AtomicInteger(0)
+        val dateCalls = AtomicInteger(0)
+        val config = configWithSampling(flagActive = false, samplingPasses = true)
+        config.dateProvider = CountingDateProvider(dateCalls)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            assertFalse(sut.isActive())
+
+            val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
+            val state = sut.onTouchEventListener.intercept(event) { DispatchState.Consumed }
+            event.recycle()
+            awaitReplayExecutors()
+
+            assertEquals(DispatchState.Consumed, state)
+            assertEquals(0, submits.get())
+            assertEquals(0, dateCalls.get())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `touch submits capture work and still dispatches when active`() {
+        val submits = AtomicInteger(0)
+        val dateCalls = AtomicInteger(0)
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        config.dateProvider = CountingDateProvider(dateCalls)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+
+            val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
+            val state = sut.onTouchEventListener.intercept(event) { DispatchState.Consumed }
+            event.recycle()
+            awaitReplayExecutors()
+
+            assertEquals(DispatchState.Consumed, state)
+            assertTrue(submits.get() >= 1)
+            assertTrue(dateCalls.get() >= 1)
+        } finally {
+            sut.uninstall()
+        }
     }
 
     @Test
@@ -903,9 +1004,15 @@ internal class PostHogReplayIntegrationTest {
             // hasRemoteConfigFetched before notifying), so the gate stays disarmed after this delivery.
             whenever(fx.remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
             fx.sut.onRemoteConfig()
-            shadowOf(Looper.getMainLooper()).idle()
 
+            // onRemoteConfig() schedules the buffer migration on the replay executor. Await its result
+            // before idling the looper: idle() runs the posted resume-start(resumeCurrent = true), and
+            // because replaySessionId is still null here that routes through resetSessionStateIfNeeded
+            // -> resetBufferingState -> clearBuffer on the replay executor. That clear races the
+            // in-flight migration on a separate executor and, if it wins, discards the window before it
+            // migrates. Awaiting the migrated result first makes the clear a no-op on an empty buffer.
             awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            shadowOf(Looper.getMainLooper()).idle()
 
             // Gate disarmed on the single delivery: a snapshot added afterwards persists straight to
             // the inner queue instead of routing back into the buffer.

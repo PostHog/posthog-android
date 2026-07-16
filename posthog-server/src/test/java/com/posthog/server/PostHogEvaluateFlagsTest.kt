@@ -128,6 +128,51 @@ internal class PostHogEvaluateFlagsTest {
         assertEquals(4.0, props["\$feature_flag_version"])
         assertEquals("Matched", props["\$feature_flag_reason"])
         assertEquals("req-fixture", props["\$feature_flag_request_id"])
+        // has_experiment absent from the response metadata, so the property is omitted
+        assertFalse(props.containsKey("\$feature_flag_has_experiment"))
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `feature_flag_called reports has_experiment true when the response metadata reports it`() {
+        val flagsBody =
+            """
+            {
+                "flags": {
+                    "a": {
+                        "key": "a",
+                        "enabled": true,
+                        "variant": null,
+                        "metadata": { "version": 4, "payload": null, "id": 11, "has_experiment": true },
+                        "reason": { "code": "condition_match", "description": "Matched", "condition_index": 0 }
+                    }
+                },
+                "requestId": "req-fixture"
+            }
+            """.trimIndent()
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(flagsBody))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .flushAt(1)
+                    .build(),
+            )
+
+        val snapshot = postHog.evaluateFlags("user-1")
+        snapshot.isEnabled("a")
+        postHog.flush()
+
+        val requests = drainRequests(mockServer)
+        val batch = requests.first { it.path?.contains("/batch") == true }.parseBatch()
+        val props = batch.eventProperties("\$feature_flag_called")
+        assertEquals(true, props["\$feature_flag_has_experiment"])
 
         postHog.close()
         mockServer.shutdown()

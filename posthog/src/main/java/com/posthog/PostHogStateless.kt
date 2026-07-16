@@ -457,6 +457,7 @@ public open class PostHogStateless protected constructor(
             props["\$feature_flag_id"] = details.metadata.id
             props["\$feature_flag_version"] = details.metadata.version
             details.reason?.description?.let { props["\$feature_flag_reason"] = it }
+            details.metadata.hasExperiment?.let { props["\$feature_flag_has_experiment"] = it }
         }
 
         captureFeatureFlagCalledEvent(distinctId, key, value, props, groups)

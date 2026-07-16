@@ -449,6 +449,90 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `local evaluation carries has_experiment from flag definitions into flag details`() {
+        val localEvalResponse =
+            createLocalEvaluationResponse(
+                flagKey = "experiment-flag",
+                hasExperiment = true,
+            )
+
+        val mockServer = createMockHttp(jsonResponse(localEvalResponse))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollIntervalSeconds = 30,
+                onFeatureFlags = { loadedLatch.countDown() },
+            )
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "test-user",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertEquals(true, result.flags["experiment-flag"]?.metadata?.hasExperiment)
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local evaluation leaves has_experiment null when definitions omit it`() {
+        val localEvalResponse = createLocalEvaluationResponse(flagKey = "plain-flag")
+
+        val mockServer = createMockHttp(jsonResponse(localEvalResponse))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(host = url.toString())
+        val api = PostHogApi(config)
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollIntervalSeconds = 30,
+                onFeatureFlags = { loadedLatch.countDown() },
+            )
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "test-user",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertNull(result.flags.getValue("plain-flag").metadata.hasExperiment)
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `poller does not start when pollerEnabled is false`() {
         val logger = TestLogger()
         val localEvalResponse =
