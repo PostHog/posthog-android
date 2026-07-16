@@ -74,7 +74,7 @@ public open class PostHogConfig constructor(
     /**
      * Interval in seconds for sending events over the wire
      * The lower the number, most likely more battery is used
-     * Defaults to 30s
+     * Defaults to 5s
      */
     public var flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS,
     /**
@@ -261,7 +261,7 @@ public open class PostHogConfig constructor(
         public const val DEFAULT_FLUSH_AT: Int = 100
         public const val DEFAULT_MAX_QUEUE_SIZE: Int = 10000
         public const val DEFAULT_MAX_BATCH_SIZE: Int = 100
-        public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
+        public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 5
         public const val DEFAULT_FEATURE_FLAG_CACHE_SIZE: Int = 1000
         public const val DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS: Int = 5 * 60 * 1000 // 5 minutes
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
