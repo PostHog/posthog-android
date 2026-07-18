@@ -515,11 +515,7 @@ public open class PostHogStateless protected constructor(
             return properties
         }
 
-        val minimalProperties = mutableMapOf<String, Any>()
-        for (key in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES) {
-            properties[key]?.let { minimalProperties[key] = it }
-        }
-        return minimalProperties
+        return properties.filterKeys { it in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES }
     }
 
     /**
@@ -687,9 +683,12 @@ public open class PostHogStateless protected constructor(
 
         private const val GROUP_IDENTIFY = "\$groupidentify"
 
-        // Strict allowlist for minimal $feature_flag_called events, from the cross-SDK contract:
-        // everything else is stripped, including registered super properties and the static and
-        // dynamic context envelope. Only properties this SDK sets today are listed.
+        // Strict allowlist for minimal $feature_flag_called events, defined by the cross-SDK
+        // contract: everything not listed is stripped, including registered super properties, the
+        // static and dynamic context envelope, and the $feature_flag_bootstrapped_* /
+        // $used_bootstrap_value fields this SDK otherwise sets. The list follows the shared
+        // contract, so it may include properties this SDK does not set yet (e.g. locally_evaluated,
+        // set only by posthog-server).
         private val MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES =
             setOf(
                 "\$feature_flag",

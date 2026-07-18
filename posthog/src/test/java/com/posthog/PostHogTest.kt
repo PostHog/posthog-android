@@ -645,6 +645,50 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `feature flag called event keeps the full shape when gated and has_experiment is absent`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment is absent from the flag metadata, so the full envelope is kept
+        assertEquals("SplashV2", sut.getFeatureFlag("splashScreenName") as String)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertFalse(theEvent.properties!!.containsKey("\$feature_flag_has_experiment"))
+        assertEquals("SplashV2", theEvent.properties!!["\$feature/splashScreenName"])
+        assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
+
+        sut.close()
+    }
+
+    @Test
     fun `feature flag called event keeps the full shape when the server does not send the gate`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
