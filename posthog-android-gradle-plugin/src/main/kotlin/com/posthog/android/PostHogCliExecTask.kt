@@ -29,11 +29,11 @@ public abstract class PostHogCliExecTask : Exec() {
     public abstract val postHogApiKey: Property<String>
 
     init {
-        postHogExecutable.convention("posthog-cli")
+        postHogExecutable.convention(POSTHOG_CLI_DEFAULT_EXECUTABLE)
     }
 
     override fun exec() {
-        executable = postHogExecutable.get()
+        executable = resolvePostHogCliExecutable(postHogExecutable.get(), logger)
 
         val args =
             computeCommandLineArgs().also {
