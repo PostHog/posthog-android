@@ -2016,6 +2016,16 @@ public class PostHog private constructor(
         }
     }
 
+    override fun displaySurvey(surveyId: String) {
+        if (!isEnabled()) {
+            return
+        }
+
+        surveysHandler?.displaySurvey(surveyId) ?: run {
+            config?.logger?.log("Cannot display survey $surveyId - surveys integration isn't installed.")
+        }
+    }
+
     override fun getSessionId(): UUID? {
         if (!isEnabled()) {
             return null
@@ -2327,6 +2337,10 @@ public class PostHog private constructor(
 
         override fun stopSessionReplay() {
             shared.stopSessionReplay()
+        }
+
+        override fun displaySurvey(surveyId: String) {
+            shared.displaySurvey(surveyId)
         }
 
         override fun getSessionId(): UUID? {
