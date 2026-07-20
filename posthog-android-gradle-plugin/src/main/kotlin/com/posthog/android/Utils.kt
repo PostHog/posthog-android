@@ -5,6 +5,7 @@
 package com.posthog.android
 
 import com.posthog.android.PostHogGenerateMapIdTask.Companion.POSTHOG_PROGUARD_MAPPING_MAP_ID_PROPERTY
+import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.Task
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.logging.Logger
@@ -93,3 +94,82 @@ internal fun DirectoryProperty.getAndDelete(): File {
     }
     return file
 }
+
+internal const val POSTHOG_CLI_DEFAULT_EXECUTABLE = "posthog-cli"
+
+/**
+ * Locates posthog-cli for builds whose environment lacks the shell PATH —
+ * IDE-launched Gradle daemons don't source shell profiles, so a CLI installed
+ * via nvm/npm is invisible to a plain PATH lookup. Mirrors the lookup order of
+ * posthog-ios build-tools/upload-symbols.sh: an explicitly configured
+ * executable is used verbatim, a PATH hit keeps the plain name, then
+ * well-known install locations are probed.
+ */
+internal fun resolvePostHogCliExecutable(
+    configured: String,
+    logger: Logger,
+    environment: Map<String, String> = System.getenv(),
+    home: File = File(System.getProperty("user.home")),
+): String {
+    if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE || Os.isFamily(Os.FAMILY_WINDOWS)) {
+        return configured
+    }
+
+    // Resolve a PATH hit to an absolute path instead of keeping the bare name:
+    // a bare name is resolved against the daemon process's own environment,
+    // which can differ from the build environment (IDE-launched daemons).
+    val onPathDir =
+        environment["PATH"]
+            ?.split(File.pathSeparator)
+            ?.firstOrNull { File(it, configured).isExecutableFile() }
+    if (onPathDir != null) {
+        return File(onPathDir, configured).absolutePath
+    }
+
+    val candidates =
+        buildList {
+            add(File(home, ".posthog/posthog-cli"))
+            addAll(nodeVersionBins(File(home, ".nvm/versions/node")))
+            File("/opt/homebrew/Cellar/nvm").listFilesSafe().forEach { cellar ->
+                addAll(nodeVersionBins(File(cellar, "versions/node")))
+            }
+            add(File("/usr/local/bin/posthog-cli"))
+            add(File("/opt/homebrew/bin/posthog-cli"))
+            add(File(home, ".cargo/bin/posthog-cli"))
+            add(File(home, ".local/bin/posthog-cli"))
+        }
+
+    val found = candidates.firstOrNull { it.isExecutableFile() }
+    if (found != null) {
+        logger.info("posthog-cli not on PATH, using ${found.absolutePath}")
+        return found.absolutePath
+    }
+    logger.warn(
+        "posthog-cli not found on PATH or in known install locations; " +
+            "install it (npm install -g @posthog/cli) or set postHogExecutable on the task.",
+    )
+    return configured
+}
+
+private fun File.isExecutableFile(): Boolean = isFile && canExecute()
+
+private fun File.listFilesSafe(): List<File> = listFiles()?.toList() ?: emptyList()
+
+/** `<root>/vX.Y.Z/bin/posthog-cli` candidates, newest node version first. */
+private fun nodeVersionBins(root: File): List<File> =
+    root.listFilesSafe()
+        .sortedWith(NODE_VERSION_DIR_ORDER.reversed())
+        .map { File(it, "bin/posthog-cli") }
+
+private val NODE_VERSION_DIR_ORDER =
+    Comparator<File> { a, b ->
+        val x = versionKey(a.name)
+        val y = versionKey(b.name)
+        for (i in 0 until maxOf(x.size, y.size)) {
+            val cmp = x.getOrElse(i) { 0L }.compareTo(y.getOrElse(i) { 0L })
+            if (cmp != 0) return@Comparator cmp
+        }
+        0
+    }
+
+private fun versionKey(name: String): List<Long> = Regex("\\d+").findAll(name).mapNotNull { it.value.toLongOrNull() }.toList()
