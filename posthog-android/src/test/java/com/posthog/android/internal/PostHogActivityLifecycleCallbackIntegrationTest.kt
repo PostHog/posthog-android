@@ -1,6 +1,8 @@
 package com.posthog.android.internal
 
+import android.app.Activity
 import android.app.Application
+import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.PostHogFake
@@ -13,6 +15,7 @@ import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,13 +28,25 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     private fun getSut(
         captureDeepLinks: Boolean = true,
         captureScreenViews: Boolean = true,
+        capturePushNotificationOpened: Boolean = true,
     ): PostHogActivityLifecycleCallbackIntegration {
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 this.captureDeepLinks = captureDeepLinks
                 this.captureScreenViews = captureScreenViews
+                this.capturePushNotificationOpened = capturePushNotificationOpened
             }
         return PostHogActivityLifecycleCallbackIntegration(application, config)
+    }
+
+    private fun mockActivityWithExtras(vararg extras: Pair<String, String>): Activity {
+        val activity = mock<Activity>()
+        val intent =
+            Intent().apply {
+                extras.forEach { (key, value) -> putExtra(key, value) }
+            }
+        whenever(activity.intent).thenReturn(intent)
+        return activity
     }
 
     @BeforeTest
@@ -213,5 +228,79 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         val fake = executeCaptureScreenViewsTest(title = "")
 
         assertEquals("MyActivity", fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityCreated captures push notification opened from tray intent`() {
+        val sut = getSut()
+        val activity =
+            mockActivityWithExtras(
+                "google.message_id" to "m1",
+                "posthog" to """{"campaign":"summer"}""",
+            )
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(1, fake.pushOpenedCaptures)
+        assertNull(fake.pushOpenedTitle)
+        assertNull(fake.pushOpenedBody)
+        assertEquals("m1", fake.pushOpenedPayload?.get("google.message_id"))
+        assertEquals("""{"campaign":"summer"}""", fake.pushOpenedPayload?.get("posthog"))
+    }
+
+    @Test
+    fun `onActivityCreated dedups push notification by message id across recreations`() {
+        val sut = getSut()
+        val activity = mockActivityWithExtras("google.message_id" to "m1")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(1, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated captures again for a new message id`() {
+        val sut = getSut()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(mockActivityWithExtras("google.message_id" to "m1"), null)
+        sut.onActivityCreated(mockActivityWithExtras("google.message_id" to "m2"), null)
+        sut.uninstall()
+
+        assertEquals(2, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated does not capture push when no google message id`() {
+        val sut = getSut()
+        val activity = mockActivityWithExtras("some_key" to "value")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(0, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated does not capture push when disabled`() {
+        val sut = getSut(capturePushNotificationOpened = false)
+        val activity = mockActivityWithExtras("google.message_id" to "m1")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(0, fake.pushOpenedCaptures)
     }
 }

@@ -19,15 +19,23 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
     private var postHog: PostHogInterface? = null
 
+    @Volatile
+    private var lastHandledPushMessageId: String? = null
+
     private companion object {
         @Volatile
         private var integrationInstalled = false
+
+        private const val GOOGLE_MESSAGE_ID = "google.message_id"
     }
 
     override fun onActivityCreated(
         activity: Activity,
         savedInstanceState: Bundle?,
     ) {
+        if (config.capturePushNotificationOpened) {
+            capturePushNotificationOpenedIfNeeded(activity)
+        }
         if (config.captureDeepLinks) {
             activity.intent?.let { intent ->
                 val props = mutableMapOf<String, Any>()
@@ -53,6 +61,37 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                 }
             }
         }
+    }
+
+    /**
+     * Captures `$push_notification_opened` for a cold-start tray tap, detected via the launch intent's
+     * `google.message_id`. Title/body aren't in the tray intent (only the `posthog` JSON extra is);
+     * warm-start `onNewIntent` and foreground data messages need the manual API. Dedupes on message id
+     * so an Activity recreation doesn't double-capture.
+     */
+    private fun capturePushNotificationOpenedIfNeeded(activity: Activity) {
+        val intent = activity.intent ?: return
+        val messageId = intent.getStringExtra(GOOGLE_MESSAGE_ID) ?: return
+
+        if (messageId == lastHandledPushMessageId) {
+            return
+        }
+        lastHandledPushMessageId = messageId
+
+        postHog?.capturePushNotificationOpened(
+            title = null,
+            body = null,
+            payload = intent.extras?.toMap(),
+        )
+    }
+
+    private fun Bundle.toMap(): Map<String, Any?> {
+        val map = mutableMapOf<String, Any?>()
+        for (key in keySet()) {
+            @Suppress("DEPRECATION")
+            map[key] = get(key)
+        }
+        return map
     }
 
     override fun onActivityStarted(activity: Activity) {

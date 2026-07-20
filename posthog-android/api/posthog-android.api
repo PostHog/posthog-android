@@ -22,13 +22,19 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZ)V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZ)V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;Z)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z
 	public final fun getCaptureDeepLinks ()Z
+	public final fun getCapturePushNotificationOpened ()Z
+	public final fun getCapturePushNotificationSubscriptions ()Z
 	public final fun getCaptureScreenViews ()Z
 	public final fun getSessionReplayConfig ()Lcom/posthog/android/replay/PostHogSessionReplayConfig;
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
 	public final fun setCaptureDeepLinks (Z)V
+	public final fun setCapturePushNotificationOpened (Z)V
+	public final fun setCapturePushNotificationSubscriptions (Z)V
 	public final fun setCaptureScreenViews (Z)V
 	public final fun setSessionReplayConfig (Lcom/posthog/android/replay/PostHogSessionReplayConfig;)V
 }

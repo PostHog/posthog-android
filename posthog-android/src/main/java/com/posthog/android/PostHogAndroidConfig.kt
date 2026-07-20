@@ -21,6 +21,15 @@ import com.posthog.internal.PostHogQueue
  *   the SDK. To opt out of `$screen_name` stamping entirely, set this to `false` and avoid calling
  *   `PostHog.screen(...)` manually. Default: `true`.
  * @property sessionReplayConfig Android-specific session replay capture options.
+ * @property capturePushNotificationSubscriptions Whether to auto-register this device's push
+ *   token at startup. When enabled and Firebase Messaging is on the classpath, the SDK fetches the
+ *   FCM token + Firebase `project_id` and registers them so PostHog Workflows can deliver push
+ *   notifications. No effect when Firebase is absent (a single debug log). Instant token refresh
+ *   still needs the app to forward `onNewToken` to `registerPushNotificationToken(...)`. Default: `true`.
+ * @property capturePushNotificationOpened Whether to auto-capture `$push_notification_opened` for
+ *   cold-start taps on a tray notification (detected via the launch intent's `google.message_id`
+ *   extra). Foreground data messages and warm-start `onNewIntent` are not observable here — forward
+ *   those to `capturePushNotificationOpened(...)` manually. Default: `true`.
  */
 public open class PostHogAndroidConfig
     @JvmOverloads
@@ -31,6 +40,9 @@ public open class PostHogAndroidConfig
         public var captureDeepLinks: Boolean = true,
         public var captureScreenViews: Boolean = true,
         public var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
+        // appended after sessionReplayConfig so @JvmOverloads keeps the pre-existing overloads
+        public var capturePushNotificationSubscriptions: Boolean = true,
+        public var capturePushNotificationOpened: Boolean = true,
     ) : PostHogConfig(
             apiKey = apiKey,
             host = host,
