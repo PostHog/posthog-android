@@ -369,6 +369,91 @@ internal class PostHogPushSubscriptionManagerTest {
         assertFalse(file.exists())
     }
 
+    @Test
+    fun `retryPending does not send after optOut`() {
+        val http = mockHttp()
+        var connected = false
+        val network =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = connected
+            }
+        val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
+
+        // Persist an undelivered record (register defers while offline).
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals(0, http.requestCount)
+        assertTrue(pendingFile(storagePrefix!!).exists())
+
+        connected = true
+        config.optOut = true
+        sut.retryPending()
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `resendIfDistinctIdChanged does not send after optOut`() {
+        val http = mockHttp()
+        val (sut, config, _) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // delivered for distinct-1
+        assertEquals(1, http.requestCount)
+
+        config.optOut = true
+        distinctId = "distinct-2" // identify as someone new
+        sut.resendIfDistinctIdChanged()
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `retryPending honours an active backoff window instead of re-hitting immediately`() {
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(500)) // opens a 5s backoff window
+        http.enqueue(MockResponse().setBody("")) // the re-hit that must NOT happen during the window
+
+        // Real 1000ms/sec so the 5s window stays open for the whole test.
+        val (sut, _, _) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // the 500
+        assertEquals(1, http.requestCount)
+
+        // A background flush lands mid-backoff: it must let the scheduled retry fire, not re-POST now.
+        sut.retryPending()
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+        http.shutdown()
+    }
+
+    @Test
+    fun `register skips re-sending a token already delivered for the current distinct id`() {
+        val http = mockHttp()
+        val (sut, _, _) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(1, http.requestCount)
+
+        // Cold-start auto-register forwards the same cached token again for the same user.
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
     private fun parsedDistinctId(request: okhttp3.mockwebserver.RecordedRequest): String? {
         val serializer = PostHogSerializer(PostHogConfig(API_KEY))
         val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())

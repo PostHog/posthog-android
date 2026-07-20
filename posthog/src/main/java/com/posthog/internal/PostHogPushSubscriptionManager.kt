@@ -48,6 +48,13 @@ internal class PostHogPushSubscriptionManager(
 
     @Volatile private var timer: Timer? = null
 
+    // Not-before gate for server-driven backoff (Retry-After / 429 / 5xx): while now < nextAttemptAtMs
+    // the scheduled timer owns the next send, so resume paths (flush/identify) must not cancel it and
+    // re-hit the endpoint early. Zero when no backoff window is active.
+    @Volatile private var nextAttemptAtMs: Long = 0L
+
+    @Volatile private var closed = false
+
     private val pendingFile: File? by lazy {
         val prefix = config.storagePrefix ?: return@lazy null
         // Must stay out of <storagePrefix>/<apiKey>: PostHogQueue scans that whole directory as
@@ -64,12 +71,24 @@ internal class PostHogPushSubscriptionManager(
         appId: String,
         platform: String,
     ) {
-        val record = PendingRecord(deviceToken, appId, platform)
         executor.executeSafely {
+            val existing = currentRecord()
+            if (existing != null &&
+                existing.deviceToken == deviceToken &&
+                existing.appId == appId &&
+                existing.platform == platform &&
+                existing.deliveredForDistinctId != null &&
+                existing.deliveredForDistinctId == distinctIdProvider()
+            ) {
+                // Same token already delivered for this user; don't re-POST it on every cold start.
+                return@executeSafely
+            }
+            val record = PendingRecord(deviceToken, appId, platform)
             pendingRecord = record
             hydratedFromDisk = true
             pendingFile?.let { writeRecord(it, record) }
             retryCount = 0
+            nextAttemptAtMs = 0L
             cancelTimer()
             attempt(record)
         }
@@ -79,6 +98,10 @@ internal class PostHogPushSubscriptionManager(
         executor.executeSafely {
             val record = currentRecord() ?: return@executeSafely
             if (record.deliveredForDistinctId != null && record.deliveredForDistinctId == distinctIdProvider()) {
+                return@executeSafely
+            }
+            if (isWithinBackoffWindow()) {
+                // A Retry-After/backoff retry is already scheduled; let it fire instead of re-hitting now.
                 return@executeSafely
             }
             retryCount = 0
@@ -94,6 +117,11 @@ internal class PostHogPushSubscriptionManager(
             if (currentDistinctId.isBlank() || record.deliveredForDistinctId == currentDistinctId) {
                 return@executeSafely
             }
+            if (isWithinBackoffWindow()) {
+                // Honor the active Retry-After/backoff window; the scheduled timer reads the current
+                // distinctId at send time, so the id change is still picked up when it fires.
+                return@executeSafely
+            }
             retryCount = 0
             cancelTimer()
             attempt(record)
@@ -101,11 +129,25 @@ internal class PostHogPushSubscriptionManager(
     }
 
     fun close() {
+        closed = true
         cancelTimer()
         retryCount = 0
     }
 
+    /** Opt-out: stop the retry/offline-poll timer now. The guard in [attempt] blocks any actual send. */
+    fun onOptOut() {
+        cancelTimer()
+    }
+
+    private fun isWithinBackoffWindow(): Boolean = System.currentTimeMillis() < nextAttemptAtMs
+
     private fun attempt(record: PendingRecord) {
+        if (closed || config.optOut) {
+            // Opt-out and shutdown both stop every send. Guarding at this single choke point covers
+            // all callers: register, startup/flush retryPending, identify resend, and the retry timer.
+            cancelTimer()
+            return
+        }
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push subscription deferred: no network.")
             // Deferral burns no retry attempt; poll again so registration resumes
@@ -133,6 +175,7 @@ internal class PostHogPushSubscriptionManager(
             )
             config.logger.log("Push notification token registered successfully.")
             retryCount = 0
+            nextAttemptAtMs = 0L
             // Keep the record with the delivered marker so a later identify() can re-register.
             val delivered = record.copy(deliveredForDistinctId = distinctId)
             pendingRecord = delivered
@@ -152,6 +195,7 @@ internal class PostHogPushSubscriptionManager(
             // 400/401 etc.: stop retrying this session but keep the record for one retry next launch.
             config.logger.log("Push subscription failed with non-retryable error: $e.")
             retryCount = 0
+            nextAttemptAtMs = 0L
             return
         }
 
@@ -162,10 +206,14 @@ internal class PostHogPushSubscriptionManager(
                     "will retry on next SDK startup.",
             )
             retryCount = 0
+            nextAttemptAtMs = 0L
             return
         }
 
         val delay = nextBackoffSeconds(retryCount, (e as? PostHogApiError)?.retryAfterSeconds)
+        // Server-driven backoff: gate resume paths so flush()/identify() don't cancel this window
+        // and immediately re-hit the endpoint, ignoring the server's Retry-After.
+        nextAttemptAtMs = System.currentTimeMillis() + delay * retryDelayMillisPerSecond
         config.logger.log("Push subscription failed: $e. Retrying in ${delay}s (attempt $retryCount).")
         scheduleRetry(delay, record)
     }

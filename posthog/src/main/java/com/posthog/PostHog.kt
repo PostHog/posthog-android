@@ -68,6 +68,10 @@ public class PostHog private constructor(
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("PostHogSendCachedEventsThread"),
         ),
+    private val pushExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogPushSubscriptionThread"),
+        ),
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface, PostHogStateless() {
     private val anonymousLock = Any()
@@ -242,7 +246,7 @@ public class PostHog private constructor(
                 this.queue = queue
                 this.replayQueue = replayQueue
                 this.logsQueue = logsQueue
-                this.pushSubscriptionManager = PostHogPushSubscriptionManager(config, api, queueExecutor) { distinctId }
+                this.pushSubscriptionManager = PostHogPushSubscriptionManager(config, api, pushExecutor) { distinctId }
 
                 if (config.errorTrackingConfig.exceptionSteps.enabled) {
                     val maxBytes = config.errorTrackingConfig.exceptionSteps.maxBytes
@@ -1053,6 +1057,9 @@ public class PostHog private constructor(
             getPreferences().setValue(OPT_OUT, true)
             exceptionStepsBuffer?.clear()
         }
+        // Stop any pending push-token retry/offline-poll timer; the send guard in the manager
+        // already blocks sends while opted out, this just tears the timer down immediately.
+        pushSubscriptionManager?.onOptOut()
     }
 
     /**

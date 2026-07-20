@@ -71,18 +71,25 @@ internal class PostHogActivityLifecycleCallbackIntegration(
      */
     private fun capturePushNotificationOpenedIfNeeded(activity: Activity) {
         val intent = activity.intent ?: return
-        val messageId = intent.getStringExtra(GOOGLE_MESSAGE_ID) ?: return
+        // Reading extras unmarshals the whole Bundle; a launch intent carrying a Serializable/Parcelable
+        // extra whose class isn't on this app's classloader throws BadParcelableException here. This runs
+        // inside the framework onActivityCreated callback, so an uncaught throw crashes the host app.
+        try {
+            val messageId = intent.getStringExtra(GOOGLE_MESSAGE_ID) ?: return
 
-        if (messageId == lastHandledPushMessageId) {
-            return
+            if (messageId == lastHandledPushMessageId) {
+                return
+            }
+            lastHandledPushMessageId = messageId
+
+            postHog?.capturePushNotificationOpened(
+                title = null,
+                body = null,
+                payload = intent.extras?.toMap(),
+            )
+        } catch (e: Throwable) {
+            config.logger.log("Failed to capture push notification opened: $e.")
         }
-        lastHandledPushMessageId = messageId
-
-        postHog?.capturePushNotificationOpened(
-            title = null,
-            body = null,
-            payload = intent.extras?.toMap(),
-        )
     }
 
     private fun Bundle.toMap(): Map<String, Any?> {
