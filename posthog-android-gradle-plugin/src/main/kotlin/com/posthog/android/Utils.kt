@@ -115,12 +115,15 @@ internal fun resolvePostHogCliExecutable(
         return configured
     }
 
-    val onPath =
+    // Resolve a PATH hit to an absolute path instead of keeping the bare name:
+    // a bare name is resolved against the daemon process's own environment,
+    // which can differ from the build environment (IDE-launched daemons).
+    val onPathDir =
         environment["PATH"]
             ?.split(File.pathSeparator)
-            ?.any { File(it, configured).isExecutableFile() } ?: false
-    if (onPath) {
-        return configured
+            ?.firstOrNull { File(it, configured).isExecutableFile() }
+    if (onPathDir != null) {
+        return File(onPathDir, configured).absolutePath
     }
 
     val candidates =
