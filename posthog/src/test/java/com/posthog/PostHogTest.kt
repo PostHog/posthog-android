@@ -3,6 +3,7 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
@@ -3814,5 +3815,237 @@ internal class PostHogTest {
         assertEquals(listOf("A", "B"), exceptionStepMessages(theEvent))
 
         sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken posts to push_subscriptions endpoint`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken(
+            deviceToken = "fcm-token",
+            appId = "firebase-project",
+            platform = "android",
+        )
+
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/push_subscriptions/", request.path)
+
+        val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        assertEquals("fcm-token", parsed["device_token"])
+        assertEquals("firebase-project", parsed["app_id"])
+        assertEquals("android", parsed["platform"])
+        assertEquals(sut.distinctId(), parsed["distinct_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when deviceToken is blank`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("   ", "firebase-project", "android")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when appId is blank`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("fcm-token", "", "android")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken after close does not crash and sends nothing`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        sut.close()
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `capturePushNotificationOpened maps title body and posthog map into notification props`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Vector 1: posthog map spread into $notification_* props alongside title/body.
+        sut.capturePushNotificationOpened(
+            title = "Hello",
+            body = "World",
+            payload = mapOf("posthog" to mapOf("campaign" to "summer", "message_id" to "42")),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("\$push_notification_opened", theEvent.event)
+        assertEquals("Hello", theEvent.properties!!["\$notification_title"])
+        assertEquals("World", theEvent.properties!!["\$notification_body"])
+        assertEquals("summer", theEvent.properties!!["\$notification_campaign"])
+        assertEquals("42", theEvent.properties!!["\$notification_message_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened parses posthog data supplied as a json string`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // FCM data maps are string->string, so the posthog entry arrives as a JSON string.
+        sut.capturePushNotificationOpened(
+            title = "Hello",
+            body = "World",
+            payload = mapOf("posthog" to """{"campaign":"summer","message_id":"42"}"""),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("summer", theEvent.properties!!["\$notification_campaign"])
+        assertEquals("42", theEvent.properties!!["\$notification_message_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened without posthog key only sets title and body`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Vector 2: no posthog key -> only title/body props.
+        sut.capturePushNotificationOpened(
+            title = "Hello",
+            body = "World",
+            payload = mapOf("google.message_id" to "abc"),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("Hello", theEvent.properties!!["\$notification_title"])
+        assertEquals("World", theEvent.properties!!["\$notification_body"])
+        assertTrue(
+            theEvent.properties!!.keys.none {
+                it.startsWith("\$notification_") && it !in setOf("\$notification_title", "\$notification_body")
+            },
+        )
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures even when all params are null`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capturePushNotificationOpened()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("\$push_notification_opened", theEvent.event)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened is a no-op when optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Vector 6: opted out -> no event.
+        sut.capturePushNotificationOpened(title = "Hello", body = "World")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `flush retries a push subscription registration deferred while offline`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        var connected = false
+        config.networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = connected
+            }
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+        queueExecutor.awaitExecution()
+        assertEquals(0, http.requestCount)
+
+        connected = true
+        sut.flush()
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        // exactly one request: the queue flush must not have consumed the pending record
+        // (regression: the pending file used to live inside the queue's scan directory)
+        assertEquals("/api/push_subscriptions/", request.path)
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    private fun firstBatchEvent(http: okhttp3.mockwebserver.MockWebServer): PostHogEvent {
+        val content = http.takeRequest().body.unGzip()
+        return serializer.deserialize<PostHogBatchEvent>(content.reader())!!.batch.first()
     }
 }
