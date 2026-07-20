@@ -163,10 +163,10 @@ private val NODE_VERSION_DIR_ORDER =
         val x = versionKey(a.name)
         val y = versionKey(b.name)
         for (i in 0 until maxOf(x.size, y.size)) {
-            val cmp = x.getOrElse(i) { 0 }.compareTo(y.getOrElse(i) { 0 })
+            val cmp = x.getOrElse(i) { 0L }.compareTo(y.getOrElse(i) { 0L })
             if (cmp != 0) return@Comparator cmp
         }
         0
     }
 
-private fun versionKey(name: String): List<Int> = Regex("\\d+").findAll(name).map { it.value.toInt() }.toList()
+private fun versionKey(name: String): List<Long> = Regex("\\d+").findAll(name).mapNotNull { it.value.toLongOrNull() }.toList()

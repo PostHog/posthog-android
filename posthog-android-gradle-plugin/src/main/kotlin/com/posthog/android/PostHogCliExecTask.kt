@@ -35,13 +35,16 @@ public abstract class PostHogCliExecTask : Exec() {
 
     override fun exec() {
         val configured = postHogExecutable.get()
-        val resolved = resolvePostHogCliExecutable(configured, logger)
+        // Probe against the task's environment (defaults to the process env but
+        // respects a PATH configured on the task) so discovery and execution agree.
+        val taskEnvironment = environment.mapValues { it.value.toString() }
+        val resolved = resolvePostHogCliExecutable(configured, logger, taskEnvironment)
         executable = resolved
         if (resolved != configured) {
             // npm installs posthog-cli as a node shim; prepend the discovered
             // bin dir so the shim's `env node` resolves alongside it.
             val binDir = File(resolved).parent
-            val path = System.getenv("PATH").orEmpty()
+            val path = taskEnvironment["PATH"].orEmpty()
             environment("PATH", "$binDir${File.pathSeparator}$path")
         }
 
