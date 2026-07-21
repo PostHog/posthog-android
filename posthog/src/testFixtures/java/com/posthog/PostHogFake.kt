@@ -17,12 +17,12 @@ public class PostHogFake : PostHogInterface {
     public var stopSessionReplayCalls: Int = 0
     public var pushDeviceToken: String? = null
     public var pushAppId: String? = null
-    public var pushPlatform: String? = null
     public var pushRegistrations: Int = 0
     public var pushUnregistrations: Int = 0
     public var pushOpenedTitle: String? = null
     public var pushOpenedBody: String? = null
     public var pushOpenedPayload: Map<String, Any?>? = null
+    public var pushOpenedAction: String? = null
     public var pushOpenedCaptures: Int = 0
 
     // `PostHogLogger`'s constructor is `internal`. Test fixtures live in the
@@ -248,11 +248,9 @@ public class PostHogFake : PostHogInterface {
     override fun registerPushNotificationToken(
         deviceToken: String,
         appId: String,
-        platform: String,
     ) {
         pushDeviceToken = deviceToken
         pushAppId = appId
-        pushPlatform = platform
         pushRegistrations++
     }
 
@@ -264,10 +262,12 @@ public class PostHogFake : PostHogInterface {
         title: String?,
         body: String?,
         payload: Map<String, Any?>?,
+        action: String?,
     ) {
         pushOpenedTitle = title
         pushOpenedBody = body
         pushOpenedPayload = payload
+        pushOpenedAction = action
         pushOpenedCaptures++
     }
 

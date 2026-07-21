@@ -1956,12 +1956,11 @@ public class PostHog private constructor(
     override fun registerPushNotificationToken(
         deviceToken: String,
         appId: String,
-        platform: String,
     ) {
         if (!isEnabled()) {
             return
         }
-        if (config?.optOut == true) {
+        if (isOptedOut()) {
             config?.logger?.log("PostHog is in OptOut state.")
             return
         }
@@ -1977,7 +1976,7 @@ public class PostHog private constructor(
         pushSubscriptionManager?.register(
             deviceToken = deviceToken,
             appId = appId,
-            platform = platform,
+            platform = "android",
         )
     }
 
@@ -1985,7 +1984,7 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return
         }
-        if (config?.optOut == true) {
+        if (isOptedOut()) {
             config?.logger?.log("PostHog is in OptOut state.")
             return
         }
@@ -1997,18 +1996,20 @@ public class PostHog private constructor(
         title: String?,
         body: String?,
         payload: Map<String, Any?>?,
+        action: String?,
     ) {
         if (!isEnabled()) {
             return
         }
-        if (config?.optOut == true) {
+        if (isOptedOut()) {
             config?.logger?.log("PostHog is in OptOut state.")
             return
         }
 
         val props = mutableMapOf<String, Any>()
-        title?.let { props["\$notification_title"] = it }
-        body?.let { props["\$notification_body"] = it }
+        title?.takeIf { it.isNotEmpty() }?.let { props["\$notification_title"] = it }
+        body?.takeIf { it.isNotEmpty() }?.let { props["\$notification_body"] = it }
+        action?.takeIf { it.isNotEmpty() }?.let { props["\$notification_action"] = it }
 
         payload?.get("posthog")?.let { raw ->
             posthogPayloadMap(raw)?.forEach { (key, value) ->
@@ -2447,9 +2448,8 @@ public class PostHog private constructor(
         override fun registerPushNotificationToken(
             deviceToken: String,
             appId: String,
-            platform: String,
         ) {
-            shared.registerPushNotificationToken(deviceToken, appId, platform)
+            shared.registerPushNotificationToken(deviceToken, appId)
         }
 
         override fun unregisterPushNotificationToken() {
@@ -2460,8 +2460,9 @@ public class PostHog private constructor(
             title: String?,
             body: String?,
             payload: Map<String, Any?>?,
+            action: String?,
         ) {
-            shared.capturePushNotificationOpened(title, body, payload)
+            shared.capturePushNotificationOpened(title, body, payload, action)
         }
     }
 }

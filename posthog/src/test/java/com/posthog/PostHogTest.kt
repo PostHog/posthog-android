@@ -4090,7 +4090,6 @@ internal class PostHogTest {
         sut.registerPushNotificationToken(
             deviceToken = "fcm-token",
             appId = "firebase-project",
-            platform = "android",
         )
 
         queueExecutor.awaitExecution()
@@ -4115,7 +4114,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), optOut = true, preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+        sut.registerPushNotificationToken("fcm-token", "firebase-project")
         queueExecutor.awaitExecution()
 
         assertEquals(0, http.requestCount)
@@ -4130,7 +4129,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        sut.registerPushNotificationToken("   ", "firebase-project", "android")
+        sut.registerPushNotificationToken("   ", "firebase-project")
         queueExecutor.awaitExecution()
 
         assertEquals(0, http.requestCount)
@@ -4145,7 +4144,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
 
-        sut.registerPushNotificationToken("fcm-token", "", "android")
+        sut.registerPushNotificationToken("fcm-token", "")
         queueExecutor.awaitExecution()
 
         assertEquals(0, http.requestCount)
@@ -4161,7 +4160,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
         sut.close()
 
-        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+        sut.registerPushNotificationToken("fcm-token", "firebase-project")
 
         assertEquals(0, http.requestCount)
     }
@@ -4261,6 +4260,42 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `capturePushNotificationOpened sets notification_action for a non-default action`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capturePushNotificationOpened(title = "Hello", body = "World", action = "reply")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("reply", theEvent.properties!!["\$notification_action"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened omits empty title body and action`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Empty strings are treated as absent (matches iOS), so no empty-valued props are sent.
+        sut.capturePushNotificationOpened(title = "", body = "", action = "")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("\$push_notification_opened", theEvent.event)
+        assertTrue(theEvent.properties!!.keys.none { it.startsWith("\$notification_") })
+
+        sut.close()
+    }
+
+    @Test
     fun `capturePushNotificationOpened is a no-op when optOut`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -4290,7 +4325,7 @@ internal class PostHogTest {
                 override fun isConnected(): Boolean = connected
             }
 
-        sut.registerPushNotificationToken("fcm-token", "firebase-project", "android")
+        sut.registerPushNotificationToken("fcm-token", "firebase-project")
         queueExecutor.awaitExecution()
         assertEquals(0, http.requestCount)
 

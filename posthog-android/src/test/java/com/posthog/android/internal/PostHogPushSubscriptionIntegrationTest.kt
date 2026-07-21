@@ -51,7 +51,6 @@ internal class PostHogPushSubscriptionIntegrationTest {
         assertEquals(1, fake.pushRegistrations)
         assertEquals("fcm-token", fake.pushDeviceToken)
         assertEquals("firebase-project", fake.pushAppId)
-        assertEquals("android", fake.pushPlatform)
 
         sut.uninstall()
     }

@@ -423,12 +423,10 @@ public interface PostHogInterface : PostHogCoreInterface {
      *
      * @param deviceToken the device push token (e.g. the FCM registration token)
      * @param appId the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS
-     * @param platform the platform, defaults to `"android"`
      */
     public fun registerPushNotificationToken(
         deviceToken: String,
         appId: String,
-        platform: String = "android",
     )
 
     /**
@@ -452,14 +450,17 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Each key of `payload["posthog"]` (accepted as a `Map` or a JSON string) is attached as a
      * `$notification_<key>` property.
      *
-     * @param title the notification title, attached as `$notification_title` when present
-     * @param body the notification body, attached as `$notification_body` when present
+     * @param title the notification title, attached as `$notification_title` when non-empty
+     * @param body the notification body, attached as `$notification_body` when non-empty
      * @param payload the notification data payload; its `posthog` entry is spread into `$notification_*` props
+     * @param action the tapped notification action identifier, attached as `$notification_action`; leave
+     *   `null` for a plain tap/open (the default action carries no identifier)
      */
     public fun capturePushNotificationOpened(
         title: String? = null,
         body: String? = null,
         payload: Map<String, Any?>? = null,
+        action: String? = null,
     )
 
     @PostHogInternal
