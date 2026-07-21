@@ -25,6 +25,13 @@ internal class PostHogAppInstallIntegration(
         if (integrationInstalled) {
             return
         }
+        // While the store is unreadable (Direct Boot) VERSION/BUILD read as absent, which would
+        // fire a spurious "Application Installed" for an existing install and overwrite the
+        // persisted previous build on unlock. Stay uninstalled so the correct event can still be
+        // emitted once the store is readable.
+        if (config.cachePreferences?.isAvailable() == false) {
+            return
+        }
         integrationInstalled = true
 
         getPackageInfo(context, config)?.let { packageInfo ->

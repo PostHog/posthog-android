@@ -24,6 +24,16 @@ public interface PostHogPreferences {
 
     public fun getAll(): Map<String, Any>
 
+    /**
+     * Whether the backing store is currently readable. Returns false while persisted values are
+     * temporarily unreadable (e.g. Android Direct Boot, before the user first unlocks the device),
+     * in which case [getValue] cannot distinguish an absent key from an unreadable one. Callers
+     * that generate-and-persist a default on a missing value should skip persisting while
+     * unavailable, so the generated default cannot overwrite a persisted value once the store
+     * becomes readable again.
+     */
+    public fun isAvailable(): Boolean = true
+
     public companion object {
         public const val GROUPS: String = "groups"
         public const val ANONYMOUS_ID: String = "anonymousId"

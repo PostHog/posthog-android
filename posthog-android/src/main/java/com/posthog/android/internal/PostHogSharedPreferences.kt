@@ -12,17 +12,67 @@ import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
 /**
  * Reads and writes to the SDKs shared preferences
  * The shared pref is called "posthog-android-$apiKey"
+ *
+ * The underlying [SharedPreferences] is resolved lazily: in Direct Boot mode (after a reboot,
+ * before the user first unlocks the device) credential encrypted storage is unavailable and
+ * `context.getSharedPreferences` throws. Until storage becomes available, writes, removals,
+ * and clears are buffered in memory and replayed against the real preferences on the first
+ * access after unlock.
+ *
  * @property context the App Context
  * @property config the Config
- * @property sharedPreferences The SharedPreferences, defaults to context.getSharedPreferences(...)
+ * @param sharedPreferences The SharedPreferences, defaults to context.getSharedPreferences(...)
  */
 internal class PostHogSharedPreferences(
     private val context: Context,
     private val config: PostHogAndroidConfig,
-    private val sharedPreferences: SharedPreferences = context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE),
+    sharedPreferences: SharedPreferences? = null,
 ) :
     PostHogPreferences {
     private val lock = Any()
+
+    @Volatile
+    private var sharedPreferences: SharedPreferences? = sharedPreferences
+
+    // Operations made while credential encrypted storage is unavailable (Direct Boot),
+    // replayed in order (clear, then removals, then writes) on the first access after
+    // unlock so that deletions of previously persisted values are not lost. Guarded by lock.
+    private val pendingWrites = mutableMapOf<String, Any>()
+    private val pendingRemovals = mutableSetOf<String>()
+    private var pendingClearExcept: List<String>? = null
+
+    // Returns the SharedPreferences, creating it on first use. Returns null while the device
+    // is locked (Direct Boot) and credential encrypted storage is still unavailable.
+    private fun getSharedPrefs(): SharedPreferences? {
+        sharedPreferences?.let { return it }
+        synchronized(lock) {
+            sharedPreferences?.let { return it }
+            val prefs =
+                try {
+                    context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)
+                } catch (e: IllegalStateException) {
+                    config.logger.log("Shared preferences are not available until the device is unlocked (Direct Boot): $e.")
+                    return null
+                } ?: return null
+            sharedPreferences = prefs
+            val clearExcept = pendingClearExcept
+            pendingClearExcept = null
+            val removals = pendingRemovals.toList()
+            pendingRemovals.clear()
+            val writes = pendingWrites.toMap()
+            pendingWrites.clear()
+            clearExcept?.let { clear(it) }
+            removals.forEach { remove(it) }
+            for ((key, value) in writes) {
+                setValue(key, value)
+            }
+            return prefs
+        }
+    }
+
+    override fun isAvailable(): Boolean {
+        return getSharedPrefs() != null
+    }
 
     override fun getValue(
         key: String,
@@ -30,7 +80,13 @@ internal class PostHogSharedPreferences(
     ): Any? {
         val value: Any?
         synchronized(lock) {
-            value = sharedPreferences.all[key] ?: defaultValue
+            val prefs = getSharedPrefs()
+            value =
+                if (prefs != null) {
+                    prefs.all[key] ?: defaultValue
+                } else {
+                    pendingWrites[key] ?: defaultValue
+                }
         }
 
         val stringifiedKeys = getStringifiedKeys()
@@ -64,9 +120,14 @@ internal class PostHogSharedPreferences(
         key: String,
         value: Any,
     ) {
-        val edit = sharedPreferences.edit()
-
         synchronized(lock) {
+            val prefs = getSharedPrefs()
+            if (prefs == null) {
+                pendingRemovals.remove(key)
+                pendingWrites[key] = value
+                return
+            }
+            val edit = prefs.edit()
             when (value) {
                 is Boolean -> {
                     edit.putBoolean(key, value)
@@ -112,9 +173,17 @@ internal class PostHogSharedPreferences(
     }
 
     override fun clear(except: List<String>) {
-        val edit = sharedPreferences.edit()
-
         synchronized(lock) {
+            val prefs = getSharedPrefs()
+            if (prefs == null) {
+                pendingWrites.keys.retainAll { except.contains(it) }
+                // Persisted keys can't be enumerated while locked; record the clear and
+                // apply it against the real preferences on the first access after unlock.
+                pendingClearExcept = except
+                return
+            }
+            val edit = prefs.edit()
+
             // Invariant: STRINGIFIED_KEYS must list exactly the serialized (Map/List) keys that survive.
             // It is itself a stored key, so it is excluded from removal below and rebuilt from the survivors.
             val survivingStringifiedKeys = getStringifiedKeys().filterTo(mutableSetOf()) { except.contains(it) }
@@ -123,7 +192,7 @@ internal class PostHogSharedPreferences(
             // removal list up front. STRINGIFIED_KEYS is excluded here because it is rebuilt below from
             // the survivors rather than removed, so a preserved serialized value still deserializes on read.
             val keysToRemove =
-                sharedPreferences.all.keys.filter {
+                prefs.all.keys.filter {
                     it != STRINGIFIED_KEYS && !except.contains(it)
                 }
             keysToRemove.forEach { edit.remove(it) }
@@ -159,7 +228,7 @@ internal class PostHogSharedPreferences(
     }
 
     private fun getStringifiedKeys(): Set<String> {
-        return sharedPreferences.getStringSet(STRINGIFIED_KEYS, setOf()) ?: setOf()
+        return getSharedPrefs()?.getStringSet(STRINGIFIED_KEYS, setOf()) ?: setOf()
     }
 
     private fun serializeObject(
@@ -193,8 +262,15 @@ internal class PostHogSharedPreferences(
     }
 
     override fun remove(key: String) {
-        val edit = sharedPreferences.edit()
         synchronized(lock) {
+            val prefs = getSharedPrefs()
+            if (prefs == null) {
+                pendingWrites.remove(key)
+                // Tombstone so a previously persisted value is also removed after unlock.
+                pendingRemovals.add(key)
+                return
+            }
+            val edit = prefs.edit()
             edit.remove(key)
             removeFromStringifiedKeys(key, edit)
             edit.apply()
@@ -204,8 +280,14 @@ internal class PostHogSharedPreferences(
     override fun getAll(): Map<String, Any> {
         val allPreferences: Map<String, Any>
         synchronized(lock) {
-            @Suppress("UNCHECKED_CAST")
-            allPreferences = sharedPreferences.all.toMap() as? Map<String, Any> ?: emptyMap()
+            val prefs = getSharedPrefs()
+            allPreferences =
+                if (prefs != null) {
+                    @Suppress("UNCHECKED_CAST")
+                    prefs.all.toMap() as? Map<String, Any> ?: emptyMap()
+                } else {
+                    pendingWrites.toMap()
+                }
         }
         val filteredPreferences =
             allPreferences.filterKeys { key ->

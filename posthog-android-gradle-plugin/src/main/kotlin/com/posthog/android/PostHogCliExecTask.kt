@@ -10,6 +10,7 @@ import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.work.DisableCachingByDefault
+import java.io.File
 
 @DisableCachingByDefault(because = "abstract task, should not be used directly")
 public abstract class PostHogCliExecTask : Exec() {
@@ -29,11 +30,23 @@ public abstract class PostHogCliExecTask : Exec() {
     public abstract val postHogApiKey: Property<String>
 
     init {
-        postHogExecutable.convention("posthog-cli")
+        postHogExecutable.convention(POSTHOG_CLI_DEFAULT_EXECUTABLE)
     }
 
     override fun exec() {
-        executable = postHogExecutable.get()
+        val configured = postHogExecutable.get()
+        // Probe against the task's environment (defaults to the process env but
+        // respects a PATH configured on the task) so discovery and execution agree.
+        val taskEnvironment = environment.mapValues { it.value.toString() }
+        val resolved = resolvePostHogCliExecutable(configured, logger, taskEnvironment)
+        executable = resolved
+        if (resolved != configured) {
+            // npm installs posthog-cli as a node shim; prepend the discovered
+            // bin dir so the shim's `env node` resolves alongside it.
+            val binDir = File(resolved).parent
+            val path = taskEnvironment["PATH"].orEmpty()
+            environment("PATH", "$binDir${File.pathSeparator}$path")
+        }
 
         val args =
             computeCommandLineArgs().also {

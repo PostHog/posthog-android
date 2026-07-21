@@ -225,15 +225,11 @@ public class PostHog private constructor(
                         },
                     )
 
-                // no need to lock optOut here since the setup is locked already
-                val optOut =
-                    getPreferences().getValue(
-                        OPT_OUT,
-                        defaultValue = config.optOut,
-                    ) as? Boolean
-                optOut?.let {
-                    config.optOut = optOut
-                }
+                // The persisted OPT_OUT is resolved lazily by isOptedOut(): at this point
+                // this.config is not assigned yet (so getPreferences() would read the in-memory
+                // fallback), and in Direct Boot the store is not readable yet either. The latch is
+                // per config, so a re-setup after close() re-resolves against the new config.
+                optOutLoaded = false
 
                 val sendCachedEventsIntegration =
                     PostHogSendCachedEventsIntegration(
@@ -525,18 +521,35 @@ public class PostHog private constructor(
         }
     }
 
+    // An anonymousId generated while the preferences store was unavailable (see
+    // PostHogPreferences.isAvailable): kept in memory only, so it cannot overwrite a persisted
+    // id that was merely unreadable at the time. Guarded by anonymousLock.
+    private var transientAnonymousId: String? = null
+
     @get:JvmName("getAnonymousIdInternal")
     private var anonymousId: String
         get() {
             var anonymousId: String?
             synchronized(anonymousLock) {
+                // read availability before the value: if the store becomes readable in between,
+                // this call stays on the transient path and the persisted id is never overwritten
+                val preferencesAvailable = getPreferences().isAvailable()
                 anonymousId = getPreferences().getValue(ANONYMOUS_ID) as? String
                 if (anonymousId.isNullOrBlank()) {
-                    var uuid = TimeBasedEpochGenerator.generate()
-                    // when getAnonymousId method is available, pass-through the value for modification
-                    config?.getAnonymousId?.let { uuid = it(uuid) }
-                    anonymousId = uuid.toString()
-                    this.anonymousId = anonymousId ?: ""
+                    anonymousId = transientAnonymousId ?: run {
+                        var uuid = TimeBasedEpochGenerator.generate()
+                        // when getAnonymousId method is available, pass-through the value for modification
+                        config?.getAnonymousId?.let { uuid = it(uuid) }
+                        uuid.toString()
+                    }
+                    if (preferencesAvailable) {
+                        this.anonymousId = anonymousId ?: ""
+                        transientAnonymousId = null
+                    } else {
+                        // an absent value is indistinguishable from an unreadable one, so persisting
+                        // now could overwrite a returning user's id once the store unlocks
+                        transientAnonymousId = anonymousId
+                    }
                 }
             }
             return anonymousId ?: ""
@@ -560,9 +573,20 @@ public class PostHog private constructor(
         get() {
             synchronized(identifiedLock) {
                 if (!isIdentifiedLoaded) {
-                    isIdentified = getPreferences().getValue(IS_IDENTIFIED) as? Boolean
-                        ?: (distinctId != anonymousId)
-                    isIdentifiedLoaded = true
+                    // read availability before the value (see the anonymousId getter)
+                    val preferencesAvailable = getPreferences().isAvailable()
+                    val value =
+                        getPreferences().getValue(IS_IDENTIFIED) as? Boolean
+                            ?: (distinctId != anonymousId)
+                    if (preferencesAvailable) {
+                        isIdentified = value
+                        isIdentifiedLoaded = true
+                    } else {
+                        // the fallback was computed against a transient identity; assigning through
+                        // the setter would buffer it and clobber the persisted value on unlock, and
+                        // caching it would hide the persisted value for the process lifetime
+                        field = value
+                    }
                 }
             }
             return field
@@ -704,7 +728,7 @@ public class PostHog private constructor(
             if (!isEnabled()) {
                 return
             }
-            if (config?.optOut == true) {
+            if (isOptedOut()) {
                 config?.logger?.log("PostHog is in OptOut state.")
                 return
             }
@@ -870,7 +894,7 @@ public class PostHog private constructor(
             if (!isEnabled()) {
                 return
             }
-            if (config?.optOut == true) {
+            if (isOptedOut()) {
                 return
             }
             val buffer = exceptionStepsBuffer ?: return
@@ -914,7 +938,7 @@ public class PostHog private constructor(
         try {
             if (!isEnabled()) return
             val cfg = config ?: return
-            if (cfg.optOut) return
+            if (isOptedOut()) return
             if (message.isBlank()) return
 
             // Filter + sort done inside PostHogRemoteConfig's existing lock
@@ -1036,6 +1060,27 @@ public class PostHog private constructor(
         }
     }
 
+    // Whether the persisted OPT_OUT value has been resolved into config.optOut. Resolution is
+    // deferred until the preferences store is readable (it is not in Direct Boot), gating on the
+    // developer-supplied config.optOut default until then. Guarded by optOutLock.
+    @Volatile
+    private var optOutLoaded = false
+
+    private fun isOptedOut(): Boolean {
+        val config = this.config ?: return true
+        if (!optOutLoaded) {
+            synchronized(optOutLock) {
+                if (!optOutLoaded && getPreferences().isAvailable()) {
+                    (getPreferences().getValue(OPT_OUT, defaultValue = config.optOut) as? Boolean)?.let {
+                        config.optOut = it
+                    }
+                    optOutLoaded = true
+                }
+            }
+        }
+        return config.optOut
+    }
+
     public override fun optIn() {
         if (!isEnabled()) {
             return
@@ -1044,6 +1089,8 @@ public class PostHog private constructor(
         synchronized(optOutLock) {
             config?.optOut = false
             getPreferences().setValue(OPT_OUT, false)
+            // an explicit runtime choice; the deferred read must not override it
+            optOutLoaded = true
         }
     }
 
@@ -1055,6 +1102,7 @@ public class PostHog private constructor(
         synchronized(optOutLock) {
             config?.optOut = true
             getPreferences().setValue(OPT_OUT, true)
+            optOutLoaded = true
             exceptionStepsBuffer?.clear()
         }
         // Stop any pending push-token retry/offline-poll timer; the send guard in the manager
@@ -1069,7 +1117,7 @@ public class PostHog private constructor(
         if (!isEnabled()) {
             return true
         }
-        return config?.optOut ?: true
+        return isOptedOut()
     }
 
     /**
@@ -1421,10 +1469,20 @@ public class PostHog private constructor(
         get() {
             synchronized(personProcessingLock) {
                 if (!isPersonProcessingLoaded) {
-                    isPersonProcessingEnabled =
+                    // read availability before the value (see the anonymousId getter)
+                    val preferencesAvailable = getPreferences().isAvailable()
+                    val value =
                         getPreferences().getValue(PERSON_PROCESSING) as? Boolean
                             ?: false
-                    isPersonProcessingLoaded = true
+                    if (preferencesAvailable) {
+                        isPersonProcessingEnabled = value
+                        isPersonProcessingLoaded = true
+                    } else {
+                        // don't cache: the persisted value is unreadable, not absent, and must be
+                        // re-resolved once the store unlocks (the setter's equality guard is what
+                        // keeps this read-back from persisting)
+                        field = value
+                    }
                 }
             }
             return field
@@ -1445,6 +1503,13 @@ public class PostHog private constructor(
         groupProperties: Map<String, Any>?,
     ) {
         if (!isEnabled()) {
+            return
+        }
+
+        // gate here rather than relying on the stateless capture path, which reads the raw
+        // config.optOut and would miss a persisted opt-out that isOptedOut() has not resolved yet
+        if (isOptedOut()) {
+            config?.logger?.log("PostHog is in OptOut state.")
             return
         }
 
@@ -1790,6 +1855,9 @@ public class PostHog private constructor(
         synchronized(personProcessingLock) {
             isPersonProcessingLoaded = false
         }
+        synchronized(anonymousLock) {
+            transientAnonymousId = null
+        }
 
         endSession()
         startSession()
@@ -1843,12 +1911,16 @@ public class PostHog private constructor(
             return ""
         }
         synchronized(deviceIdLock) {
+            // read availability before the value (see the anonymousId getter)
+            val preferencesAvailable = getPreferences().isAvailable()
             val deviceId = getPreferences().getValue(DEVICE_ID) as? String
             if (deviceId.isNullOrBlank()) {
                 // Lazy init for upgrades: existing installs won't have a device_id yet
                 val anonId = anonymousId
                 if (anonId.isNotBlank()) {
-                    getPreferences().setValue(DEVICE_ID, anonId)
+                    if (preferencesAvailable) {
+                        getPreferences().setValue(DEVICE_ID, anonId)
+                    }
                     return anonId
                 }
                 return ""

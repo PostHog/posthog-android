@@ -89,6 +89,7 @@ internal class PostHogAndroidContextTest {
         // its dynamic
         assertNotNull(dynamicContext["\$locale"])
         assertEquals("value", dynamicContext["\$user_agent"])
+        assertEquals("value", dynamicContext["\$raw_user_agent"])
         assertNotNull(dynamicContext["\$timezone"])
 
         assertEquals("name", dynamicContext["\$network_carrier"])
