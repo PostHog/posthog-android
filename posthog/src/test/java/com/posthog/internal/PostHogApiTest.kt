@@ -813,6 +813,54 @@ internal class PostHogApiTest {
             }
         assertEquals(400, exc.statusCode)
     }
+
+    @Test
+    fun `pushUnsubscription sends a DELETE with the same 5-field body and path`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.pushUnsubscription(
+            distinctId = "distinctId",
+            deviceToken = "fcm-token-123",
+            platform = "android",
+            appId = "firebase-project-id",
+        )
+
+        val request = http.takeRequest()
+
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/push_subscriptions/", request.path)
+
+        val body = request.body.unGzip()
+        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(body.reader())
+        // Same 5 snake_case fields as the POST register (decision 6).
+        assertEquals(API_KEY, parsed["api_key"])
+        assertEquals("distinctId", parsed["distinct_id"])
+        assertEquals("fcm-token-123", parsed["device_token"])
+        assertEquals("android", parsed["platform"])
+        assertEquals("firebase-project-id", parsed["app_id"])
+    }
+
+    @Test
+    fun `pushUnsubscription throws if not successful`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(400).setBody("error"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        val exc =
+            assertThrows(PostHogApiError::class.java) {
+                sut.pushUnsubscription(
+                    distinctId = "distinctId",
+                    deviceToken = "fcm-token-123",
+                    platform = "android",
+                    appId = "firebase-project-id",
+                )
+            }
+        assertEquals(400, exc.statusCode)
+    }
 }
 
 @RunWith(Parameterized::class)

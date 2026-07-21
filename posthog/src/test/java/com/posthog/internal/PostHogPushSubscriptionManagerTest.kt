@@ -284,6 +284,102 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `unregister sends one DELETE and does not retry on failure`() {
+        val http = mockHttp(total = 5, response = MockResponse().setResponseCode(500))
+        val (sut, _, _) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        flush()
+
+        val request = http.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/push_subscriptions/", request.path)
+        // Best-effort: exactly one request, no retry even on 500.
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `handleReset unregisters the old identity then re-registers under the new anonymous id`() {
+        val http = mockHttp(total = 3, response = MockResponse().setBody(""))
+        val (sut, config, storagePrefix) = getSut(http)
+
+        distinctId = "user-A"
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("POST", http.takeRequest().method)
+
+        // Log out: a new anonymous id is now current.
+        distinctId = "anon-2"
+        sut.handleReset("user-A")
+        flush()
+
+        // Vector 8: DELETE for the old identity, then a POST re-register under the new anon id.
+        val del = http.takeRequest()
+        assertEquals("DELETE", del.method)
+        assertEquals("user-A", parsedDistinctId(del))
+
+        val post = http.takeRequest()
+        assertEquals("POST", post.method)
+        assertEquals("anon-2", parsedDistinctId(post))
+
+        assertEquals(3, http.requestCount)
+        assertEquals("anon-2", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+    }
+
+    @Test
+    fun `handleReset does not unregister when the identity is unchanged`() {
+        val http = mockHttp(total = 3, response = MockResponse().setBody(""))
+        val (sut, _, storagePrefix) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("POST", http.takeRequest().method)
+
+        // reuseAnonymousId keeps the same id across reset(): old == new. A DELETE here would unset
+        // the id we stay on, and the re-register dedup guard would then skip the POST.
+        sut.handleReset("distinct-1")
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+        assertTrue(pendingFile(storagePrefix!!).exists())
+    }
+
+    @Test
+    fun `unregisterCurrent deletes for the current id and clears the pending record`() {
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        val (sut, _, storagePrefix) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("POST", http.takeRequest().method)
+        assertTrue(pendingFile(storagePrefix!!).exists())
+
+        sut.unregisterCurrent()
+        flush()
+
+        val del = http.takeRequest()
+        assertEquals("DELETE", del.method)
+        assertEquals("distinct-1", parsedDistinctId(del))
+        // Record forgotten so a later retryPending won't re-send it.
+        assertFalse(pendingFile(storagePrefix).exists())
+    }
+
+    @Test
+    fun `unregister does not send after optOut`() {
+        val http = mockHttp()
+        val (sut, config, _) = getSut(http)
+        config.optOut = true
+
+        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        flush()
+
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
     fun `register overwrites the pending record latest-wins`() {
         val http = mockHttp(total = 2, response = MockResponse().setBody(""))
         val (sut, _, storagePrefix) = getSut(http)

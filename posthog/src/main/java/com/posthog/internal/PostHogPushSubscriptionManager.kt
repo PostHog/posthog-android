@@ -72,26 +72,36 @@ internal class PostHogPushSubscriptionManager(
         platform: String,
     ) {
         executor.executeSafely {
-            val existing = currentRecord()
-            if (existing != null &&
-                existing.deviceToken == deviceToken &&
-                existing.appId == appId &&
-                existing.platform == platform &&
-                existing.deliveredForDistinctId != null &&
-                existing.deliveredForDistinctId == distinctIdProvider()
-            ) {
-                // Same token already delivered for this user; don't re-POST it on every cold start.
-                return@executeSafely
-            }
-            val record = PendingRecord(deviceToken, appId, platform)
-            pendingRecord = record
-            hydratedFromDisk = true
-            pendingFile?.let { writeRecord(it, record) }
-            retryCount = 0
-            nextAttemptAtMs = 0L
-            cancelTimer()
-            attempt(record)
+            performRegister(deviceToken, appId, platform)
         }
+    }
+
+    // Executor-thread body of [register]. Kept separate so [handleReset] can chain a DELETE and a
+    // re-register in a single executor task (ordered, and drained by one flush in tests).
+    private fun performRegister(
+        deviceToken: String,
+        appId: String,
+        platform: String,
+    ) {
+        val existing = currentRecord()
+        if (existing != null &&
+            existing.deviceToken == deviceToken &&
+            existing.appId == appId &&
+            existing.platform == platform &&
+            existing.deliveredForDistinctId != null &&
+            existing.deliveredForDistinctId == distinctIdProvider()
+        ) {
+            // Same token already delivered for this user; don't re-POST it on every cold start.
+            return
+        }
+        val record = PendingRecord(deviceToken, appId, platform)
+        pendingRecord = record
+        hydratedFromDisk = true
+        pendingFile?.let { writeRecord(it, record) }
+        retryCount = 0
+        nextAttemptAtMs = 0L
+        cancelTimer()
+        attempt(record)
     }
 
     fun retryPending() {
@@ -126,6 +136,91 @@ internal class PostHogPushSubscriptionManager(
             cancelTimer()
             attempt(record)
         }
+    }
+
+    /**
+     * Best-effort unregister: a single DELETE for [distinctId]. Unlike [register] there is no
+     * pending record, timer, or backoff — a failure is logged and dropped (the backend also unsets
+     * a dead token on the next send, and the durable path is the re-register POST).
+     */
+    fun unregister(
+        distinctId: String,
+        deviceToken: String,
+        appId: String,
+        platform: String,
+    ) {
+        executor.executeSafely {
+            performUnregister(distinctId, deviceToken, appId, platform)
+        }
+    }
+
+    // Executor-thread body of [unregister].
+    private fun performUnregister(
+        distinctId: String,
+        deviceToken: String,
+        appId: String,
+        platform: String,
+    ) {
+        if (closed || config.optOut) {
+            return
+        }
+        if (distinctId.isBlank() || deviceToken.isBlank() || appId.isBlank()) {
+            config.logger.log("Push unregister skipped: missing distinctId, token, or appId.")
+            return
+        }
+        try {
+            api.pushUnsubscription(
+                distinctId = distinctId,
+                deviceToken = deviceToken,
+                platform = platform,
+                appId = appId,
+            )
+            config.logger.log("Push notification token unregistered successfully.")
+        } catch (e: Throwable) {
+            config.logger.log("Push unregister failed: $e. Ignoring (best-effort).")
+        }
+    }
+
+    /**
+     * reset()/logout: unregister the stored token for the old identity, then re-register it under
+     * the new anonymous id ([performRegister] reads the current id at send time). No-op when nothing
+     * is stored. Both run in one executor task, keeping the DELETE ordered before the re-register POST.
+     */
+    fun handleReset(oldDistinctId: String) {
+        executor.executeSafely {
+            val record = currentRecord() ?: return@executeSafely
+            // Only unregister the OLD identity when it actually differs from the new one. When they
+            // match (e.g. reuseAnonymousId on an anonymous user, where reset() keeps the same id) a
+            // DELETE would unset the very id we re-register under — and performRegister's dedup guard
+            // would then skip the re-POST, leaving the device unregistered.
+            if (oldDistinctId != distinctIdProvider()) {
+                performUnregister(oldDistinctId, record.deviceToken, record.appId, record.platform)
+            }
+            performRegister(record.deviceToken, record.appId, record.platform)
+        }
+    }
+
+    /**
+     * Public-API unregister: DELETE for the current distinct id, then forget the local record so a
+     * later launch won't re-send it.
+     */
+    fun unregisterCurrent() {
+        executor.executeSafely {
+            val record = currentRecord()
+            if (record == null) {
+                config.logger.log("Push unregister skipped: no registered token.")
+                return@executeSafely
+            }
+            performUnregister(distinctIdProvider(), record.deviceToken, record.appId, record.platform)
+            clearRecord()
+        }
+    }
+
+    private fun clearRecord() {
+        pendingRecord = null
+        hydratedFromDisk = true
+        cancelTimer()
+        pendingFile?.deleteSafely(config)
     }
 
     fun close() {

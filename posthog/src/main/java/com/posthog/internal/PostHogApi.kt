@@ -139,6 +139,23 @@ public class PostHogApi(
         deviceToken: String,
         platform: String,
         appId: String,
+    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, platform, appId)
+
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun pushUnsubscription(
+        distinctId: String,
+        deviceToken: String,
+        platform: String,
+        appId: String,
+    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, platform, appId)
+
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun sendPushSubscription(
+        method: String,
+        distinctId: String,
+        deviceToken: String,
+        platform: String,
+        appId: String,
     ) {
         val pushSubscription =
             PostHogPushSubscriptionRequest(
@@ -151,7 +168,7 @@ public class PostHogApi(
 
         val url = "$theHost/api/push_subscriptions/"
         val request =
-            makeRequest(url) {
+            makeRequest(url, method = method) {
                 logRequest(pushSubscription, url)
 
                 config.serializer.serialize(pushSubscription, it.bufferedWriter())
@@ -183,6 +200,7 @@ public class PostHogApi(
 
     private fun makeRequest(
         url: String,
+        method: String = "POST",
         serializer: (outputStream: OutputStream) -> Unit,
     ): Request {
         val requestBody =
@@ -196,11 +214,14 @@ public class PostHogApi(
                 }
             }
 
-        return Request.Builder()
-            .url(url)
-            .header("User-Agent", config.userAgent)
-            .post(requestBody)
-            .build()
+        val builder =
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", config.userAgent)
+        return when (method) {
+            "DELETE" -> builder.delete(requestBody)
+            else -> builder.post(requestBody)
+        }.build()
     }
 
     @Throws(PostHogApiError::class, IOException::class)

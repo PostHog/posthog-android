@@ -1762,6 +1762,10 @@ public class PostHog private constructor(
             return
         }
 
+        // Capture the logging-out identity before preferences are cleared, so the push token can be
+        // unregistered for it and re-registered under the new anonymous id (decision 5/6).
+        val previousDistinctId = distinctId
+
         // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
         // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
         // stable feature flag bucketing across identity changes.
@@ -1789,6 +1793,8 @@ public class PostHog private constructor(
 
         endSession()
         startSession()
+
+        pushSubscriptionManager?.handleReset(previousDistinctId)
 
         // reload flags as anon user
         // only because of testing in isolation, this flag is always enabled
@@ -1901,6 +1907,18 @@ public class PostHog private constructor(
             appId = appId,
             platform = platform,
         )
+    }
+
+    override fun unregisterPushNotificationToken() {
+        if (!isEnabled()) {
+            return
+        }
+        if (config?.optOut == true) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        pushSubscriptionManager?.unregisterCurrent()
     }
 
     override fun capturePushNotificationOpened(
@@ -2360,6 +2378,10 @@ public class PostHog private constructor(
             platform: String,
         ) {
             shared.registerPushNotificationToken(deviceToken, appId, platform)
+        }
+
+        override fun unregisterPushNotificationToken() {
+            shared.unregisterPushNotificationToken()
         }
 
         override fun capturePushNotificationOpened(

@@ -432,6 +432,17 @@ public interface PostHogInterface : PostHogCoreInterface {
     )
 
     /**
+     * Unregisters this device's push token from PostHog so Workflows stop targeting it — for example
+     * from your logout flow.
+     *
+     * Sends a best-effort `DELETE /api/push_subscriptions` for the current [distinctId] (the backend
+     * unsets the subscription property) and forgets the locally stored token. Unlike registration
+     * this is not retried. It is called for you on [reset] when `capturePushNotificationSubscriptions`
+     * is enabled; call it directly if you manage push subscriptions yourself.
+     */
+    public fun unregisterPushNotificationToken()
+
+    /**
      * Captures a `$push_notification_opened` event when the user opens a push notification.
      *
      * On Android, cold-start taps on a tray notification are captured automatically (from the

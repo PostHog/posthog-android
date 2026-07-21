@@ -19,6 +19,7 @@ public class PostHogFake : PostHogInterface {
     public var pushAppId: String? = null
     public var pushPlatform: String? = null
     public var pushRegistrations: Int = 0
+    public var pushUnregistrations: Int = 0
     public var pushOpenedTitle: String? = null
     public var pushOpenedBody: String? = null
     public var pushOpenedPayload: Map<String, Any?>? = null
@@ -253,6 +254,10 @@ public class PostHogFake : PostHogInterface {
         pushAppId = appId
         pushPlatform = platform
         pushRegistrations++
+    }
+
+    override fun unregisterPushNotificationToken() {
+        pushUnregistrations++
     }
 
     override fun capturePushNotificationOpened(
