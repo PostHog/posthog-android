@@ -4,8 +4,12 @@ import android.app.Activity
 import android.content.Context
 import android.os.Looper
 import android.view.MotionEvent
+import android.view.SurfaceView
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogEvent
@@ -1457,5 +1461,76 @@ internal class PostHogReplayIntegrationTest {
         } finally {
             fx.sut.uninstall()
         }
+    }
+
+    // isOnlyAnimationRedraw is private; read it via field reflection (which, unlike
+    // getDeclaredMethod, does not force resolution of the class's Compose-referencing methods).
+    private fun isOnlyAnimationRedraw(sut: PostHogReplayIntegration): Boolean {
+        return PostHogReplayIntegration::class.java
+            .getDeclaredField("isOnlyAnimationRedraw")
+            .apply { isAccessible = true }
+            .getBoolean(sut)
+    }
+
+    @Test
+    fun `redraw is treated as animation-only when a surface-backed view is rendering`() {
+        // Rive and similar libraries render continuously on their own worker thread into a
+        // SurfaceView/TextureView. They never set hasTransientState(), yet their view geometry
+        // stays stable, so the redraw must be treated as animation-only (masks remain aligned)
+        // instead of discarding every frame.
+        val sut = getSut()
+        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val surface = SurfaceView(context)
+        val decorView =
+            FrameLayout(context).apply {
+                addView(TextView(context))
+                addView(surface)
+                layout(0, 0, 100, 120)
+            }
+        // layout() must run after addView; adding the child resets its bounds.
+        surface.layout(0, 20, 100, 120)
+
+        sut.onDrawCallback(decorView)
+
+        assertTrue(isOnlyAnimationRedraw(sut))
+    }
+
+    @Test
+    fun `redraw is not treated as animation-only for a plain view tree`() {
+        // Control: without a surface/texture-backed view (and no transient state), a redraw is a
+        // structural change and must keep the strict guard so masks cannot drift and leak PII.
+        val sut = getSut()
+        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val decorView =
+            FrameLayout(context).apply {
+                addView(TextView(context).apply { layout(0, 0, 100, 20) })
+                layout(0, 0, 100, 120)
+            }
+
+        sut.onDrawCallback(decorView)
+
+        assertFalse(isOnlyAnimationRedraw(sut))
+    }
+
+    @Test
+    fun `hidden surface-backed subtree does not relax the guard`() {
+        // A surface view inside a GONE subtree is not being drawn, so it must not relax the guard.
+        val sut = getSut()
+        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val decorView =
+            FrameLayout(context).apply {
+                addView(
+                    FrameLayout(context).apply {
+                        visibility = ViewGroup.GONE
+                        addView(SurfaceView(context).apply { layout(0, 0, 100, 100) })
+                        layout(0, 0, 100, 120)
+                    },
+                )
+                layout(0, 0, 100, 120)
+            }
+
+        sut.onDrawCallback(decorView)
+
+        assertFalse(isOnlyAnimationRedraw(sut))
     }
 }

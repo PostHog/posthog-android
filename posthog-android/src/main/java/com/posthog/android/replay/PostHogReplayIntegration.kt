@@ -28,6 +28,8 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.PixelCopy
+import android.view.SurfaceView
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -232,12 +234,52 @@ public class PostHogReplayIntegration(
     @Volatile
     private var isOnlyAnimationRedraw: Boolean = false
 
-    private fun onDrawCallback(decorView: View) {
+    internal fun onDrawCallback(decorView: View) {
         isOnDrawnCalled = true
-        // hasTransientState() propagates up from any descendant using a ValueAnimator (e.g. Lottie),
-        // indicating pixel-only changes with stable view geometry. We additionally exclude legacy
-        // view.animation which mutates the transformation matrix and can shift mask positions.
-        isOnlyAnimationRedraw = decorView.hasTransientState() && !decorView.isAnimationRunning()
+        // A redraw is treated as animation-only (pixel changes with stable view geometry, so mask
+        // positions remain valid) when either:
+        //  - hasTransientState() propagates up from any descendant using a ValueAnimator (e.g.
+        //    Lottie), or
+        //  - the tree contains a continuously-rendering surface/texture-backed view (e.g. Rive),
+        //    which renders on its own worker thread and never sets hasTransientState() yet
+        //    invalidates the host view on essentially every frame.
+        // We still exclude legacy view.animation which mutates the transformation matrix and can
+        // shift mask positions.
+        isOnlyAnimationRedraw =
+            (decorView.hasTransientState() || decorView.hasActiveSurfaceRendering()) &&
+            !decorView.isAnimationRunning()
+    }
+
+    /**
+     * Walks the view tree looking for a visible surface/texture-backed view (e.g. Rive, ExoPlayer)
+     * that is actively rendering. Unlike ValueAnimator-driven libraries, these render on their own
+     * worker thread and never set [View.hasTransientState], but their view geometry stays stable
+     * while they animate, so — like the Lottie case — masks remain aligned and the frame is safe
+     * to keep. Returns on the first match, and prunes hidden subtrees, to stay cheap on the hot
+     * per-draw path.
+     */
+    private fun View.hasActiveSurfaceRendering(): Boolean {
+        return try {
+            when {
+                // Recursion always descends from the (visible, being-drawn) decor view, so pruning
+                // on each node's own visibility is enough to skip hidden subtrees.
+                visibility != View.VISIBLE -> false
+                this is TextureView -> isAvailable && width > 0 && height > 0
+                this is SurfaceView -> width > 0 && height > 0
+                this is ViewGroup -> {
+                    for (i in 0 until childCount) {
+                        if (getChildAt(i).hasActiveSurfaceRendering()) {
+                            return true
+                        }
+                    }
+                    false
+                }
+                else -> false
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay surface rendering check failed: $e.")
+            false
+        }
     }
 
     private fun addView(
