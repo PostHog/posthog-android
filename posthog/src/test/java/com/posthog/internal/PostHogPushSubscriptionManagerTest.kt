@@ -163,6 +163,28 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `retryPending does not re-send after a non-retryable failure halts the session`() {
+        val http = mockHttp(total = 5, response = MockResponse().setResponseCode(400).setBody("bad"))
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // the single 400
+        assertEquals(1, http.requestCount)
+        assertTrue(pendingFile(storagePrefix!!).exists())
+
+        // flush() fires retryPending() on every app background; a 400-halted record must stay put and
+        // not re-POST the doomed request each cycle.
+        repeat(3) {
+            sut.retryPending()
+            flush()
+        }
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
     fun `register retries on 500 then succeeds without duplicating`() {
         val http = MockWebServer()
         http.start()
@@ -186,12 +208,14 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `register gives up after maxRetries keeping record then retryPending retries once`() {
+    fun `register gives up after maxRetries then halts in-session but a fresh instance retries once`() {
         val http = MockWebServer()
         http.start()
-        repeat(10) { http.enqueue(MockResponse().setResponseCode(500)) }
+        repeat(3) { http.enqueue(MockResponse().setResponseCode(500)) } // initial + 2 retries
+        http.enqueue(MockResponse().setBody("")) // the single retry a relaunch is allowed
 
-        val (sut, _, storagePrefix) = getSut(http, maxRetries = 2)
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val (sut, _, _) = getSut(http, storagePrefix = storagePrefix, maxRetries = 2)
         sut.retryDelayMillisPerSecond = 1L
 
         sut.register("fcm-token", "firebase-project", "android")
@@ -201,11 +225,19 @@ internal class PostHogPushSubscriptionManagerTest {
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // retry 1
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // retry 2
         assertNull(http.takeRequest(1, TimeUnit.SECONDS)) // gave up, record kept
-        assertTrue(pendingFile(storagePrefix!!).exists())
+        assertTrue(pendingFile(storagePrefix).exists())
 
-        // Relaunch: exactly one more attempt.
+        // Halted for the rest of this session: flush()-driven retryPending() must not re-hit the endpoint.
         sut.retryPending()
+        flush()
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(3, http.requestCount)
+
+        // Relaunch: a fresh manager over the same storage clears the in-memory halt and retries exactly once.
+        val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix, maxRetries = 2)
+        relaunched.retryPending()
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(4, http.requestCount)
         http.shutdown()
     }
 

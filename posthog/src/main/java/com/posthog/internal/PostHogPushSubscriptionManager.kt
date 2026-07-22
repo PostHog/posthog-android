@@ -53,6 +53,12 @@ internal class PostHogPushSubscriptionManager(
     // re-hit the endpoint early. Zero when no backoff window is active.
     @Volatile private var nextAttemptAtMs: Long = 0L
 
+    // Set after a non-retryable failure or once retries are exhausted: no more attempts this session,
+    // but the record is kept for one retry on the next launch. In-memory only (not persisted), so a
+    // fresh process starts clear — this is what stops flush()-driven [retryPending] from re-POSTing a
+    // doomed request on every app background. Cleared by a new [register] or an identity-change resend.
+    @Volatile private var halted = false
+
     @Volatile private var closed = false
 
     private val pendingFile: File? by lazy {
@@ -100,6 +106,7 @@ internal class PostHogPushSubscriptionManager(
         pendingFile?.let { writeRecord(it, record) }
         retryCount = 0
         nextAttemptAtMs = 0L
+        halted = false
         cancelTimer()
         attempt(record)
     }
@@ -133,6 +140,7 @@ internal class PostHogPushSubscriptionManager(
                 return@executeSafely
             }
             retryCount = 0
+            halted = false
             cancelTimer()
             attempt(record)
         }
@@ -243,6 +251,10 @@ internal class PostHogPushSubscriptionManager(
             cancelTimer()
             return
         }
+        if (halted) {
+            // Session halt set in handleFailure; this choke point makes flush()-driven retryPending() a no-op.
+            return
+        }
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push subscription deferred: no network.")
             // Deferral burns no retry attempt; poll again so registration resumes
@@ -289,8 +301,7 @@ internal class PostHogPushSubscriptionManager(
         if (!isRetryable(e)) {
             // 400/401 etc.: stop retrying this session but keep the record for one retry next launch.
             config.logger.log("Push subscription failed with non-retryable error: $e.")
-            retryCount = 0
-            nextAttemptAtMs = 0L
+            haltForSession()
             return
         }
 
@@ -300,8 +311,7 @@ internal class PostHogPushSubscriptionManager(
                 "Push subscription retries exhausted after $retryCount attempts; " +
                     "will retry on next SDK startup.",
             )
-            retryCount = 0
-            nextAttemptAtMs = 0L
+            haltForSession()
             return
         }
 
@@ -311,6 +321,14 @@ internal class PostHogPushSubscriptionManager(
         nextAttemptAtMs = System.currentTimeMillis() + delay * retryDelayMillisPerSecond
         config.logger.log("Push subscription failed: $e. Retrying in ${delay}s (attempt $retryCount).")
         scheduleRetry(delay, record)
+    }
+
+    // Stop retrying for this process; the persisted record is kept so the next launch (fresh
+    // instance, halted cleared) retries once. Callers log their own branch-specific reason first.
+    private fun haltForSession() {
+        retryCount = 0
+        nextAttemptAtMs = 0L
+        halted = true
     }
 
     internal fun nextBackoffSeconds(
