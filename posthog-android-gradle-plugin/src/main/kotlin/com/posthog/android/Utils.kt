@@ -6,6 +6,7 @@ package com.posthog.android
 
 import com.posthog.android.PostHogGenerateMapIdTask.Companion.POSTHOG_PROGUARD_MAPPING_MAP_ID_PROPERTY
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.logging.Logger
@@ -96,6 +97,24 @@ internal fun DirectoryProperty.getAndDelete(): File {
 }
 
 internal const val POSTHOG_CLI_DEFAULT_EXECUTABLE = "posthog-cli"
+
+internal const val POSTHOG_DOTENV_FILE_PROPERTY = "posthog.dotenvFile"
+
+/**
+ * Value of the posthog.dotenvFile gradle property as an absolute path, or null
+ * when unset/blank. Relative values resolve against the root project so a
+ * single gradle.properties entry works from any module. The path reaches
+ * posthog-cli (>= 0.8.4) as POSTHOG_CLI_DOTENV_FILE — process env still wins
+ * inside the CLI, and a missing file is a warning there, not a failure.
+ */
+internal fun resolvePostHogDotenvFile(project: Project): String? {
+    val value = project.findProperty(POSTHOG_DOTENV_FILE_PROPERTY)?.toString()?.trim()
+    if (value.isNullOrEmpty()) {
+        return null
+    }
+    val file = File(value)
+    return if (file.isAbsolute) file.path else File(project.rootDir, value).path
+}
 
 /**
  * Locates posthog-cli for builds whose environment lacks the shell PATH —
