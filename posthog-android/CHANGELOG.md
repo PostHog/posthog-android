@@ -1,5 +1,11 @@
 ## Next
 
+## 3.55.3
+
+### Patch Changes
+
+- 0e3a3d0: Fix session replay dropping screen captures that fall inside a Throttler window but are not themselves throttled: the Throttler now always forwards the first event in a new window even when the per-second rate cap is reached, so no screens are silently skipped.
+
 ## 3.55.2
 
 ### Patch Changes
