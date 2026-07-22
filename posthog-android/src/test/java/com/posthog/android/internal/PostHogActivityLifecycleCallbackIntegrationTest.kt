@@ -3,6 +3,7 @@ package com.posthog.android.internal
 import android.app.Activity
 import android.app.Application
 import android.content.Intent
+import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.PostHogFake
@@ -263,6 +264,21 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         sut.uninstall()
 
         assertEquals(1, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated does not re-capture push after process death restore`() {
+        // A process kill resets the in-memory dedup, so a fresh integration models the restored process.
+        // The redelivered launch intent arrives with non-null saved state, so it must not re-capture.
+        val sut = getSut()
+        val activity = mockActivityWithExtras("google.message_id" to "m1")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, Bundle())
+        sut.uninstall()
+
+        assertEquals(0, fake.pushOpenedCaptures)
     }
 
     @Test

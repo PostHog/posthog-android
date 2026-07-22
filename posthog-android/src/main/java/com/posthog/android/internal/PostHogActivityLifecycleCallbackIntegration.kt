@@ -33,7 +33,9 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         activity: Activity,
         savedInstanceState: Bundle?,
     ) {
-        if (config.capturePushNotificationOpened) {
+        // A non-null savedInstanceState redelivers the original launch intent (config-change recreation
+        // or process-kill restore). The in-memory id guard resets with the process, so gate on a fresh launch.
+        if (config.capturePushNotificationOpened && savedInstanceState == null) {
             capturePushNotificationOpenedIfNeeded(activity)
         }
         if (config.captureDeepLinks) {
@@ -66,8 +68,8 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     /**
      * Captures `$push_notification_opened` for a cold-start tray tap, detected via the launch intent's
      * `google.message_id`. Title/body aren't in the tray intent (only the `posthog` JSON extra is);
-     * warm-start `onNewIntent` and foreground data messages need the manual API. Dedupes on message id
-     * so an Activity recreation doesn't double-capture.
+     * warm-start `onNewIntent` and foreground data messages need the manual API. The message-id guard
+     * dedupes repeat reads within a process; the caller gates on a fresh launch to skip recreations.
      */
     private fun capturePushNotificationOpenedIfNeeded(activity: Activity) {
         val intent = activity.intent ?: return
