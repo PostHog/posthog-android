@@ -435,8 +435,10 @@ public interface PostHogInterface : PostHogCoreInterface {
      *
      * Sends a best-effort `DELETE /api/push_subscriptions` for the current [distinctId] (the backend
      * unsets the subscription property) and forgets the locally stored token. Unlike registration
-     * this is not retried. It is called for you on [reset] when `capturePushNotificationSubscriptions`
-     * is enabled; call it directly if you manage push subscriptions yourself.
+     * this is not retried. On [reset] the SDK already moves any registered token to the new anonymous
+     * identity (unregister then re-register), independently of `capturePushNotificationSubscriptions` —
+     * that flag only gates automatic token subscription at startup. Call it directly if you manage
+     * push subscriptions yourself.
      */
     public fun unregisterPushNotificationToken()
 
