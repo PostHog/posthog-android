@@ -271,4 +271,148 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
         integration.uninstall()
     }
+
+    // First-launch default-on (issue #648, mirrors iOS #551/#731)
+
+    @Test
+    fun `install installs by default before remote config arrives on first launch`() {
+        // First launch: no cached config and /config not yet fetched, so isAutocaptureExceptionsEnabled()
+        // is still false. The handler must install by default so a crash in this window is not missed.
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+        whenever(mockRemoteConfig.hasCachedErrorTrackingConfig()).thenReturn(false)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `install does not install when local autoCapture is disabled even without remote config`() {
+        // Local off is the primary gate: default-on must never override a host that disabled it.
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+        whenever(mockRemoteConfig.hasCachedErrorTrackingConfig()).thenReturn(false)
+
+        val integration = getSut(autoCapture = false)
+        integration.install(mockPostHog)
+
+        verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `install does not install when cached remote config disables autocapture`() {
+        // A prior launch cached an error-tracking config that disables autocapture. That known
+        // stance gates installation even before this session's /config fetch completes.
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+        whenever(mockRemoteConfig.hasCachedErrorTrackingConfig()).thenReturn(true)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `install does not install when fetched remote config disables autocapture`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(true)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `install installs when cached remote config enables autocapture`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasCachedErrorTrackingConfig()).thenReturn(true)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig uninstalls default install when freshly loaded config disables autocapture`() {
+        // Default-on install on first launch (no config yet), then /config lands disabling autocapture.
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+        whenever(mockRemoteConfig.hasCachedErrorTrackingConfig()).thenReturn(false)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+        whenever(mockAdapter.getDefaultUncaughtExceptionHandler()).thenReturn(mockExceptionHandler)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        // Installed by default even though remote config hasn't confirmed autocapture
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        // /config arrives with autocapture disabled → uninstall restores the original handler
+        integration.onRemoteConfig(loaded = true)
+
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig keeps default install when freshly loaded config enables autocapture`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+        whenever(mockRemoteConfig.hasCachedErrorTrackingConfig()).thenReturn(false)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(integration)
+
+        // /config arrives confirming autocapture enabled → already installed, stays installed
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        integration.onRemoteConfig(loaded = true)
+
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig keeps default install when remote config fetch fails`() {
+        // Offline / failed first-launch fetch (loaded = false) must not tear down the default install.
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+        whenever(mockRemoteConfig.hasCachedErrorTrackingConfig()).thenReturn(false)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.onRemoteConfig(loaded = false)
+
+        // No uninstall: the handler is still ours, so setDefault isn't called again
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
+    }
 }
