@@ -108,7 +108,7 @@ internal class PostHogPushSubscriptionManager(
         nextAttemptAtMs = 0L
         halted = false
         cancelTimer()
-        attempt(record)
+        attempt()
     }
 
     fun retryPending() {
@@ -123,7 +123,7 @@ internal class PostHogPushSubscriptionManager(
             }
             retryCount = 0
             cancelTimer()
-            attempt(record)
+            attempt()
         }
     }
 
@@ -142,7 +142,7 @@ internal class PostHogPushSubscriptionManager(
             retryCount = 0
             halted = false
             cancelTimer()
-            attempt(record)
+            attempt()
         }
     }
 
@@ -244,7 +244,7 @@ internal class PostHogPushSubscriptionManager(
 
     private fun isWithinBackoffWindow(): Boolean = System.currentTimeMillis() < nextAttemptAtMs
 
-    private fun attempt(record: PendingRecord) {
+    private fun attempt() {
         if (closed || config.optOut) {
             // Opt-out and shutdown both stop every send. Guarding at this single choke point covers
             // all callers: register, startup/flush retryPending, identify resend, and the retry timer.
@@ -255,11 +255,14 @@ internal class PostHogPushSubscriptionManager(
             // Session halt set in handleFailure; this choke point makes flush()-driven retryPending() a no-op.
             return
         }
+        // Read the record here, not from the caller: a retry timer may fire after unregisterCurrent()
+        // cleared it (cancelTimer can't un-queue an already-fired callback), so a null means "don't send".
+        val record = currentRecord() ?: return
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push subscription deferred: no network.")
             // Deferral burns no retry attempt; poll again so registration resumes
             // within the session once connectivity returns.
-            scheduleRetry(MAX_RETRY_DELAY_SECONDS, record)
+            scheduleRetry(MAX_RETRY_DELAY_SECONDS)
             return
         }
 
@@ -288,16 +291,13 @@ internal class PostHogPushSubscriptionManager(
             pendingRecord = delivered
             pendingFile?.let { writeRecord(it, delivered) }
         } catch (e: Throwable) {
-            handleFailure(e, record)
+            handleFailure(e)
         } finally {
             isSending.set(false)
         }
     }
 
-    private fun handleFailure(
-        e: Throwable,
-        record: PendingRecord,
-    ) {
+    private fun handleFailure(e: Throwable) {
         if (!isRetryable(e)) {
             // 400/401 etc.: stop retrying this session but keep the record for one retry next launch.
             config.logger.log("Push subscription failed with non-retryable error: $e.")
@@ -320,7 +320,7 @@ internal class PostHogPushSubscriptionManager(
         // and immediately re-hit the endpoint, ignoring the server's Retry-After.
         nextAttemptAtMs = System.currentTimeMillis() + delay * retryDelayMillisPerSecond
         config.logger.log("Push subscription failed: $e. Retrying in ${delay}s (attempt $retryCount).")
-        scheduleRetry(delay, record)
+        scheduleRetry(delay)
     }
 
     // Stop retrying for this process; the persisted record is kept so the next launch (fresh
@@ -342,18 +342,12 @@ internal class PostHogPushSubscriptionManager(
         return min(exponential, MAX_RETRY_DELAY_SECONDS)
     }
 
-    private fun scheduleRetry(
-        delaySeconds: Int,
-        record: PendingRecord,
-    ) {
+    private fun scheduleRetry(delaySeconds: Int) {
         synchronized(timerLock) {
             cancelTimer()
             val t = Timer(true)
             t.schedule(delaySeconds * retryDelayMillisPerSecond) {
-                executor.executeSafely {
-                    // A newer register() may have replaced the record while we waited.
-                    attempt(currentRecord() ?: record)
-                }
+                executor.executeSafely { attempt() }
             }
             timer = t
         }

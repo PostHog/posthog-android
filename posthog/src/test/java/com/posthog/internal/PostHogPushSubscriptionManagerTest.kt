@@ -400,6 +400,30 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `a retry that fires during an unregister does not re-subscribe the cleared token`() {
+        // Race: unregisterCurrent()'s DELETE holds the single-thread executor while the pending retry timer
+        // fires and queues behind it; that attempt must see the cleared record and bail, not re-POST the token.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(500)) // initial register fails -> schedules a retry
+        http.enqueue(MockResponse().setBody("").setHeadersDelay(300, TimeUnit.MILLISECONDS)) // DELETE holds the executor
+        http.enqueue(MockResponse().setBody("")) // only consumed if the bug re-POSTs
+
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L // 5s backoff -> ~5ms, fires well inside the 300ms DELETE
+
+        sut.register("fcm-token", "firebase-project", "android")
+        sut.unregisterCurrent()
+
+        assertEquals("POST", http.takeRequest(2, TimeUnit.SECONDS)?.method)
+        assertEquals("DELETE", http.takeRequest(2, TimeUnit.SECONDS)?.method)
+        assertNull(http.takeRequest(1, TimeUnit.SECONDS)) // no re-POST: the retry saw a cleared record and bailed
+        assertEquals(2, http.requestCount)
+        assertFalse(pendingFile(storagePrefix!!).exists()) // record stays cleared, not rewritten by a re-send
+        http.shutdown()
+    }
+
+    @Test
     fun `unregister does not send after optOut`() {
         val http = mockHttp()
         val (sut, config, _) = getSut(http)
