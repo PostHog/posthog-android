@@ -282,9 +282,13 @@ public class PostHogReplayIntegration(
     private fun View.hasActiveSurfaceRendering(): Boolean {
         return try {
             when {
-                // Recursion always descends from the (visible, being-drawn) decor view, so pruning
-                // on each node's own visibility is enough to skip hidden subtrees.
-                visibility != View.VISIBLE -> false
+                // Descends from the being-drawn decor view, so per-node visibility + alpha pruning
+                // skips hidden/transparent subtrees (mirroring isVisible()): a surface mid
+                // fade-transition, or under a faded-out ancestor, isn't rendering to the user and
+                // must not relax the discard guard.
+                visibility != View.VISIBLE ||
+                    alpha <= 0f ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && transitionAlpha <= 0f) -> false
                 this is TextureView -> isAvailable && width > 0 && height > 0
                 this is SurfaceView -> width > 0 && height > 0
                 this is ViewGroup -> {

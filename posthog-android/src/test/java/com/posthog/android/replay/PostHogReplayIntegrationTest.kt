@@ -1590,4 +1590,49 @@ internal class PostHogReplayIntegrationTest {
 
         assertFalse(isOnlyAnimationRedraw(sut))
     }
+
+    @Test
+    fun `surface-backed view at alpha zero does not relax the guard`() {
+        // A surface mid fade-out (alpha 0) isn't visible to the user, so it must not count as active
+        // rendering — otherwise it relaxes the guard on a screen the user can't even see.
+        val sut = screenshotSut()
+        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val decorView =
+            FrameLayout(context).apply {
+                addView(
+                    SurfaceView(context).apply {
+                        alpha = 0f
+                        layout(0, 0, 100, 100)
+                    },
+                )
+                layout(0, 0, 100, 120)
+            }
+
+        sut.onDrawCallback(decorView)
+
+        assertFalse(isOnlyAnimationRedraw(sut))
+    }
+
+    @Test
+    fun `surface-backed view under a faded-out ancestor does not relax the guard`() {
+        // Ancestor alpha 0 hides the surface too; the walk must prune it, mirroring how isVisible()
+        // walks ancestors for alpha.
+        val sut = screenshotSut()
+        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val decorView =
+            FrameLayout(context).apply {
+                addView(
+                    FrameLayout(context).apply {
+                        alpha = 0f
+                        addView(SurfaceView(context).apply { layout(0, 0, 100, 100) })
+                        layout(0, 0, 100, 120)
+                    },
+                )
+                layout(0, 0, 100, 120)
+            }
+
+        sut.onDrawCallback(decorView)
+
+        assertFalse(isOnlyAnimationRedraw(sut))
+    }
 }
