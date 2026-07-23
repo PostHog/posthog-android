@@ -2,6 +2,8 @@ package com.posthog.android.replay
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
@@ -1411,6 +1413,16 @@ internal class PostHogReplayIntegrationTest {
         fx.sut.install(fake)
         fx.sut.start(resumeCurrent = true)
         return fx to fake
+    }
+
+    @Test
+    fun `null bitmap drawable is not masked`() {
+        val resources = ApplicationProvider.getApplicationContext<Context>().resources
+        val drawable = BitmapDrawable(resources, null as Bitmap?)
+
+        with(getSut()) {
+            assertFalse(drawable.shouldMaskDrawable())
+        }
     }
 
     @Test
