@@ -1,5 +1,11 @@
 ## Next
 
+## 3.56.1
+
+### Patch Changes
+
+- ad72001: Prevent session replay from crashing when an image uses a `BitmapDrawable` with a null bitmap.
+
 ## 3.56.0
 
 ### Minor Changes
