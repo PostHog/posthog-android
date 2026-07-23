@@ -138,6 +138,35 @@ public class PostHogSurveysIntegration(
     }
 
     /**
+     * Displays the survey with the given ID on demand.
+     *
+     * Unlike automatic display, this bypasses display conditions (targeting flags,
+     * event triggers, and the seen/wait-period checks), so it also works for
+     * API-type surveys, which are never auto-displayed. The survey must be present
+     * in the surveys loaded from remote config. If another survey is already being
+     * displayed, this call is ignored.
+     *
+     * @param surveyId The ID of the survey to display
+     */
+    public override fun displaySurvey(surveyId: String) {
+        if (!config.surveys) {
+            config.logger.log("[Surveys] Cannot display survey $surveyId - surveys are disabled in the config")
+            return
+        }
+        val isIntegrationStarted = synchronized(lifecycleLock) { isStarted }
+        if (!isIntegrationStarted) {
+            config.logger.log("[Surveys] Cannot display survey $surveyId - surveys integration is not started")
+            return
+        }
+        val survey = synchronized(surveysLock) { cachedSurveys.firstOrNull { it.id == surveyId } }
+        if (survey == null) {
+            config.logger.log("[Surveys] Cannot display survey $surveyId - survey not found")
+            return
+        }
+        showSurvey(survey)
+    }
+
+    /**
      * Resolves the surveys delegate.
      *
      * If the consumer explicitly set a delegate on

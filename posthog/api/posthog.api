@@ -31,6 +31,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public fun captureLog (Ljava/lang/String;Lcom/posthog/logs/PostHogLogSeverity;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
 	public fun close ()V
+	public fun displaySurvey (Ljava/lang/String;)V
 	public fun distinctId ()Ljava/lang/String;
 	public fun endSession ()V
 	public fun flush ()V
@@ -77,6 +78,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun captureLog (Ljava/lang/String;Lcom/posthog/logs/PostHogLogSeverity;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
 	public fun close ()V
 	public fun debug (Z)V
+	public fun displaySurvey (Ljava/lang/String;)V
 	public fun distinctId ()Ljava/lang/String;
 	public fun endSession ()V
 	public fun flush ()V
@@ -352,6 +354,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun captureLog (Ljava/lang/String;Lcom/posthog/logs/PostHogLogSeverity;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
+	public abstract fun displaySurvey (Ljava/lang/String;)V
 	public abstract fun distinctId ()Ljava/lang/String;
 	public abstract fun endSession ()V
 	public abstract fun getAllFeatureFlags ()Ljava/util/List;
@@ -1428,6 +1431,7 @@ public final class com/posthog/internal/replay/RRWireframe {
 }
 
 public abstract interface class com/posthog/internal/surveys/PostHogSurveysHandler {
+	public abstract fun displaySurvey (Ljava/lang/String;)V
 	public abstract fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun onSurveysLoaded (Ljava/util/List;)V
 }

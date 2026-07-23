@@ -20,4 +20,12 @@ public interface PostHogSurveysHandler {
      * @param surveys List of surveys loaded from remote config (may be empty)
      */
     public fun onSurveysLoaded(surveys: List<Survey>)
+
+    /**
+     * Displays the survey with the given ID on demand, bypassing display conditions
+     * such as targeting flags, event triggers, and the seen/wait-period checks.
+     *
+     * @param surveyId The ID of the survey to display
+     */
+    public fun displaySurvey(surveyId: String)
 }
