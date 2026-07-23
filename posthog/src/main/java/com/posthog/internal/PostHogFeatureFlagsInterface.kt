@@ -64,4 +64,13 @@ public interface PostHogFeatureFlagsInterface {
     ): FeatureFlag? {
         return null
     }
+
+    /**
+     * Whether the server enabled minimal `$feature_flag_called` events for this team, from the
+     * top-level `minimalFlagCalledEvents` field of the v2 `/flags` response. Default false so
+     * implementations without the signal keep sending the full event shape (fail-safe).
+     */
+    public fun isMinimalFlagCalledEventsEnabled(): Boolean {
+        return false
+    }
 }

@@ -12,6 +12,7 @@ import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_AT
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.MINIMAL_FLAG_CALLED_EVENTS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
@@ -99,6 +100,11 @@ public class PostHogRemoteConfig(
     private var flags: Map<String, Any>? = null
     private var requestId: String? = null
     private var evaluatedAt: Long? = null
+
+    // Server-controlled gate for minimal $feature_flag_called events (top-level
+    // minimalFlagCalledEvents of the v2 /flags response). Absent means full events, so it is
+    // overwritten from every /flags response rather than merged. Guarded by featureFlagsLock.
+    private var minimalFlagCalledEvents: Boolean = false
 
     private var surveys: List<Survey>? = null
 
@@ -734,6 +740,10 @@ public class PostHogRemoteConfig(
 
                     val normalizedResponse = normalizeFlagsResponse(it)
 
+                    // A response without the gate (legacy shape or ungated team) disables it,
+                    // so full events resume as soon as the server stops sending the field.
+                    minimalFlagCalledEvents = it.minimalFlagCalledEvents == true
+
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // Partial/errored response: merge into the existing served flags (which may be
                         // the bootstrap snapshot) so un-recomputed values, including bootstrapped ones,
@@ -823,6 +833,14 @@ public class PostHogRemoteConfig(
                             payloads.filterKeys { it in serverEvaluatedPayloadKeys }
                         }
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, serverPayloads)
+
+                    // Persist the gate alongside the cached flags so it survives restarts;
+                    // an absent cache entry means full events (fail-safe).
+                    if (this.minimalFlagCalledEvents) {
+                        preferences.setValue(MINIMAL_FLAG_CALLED_EVENTS, true)
+                    } else {
+                        preferences.remove(MINIMAL_FLAG_CALLED_EVENTS)
+                    }
                 }
                 isFeatureFlagsLoaded = true
                 setFlagsLoadedFromRemote()
@@ -981,6 +999,8 @@ public class PostHogRemoteConfig(
 
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
             val cachedEvaluatedAt = preferences.getValue(FEATURE_FLAG_EVALUATED_AT) as? Long
+            // Absent from the cache means full events (fail-safe).
+            val cachedMinimalFlagCalledEvents = preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS) as? Boolean ?: false
 
             synchronized(featureFlagsLock) {
                 this.flags = flags
@@ -988,6 +1008,7 @@ public class PostHogRemoteConfig(
                 this.featureFlagPayloads = payloads
                 this.requestId = cachedRequestId
                 this.evaluatedAt = cachedEvaluatedAt
+                this.minimalFlagCalledEvents = cachedMinimalFlagCalledEvents
                 // Bootstrap is an initial snapshot that wins over persisted flags (spec precedence).
                 applyBootstrapSnapshotLocked()
                 isFeatureFlagsLoaded = true
@@ -1240,6 +1261,13 @@ public class PostHogRemoteConfig(
         }
     }
 
+    override fun isMinimalFlagCalledEventsEnabled(): Boolean {
+        loadFeatureFlagsFromCacheIfNeeded()
+        synchronized(featureFlagsLock) {
+            return minimalFlagCalledEvents
+        }
+    }
+
     public fun getSurveys(): List<Survey>? {
         synchronized(remoteConfigLock) {
             return surveys
@@ -1253,6 +1281,7 @@ public class PostHogRemoteConfig(
         this.flags = null
         this.requestId = null
         this.evaluatedAt = null
+        this.minimalFlagCalledEvents = false
 
         config.cachePreferences?.let { preferences ->
             preferences.remove(FLAGS)
@@ -1260,6 +1289,7 @@ public class PostHogRemoteConfig(
             preferences.remove(FEATURE_FLAGS_PAYLOAD)
             preferences.remove(FEATURE_FLAG_REQUEST_ID)
             preferences.remove(FEATURE_FLAG_EVALUATED_AT)
+            preferences.remove(MINIMAL_FLAG_CALLED_EVENTS)
         }
     }
 

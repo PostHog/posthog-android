@@ -324,6 +324,40 @@ internal class PostHogBootstrapTest {
         sut.close()
     }
 
+    @Test
+    fun `minimal flag called event strips bootstrap fields even though this SDK sets them`() {
+        // fixture returns minimalFlagCalledEvents: true and IAmInactive with has_experiment: false;
+        // bootstrap the same key so $feature_flag_bootstrapped_response / $used_bootstrap_value are
+        // set on the event (PostHog.kt) before minimization runs
+        val flags = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        http.enqueue(MockResponse().setBody(""))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("IAmInactive" to false)),
+            )
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        http.takeRequest() // drop the /flags request
+
+        val value = sut.getFeatureFlag("IAmInactive", sendFeatureFlagEvent = true)
+        assertEquals(false, value)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val event = firstFeatureFlagCalled(http)
+        // gate is on and has_experiment is false, so the minimal allowlist applies
+        assertEquals(false, event.properties?.get("\$feature_flag_has_experiment"))
+        // the bootstrap fields are set upstream but are not in the allowlist, so they are stripped
+        assertFalse(event.properties!!.containsKey("\$feature_flag_bootstrapped_response"))
+        assertFalse(event.properties!!.containsKey("\$used_bootstrap_value"))
+
+        sut.close()
+        http.shutdown()
+    }
+
     private fun firstEvent(
         http: okhttp3.mockwebserver.MockWebServer,
         event: String,

@@ -1692,6 +1692,10 @@ public class PostHog private constructor(
         }
     }
 
+    override fun isMinimalFlagCalledEventsEnabled(): Boolean {
+        return remoteConfig?.isMinimalFlagCalledEventsEnabled() == true
+    }
+
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
