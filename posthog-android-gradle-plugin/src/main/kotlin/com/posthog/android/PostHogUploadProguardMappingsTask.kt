@@ -118,6 +118,7 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
                     releaseName?.let { this.releaseName.set(it) }
                     releaseVersion?.let { this.releaseVersion.set(it) }
                     build?.let { this.build.set(it) }
+                    resolvePostHogDotenvFile(project)?.let { this.postHogDotenvFile.set(it) }
                 }
             return uploadPostHogProguardMappingsTask
         }
