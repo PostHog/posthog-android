@@ -32,6 +32,7 @@ import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.WindowManager
 import android.webkit.WebView
@@ -234,20 +235,40 @@ public class PostHogReplayIntegration(
     @Volatile
     private var isOnlyAnimationRedraw: Boolean = false
 
+    // True if a layout pass ran during the current capture window (set by the decor view's
+    // OnGlobalLayoutListener, cleared per capture). A persistent surface keeps isOnlyAnimationRedraw
+    // true for the whole screen, so this is what actually proves mask geometry didn't shift — without
+    // it a structural layout could drift masks and leak PII.
+    @Volatile
+    private var didLayoutSinceReset: Boolean = false
+
     internal fun onDrawCallback(decorView: View) {
         isOnDrawnCalled = true
-        // A redraw is treated as animation-only (pixel changes with stable view geometry, so mask
-        // positions remain valid) when either:
-        //  - hasTransientState() propagates up from any descendant using a ValueAnimator (e.g.
-        //    Lottie), or
-        //  - the tree contains a continuously-rendering surface/texture-backed view (e.g. Rive),
-        //    which renders on its own worker thread and never sets hasTransientState() yet
-        //    invalidates the host view on essentially every frame.
-        // We still exclude legacy view.animation which mutates the transformation matrix and can
-        // shift mask positions.
+        // isOnlyAnimationRedraw is read only on the screenshot-capture path, so its whole computation
+        // (including the surface-tree walk) is dead in wireframe mode — skip it. Flutter always
+        // captures via the forced-screenshot bridge, so it stays capable. Re-read per draw (not
+        // cached) so a runtime screenshot toggle re-arms the redraw guard.
+        val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
+        if (!screenshotCapable) {
+            isOnlyAnimationRedraw = false
+            return
+        }
+        // Animation-only = pixels change but view geometry (and mask positions) stay put: Lottie sets
+        // hasTransientState; a surface view (e.g. Rive) doesn't but redraws every frame. Safe to keep
+        // only if no structural layout ran since the capture reset (else masks may have drifted →
+        // PII leak). Legacy view.animation is excluded — it mutates the draw transform and shifts masks.
         isOnlyAnimationRedraw =
+            !didLayoutSinceReset &&
             (decorView.hasTransientState() || decorView.hasActiveSurfaceRendering()) &&
             !decorView.isAnimationRunning()
+    }
+
+    // isOnDrawnCalled, isOnlyAnimationRedraw and didLayoutSinceReset gate the same capture guard and
+    // must always be reset together — keep this the single place that does it.
+    private fun resetDrawStateTracking() {
+        isOnDrawnCalled = false
+        isOnlyAnimationRedraw = false
+        didLayoutSinceReset = false
     }
 
     /**
@@ -319,7 +340,14 @@ public class PostHogReplayIntegration(
                                         }
                                     }
 
-                                val status = ViewTreeSnapshotStatus(listener)
+                                // A structural layout pass (view added/removed/resized/moved)
+                                // means mask geometry may have shifted; record it so onDrawCallback
+                                // won't treat a concurrent surface/animation redraw as safe-to-keep.
+                                val layoutListener =
+                                    ViewTreeObserver.OnGlobalLayoutListener { didLayoutSinceReset = true }
+                                decorView.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
+
+                                val status = ViewTreeSnapshotStatus(listener, layoutListener)
                                 decorViews[decorView] = status
                             } catch (e: Throwable) {
                                 config.logger.log("Session Replay onDecorViewReady failed: $e.")
@@ -477,6 +505,7 @@ public class PostHogReplayIntegration(
                     try {
                         // swallow the exception because we still wanna remove it from the decorViews
                         view.viewTreeObserver?.removeOnDrawListener(status.listener)
+                        status.layoutListener?.let { view.viewTreeObserver?.removeOnGlobalLayoutListener(it) }
                     } catch (e: Throwable) {
                         config.logger.log("Removing the viewTreeObserver failed: $e.")
                     }
@@ -545,8 +574,7 @@ public class PostHogReplayIntegration(
             }
 
             isSessionReplayActive = false
-            isOnDrawnCalled = false
-            isOnlyAnimationRedraw = false
+            resetDrawStateTracking()
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -1197,8 +1225,7 @@ public class PostHogReplayIntegration(
 
         try {
             // reset the draw-dirty flags since we are about to take a screenshot
-            isOnDrawnCalled = false
-            isOnlyAnimationRedraw = false
+            resetDrawStateTracking()
 
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
@@ -1252,8 +1279,7 @@ public class PostHogReplayIntegration(
                     success = false
                 } finally {
                     // reset the draw-dirty flags since we've taken the screenshot
-                    isOnDrawnCalled = false
-                    isOnlyAnimationRedraw = false
+                    resetDrawStateTracking()
                     callbackCompleted = true
                     latch.countDown()
                 }
@@ -1275,8 +1301,7 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
-            isOnDrawnCalled = false
-            isOnlyAnimationRedraw = false
+            resetDrawStateTracking()
             // Only recycle the bitmap if the callback has completed.
             // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
             // on another thread; recycling it now would cause a native SIGSEGV.
@@ -1878,8 +1903,7 @@ public class PostHogReplayIntegration(
 
     override fun stop() {
         isSessionReplayActive = false
-        isOnDrawnCalled = false
-        isOnlyAnimationRedraw = false
+        resetDrawStateTracking()
     }
 
     override fun isActive(): Boolean {
