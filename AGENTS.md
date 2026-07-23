@@ -59,8 +59,6 @@ pnpm changeset
 
 This will prompt for the affected packages, semver bump type, and a summary of changes. Commit the generated `.changeset/*.md` file with the PR.
 
-When the PR is merged with a `release` label, changesets will automatically bump versions, publish packages, and create GitHub releases.
-
 Use this template when creating PRs:
 
 ```
@@ -83,5 +81,4 @@ Use this template when creating PRs:
 ### If releasing new changes
 
 - [ ] Ran `pnpm changeset` to generate a changeset file
-- [ ] Added the "release" label to the PR to indicate we're publishing new versions for the affected packages
 ```

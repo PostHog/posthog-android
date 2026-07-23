@@ -796,11 +796,11 @@ public class PostHogReplayIntegration(
         return false
     }
 
-    private fun Drawable.shouldMaskDrawable(): Boolean {
+    internal fun Drawable.shouldMaskDrawable(): Boolean {
         return when (this) {
             is InsetDrawable, is ColorDrawable, is VectorDrawable, is GradientDrawable, is LayerDrawable -> false
             // otherwise its not accessible anyway
-            is BitmapDrawable -> bitmap.isValid()
+            is BitmapDrawable -> bitmap?.isValid() == true
             else -> true
         }
     }
