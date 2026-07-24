@@ -19,15 +19,25 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
     private var postHog: PostHogInterface? = null
 
+    @Volatile
+    private var lastHandledPushMessageId: String? = null
+
     private companion object {
         @Volatile
         private var integrationInstalled = false
+
+        private const val GOOGLE_MESSAGE_ID = "google.message_id"
     }
 
     override fun onActivityCreated(
         activity: Activity,
         savedInstanceState: Bundle?,
     ) {
+        // A non-null savedInstanceState redelivers the original launch intent (config-change recreation
+        // or process-kill restore). The in-memory id guard resets with the process, so gate on a fresh launch.
+        if (config.capturePushNotificationOpened && savedInstanceState == null) {
+            capturePushNotificationOpenedIfNeeded(activity)
+        }
         if (config.captureDeepLinks) {
             activity.intent?.let { intent ->
                 val props = mutableMapOf<String, Any>()
@@ -53,6 +63,44 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                 }
             }
         }
+    }
+
+    /**
+     * Captures `$push_notification_opened` for a cold-start tray tap, detected via the launch intent's
+     * `google.message_id`. Title/body aren't in the tray intent (only the `posthog` JSON extra is);
+     * warm-start `onNewIntent` and foreground data messages need the manual API. The message-id guard
+     * dedupes repeat reads within a process; the caller gates on a fresh launch to skip recreations.
+     */
+    private fun capturePushNotificationOpenedIfNeeded(activity: Activity) {
+        val intent = activity.intent ?: return
+        // Reading extras unmarshals the whole Bundle; a launch intent carrying a Serializable/Parcelable
+        // extra whose class isn't on this app's classloader throws BadParcelableException here. This runs
+        // inside the framework onActivityCreated callback, so an uncaught throw crashes the host app.
+        try {
+            val messageId = intent.getStringExtra(GOOGLE_MESSAGE_ID) ?: return
+
+            if (messageId == lastHandledPushMessageId) {
+                return
+            }
+            lastHandledPushMessageId = messageId
+
+            postHog?.capturePushNotificationOpened(
+                title = null,
+                body = null,
+                payload = intent.extras?.toMap(),
+            )
+        } catch (e: Throwable) {
+            config.logger.log("Failed to capture push notification opened: $e.")
+        }
+    }
+
+    private fun Bundle.toMap(): Map<String, Any?> {
+        val map = mutableMapOf<String, Any?>()
+        for (key in keySet()) {
+            @Suppress("DEPRECATION")
+            map[key] = get(key)
+        }
+        return map
     }
 
     override fun onActivityStarted(activity: Activity) {

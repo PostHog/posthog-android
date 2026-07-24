@@ -412,6 +412,59 @@ public interface PostHogInterface : PostHogCoreInterface {
         flagVariant: String? = null,
     )
 
+    /**
+     * Registers a push notification device token with PostHog so the backend can deliver
+     * push notifications sent from PostHog Workflows to this device.
+     *
+     * The token is persisted and (re)sent with the current [distinctId]; transient failures
+     * are retried automatically. On Android, when Firebase Messaging is on the classpath and
+     * `capturePushNotificationSubscriptions` is enabled, this is called for you at startup.
+     * Call it manually to forward tokens refreshed via Firebase's `onNewToken`.
+     *
+     * @param deviceToken the device push token (e.g. the FCM registration token)
+     * @param appId the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS
+     */
+    public fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+    )
+
+    /**
+     * Unregisters this device's push token from PostHog so Workflows stop targeting it — for example
+     * from your logout flow.
+     *
+     * Sends a best-effort `DELETE /api/push_subscriptions` for the current [distinctId] (the backend
+     * unsets the subscription property) and forgets the locally stored token. Unlike registration
+     * this is not retried. On [reset] the SDK already moves any registered token to the new anonymous
+     * identity (unregister then re-register), independently of `capturePushNotificationSubscriptions` —
+     * that flag only gates automatic token subscription at startup. Call it directly if you manage
+     * push subscriptions yourself.
+     */
+    public fun unregisterPushNotificationToken()
+
+    /**
+     * Captures a `$push_notification_opened` event when the user opens a push notification.
+     *
+     * On Android, cold-start taps on a tray notification are captured automatically (from the
+     * launch intent) when `capturePushNotificationOpened` is enabled. Call this manually for the
+     * paths auto-detection can't observe — foreground data messages and warm-start `onNewIntent`.
+     *
+     * Each key of `payload["posthog"]` (accepted as a `Map` or a JSON string) is attached as a
+     * `$notification_<key>` property.
+     *
+     * @param title the notification title, attached as `$notification_title` when non-empty
+     * @param body the notification body, attached as `$notification_body` when non-empty
+     * @param payload the notification data payload; its `posthog` entry is spread into `$notification_*` props
+     * @param action the tapped notification action identifier, attached as `$notification_action`; leave
+     *   `null` for a plain tap/open (the default action carries no identifier)
+     */
+    public fun capturePushNotificationOpened(
+        title: String? = null,
+        body: String? = null,
+        payload: Map<String, Any?>? = null,
+        action: String? = null,
+    )
+
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
 }

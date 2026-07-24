@@ -15,6 +15,15 @@ public class PostHogFake : PostHogInterface {
     public var sessionReplayActive: Boolean = false
     public var startSessionReplayCalls: Int = 0
     public var stopSessionReplayCalls: Int = 0
+    public var pushDeviceToken: String? = null
+    public var pushAppId: String? = null
+    public var pushRegistrations: Int = 0
+    public var pushUnregistrations: Int = 0
+    public var pushOpenedTitle: String? = null
+    public var pushOpenedBody: String? = null
+    public var pushOpenedPayload: Map<String, Any?>? = null
+    public var pushOpenedAction: String? = null
+    public var pushOpenedCaptures: Int = 0
 
     // `PostHogLogger`'s constructor is `internal`. Test fixtures live in the
     // same module, so we can construct a silent no-op here without exposing
@@ -234,6 +243,32 @@ public class PostHogFake : PostHogInterface {
 
     override fun getSessionId(): UUID? {
         return null
+    }
+
+    override fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+    ) {
+        pushDeviceToken = deviceToken
+        pushAppId = appId
+        pushRegistrations++
+    }
+
+    override fun unregisterPushNotificationToken() {
+        pushUnregistrations++
+    }
+
+    override fun capturePushNotificationOpened(
+        title: String?,
+        body: String?,
+        payload: Map<String, Any?>?,
+        action: String?,
+    ) {
+        pushOpenedTitle = title
+        pushOpenedBody = body
+        pushOpenedPayload = payload
+        pushOpenedAction = action
+        pushOpenedCaptures++
     }
 
     override fun <T : PostHogConfig> getConfig(): T? {

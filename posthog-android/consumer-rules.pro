@@ -102,3 +102,13 @@
 -keepattributes SourceFile,LineNumberTable
 
 ##---------------End: proguard configuration for okhttp3  ----------
+
+##---------------Begin: proguard configuration for Firebase Messaging (compileOnly)  ----------
+-dontwarn com.google.firebase.messaging.**
+-dontwarn com.google.firebase.FirebaseApp
+-dontwarn com.google.firebase.FirebaseOptions
+-dontwarn com.google.android.gms.tasks.**
+
+# used in reflection to check if Firebase Messaging is available at runtime
+-keepnames class com.google.firebase.messaging.FirebaseMessaging
+##---------------End: proguard configuration for Firebase Messaging (compileOnly)  ----------
