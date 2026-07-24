@@ -34,8 +34,19 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             return
         }
 
-        val autocaptureExceptionsEnabled = config.remoteConfigHolder?.isAutocaptureExceptionsEnabled() ?: false
-        if (!autocaptureExceptionsEnabled) {
+        // Local config is the primary gate (the remote check below is only a kill-switch).
+        if (!config.errorTrackingConfig.autoCapture) {
+            return
+        }
+
+        // Remote config is a kill-switch, not a gate: install by default and skip only when a
+        // config that already exists — fetched this session or cached from a prior launch —
+        // explicitly disables autocapture, keeping the first-launch window (before /flags) covered.
+        val remoteConfig = config.remoteConfigHolder
+        val hasRemoteConfig =
+            remoteConfig?.hasRemoteConfigFetched() == true ||
+                remoteConfig?.hasCachedErrorTrackingConfig() == true
+        if (hasRemoteConfig && remoteConfig?.isAutocaptureExceptionsEnabled() == false) {
             return
         }
 
@@ -69,7 +80,9 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     override fun onRemoteConfig(loaded: Boolean) {
-        // Only react to a live config; a failed attempt applies no fresh values.
+        // Only react to a live config; a failed attempt applies no fresh values, so leave the
+        // default first-launch install in place rather than tearing it down until a real config
+        // says otherwise.
         if (!loaded) {
             return
         }
