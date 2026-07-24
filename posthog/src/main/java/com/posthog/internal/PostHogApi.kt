@@ -139,7 +139,8 @@ public class PostHogApi(
         deviceToken: String,
         platform: String,
         appId: String,
-    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, platform, appId)
+        identityToken: String? = null,
+    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, platform, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     public fun pushUnsubscription(
@@ -147,7 +148,8 @@ public class PostHogApi(
         deviceToken: String,
         platform: String,
         appId: String,
-    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, platform, appId)
+        identityToken: String? = null,
+    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, platform, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     private fun sendPushSubscription(
@@ -156,6 +158,7 @@ public class PostHogApi(
         deviceToken: String,
         platform: String,
         appId: String,
+        identityToken: String?,
     ) {
         val pushSubscription =
             PostHogPushSubscriptionRequest(
@@ -164,6 +167,7 @@ public class PostHogApi(
                 deviceToken = deviceToken,
                 platform = platform,
                 appId = appId,
+                identityToken = identityToken,
             )
 
         val url = "$theHost/api/push_subscriptions/"

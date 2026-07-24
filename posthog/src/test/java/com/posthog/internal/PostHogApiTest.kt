@@ -793,6 +793,28 @@ internal class PostHogApiTest {
         assertEquals("fcm-token-123", parsed["device_token"])
         assertEquals("android", parsed["platform"])
         assertEquals("firebase-project-id", parsed["app_id"])
+        // Vector 10: no identity token -> the key is omitted entirely, not serialized as null.
+        assertFalse(body.contains("identity_token"))
+    }
+
+    @Test
+    fun `pushSubscription includes identity_token when provided`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.pushSubscription(
+            distinctId = "distinctId",
+            deviceToken = "fcm-token-123",
+            platform = "android",
+            appId = "firebase-project-id",
+            identityToken = "jwt-abc",
+        )
+
+        val request = http.takeRequest()
+        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        assertEquals("jwt-abc", parsed["identity_token"])
     }
 
     @Test
@@ -841,6 +863,29 @@ internal class PostHogApiTest {
         assertEquals("fcm-token-123", parsed["device_token"])
         assertEquals("android", parsed["platform"])
         assertEquals("firebase-project-id", parsed["app_id"])
+        // Vector 10: no identity token -> the key is omitted entirely, not serialized as null.
+        assertFalse(body.contains("identity_token"))
+    }
+
+    @Test
+    fun `pushUnsubscription includes identity_token when provided`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        sut.pushUnsubscription(
+            distinctId = "distinctId",
+            deviceToken = "fcm-token-123",
+            platform = "android",
+            appId = "firebase-project-id",
+            identityToken = "jwt-abc",
+        )
+
+        val request = http.takeRequest()
+        assertEquals("DELETE", request.method)
+        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        assertEquals("jwt-abc", parsed["identity_token"])
     }
 
     @Test

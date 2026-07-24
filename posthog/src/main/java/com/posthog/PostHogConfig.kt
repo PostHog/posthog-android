@@ -328,6 +328,22 @@ public open class PostHogConfig(
      * Defaults to null (no bootstrap).
      */
     public var bootstrap: PostHogBootstrapConfig? = null,
+    /**
+     * Hook that supplies a signed identity token for push subscription requests, enabling the
+     * optional identity verification of the push subscriptions API.
+     *
+     * Invoked with the distinctId and appId the request is about to carry, whenever a token is
+     * needed and none is cached for that exact pair — and once more after a 401 rejection. Your
+     * backend mints the token — an HS256 JWT signed with the project's secret API key (never
+     * embedded in the app), with claims `sub` = distinct id, `app_id`, `aud` =
+     * "posthog:push_identity", and an `exp` — and you pass it to `completion`, from any thread. Pass `completion(null)`
+     * when no token can be minted (e.g. the user is anonymous); the request is then sent without
+     * one. `completion` must be called exactly once: further calls are ignored, and never calling
+     * it strands the current registration until the next app launch.
+     *
+     * Defaults to null (requests are sent without an identity token).
+     */
+    public var pushIdentityProvider: ((distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit)? = null,
 ) {
     @Volatile
     private var tracingHeadersList: List<String>? = null

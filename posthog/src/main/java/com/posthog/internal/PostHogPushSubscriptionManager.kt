@@ -61,6 +61,15 @@ internal class PostHogPushSubscriptionManager(
 
     @Volatile private var closed = false
 
+    // In-memory only: a short-lived credential must never land on disk; a fresh process re-mints
+    // via config.pushIdentityProvider. Reused across in-session backoff retries for the same
+    // (distinctId, appId); any other pair is a miss and re-mints.
+    @Volatile private var cachedIdentityToken: CachedIdentityToken? = null
+
+    // One fresh-token retry per send-cycle after a 401 (single refresh, no loop). Cleared on
+    // success, a new register, and an identity-change resend; a fresh process starts clear.
+    @Volatile private var didAuthRetry = false
+
     private val pendingFile: File? by lazy {
         val prefix = config.storagePrefix ?: return@lazy null
         // Must stay out of <storagePrefix>/<apiKey>: PostHogQueue scans that whole directory as
@@ -107,6 +116,7 @@ internal class PostHogPushSubscriptionManager(
         retryCount = 0
         nextAttemptAtMs = 0L
         halted = false
+        didAuthRetry = false
         cancelTimer()
         attempt()
     }
@@ -141,6 +151,7 @@ internal class PostHogPushSubscriptionManager(
             }
             retryCount = 0
             halted = false
+            didAuthRetry = false
             cancelTimer()
             attempt()
         }
@@ -176,16 +187,24 @@ internal class PostHogPushSubscriptionManager(
             config.logger.log("Push unregister skipped: missing distinctId, token, or appId.")
             return
         }
-        try {
-            api.pushUnsubscription(
-                distinctId = distinctId,
-                deviceToken = deviceToken,
-                platform = platform,
-                appId = appId,
-            )
-            config.logger.log("Push notification token unregistered successfully.")
-        } catch (e: Throwable) {
-            config.logger.log("Push unregister failed: $e. Ignoring (best-effort).")
+        // Best-effort stays single-shot: the token is resolved once (old id on the reset path) and
+        // a 401 is not refreshed — the durable path is the re-register POST.
+        resolveIdentityToken(distinctId, appId) { identityToken ->
+            if (closed || config.optOut) {
+                return@resolveIdentityToken
+            }
+            try {
+                api.pushUnsubscription(
+                    distinctId = distinctId,
+                    deviceToken = deviceToken,
+                    platform = platform,
+                    appId = appId,
+                    identityToken = identityToken,
+                )
+                config.logger.log("Push notification token unregistered successfully.")
+            } catch (e: Throwable) {
+                config.logger.log("Push unregister failed: $e. Ignoring (best-effort).")
+            }
         }
     }
 
@@ -235,11 +254,13 @@ internal class PostHogPushSubscriptionManager(
         closed = true
         cancelTimer()
         retryCount = 0
+        cachedIdentityToken = null
     }
 
     /** Opt-out: stop the retry/offline-poll timer now. The guard in [attempt] blocks any actual send. */
     fun onOptOut() {
         cancelTimer()
+        cachedIdentityToken = null
     }
 
     private fun isWithinBackoffWindow(): Boolean = System.currentTimeMillis() < nextAttemptAtMs
@@ -276,16 +297,36 @@ internal class PostHogPushSubscriptionManager(
             return
         }
 
+        // isSending stays claimed across an async token mint so resume paths can't double-send;
+        // [performSend] releases it on every path.
+        resolveIdentityToken(distinctId, record.appId) { identityToken ->
+            performSend(record, distinctId, identityToken)
+        }
+    }
+
+    // Runs on the executor (inline from [attempt], or re-entered from the provider completion).
+    // [distinctId] is the id the identity token was resolved for, so body and token always match.
+    private fun performSend(
+        record: PendingRecord,
+        distinctId: String,
+        identityToken: String?,
+    ) {
+        if (closed || config.optOut) {
+            isSending.set(false)
+            return
+        }
         try {
             api.pushSubscription(
                 distinctId = distinctId,
                 deviceToken = record.deviceToken,
                 platform = record.platform,
                 appId = record.appId,
+                identityToken = identityToken,
             )
             config.logger.log("Push notification token registered successfully.")
             retryCount = 0
             nextAttemptAtMs = 0L
+            didAuthRetry = false
             // Keep the record with the delivered marker so a later identify() can re-register.
             val delivered = record.copy(deliveredForDistinctId = distinctId)
             pendingRecord = delivered
@@ -298,8 +339,31 @@ internal class PostHogPushSubscriptionManager(
     }
 
     private fun handleFailure(e: Throwable) {
+        if ((e as? PostHogApiError)?.statusCode == 401) {
+            val provider = config.pushIdentityProvider
+            if (provider != null && !didAuthRetry) {
+                // One fresh-token retry, then terminal. Re-queued (not inline) so the failing
+                // send's isSending release in [performSend] happens before the retry claims it.
+                didAuthRetry = true
+                cachedIdentityToken = null
+                config.logger.log("Push subscription rejected (401): refreshing identity token and retrying once.")
+                executor.executeSafely { attempt() }
+                return
+            }
+            config.logger.log(
+                "Push subscription rejected (401). " +
+                    if (provider == null) {
+                        "Identity verification may be required — configure pushIdentityProvider. " +
+                            "Keeping record for next launch."
+                    } else {
+                        "Identity token refresh did not help. Keeping record for next launch."
+                    },
+            )
+            haltForSession()
+            return
+        }
         if (!isRetryable(e)) {
-            // 400/401 etc.: stop retrying this session but keep the record for one retry next launch.
+            // 400 etc.: stop retrying this session but keep the record for one retry next launch.
             config.logger.log("Push subscription failed with non-retryable error: $e.")
             haltForSession()
             return
@@ -360,6 +424,49 @@ internal class PostHogPushSubscriptionManager(
         }
     }
 
+    // Resolves the identity token for [distinctId]/[appId], preferring a cached exact match. The
+    // provider's completion may arrive from any thread and only the first call counts; no provider,
+    // a null completion, or a throw all fall back to token-less — the pre-identity behavior.
+    private fun resolveIdentityToken(
+        distinctId: String,
+        appId: String,
+        onResolved: (String?) -> Unit,
+    ) {
+        val cached = cachedIdentityToken
+        if (cached != null && cached.distinctId == distinctId && cached.appId == appId) {
+            config.logger.log("Push subscription request sent with cached identity token.")
+            onResolved(cached.token)
+            return
+        }
+        val provider = config.pushIdentityProvider
+        if (provider == null) {
+            config.logger.log("Push subscription request sent without identity token (no pushIdentityProvider).")
+            onResolved(null)
+            return
+        }
+        val completed = AtomicBoolean(false)
+        try {
+            provider(distinctId, appId) { token ->
+                if (completed.compareAndSet(false, true)) {
+                    executor.executeSafely {
+                        if (token != null) {
+                            cachedIdentityToken = CachedIdentityToken(token, distinctId, appId)
+                            config.logger.log("Push subscription request sent with freshly minted identity token.")
+                        } else {
+                            config.logger.log("Push subscription request sent without identity token (provider completed null).")
+                        }
+                        onResolved(token)
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            config.logger.log("pushIdentityProvider threw: $e. Sending without identity token.")
+            if (completed.compareAndSet(false, true)) {
+                onResolved(null)
+            }
+        }
+    }
+
     private fun isRetryable(e: Throwable): Boolean {
         return when (e) {
             is PostHogApiError -> e.statusCode == 429 || e.statusCode in 500..599
@@ -417,5 +524,11 @@ internal class PostHogPushSubscriptionManager(
         val platform: String,
         @SerializedName("delivered_for_distinct_id")
         val deliveredForDistinctId: String? = null,
+    )
+
+    private data class CachedIdentityToken(
+        val token: String,
+        val distinctId: String,
+        val appId: String,
     )
 }

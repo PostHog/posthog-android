@@ -13,4 +13,7 @@ internal data class PostHogPushSubscriptionRequest(
     val platform: String,
     @SerializedName("app_id")
     val appId: String,
+    // Gson omits null fields, so an absent token keeps the body byte-identical to the 5-field contract.
+    @SerializedName("identity_token")
+    val identityToken: String? = null,
 )

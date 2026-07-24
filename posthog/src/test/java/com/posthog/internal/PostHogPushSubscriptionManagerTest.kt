@@ -333,6 +333,23 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `unregister DELETE gets no 401 fresh-token refresh`() {
+        // Best-effort leg stays single-shot even with a provider: one mint, one DELETE, no retry.
+        val http = mockHttp(total = 2, response = MockResponse().setResponseCode(401))
+        val (sut, config, _) = getSut(http)
+        val minted = java.util.concurrent.atomic.AtomicInteger(0)
+        config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
+
+        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        flush()
+
+        assertEquals("DELETE", http.takeRequest().method)
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+        assertEquals(1, minted.get())
+    }
+
+    @Test
     fun `handleReset unregisters the old identity then re-registers under the new anonymous id`() {
         val http = mockHttp(total = 3, response = MockResponse().setBody(""))
         val (sut, config, storagePrefix) = getSut(http)
@@ -602,6 +619,253 @@ internal class PostHogPushSubscriptionManagerTest {
         sut.register("fcm-token", "firebase-project", "android")
         flush()
 
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `register and unregisterCurrent attach the provider token to POST and DELETE bodies`() {
+        // Vector 9: provider set completing "jwt-abc" -> both legs carry identity_token alongside the 5 fields.
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        val (sut, config, _) = getSut(http)
+        config.pushIdentityProvider = { _, _, completion -> completion("jwt-abc") }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        val post = http.takeRequest()
+        assertEquals("POST", post.method)
+        val postBody = post.body.unGzip()
+        assertTrue(postBody.contains("\"identity_token\":\"jwt-abc\""))
+        assertTrue(postBody.contains("\"api_key\""))
+        assertTrue(postBody.contains("\"distinct_id\""))
+        assertTrue(postBody.contains("\"device_token\""))
+        assertTrue(postBody.contains("\"platform\""))
+        assertTrue(postBody.contains("\"app_id\""))
+
+        sut.unregisterCurrent()
+        flush()
+
+        val del = http.takeRequest()
+        assertEquals("DELETE", del.method)
+        assertTrue(del.body.unGzip().contains("\"identity_token\":\"jwt-abc\""))
+    }
+
+    @Test
+    fun `register without a provider omits identity_token from the raw body`() {
+        // Vector 10: no provider -> the serialized body has no identity_token key at all.
+        val http = mockHttp()
+        val (sut, _, _) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        assertFalse(http.takeRequest().body.unGzip().contains("identity_token"))
+    }
+
+    @Test
+    fun `register with a provider completing null sends token-less`() {
+        // Vector 10: completion(null) -> key omitted, request still goes out and delivers.
+        val http = mockHttp()
+        val (sut, config, storagePrefix) = getSut(http)
+        config.pushIdentityProvider = { _, _, completion -> completion(null) }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        flush() // the null completion re-enters via a queued executor task
+
+        assertFalse(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("identity_token"))
+        flush()
+        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+    }
+
+    @Test
+    fun `handleReset resolves the old id token for the DELETE and the anon id token for the re-POST`() {
+        // Vector 11: each leg carries a token for the distinct id it sends; cached tokens are reused
+        // per (distinctId, appId), so only ids never minted before invoke the provider.
+        val http = mockHttp(total = 4, response = MockResponse().setBody(""))
+        val (sut, config, _) = getSut(http)
+        val invocations = mutableListOf<String>()
+        config.pushIdentityProvider = { id, _, completion ->
+            synchronized(invocations) { invocations.add(id) }
+            completion("tok-$id")
+        }
+
+        distinctId = "user-A"
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"tok-user-A\""))
+
+        distinctId = "user-B"
+        sut.resendIfDistinctIdChanged()
+        flush()
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"tok-user-B\""))
+
+        distinctId = "anon-2"
+        sut.handleReset("user-B")
+
+        val del = http.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("DELETE", del.method)
+        val delBody = del.body.unGzip()
+        assertTrue(delBody.contains("\"distinct_id\":\"user-B\""))
+        assertTrue(delBody.contains("\"identity_token\":\"tok-user-B\""))
+
+        val post = http.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("POST", post.method)
+        val postBody = post.body.unGzip()
+        assertTrue(postBody.contains("\"distinct_id\":\"anon-2\""))
+        assertTrue(postBody.contains("\"identity_token\":\"tok-anon-2\""))
+
+        flush()
+        // The DELETE leg reused user-B's cached token; only the three distinct ids minted, once each.
+        assertEquals(listOf("user-A", "user-B", "anon-2"), synchronized(invocations) { invocations.toList() })
+    }
+
+    @Test
+    fun `a 500 retry reuses the cached token without re-minting`() {
+        // Vector 12: 500 then 200 -> provider invoked once, both attempts carry the same token.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(500))
+        http.enqueue(MockResponse().setBody(""))
+
+        val (sut, config, _) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+        val minted = java.util.concurrent.atomic.AtomicInteger(0)
+        config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
+
+        sut.register("fcm-token", "firebase-project", "android")
+
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-1\""))
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-1\""))
+        assertEquals(2, http.requestCount)
+        assertEquals(1, minted.get())
+        http.shutdown()
+    }
+
+    @Test
+    fun `a 401 re-mints once and retries with the fresh token`() {
+        // Vector 13: 401 then 200 -> provider invoked a second time, retry carries the fresh token.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(401))
+        http.enqueue(MockResponse().setBody(""))
+
+        val (sut, config, storagePrefix) = getSut(http)
+        val minted = java.util.concurrent.atomic.AtomicInteger(0)
+        config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
+
+        sut.register("fcm-token", "firebase-project", "android")
+
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-1\""))
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-2\""))
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(2, minted.get())
+        flush()
+        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+        http.shutdown()
+    }
+
+    @Test
+    fun `a second 401 is terminal after the single refresh`() {
+        // Vector 13: 401 then 401 -> exactly two provider invocations and two requests, then halt.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(401))
+        http.enqueue(MockResponse().setResponseCode(401))
+        http.enqueue(MockResponse().setBody("")) // only consumed if the halt fails
+
+        val (sut, config, storagePrefix) = getSut(http)
+        val minted = java.util.concurrent.atomic.AtomicInteger(0)
+        config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
+
+        sut.register("fcm-token", "firebase-project", "android")
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(2, http.requestCount)
+        assertEquals(2, minted.get())
+
+        // Halted for the session: record kept without a delivered marker, resume paths are no-ops.
+        val file = pendingFile(storagePrefix!!)
+        assertTrue(file.exists())
+        assertNull(readRecord(config, file)?.deliveredForDistinctId)
+        sut.retryPending()
+        flush()
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(2, http.requestCount)
+        http.shutdown()
+    }
+
+    @Test
+    fun `a 401 without a provider halts immediately and logs the provider hint`() {
+        // Vector 14: one request, no retry, record kept, log names pushIdentityProvider.
+        val http = mockHttp(total = 5, response = MockResponse().setResponseCode(401))
+        val (sut, config, storagePrefix) = getSut(http)
+        val messages = mutableListOf<String>()
+        config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    synchronized(messages) { messages.add(message) }
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+        val file = pendingFile(storagePrefix!!)
+        assertTrue(file.exists())
+        assertNull(readRecord(config, file)?.deliveredForDistinctId)
+        assertTrue(synchronized(messages) { messages.any { it.contains("pushIdentityProvider") } })
+    }
+
+    @Test
+    fun `a throwing provider sends token-less`() {
+        val http = mockHttp()
+        val (sut, config, _) = getSut(http)
+        config.pushIdentityProvider = { _, _, _ -> throw RuntimeException("mint failed") }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        val request = http.takeRequest(2, TimeUnit.SECONDS)!!
+        assertFalse(request.body.unGzip().contains("identity_token"))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `a provider completing from another thread still attaches the token`() {
+        val http = mockHttp()
+        val (sut, config, _) = getSut(http)
+        config.pushIdentityProvider = { _, _, completion ->
+            Thread { completion("jwt-thread") }.start()
+        }
+
+        sut.register("fcm-token", "firebase-project", "android")
+
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-thread\""))
+    }
+
+    @Test
+    fun `only the first provider completion is honored`() {
+        val http = mockHttp(total = 2)
+        val (sut, config, _) = getSut(http)
+        config.pushIdentityProvider = { _, _, completion ->
+            completion("first")
+            completion("second")
+        }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        flush()
+
+        assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"first\""))
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(1, http.requestCount)
     }
