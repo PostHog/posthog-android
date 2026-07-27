@@ -676,7 +676,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `explicit errorTracking false from remote config evicts the cached config`() {
+    fun `explicit errorTracking false from remote config caches the disabled stance`() {
         // Stale cache from when the project had autocapture enabled.
         preferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))
 
@@ -690,8 +690,10 @@ internal class PostHogRemoteConfigTest {
         executor.shutdownAndAwaitTermination()
 
         assertFalse(sut.isAutocaptureExceptionsEnabled())
-        // Must evict the cache, else a later reset()+reload could re-arm a disabled project.
-        assertNull(preferences.getValue(ERROR_TRACKING))
+        // Persist the disabled stance (not evict), so the next launch knows the project
+        // disabled autocapture before /config lands and skips the default first-launch install.
+        // Overwrites the stale enabled cache, so a later reset()+reload can't re-arm it.
+        assertEquals(mapOf("autocaptureExceptions" to false), preferences.getValue(ERROR_TRACKING))
 
         sut.clear()
         http.shutdown()

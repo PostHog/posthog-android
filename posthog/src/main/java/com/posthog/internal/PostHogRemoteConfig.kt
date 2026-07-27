@@ -524,19 +524,19 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun clearErrorTracking() {
-        autoCaptureExceptions = false
-        config.cachePreferences?.remove(ERROR_TRACKING)
-    }
-
     private fun processErrorTrackingConfig(
         errorTracking: Any?,
         persist: Boolean = true,
     ) {
         when (errorTracking) {
             is Boolean -> {
-                // if errorTracking is a Boolean, it's always false (disabled)
-                clearErrorTracking()
+                // errorTracking as a Boolean is always false (disabled). Persist the disabled
+                // stance instead of evicting the key, so the next launch skips the default
+                // first-launch install before its live /config lands (mirrors iOS).
+                autoCaptureExceptions = false
+                if (persist) {
+                    config.cachePreferences?.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to false))
+                }
             }
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
