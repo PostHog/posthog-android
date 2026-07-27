@@ -333,6 +333,34 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `a mint completing after optOut is not cached and opt-in re-mints`() {
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        val (sut, config, _) = getSut(http)
+        var pending: ((String?) -> Unit)? = null
+        val minted = java.util.concurrent.atomic.AtomicInteger(0)
+        config.pushIdentityProvider = { _, _, completion ->
+            minted.incrementAndGet()
+            pending = completion
+        }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        config.optOut = true
+        sut.onOptOut()
+        pending!!.invoke("jwt-stale")
+        flush()
+
+        config.optOut = false
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        pending!!.invoke("jwt-fresh")
+        flush()
+
+        assertEquals(2, minted.get())
+        assertTrue(http.takeRequest().body.unGzip().contains("\"identity_token\":\"jwt-fresh\""))
+    }
+
+    @Test
     fun `unregister DELETE gets no 401 fresh-token refresh`() {
         // Best-effort leg stays single-shot even with a provider: one mint, one DELETE, no retry.
         val http = mockHttp(total = 2, response = MockResponse().setResponseCode(401))

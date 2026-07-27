@@ -450,7 +450,12 @@ internal class PostHogPushSubscriptionManager(
                 if (completed.compareAndSet(false, true)) {
                     executor.executeSafely {
                         if (token != null) {
-                            cachedIdentityToken = CachedIdentityToken(token, distinctId, appId)
+                            // A mint can complete after opt-out cleared the cache; caching it would
+                            // resurrect a stale credential on a later opt-in. The 401 refresh covers
+                            // the residual race window.
+                            if (!closed && !config.optOut) {
+                                cachedIdentityToken = CachedIdentityToken(token, distinctId, appId)
+                            }
                             config.logger.log("Push subscription request sent with freshly minted identity token.")
                         } else {
                             config.logger.log("Push subscription request sent without identity token (provider completed null).")
