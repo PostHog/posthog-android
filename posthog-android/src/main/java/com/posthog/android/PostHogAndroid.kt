@@ -92,19 +92,13 @@ public class PostHogAndroid private constructor() {
                 config.errorTrackingConfig.inAppIncludes.add(packageName)
             }
 
-            val needsAndroidContext = config.context == null
-            val androidNetworkStatus =
-                (config.networkStatus as? PostHogAndroidNetworkStatus)
-                    ?: if (needsAndroidContext || config.networkStatus == null) {
-                        PostHogAndroidNetworkStatus(context)
-                    } else {
-                        null
-                    }
-            if (config.networkStatus == null) {
-                config.networkStatus = androidNetworkStatus
-            }
-            if (needsAndroidContext) {
-                val contextNetworkStatus = requireNotNull(androidNetworkStatus)
+            if (config.context == null) {
+                val contextNetworkStatus =
+                    (config.networkStatus as? PostHogAndroidNetworkStatus)
+                        ?: PostHogAndroidNetworkStatus(context)
+                if (config.networkStatus == null) {
+                    config.networkStatus = contextNetworkStatus
+                }
                 config.context =
                     PostHogAndroidContext(
                         context,
@@ -114,6 +108,8 @@ public class PostHogAndroid private constructor() {
                 if (config.networkStatus !== contextNetworkStatus) {
                     config.addIntegration(PostHogAndroidNetworkStatusIntegration(contextNetworkStatus))
                 }
+            } else if (config.networkStatus == null) {
+                config.networkStatus = PostHogAndroidNetworkStatus(context)
             }
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)

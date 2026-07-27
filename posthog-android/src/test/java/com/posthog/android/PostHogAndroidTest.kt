@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -125,15 +126,17 @@ internal class PostHogAndroidTest {
     @Test
     fun `adds connectivity monitor when custom network status is configured`() {
         val config = PostHogAndroidConfig(API_KEY)
-        config.networkStatus =
+        val customNetworkStatus =
             object : PostHogNetworkStatus {
                 override fun isConnected(): Boolean = true
             }
+        config.networkStatus = customNetworkStatus
 
         mockContextAppStart(context, tmpDir)
 
         PostHogAndroid.setup(context, config)
 
+        assertSame(customNetworkStatus, config.networkStatus)
         assertTrue(config.context is PostHogAndroidContext)
         assertNotNull(config.integrations.find { it is PostHogAndroidNetworkStatusIntegration })
     }
