@@ -96,6 +96,8 @@ internal class PostHogAndroidContext(
         }
 
         context.telephonyManager()?.let {
+            // TelephonyCallback requires location permission to expose the operator name. Keep this
+            // property read, which primarily uses telephony system properties and cached mapping.
             val networkOperatorName = it.networkOperatorName
             if (!networkOperatorName.isNullOrEmpty()) {
                 dynamicContext["\$network_carrier"] = networkOperatorName

@@ -133,21 +133,20 @@ internal fun Context.telephonyManager(): TelephonyManager? {
     return getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
 }
 
-@Suppress("DEPRECATION")
 internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String? {
     return try {
-        val activityInfo = packageManager.getActivityInfo(componentName, GET_META_DATA)
-        val activityLabel = activityInfo.loadLabel(packageManager).toString()
+        val activityLabel = title?.toString().orEmpty()
+        val activityName = componentName.className
         val applicationLabel = applicationInfo.loadLabel(packageManager).toString()
 
         if (activityLabel.isNotEmpty() && activityLabel != applicationLabel) {
-            if (activityLabel == activityInfo.name) {
+            if (activityLabel == activityName) {
                 activityLabel.substringAfterLast('.')
             } else {
                 activityLabel
             }
         } else {
-            activityInfo.name.substringAfterLast('.')
+            localClassName.substringAfterLast('.')
         }
     } catch (e: Throwable) {
         config.logger.log("Error getting the Activity's label or name: $e.")

@@ -8,7 +8,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
@@ -53,30 +52,19 @@ public fun mockScreenTitle(
 ): Activity {
     val activity = mock<Activity>()
     val pm = mock<PackageManager>()
-    val ac =
-        mock<ActivityInfo>().apply {
-            name = activityName
-        }
     val appInfo = mock<ApplicationInfo>()
 
-    whenever(ac.loadLabel(any())).thenReturn(title)
+    if (throws) {
+        whenever(activity.title).thenThrow(IllegalStateException("title unavailable"))
+    } else {
+        whenever(activity.title).thenReturn(title)
+    }
     whenever(appInfo.loadLabel(any())).thenReturn(applicationLabel)
 
-    if (throws) {
-        whenever(
-            pm.getActivityInfo(
-                any(),
-                any<Int>(),
-            ),
-        ).thenThrow(PackageManager.NameNotFoundException())
-    } else {
-        whenever(pm.getActivityInfo(any(), any<Int>())).thenReturn(ac)
-    }
-
-    whenever(pm.getApplicationInfo(any(), any<Int>())).thenReturn(appInfo)
-
     val component = mock<ComponentName>()
+    whenever(component.className).thenReturn(activityName)
     whenever(activity.componentName).thenReturn(component)
+    whenever(activity.localClassName).thenReturn(activityName)
     whenever(activity.packageManager).thenReturn(pm)
     whenever(activity.applicationInfo).thenReturn(appInfo) // Ensure applicationInfo is not null
 
