@@ -5,11 +5,9 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.android.mockPermission
 import org.junit.runner.RunWith
-import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
@@ -105,13 +103,14 @@ internal class PostHogAndroidNetworkStatusTest {
 
     @Test
     @Config(sdk = [23])
-    fun `uses network request callback on API 23`() {
+    fun `does not register callback on API 23`() {
         val sut = getSut()
         val connectivityManager = mockPermission(context)
 
         sut.register {}
 
-        verify(connectivityManager).registerNetworkCallback(any<NetworkRequest>(), any<ConnectivityManager.NetworkCallback>())
+        verifyNoInteractions(connectivityManager)
+        assertTrue(sut.getNetworkProperties().isEmpty())
     }
 
     @Test

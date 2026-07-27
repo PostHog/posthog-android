@@ -8,7 +8,6 @@ import android.net.NetworkCapabilities
 import android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
 import android.net.NetworkCapabilities.TRANSPORT_CELLULAR
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
-import android.net.NetworkRequest
 import android.os.Build
 import com.posthog.internal.PostHogNetworkStatus
 
@@ -49,6 +48,12 @@ internal class PostHogAndroidNetworkStatus(private val context: Context) : PostH
     }
 
     internal fun start() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            // API 23 can observe matching networks, but not the default network. Leave the
+            // snapshot empty rather than report a non-active transport or query synchronously.
+            return
+        }
+
         if (!context.hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
             return
         }
@@ -62,15 +67,7 @@ internal class PostHogAndroidNetworkStatus(private val context: Context) : PostH
 
             val callback = createNetworkCallback()
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    manager.registerDefaultNetworkCallback(callback)
-                } else {
-                    val request =
-                        NetworkRequest.Builder()
-                            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                            .build()
-                    manager.registerNetworkCallback(request, callback)
-                }
+                manager.registerDefaultNetworkCallback(callback)
                 connectivityManager = manager
                 networkCallback = callback
             } catch (ignored: Throwable) {
