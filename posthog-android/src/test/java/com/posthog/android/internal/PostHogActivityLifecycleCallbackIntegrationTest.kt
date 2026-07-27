@@ -12,6 +12,7 @@ import com.posthog.android.mockScreenTitle
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -183,7 +184,32 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     }
 
     @Test
-    fun `onActivityStarted returns activityInfo name if labels are the same`() {
+    fun `onActivityStarted does not query activity info`() {
+        val sut = getSut()
+        val activity = mockScreenTitle(false, "Title", "com.example.MyActivity", "AppLabel")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityStarted(activity)
+        sut.uninstall()
+
+        verify(activity.packageManager, never()).getActivityInfo(any(), any<Int>())
+        assertEquals("Title", fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityStarted returns activity name when the label is the class name`() {
+        val fake =
+            executeCaptureScreenViewsTest(
+                title = "com.example.MyActivity",
+                activityName = "com.example.MyActivity",
+            )
+
+        assertEquals("MyActivity", fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityStarted returns activity name if labels are the same`() {
         val fake =
             executeCaptureScreenViewsTest(
                 captureScreenViews = true,

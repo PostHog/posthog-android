@@ -7,6 +7,9 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.ArrayDeque
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,6 +17,23 @@ import kotlin.test.assertEquals
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34]) // PostHogAndroidDateProvider requires API >= TIRAMISU.
 internal class PostHogAndroidDateProviderTest {
+    private val directExecutor = Executor { it.run() }
+
+    private class QueuedExecutor : Executor {
+        private val tasks = ArrayDeque<Runnable>()
+
+        val pendingCount: Int
+            get() = tasks.size
+
+        override fun execute(command: Runnable) {
+            tasks.addLast(command)
+        }
+
+        fun runNext() {
+            tasks.removeFirst().run()
+        }
+    }
+
     private class CountingClock(private val now: Long) : Clock() {
         val millisCalls = AtomicInteger(0)
 
@@ -30,9 +50,65 @@ internal class PostHogAndroidDateProviderTest {
     }
 
     @Test
+    fun `queries the network clock only through the refresh executor`() {
+        val clock = CountingClock(1_000_000L)
+        val executor = QueuedExecutor()
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { 100L },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = executor,
+            )
+
+        repeat(50) { sut.currentTimeMillis() }
+
+        assertEquals(0, clock.millisCalls.get())
+        assertEquals(1, executor.pendingCount)
+
+        executor.runNext()
+
+        assertEquals(1_000_000L, sut.currentTimeMillis())
+        assertEquals(1, clock.millisCalls.get())
+    }
+
+    @Test
+    fun `concurrent callers schedule only one network refresh`() {
+        val clock = CountingClock(1_000_000L)
+        val executor = QueuedExecutor()
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { 100L },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = executor,
+            )
+        val start = CountDownLatch(1)
+        val callers =
+            List(20) {
+                Thread {
+                    start.await()
+                    sut.currentTimeMillis()
+                }.apply { start() }
+            }
+
+        start.countDown()
+        callers.forEach(Thread::join)
+
+        assertEquals(0, clock.millisCalls.get())
+        assertEquals(1, executor.pendingCount)
+    }
+
+    @Test
     fun `does not query the network clock on every call`() {
         val clock = CountingClock(1_000_000L)
-        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { 100L }, refreshIntervalMs = 60_000L)
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { 100L },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = directExecutor,
+            )
 
         repeat(50) { sut.currentTimeMillis() }
 
@@ -43,7 +119,13 @@ internal class PostHogAndroidDateProviderTest {
     fun `derives time from the elapsed delta between refreshes`() {
         val clock = CountingClock(1_000_000L)
         var elapsed = 100L
-        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { elapsed },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = directExecutor,
+            )
 
         assertEquals(1_000_000L, sut.currentTimeMillis())
         elapsed = 5_100L
@@ -69,7 +151,13 @@ internal class PostHogAndroidDateProviderTest {
     @Test
     fun `does not retry the network clock on every call when sampling fails`() {
         val clock = ThrowingClock()
-        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { 100L }, refreshIntervalMs = 60_000L)
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { 100L },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = directExecutor,
+            )
 
         repeat(50) { sut.currentTimeMillis() }
 
@@ -80,7 +168,13 @@ internal class PostHogAndroidDateProviderTest {
     fun `refreshes the anchor after the interval elapses`() {
         val clock = CountingClock(1_000_000L)
         var elapsed = 100L
-        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { elapsed },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = directExecutor,
+            )
 
         sut.currentTimeMillis()
         elapsed = 100L + 60_000L
@@ -106,7 +200,13 @@ internal class PostHogAndroidDateProviderTest {
 
                 override fun withZone(zone: ZoneId?): Clock = this
             }
-        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { elapsed },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = directExecutor,
+            )
 
         sut.currentTimeMillis()
         elapsed += 1_000L
@@ -118,7 +218,13 @@ internal class PostHogAndroidDateProviderTest {
     fun `retries a failed network sample after the interval elapses`() {
         val clock = ThrowingClock()
         var elapsed = 100L
-        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { elapsed },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = directExecutor,
+            )
 
         sut.currentTimeMillis()
         elapsed += 60_000L
@@ -148,7 +254,13 @@ internal class PostHogAndroidDateProviderTest {
     fun `a failed refresh extends the existing anchor instead of falling back to system time`() {
         val clock = SucceedOnceClock(1_000_000L)
         var elapsed = 100L
-        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { elapsed }, refreshIntervalMs = 60_000L)
+        val sut =
+            PostHogAndroidDateProvider(
+                networkClock = clock,
+                elapsedRealtimeMs = { elapsed },
+                refreshIntervalMs = 60_000L,
+                refreshExecutor = directExecutor,
+            )
 
         assertEquals(1_000_000L, sut.currentTimeMillis())
         elapsed += 65_000L

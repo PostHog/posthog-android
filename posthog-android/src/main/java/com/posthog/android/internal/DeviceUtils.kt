@@ -1,6 +1,5 @@
 package com.posthog.android.internal
 
-import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
@@ -70,11 +69,9 @@ internal fun getDeviceType(context: Context): String? {
         return "TV"
     }
 
-    val uiManager = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager?
-    uiManager?.let {
-        if (it.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
-            return "TV"
-        }
+    val uiModeType = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+    if (uiModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+        return "TV"
     }
 
     val deviceTypeFromResourceConfiguration = getDeviceTypeFromResourceConfiguration(context)
