@@ -75,9 +75,7 @@ internal class PostHogAndroidNetworkStatus(
         val currentNetworkGeneration = synchronized(lock) { networkGeneration }
         val snapshot = querySnapshot(manager) ?: return true
         synchronized(lock) {
-            if (currentNetworkGeneration == networkGeneration &&
-                (usesPollingFallback || activeNetwork == null || snapshot.network == activeNetwork)
-            ) {
+            if (canApplySnapshotLocked(snapshot, currentNetworkGeneration)) {
                 applySnapshotLocked(snapshot)
                 lastRefreshElapsedMs = elapsedRealtimeMs()
             }
@@ -202,11 +200,7 @@ internal class PostHogAndroidNetworkStatus(
                 val snapshot = querySnapshot(refresh.manager)
                 synchronized(lock) {
                     if (refresh.generation == generation) {
-                        val canApply =
-                            refresh.networkGeneration == networkGeneration &&
-                                snapshot != null &&
-                                (usesPollingFallback || activeNetwork == null || snapshot.network == activeNetwork)
-                        if (canApply) {
+                        if (snapshot != null && canApplySnapshotLocked(snapshot, refresh.networkGeneration)) {
                             applySnapshotLocked(snapshot)
                         }
                         lastRefreshElapsedMs = elapsedRealtimeMs()
@@ -241,6 +235,14 @@ internal class PostHogAndroidNetworkStatus(
         } catch (ignored: Throwable) {
             null
         }
+    }
+
+    private fun canApplySnapshotLocked(
+        snapshot: Snapshot,
+        expectedNetworkGeneration: Int,
+    ): Boolean {
+        return expectedNetworkGeneration == networkGeneration &&
+            (usesPollingFallback || activeNetwork == null || snapshot.network == activeNetwork)
     }
 
     private fun applySnapshotLocked(snapshot: Snapshot) {
