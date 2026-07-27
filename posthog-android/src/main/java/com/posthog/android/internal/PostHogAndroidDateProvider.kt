@@ -4,21 +4,18 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import com.posthog.internal.PostHogDateProvider
-import com.posthog.internal.PostHogThreadFactory
 import java.time.Clock
 import java.util.Date
-import java.util.concurrent.Executor
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Provides the current time, corrected to network time when available.
  *
- * [Clock.millis] on the clock returned by [SystemClock.currentNetworkTimeClock] performs a Binder
- * IPC to a system service on every call, so querying it on each timestamp (e.g. on every touch
- * event) blocks the calling thread and can ANR under load. Instead the network time is sampled on
- * [refreshExecutor] at most once per [refreshIntervalMs], and subsequent timestamps are derived
- * from the monotonic [android.os.SystemClock.elapsedRealtime] delta since that anchor.
+ * [Clock.millis] on the clock returned by [SystemClock.currentNetworkTimeClock] reads an OS-cached
+ * network-time sample; it does not make an NTP or other network request. Retrieving that cached
+ * sample uses Binder on Android 13-15, while Android 16 can use shared memory with a Binder fallback.
+ * We intentionally accept at most one synchronous IPC per [refreshIntervalMs] to keep this cache
+ * simple. Subsequent timestamps are derived from the monotonic
+ * [android.os.SystemClock.elapsedRealtime] delta since that anchor.
  *
  * Once a sample has succeeded, later sampling failures extend the existing anchor rather than
  * falling back to the system wall clock: the platform's network clock derives time the same way,
@@ -30,7 +27,6 @@ internal class PostHogAndroidDateProvider(
         runCatching { SystemClock.currentNetworkTimeClock() }.getOrNull(),
     private val elapsedRealtimeMs: () -> Long = SystemClock::elapsedRealtime,
     private val refreshIntervalMs: Long = REFRESH_INTERVAL_MS,
-    private val refreshExecutor: Executor = NETWORK_TIME_EXECUTOR,
 ) : PostHogDateProvider {
     // A network-time sample and the elapsedRealtime at which it was taken, published together as a
     // single immutable value so readers never observe a mixed (torn) anchor.
@@ -44,8 +40,6 @@ internal class PostHogAndroidDateProvider(
     // re-run the Binder IPC on every call.
     @Volatile
     private var lastAttemptElapsedMs: Long? = null
-
-    private val refreshInFlight = AtomicBoolean(false)
 
     override fun currentDate(): Date {
         return Date(currentTimeMillis())
@@ -63,40 +57,17 @@ internal class PostHogAndroidDateProvider(
         val lastAttempt = lastAttemptElapsedMs
         val mayAttempt = lastAttempt == null || elapsed - lastAttempt >= refreshIntervalMs
         if (anchorStale && mayAttempt) {
-            refreshAnchor(clock)
-        }
-
-        val latest = anchor
-        return if (latest != null) {
-            val latestElapsed = if (latest === current) elapsed else elapsedRealtimeMs()
-            latest.networkMs + (latestElapsed - latest.elapsedMs)
-        } else {
-            System.currentTimeMillis()
-        }
-    }
-
-    private fun refreshAnchor(clock: Clock) {
-        if (!refreshInFlight.compareAndSet(false, true)) {
-            return
-        }
-
-        try {
-            refreshExecutor.execute {
-                try {
-                    lastAttemptElapsedMs = elapsedRealtimeMs()
-                    val networkNow = runCatching { clock.millis() }.getOrNull()
-                    if (networkNow != null) {
-                        // Re-read the monotonic clock: the sample corresponds to the moment millis()
-                        // returned, and the IPC itself may have blocked long enough to skew the anchor.
-                        anchor = Anchor(networkNow, elapsedRealtimeMs())
-                    }
-                } finally {
-                    refreshInFlight.set(false)
-                }
+            lastAttemptElapsedMs = elapsed
+            val networkNow = runCatching { clock.millis() }.getOrNull()
+            if (networkNow != null) {
+                // re-read the monotonic clock: the sample corresponds to the moment millis()
+                // returned, and the IPC itself may have blocked long enough to skew the anchor
+                anchor = Anchor(networkNow, elapsedRealtimeMs())
+                return networkNow
             }
-        } catch (_: Throwable) {
-            refreshInFlight.set(false)
         }
+        val latest = anchor
+        return if (latest != null) latest.networkMs + (elapsed - latest.elapsedMs) else System.currentTimeMillis()
     }
 
     override fun nanoTime(): Long {
@@ -105,7 +76,5 @@ internal class PostHogAndroidDateProvider(
 
     private companion object {
         private const val REFRESH_INTERVAL_MS = 60_000L
-        private val NETWORK_TIME_EXECUTOR =
-            Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogNetworkTimeThread"))
     }
 }
