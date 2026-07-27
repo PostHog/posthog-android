@@ -7,10 +7,12 @@ import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
+import com.posthog.android.internal.PostHogAndroidNetworkStatusIntegration
 import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogNetworkStatus
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -118,6 +120,22 @@ internal class PostHogAndroidTest {
         PostHogAndroid.setup(context, config)
 
         assertTrue(config.networkStatus is PostHogAndroidNetworkStatus)
+    }
+
+    @Test
+    fun `adds connectivity monitor when custom network status is configured`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        config.networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = true
+            }
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertTrue(config.context is PostHogAndroidContext)
+        assertNotNull(config.integrations.find { it is PostHogAndroidNetworkStatusIntegration })
     }
 
     @Test

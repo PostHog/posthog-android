@@ -15,7 +15,6 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.ConnectivityManager
-import android.net.NetworkInfo
 import android.net.Uri
 import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
@@ -140,45 +139,10 @@ public fun mockPermission(
     return cm
 }
 
-public fun mockNetworkInfo(
-    connectivityManager: ConnectivityManager,
-    hasNetwork: Boolean = true,
-    isConnected: Boolean = true,
-) {
-    if (hasNetwork) {
-        val ni = mock<NetworkInfo>()
-        whenever(connectivityManager.activeNetworkInfo).thenReturn(ni)
-        whenever(ni.isConnected).thenReturn(isConnected)
-    }
-}
-
 public fun Context.mockTelephone() {
     val tm = mock<TelephonyManager>()
     whenever(getSystemService(any())).thenReturn(tm)
     whenever(tm.networkOperatorName).thenReturn("name")
-}
-
-public fun mockGetNetworkInfo(
-    connectivityManager: ConnectivityManager,
-    networkType: Int,
-    isConnected: Boolean = true,
-) {
-    val network = mock<android.net.Network>()
-    whenever(connectivityManager.activeNetwork).thenReturn(if (isConnected) network else null)
-
-    if (isConnected) {
-        val capabilities = mock<android.net.NetworkCapabilities>()
-        whenever(connectivityManager.getNetworkCapabilities(network)).thenReturn(capabilities)
-
-        val transport =
-            when (networkType) {
-                ConnectivityManager.TYPE_WIFI -> android.net.NetworkCapabilities.TRANSPORT_WIFI
-                ConnectivityManager.TYPE_BLUETOOTH -> android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
-                ConnectivityManager.TYPE_MOBILE -> android.net.NetworkCapabilities.TRANSPORT_CELLULAR
-                else -> -1
-            }
-        whenever(capabilities.hasTransport(transport)).thenReturn(true)
-    }
 }
 
 public fun createPostHogFake(): PostHogFake {
