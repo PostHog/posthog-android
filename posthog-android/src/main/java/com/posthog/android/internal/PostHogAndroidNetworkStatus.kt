@@ -10,40 +10,22 @@ import android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
 import android.net.NetworkCapabilities.TRANSPORT_CELLULAR
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.os.Build
-import android.os.SystemClock
 import com.posthog.internal.PostHogNetworkStatus
-import java.util.concurrent.Executor
-import kotlin.concurrent.thread
 
 /**
  * Checks if there's an active network enabled and observes network availability changes.
  *
  * Network state is maintained from [ConnectivityManager.NetworkCallback] so event capture only
  * reads an in-memory snapshot. API 23 and callback registration failures refresh that snapshot
- * asynchronously with synchronous platform queries.
+ * when [isConnected] runs on an SDK worker.
  *
  * @property context the App Context
  */
-internal class PostHogAndroidNetworkStatus(
-    private val context: Context,
-    private val backgroundExecutor: Executor =
-        Executor { command ->
-            thread(start = true, isDaemon = true, name = "PostHogNetworkStatusThread") {
-                command.run()
-            }
-        },
-    private val elapsedRealtimeMs: () -> Long = SystemClock::elapsedRealtime,
-) : PostHogNetworkStatus {
+internal class PostHogAndroidNetworkStatus(private val context: Context) : PostHogNetworkStatus {
     private data class Snapshot(
         val network: Network?,
         val connected: Boolean,
         val properties: Map<String, Any>,
-    )
-
-    private data class Refresh(
-        val manager: ConnectivityManager,
-        val generation: Int,
-        val networkGeneration: Int,
     )
 
     private val lock = Any()
@@ -53,11 +35,8 @@ internal class PostHogAndroidNetworkStatus(
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var activeNetwork: Network? = null
     private var started = false
-    private var usesPollingFallback = false
-    private var refreshInFlight = false
-    private var lastRefreshElapsedMs: Long? = null
+    private var usesSynchronousFallback = true
     private var generation = 0
-    private var networkGeneration = 0
 
     @Volatile
     private var connected: Boolean? = null
@@ -66,18 +45,21 @@ internal class PostHogAndroidNetworkStatus(
     private var networkProperties: Map<String, Any> = emptyMap()
 
     override fun isConnected(): Boolean {
-        connected?.let { return it }
-
         if (!context.hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
             return true
         }
-        val manager = context.connectivityManager() ?: return true
-        val currentNetworkGeneration = synchronized(lock) { networkGeneration }
+
+        val queryGeneration = synchronized(lock) { generation }
+        val shouldQuery = synchronized(lock) { !started || usesSynchronousFallback }
+        if (!shouldQuery) {
+            return connected ?: true
+        }
+
+        val manager = synchronized(lock) { connectivityManager } ?: context.connectivityManager() ?: return true
         val snapshot = querySnapshot(manager) ?: return true
         synchronized(lock) {
-            if (canApplySnapshotLocked(snapshot, currentNetworkGeneration)) {
+            if (queryGeneration == generation && (!started || usesSynchronousFallback)) {
                 applySnapshotLocked(snapshot)
-                lastRefreshElapsedMs = elapsedRealtimeMs()
             }
         }
         return snapshot.connected
@@ -109,49 +91,39 @@ internal class PostHogAndroidNetworkStatus(
                 try {
                     manager.registerDefaultNetworkCallback(callback)
                     networkCallback = callback
+                    usesSynchronousFallback = false
                 } catch (ignored: Throwable) {
-                    // SecurityException, callback limit, or another platform error.
-                    usesPollingFallback = true
+                    // SecurityException, callback limit, or another platform error. Connectivity
+                    // will be refreshed by isConnected() on an SDK worker instead.
+                    usesSynchronousFallback = true
                 }
             } else {
-                // API 23 cannot observe the default network, so refresh the snapshot off-thread.
-                usesPollingFallback = true
+                // API 23 cannot observe the default network.
+                usesSynchronousFallback = true
             }
         }
-
-        scheduleSnapshotRefresh(force = true)
     }
 
     internal fun getNetworkProperties(): Map<String, Any> {
-        val shouldRefresh =
-            synchronized(lock) {
-                usesPollingFallback || connected == null || (connected == true && networkProperties.isEmpty())
-            }
-        if (shouldRefresh) {
-            scheduleSnapshotRefresh()
-        }
         return networkProperties
     }
 
     private fun createNetworkCallback(): ConnectivityManager.NetworkCallback {
         return object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                val (networkChanged, callbacks) =
+                val callbacks =
                     synchronized(lock) {
-                        val changed = activeNetwork != network
-                        activeNetwork = network
-                        connected = true
-                        if (changed) {
-                            networkGeneration++
-                            networkProperties = emptyMap()
-                            lastRefreshElapsedMs = null
+                        if (networkCallback !== this) {
+                            return
                         }
-                        changed to availableCallbacks.toList()
+                        if (activeNetwork != network) {
+                            activeNetwork = network
+                            networkProperties = emptyMap()
+                        }
+                        connected = true
+                        availableCallbacks.toList()
                     }
                 callbacks.forEach { it() }
-                if (networkChanged) {
-                    scheduleSnapshotRefresh(force = true)
-                }
             }
 
             override fun onCapabilitiesChanged(
@@ -159,6 +131,9 @@ internal class PostHogAndroidNetworkStatus(
                 capabilities: NetworkCapabilities,
             ) {
                 synchronized(lock) {
+                    if (networkCallback !== this) {
+                        return
+                    }
                     if (network == activeNetwork) {
                         connected = true
                         networkProperties = capabilities.toNetworkProperties()
@@ -168,51 +143,14 @@ internal class PostHogAndroidNetworkStatus(
 
             override fun onLost(network: Network) {
                 synchronized(lock) {
+                    if (networkCallback !== this) {
+                        return
+                    }
                     if (network == activeNetwork) {
-                        networkGeneration++
                         activeNetwork = null
                         connected = false
                         networkProperties = emptyMap()
                     }
-                }
-            }
-        }
-    }
-
-    private fun scheduleSnapshotRefresh(force: Boolean = false) {
-        val refresh: Refresh =
-            synchronized(lock) {
-                val manager = connectivityManager ?: return
-                if (!started || refreshInFlight) {
-                    return
-                }
-                val now = elapsedRealtimeMs()
-                val lastRefresh = lastRefreshElapsedMs
-                if (!force && lastRefresh != null && now - lastRefresh < REFRESH_INTERVAL_MS) {
-                    return
-                }
-                refreshInFlight = true
-                Refresh(manager, generation, networkGeneration)
-            }
-
-        try {
-            backgroundExecutor.execute {
-                val snapshot = querySnapshot(refresh.manager)
-                synchronized(lock) {
-                    if (refresh.generation == generation) {
-                        if (snapshot != null && canApplySnapshotLocked(snapshot, refresh.networkGeneration)) {
-                            applySnapshotLocked(snapshot)
-                        }
-                        lastRefreshElapsedMs = elapsedRealtimeMs()
-                        refreshInFlight = false
-                    }
-                }
-            }
-        } catch (ignored: Throwable) {
-            synchronized(lock) {
-                if (refresh.generation == generation) {
-                    lastRefreshElapsedMs = elapsedRealtimeMs()
-                    refreshInFlight = false
                 }
             }
         }
@@ -237,14 +175,6 @@ internal class PostHogAndroidNetworkStatus(
         }
     }
 
-    private fun canApplySnapshotLocked(
-        snapshot: Snapshot,
-        expectedNetworkGeneration: Int,
-    ): Boolean {
-        return expectedNetworkGeneration == networkGeneration &&
-            (usesPollingFallback || activeNetwork == null || snapshot.network == activeNetwork)
-    }
-
     private fun applySnapshotLocked(snapshot: Snapshot) {
         activeNetwork = snapshot.network
         connected = snapshot.connected
@@ -265,15 +195,12 @@ internal class PostHogAndroidNetworkStatus(
                 val currentManager = connectivityManager
                 val currentCallback = networkCallback
                 generation++
-                networkGeneration++
                 connectivityManager = null
                 networkCallback = null
                 activeNetwork = null
                 availableCallbacks.clear()
                 started = false
-                usesPollingFallback = false
-                refreshInFlight = false
-                lastRefreshElapsedMs = null
+                usesSynchronousFallback = true
                 connected = null
                 networkProperties = emptyMap()
                 if (currentManager != null && currentCallback != null) {
@@ -288,9 +215,5 @@ internal class PostHogAndroidNetworkStatus(
         } catch (ignored: Throwable) {
             // IllegalArgumentException if the callback was not registered.
         }
-    }
-
-    private companion object {
-        private const val REFRESH_INTERVAL_MS = 60_000L
     }
 }

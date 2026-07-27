@@ -11,12 +11,12 @@ import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import org.robolectric.annotation.Config
-import java.util.concurrent.Executor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -25,14 +25,9 @@ import kotlin.test.assertTrue
 @RunWith(AndroidJUnit4::class)
 internal class PostHogAndroidNetworkStatusTest {
     private val context = mock<Context>()
-    private var elapsedRealtimeMs = 0L
 
-    private fun getSut(backgroundExecutor: Executor = Executor { it.run() }): PostHogAndroidNetworkStatus {
-        return PostHogAndroidNetworkStatus(
-            context,
-            backgroundExecutor = backgroundExecutor,
-            elapsedRealtimeMs = { elapsedRealtimeMs },
-        )
+    private fun getSut(): PostHogAndroidNetworkStatus {
+        return PostHogAndroidNetworkStatus(context)
     }
 
     private fun mockCapabilities(
@@ -75,17 +70,15 @@ internal class PostHogAndroidNetworkStatusTest {
 
     @Test
     @Config(sdk = [34])
-    fun `primes properties off thread before callback delivery`() {
+    fun `relies on callback without querying connectivity service`() {
         val sut = getSut()
         val connectivityManager = mockPermission(context)
-        val network = mock<Network>()
-        val capabilities = mockCapabilities(wifi = true)
-        whenever(connectivityManager.activeNetwork).thenReturn(network)
-        whenever(connectivityManager.getNetworkCapabilities(network)).thenReturn(capabilities)
 
         sut.register {}
 
-        assertEquals(true, sut.getNetworkProperties()["\$network_wifi"])
+        assertTrue(sut.isConnected())
+        assertTrue(sut.getNetworkProperties().isEmpty())
+        verify(connectivityManager, never()).activeNetwork
     }
 
     @Test
@@ -150,29 +143,6 @@ internal class PostHogAndroidNetworkStatusTest {
 
     @Test
     @Config(sdk = [34])
-    fun `stale background refresh does not restore a lost network`() {
-        val pendingTasks = mutableListOf<Runnable>()
-        val sut = getSut(Executor { pendingTasks.add(it) })
-        val connectivityManager = mockPermission(context)
-        val callbackCaptor = argumentCaptor<ConnectivityManager.NetworkCallback>()
-        val network = mock<Network>()
-        val capabilities = mockCapabilities(wifi = true)
-        whenever(connectivityManager.activeNetwork).thenReturn(network)
-        whenever(connectivityManager.getNetworkCapabilities(network)).thenReturn(capabilities)
-
-        sut.register {}
-        verify(connectivityManager).registerDefaultNetworkCallback(callbackCaptor.capture())
-        callbackCaptor.firstValue.onAvailable(network)
-        callbackCaptor.firstValue.onLost(network)
-
-        pendingTasks.single().run()
-
-        assertFalse(sut.isConnected())
-        assertTrue(sut.getNetworkProperties().isEmpty())
-    }
-
-    @Test
-    @Config(sdk = [34])
     fun `registers one system callback and notifies every listener`() {
         val sut = getSut()
         val connectivityManager = mockPermission(context)
@@ -193,7 +163,7 @@ internal class PostHogAndroidNetworkStatusTest {
 
     @Test
     @Config(sdk = [23])
-    fun `uses background snapshot fallback on API 23`() {
+    fun `refreshes snapshot from isConnected on API 23`() {
         val sut = getSut()
         val connectivityManager = mockPermission(context)
         val network = mock<Network>()
@@ -202,13 +172,16 @@ internal class PostHogAndroidNetworkStatusTest {
         whenever(connectivityManager.getNetworkCapabilities(network)).thenReturn(capabilities)
 
         sut.register {}
+        assertTrue(sut.getNetworkProperties().isEmpty())
+
+        assertTrue(sut.isConnected())
 
         assertEquals(true, sut.getNetworkProperties()["\$network_bluetooth"])
     }
 
     @Test
     @Config(sdk = [34])
-    fun `uses background snapshot fallback when callback registration fails`() {
+    fun `refreshes snapshot from isConnected when callback registration fails`() {
         val sut = getSut()
         val connectivityManager = mockPermission(context)
         val network = mock<Network>()
@@ -218,27 +191,16 @@ internal class PostHogAndroidNetworkStatusTest {
         whenever(connectivityManager.registerDefaultNetworkCallback(any())).thenThrow(IllegalStateException("limit"))
 
         sut.register {}
+        assertTrue(sut.getNetworkProperties().isEmpty())
+
+        assertTrue(sut.isConnected())
 
         assertEquals(true, sut.getNetworkProperties()["\$network_cellular"])
     }
 
     @Test
     @Config(sdk = [34])
-    fun `throttles failed background refreshes`() {
-        val sut = getSut()
-        val connectivityManager = mockPermission(context)
-        whenever(connectivityManager.activeNetwork).thenThrow(IllegalStateException("service unavailable"))
-
-        sut.register {}
-        sut.getNetworkProperties()
-        sut.getNetworkProperties()
-
-        verify(connectivityManager, times(1)).activeNetwork
-    }
-
-    @Test
-    @Config(sdk = [34])
-    fun `polling fallback refreshes stale properties`() {
+    fun `synchronous fallback refreshes changed properties`() {
         val sut = getSut()
         val connectivityManager = mockPermission(context)
         val wifiNetwork = mock<Network>()
@@ -249,13 +211,30 @@ internal class PostHogAndroidNetworkStatusTest {
         whenever(connectivityManager.activeNetwork).thenReturn(wifiNetwork)
         whenever(connectivityManager.getNetworkCapabilities(wifiNetwork)).thenReturn(wifiCapabilities)
         sut.register {}
+
+        assertTrue(sut.isConnected())
         assertEquals(true, sut.getNetworkProperties()["\$network_wifi"])
 
         whenever(connectivityManager.activeNetwork).thenReturn(cellularNetwork)
         whenever(connectivityManager.getNetworkCapabilities(cellularNetwork)).thenReturn(cellularCapabilities)
-        elapsedRealtimeMs = 60_000L
 
+        assertTrue(sut.isConnected())
         assertEquals(true, sut.getNetworkProperties()["\$network_cellular"])
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `synchronous fallback fails open and retries`() {
+        val sut = getSut()
+        val connectivityManager = mockPermission(context)
+        whenever(connectivityManager.registerDefaultNetworkCallback(any())).thenThrow(IllegalStateException("limit"))
+        whenever(connectivityManager.activeNetwork).thenThrow(IllegalStateException("service unavailable"))
+        sut.register {}
+
+        assertTrue(sut.isConnected())
+        assertTrue(sut.isConnected())
+
+        verify(connectivityManager, times(2)).activeNetwork
     }
 
     @Test
@@ -272,9 +251,10 @@ internal class PostHogAndroidNetworkStatusTest {
         callbackCaptor.firstValue.onCapabilitiesChanged(network, mockCapabilities(wifi = true))
 
         sut.unregister()
+        callbackCaptor.firstValue.onAvailable(network)
+        callbackCaptor.firstValue.onCapabilitiesChanged(network, mockCapabilities(wifi = true))
 
         verify(connectivityManager).unregisterNetworkCallback(callbackCaptor.firstValue)
-        assertFalse(sut.isConnected())
         assertTrue(sut.getNetworkProperties().isEmpty())
     }
 }
