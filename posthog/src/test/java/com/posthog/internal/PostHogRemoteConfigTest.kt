@@ -700,6 +700,25 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `a returning launch sees the cached disabled stance before its own config lands`() {
+        val disabled = File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(disabled))
+        val sut = getSut(host = http.url("/").toString())
+        config!!.errorTrackingConfig.autoCapture = true
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+        sut.clear()
+
+        // Fresh process over the same on-disk preferences.
+        val next = getSut(host = http.url("/").toString())
+        config!!.errorTrackingConfig.autoCapture = true
+        assertTrue(next.hasCachedErrorTrackingConfig())
+        assertFalse(next.isAutocaptureExceptionsEnabled())
+
+        http.shutdown()
+    }
+
+    @Test
     fun `explicit capturePerformance false from remote config evicts the cached config`() {
         // Stale cache from when the project had network timing enabled.
         preferences.setValue(CAPTURE_PERFORMANCE, mapOf("network_timing" to true))

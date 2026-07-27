@@ -74,7 +74,11 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         if (!integrationInstalled) {
             return
         }
-        adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
+        // Only restore if we are still the active handler. Something installed after us (or another
+        // PostHog instance that owns the process-wide flag) must not be replaced by our saved handler.
+        if (adapterExceptionHandler.getDefaultUncaughtExceptionHandler() === this) {
+            adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
+        }
         integrationInstalled = false
         config.logger.log("Exception autocapture is disabled.")
     }
