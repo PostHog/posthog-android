@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
+import androidx.annotation.RequiresApi
 import com.posthog.PostHogEventName
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
@@ -76,6 +77,7 @@ public class PostHogNativeCrashIntegration(
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
     private fun scanSafely(postHog: PostHogInterface) {
         try {
             scan(postHog)
@@ -84,6 +86,7 @@ public class PostHogNativeCrashIntegration(
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
     private fun scan(postHog: PostHogInterface) {
         val activityManager =
             context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
