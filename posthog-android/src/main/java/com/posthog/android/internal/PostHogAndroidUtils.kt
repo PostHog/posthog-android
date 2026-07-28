@@ -1,7 +1,5 @@
 package com.posthog.android.internal
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -111,18 +109,6 @@ internal fun Context.hasPermission(permission: String): Boolean {
         Process.myPid(),
         Process.myUid(),
     ) == PackageManager.PERMISSION_GRANTED
-}
-
-@Suppress("DEPRECATION")
-@SuppressLint("MissingPermission")
-internal fun Context.isConnected(): Boolean {
-    val connectivityManager = connectivityManager() ?: return true
-
-    if (!hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
-        return true
-    }
-    val networkInfo = connectivityManager.activeNetworkInfo ?: return false
-    return networkInfo.isConnected
 }
 
 internal fun Context.connectivityManager(): ConnectivityManager? {
