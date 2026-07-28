@@ -341,6 +341,10 @@ public open class PostHogConfig(
      * one. `completion` must be called exactly once: further calls are ignored, and never calling
      * it strands the current registration until the next app launch.
      *
+     * The hook itself runs on the SDK's push executor thread (only `completion` may be called from
+     * any thread), so return quickly: do the token minting asynchronously and call `completion` when
+     * it finishes. Blocking here stalls the push retry/offline-resume loop.
+     *
      * Defaults to null (requests are sent without an identity token).
      */
     public var pushIdentityProvider: ((distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit)? = null,

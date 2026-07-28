@@ -173,7 +173,12 @@ public class PostHogApi(
         val url = "$theHost/api/push_subscriptions/"
         val request =
             makeRequest(url, method = method) {
-                logRequest(pushSubscription, url)
+                // Redact the identity token: it is a short-lived bearer credential and logRequest
+                // writes the whole body to the debug logger (Logcat on Android). CWE-532.
+                logRequest(
+                    pushSubscription.copy(identityToken = identityToken?.let { "<redacted>" }),
+                    url,
+                )
 
                 config.serializer.serialize(pushSubscription, it.bufferedWriter())
             }

@@ -70,6 +70,11 @@ internal class PostHogPushSubscriptionManager(
     // success, a new register, and an identity-change resend; a fresh process starts clear.
     @Volatile private var didAuthRetry = false
 
+    // A register/resend/retry that arrived while a send was in flight (isSending claimed across the
+    // async mint) sets this instead of no-oping; [performSend] replays one fresh attempt on release
+    // so the latest token isn't stranded behind the finished send. Executor-thread only.
+    @Volatile private var pendingResend = false
+
     private val pendingFile: File? by lazy {
         val prefix = config.storagePrefix ?: return@lazy null
         // Must stay out of <storagePrefix>/<apiKey>: PostHogQueue scans that whole directory as
@@ -80,6 +85,12 @@ internal class PostHogPushSubscriptionManager(
     // Test seam: computed backoff seconds are multiplied by this to get the scheduled delay in
     // millis. Production keeps the real 1000; tests shrink it so retries fire near-instantly.
     internal var retryDelayMillisPerSecond: Long = 1_000L
+
+    // Watchdog window for pushIdentityProvider: if the host never calls completion within this, fall
+    // back to a token-less send so a misbehaving provider can't wedge sending for the whole process.
+    // ponytail: fixed 10s heuristic; a slow legitimate mint on a bad network is cut off and retried
+    // token-less (401 re-mints). Tune here (and keep parity with iOS) if that proves too tight.
+    internal var identityTokenMintTimeoutMillis: Long = 10_000L
 
     fun register(
         deviceToken: String,
@@ -173,24 +184,29 @@ internal class PostHogPushSubscriptionManager(
         }
     }
 
-    // Executor-thread body of [unregister].
+    // Executor-thread body of [unregister]. [onComplete] runs after the DELETE has been sent (or
+    // skipped) so callers can chain work that must not race the DELETE on the wire — see [handleReset].
     private fun performUnregister(
         distinctId: String,
         deviceToken: String,
         appId: String,
         platform: String,
+        onComplete: (() -> Unit)? = null,
     ) {
         if (closed || config.optOut) {
+            onComplete?.invoke()
             return
         }
         if (distinctId.isBlank() || deviceToken.isBlank() || appId.isBlank()) {
             config.logger.log("Push unregister skipped: missing distinctId, token, or appId.")
+            onComplete?.invoke()
             return
         }
         // Best-effort stays single-shot: the token is resolved once (old id on the reset path) and
         // a 401 is not refreshed — the durable path is the re-register POST.
         resolveIdentityToken(distinctId, appId) { identityToken ->
             if (closed || config.optOut) {
+                onComplete?.invoke()
                 return@resolveIdentityToken
             }
             try {
@@ -204,6 +220,8 @@ internal class PostHogPushSubscriptionManager(
                 config.logger.log("Push notification token unregistered successfully.")
             } catch (e: Throwable) {
                 config.logger.log("Push unregister failed: $e. Ignoring (best-effort).")
+            } finally {
+                onComplete?.invoke()
             }
         }
     }
@@ -211,7 +229,8 @@ internal class PostHogPushSubscriptionManager(
     /**
      * reset()/logout: unregister the stored token for the old identity, then re-register it under
      * the new anonymous id ([performRegister] reads the current id at send time). No-op when nothing
-     * is stored. Both run in one executor task, keeping the DELETE ordered before the re-register POST.
+     * is stored. The re-register is chained on the DELETE's completion so the DELETE reaches the wire
+     * before the re-register POST, even though identity-token minting makes both legs asynchronous.
      */
     fun handleReset(oldDistinctId: String) {
         executor.executeSafely {
@@ -221,9 +240,12 @@ internal class PostHogPushSubscriptionManager(
             // DELETE would unset the very id we re-register under — and performRegister's dedup guard
             // would then skip the re-POST, leaving the device unregistered.
             if (oldDistinctId != distinctIdProvider()) {
-                performUnregister(oldDistinctId, record.deviceToken, record.appId, record.platform)
+                performUnregister(oldDistinctId, record.deviceToken, record.appId, record.platform) {
+                    performRegister(record.deviceToken, record.appId, record.platform)
+                }
+            } else {
+                performRegister(record.deviceToken, record.appId, record.platform)
             }
-            performRegister(record.deviceToken, record.appId, record.platform)
         }
     }
 
@@ -294,6 +316,9 @@ internal class PostHogPushSubscriptionManager(
         }
 
         if (!isSending.compareAndSet(false, true)) {
+            // A send is already in flight (isSending is held across the async mint). Fold this request
+            // in: [performSend] replays one fresh attempt on release so this token isn't dropped.
+            pendingResend = true
             return
         }
 
@@ -311,11 +336,18 @@ internal class PostHogPushSubscriptionManager(
         distinctId: String,
         identityToken: String?,
     ) {
-        if (closed || config.optOut) {
-            isSending.set(false)
-            return
-        }
         try {
+            if (closed || config.optOut) {
+                return
+            }
+            // The record can be cleared or replaced during the async mint (unregisterCurrent, or a
+            // newer register). Re-read it and bail if it no longer matches, so a late mint can't
+            // resurrect a just-DELETEd subscription or POST a token the newer record superseded.
+            val current = currentRecord()
+            if (current == null || current.deviceToken != record.deviceToken || current.appId != record.appId) {
+                config.logger.log("Push subscription send skipped: record changed during identity token mint.")
+                return
+            }
             api.pushSubscription(
                 distinctId = distinctId,
                 deviceToken = record.deviceToken,
@@ -335,7 +367,27 @@ internal class PostHogPushSubscriptionManager(
             handleFailure(e)
         } finally {
             isSending.set(false)
+            servicePendingResend()
         }
+    }
+
+    // A register/resend/retry that arrived mid-send set [pendingResend] instead of sending. Replay one
+    // fresh attempt now that isSending is released, so the latest token isn't stranded behind this
+    // send's backoff or halt state. Executor-thread only (called from [performSend]).
+    private fun servicePendingResend() {
+        if (!pendingResend) {
+            return
+        }
+        pendingResend = false
+        if (closed || config.optOut || currentRecord() == null) {
+            return
+        }
+        retryCount = 0
+        nextAttemptAtMs = 0L
+        halted = false
+        didAuthRetry = false
+        cancelTimer()
+        attempt()
     }
 
     private fun handleFailure(e: Throwable) {
@@ -432,22 +484,38 @@ internal class PostHogPushSubscriptionManager(
         appId: String,
         onResolved: (String?) -> Unit,
     ) {
-        val cached = cachedIdentityToken
-        if (cached != null && cached.distinctId == distinctId && cached.appId == appId) {
-            config.logger.log("Push subscription request sent with cached identity token.")
-            onResolved(cached.token)
-            return
-        }
+        // Provider is checked before the cache: clearing pushIdentityProvider mid-session means "stop
+        // attaching tokens now", so a stale cached credential must not outlive it (matches iOS).
         val provider = config.pushIdentityProvider
         if (provider == null) {
-            config.logger.log("Push subscription request sent without identity token (no pushIdentityProvider).")
+            config.logger.log("No identity token attached to push request (no pushIdentityProvider).")
             onResolved(null)
             return
         }
+        val cached = cachedIdentityToken
+        if (cached != null && cached.distinctId == distinctId && cached.appId == appId) {
+            config.logger.log("Attaching cached identity token to push request.")
+            onResolved(cached.token)
+            return
+        }
         val completed = AtomicBoolean(false)
+        // A provider that never calls its completion would hold isSending for the whole process and
+        // wedge every later send. Bound the wait: if the mint doesn't land in time, fall back to a
+        // token-less send. A late real completion is a no-op via `completed`.
+        val watchdog = Timer(true)
+        watchdog.schedule(identityTokenMintTimeoutMillis) {
+            if (completed.compareAndSet(false, true)) {
+                config.logger.log(
+                    "pushIdentityProvider did not complete within ${identityTokenMintTimeoutMillis}ms; sending without identity token.",
+                )
+                executor.executeSafely { onResolved(null) }
+            }
+            watchdog.cancel()
+        }
         try {
             provider(distinctId, appId) { token ->
                 if (completed.compareAndSet(false, true)) {
+                    watchdog.cancel()
                     executor.executeSafely {
                         if (token != null) {
                             // A mint can complete after opt-out cleared the cache; caching it would
@@ -456,15 +524,16 @@ internal class PostHogPushSubscriptionManager(
                             if (!closed && !config.optOut) {
                                 cachedIdentityToken = CachedIdentityToken(token, distinctId, appId)
                             }
-                            config.logger.log("Push subscription request sent with freshly minted identity token.")
+                            config.logger.log("Attaching freshly minted identity token to push request.")
                         } else {
-                            config.logger.log("Push subscription request sent without identity token (provider completed null).")
+                            config.logger.log("No identity token attached to push request (provider completed null).")
                         }
                         onResolved(token)
                     }
                 }
             }
         } catch (e: Throwable) {
+            watchdog.cancel()
             config.logger.log("pushIdentityProvider threw: $e. Sending without identity token.")
             if (completed.compareAndSet(false, true)) {
                 onResolved(null)

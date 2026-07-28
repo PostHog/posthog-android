@@ -361,6 +361,82 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `a registration arriving mid-mint is replayed and the stale send bails`() {
+        // A + B: a new token registers while the first send's identity token is still minting. The
+        // stale first send must bail (its record was superseded) and the newer registration must be
+        // replayed, so exactly one POST goes out — carrying the second token, not the first. The replay
+        // reuses the just-cached token (same distinctId/appId), so the provider is only invoked once.
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        val (sut, config, _) = getSut(http)
+        val mints = java.util.concurrent.LinkedBlockingQueue<(String?) -> Unit>()
+        config.pushIdentityProvider = { _, _, completion -> mints.add(completion) }
+
+        sut.register("fcm-token-1", "firebase-project", "android")
+        flush()
+        // First mint is still outstanding (isSending held); a newer token registers mid-mint.
+        sut.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        // First mint completes: its record is now stale (fcm-token-2 superseded it), so the send bails
+        // and replays the pending registration, which sends the one real POST with the cached token.
+        mints.take().invoke("jwt-abc")
+        flush()
+
+        val post = http.takeRequest()
+        assertEquals("POST", post.method)
+        val body = post.body.unGzip()
+        assertTrue(body.contains("\"device_token\":\"fcm-token-2\""))
+        assertTrue(body.contains("\"identity_token\":\"jwt-abc\""))
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS)) // no stale POST for fcm-token-1
+        assertEquals(1, http.requestCount)
+        assertEquals(0, mints.size) // provider invoked once; the replay reused the cache
+    }
+
+    @Test
+    fun `a provider that never completes falls back to a token-less send instead of wedging`() {
+        // D: an outstanding mint holds isSending across the whole process. The watchdog must fire a
+        // token-less send so sending recovers instead of being wedged forever.
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        val (sut, config, _) = getSut(http)
+        sut.identityTokenMintTimeoutMillis = 50
+        config.pushIdentityProvider = { _, _, _ -> } // never calls completion
+
+        sut.register("fcm-token-1", "firebase-project", "android")
+        val post = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(post)
+        assertEquals("POST", post!!.method)
+        assertFalse(post.body.unGzip().contains("identity_token"))
+
+        // isSending was released by the fallback, so a later registration is not wedged.
+        sut.register("fcm-token-2", "firebase-project", "android")
+        val post2 = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(post2)
+        assertTrue(post2!!.body.unGzip().contains("\"device_token\":\"fcm-token-2\""))
+    }
+
+    @Test
+    fun `clearing the provider mid-session stops attaching the cached token`() {
+        // F: the provider is checked before the cache, so removing pushIdentityProvider mid-session
+        // sends token-less immediately instead of riding the previously cached credential.
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        val (sut, config, _) = getSut(http)
+        config.pushIdentityProvider = { _, _, completion -> completion("jwt-cached") }
+
+        sut.register("fcm-token-1", "firebase-project", "android")
+        flush()
+        assertTrue(http.takeRequest().body.unGzip().contains("\"identity_token\":\"jwt-cached\""))
+
+        // App removes the provider; a subsequent send for the same distinctId/appId must not reuse the cache.
+        config.pushIdentityProvider = null
+        sut.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        val body = http.takeRequest().body.unGzip()
+        assertTrue(body.contains("\"device_token\":\"fcm-token-2\""))
+        assertFalse(body.contains("identity_token"))
+    }
+
+    @Test
     fun `unregister DELETE gets no 401 fresh-token refresh`() {
         // Best-effort leg stays single-shot even with a provider: one mint, one DELETE, no retry.
         val http = mockHttp(total = 2, response = MockResponse().setResponseCode(401))
