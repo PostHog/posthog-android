@@ -101,6 +101,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -525,10 +526,9 @@ public class PostHogReplayIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled || !isSupported()) {
+        if (!isSupported() || !integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
         this.postHog = postHog
 
         // Wire up as buffer delegate for the replay queue
@@ -560,7 +560,7 @@ public class PostHogReplayIntegration(
 
     override fun uninstall() {
         try {
-            integrationInstalled = false
+            integrationInstalled.set(false)
             this.postHog = null
 
             // Clear buffer delegate
@@ -2335,7 +2335,6 @@ public class PostHogReplayIntegration(
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
 
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 }

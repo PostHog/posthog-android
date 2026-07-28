@@ -7,6 +7,7 @@ import android.os.Bundle
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures deep link and screen view events
@@ -20,8 +21,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     private var postHog: PostHogInterface? = null
 
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     override fun onActivityCreated(
@@ -84,10 +84,9 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled) {
+        if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
 
         this.postHog = postHog
         application.registerActivityLifecycleCallbacks(this)
@@ -95,7 +94,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 
     override fun uninstall() {
         this.postHog = null
-        integrationInstalled = false
+        integrationInstalled.set(false)
         application.unregisterActivityLifecycleCallbacks(this)
     }
 }

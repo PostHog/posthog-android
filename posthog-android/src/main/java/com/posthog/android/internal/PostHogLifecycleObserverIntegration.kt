@@ -11,6 +11,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogSessionManager
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures app opened and backgrounded events
@@ -40,8 +41,7 @@ internal class PostHogLifecycleObserverIntegration(
         @Volatile
         private var fromBackground = false
 
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -125,10 +125,9 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled) {
+        if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
 
         try {
             this.postHog = postHog
@@ -150,7 +149,7 @@ internal class PostHogLifecycleObserverIntegration(
 
     override fun uninstall() {
         try {
-            integrationInstalled = false
+            integrationInstalled.set(false)
             this.postHog = null
             if (isMainThread(mainHandler)) {
                 remove()

@@ -10,6 +10,7 @@ import curtains.OnRootViewsChangedListener
 import curtains.TouchEventInterceptor
 import curtains.phoneWindow
 import curtains.touchEventInterceptors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Marks user touches as session activity by calling [PostHogSessionManager.touchSession]
@@ -23,8 +24,7 @@ internal class PostHogTouchActivityIntegration(
     private val config: PostHogAndroidConfig,
 ) : PostHogIntegration {
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     private val touchInterceptor =
@@ -54,10 +54,9 @@ internal class PostHogTouchActivityIntegration(
         }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled || !isSupported()) {
+        if (!isSupported() || !integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
         try {
             Curtains.rootViews.forEach { view ->
                 view.phoneWindow?.let { window ->
@@ -83,7 +82,7 @@ internal class PostHogTouchActivityIntegration(
         } catch (e: Throwable) {
             config.logger.log("PostHogTouchActivityIntegration uninstall failed: $e.")
         } finally {
-            integrationInstalled = false
+            integrationInstalled.set(false)
         }
     }
 

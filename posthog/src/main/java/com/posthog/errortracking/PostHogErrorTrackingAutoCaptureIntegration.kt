@@ -5,6 +5,7 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler {
     private val config: PostHogConfig
@@ -23,14 +24,13 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
 
-        if (integrationInstalled) {
+        if (integrationInstalled.get()) {
             return
         }
 
@@ -54,17 +54,18 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     private fun installHandler() {
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
         adapterExceptionHandler.setDefaultUncaughtExceptionHandler(this)
-        integrationInstalled = true
         config.logger.log("Exception autocapture is enabled.")
     }
 
     override fun uninstall() {
-        if (!integrationInstalled) {
+        if (!integrationInstalled.compareAndSet(true, false)) {
             return
         }
         adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
-        integrationInstalled = false
         config.logger.log("Exception autocapture is disabled.")
     }
 

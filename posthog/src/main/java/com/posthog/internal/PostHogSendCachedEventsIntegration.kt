@@ -7,6 +7,7 @@ import com.posthog.PostHogInterface
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The integration that sends all the cached legacy events, triggered once the SDK is setup
@@ -20,15 +21,13 @@ internal class PostHogSendCachedEventsIntegration(
     private val executor: ExecutorService,
 ) : PostHogIntegration {
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled) {
+        if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
 
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
@@ -139,6 +138,6 @@ internal class PostHogSendCachedEventsIntegration(
     }
 
     override fun uninstall() {
-        integrationInstalled = false
+        integrationInstalled.set(false)
     }
 }

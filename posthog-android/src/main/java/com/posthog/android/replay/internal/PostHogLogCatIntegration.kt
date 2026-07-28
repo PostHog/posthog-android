@@ -9,6 +9,7 @@ import com.posthog.internal.replay.RRPluginEvent
 import com.posthog.internal.replay.capture
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig) : PostHogIntegration {
     @Volatile
@@ -22,20 +23,18 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     private var postHog: PostHogInterface? = null
 
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
-        if (integrationInstalled) {
-            return
-        }
         val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
         if (!config.sessionReplayConfig.captureLogcat || !captureLogcat) {
             return
         }
-        integrationInstalled = true
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
         val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
         cmd.add("-T")
@@ -107,10 +106,10 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     }
 
     @PostHogVisibleForTesting
-    internal fun isInstalled(): Boolean = integrationInstalled
+    internal fun isInstalled(): Boolean = integrationInstalled.get()
 
     override fun uninstall() {
-        integrationInstalled = false
+        integrationInstalled.set(false)
         logcatInProgress = false
         logcatThread?.interruptSafely()
     }
