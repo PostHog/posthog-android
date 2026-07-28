@@ -88,7 +88,7 @@ internal class PostHogPushSubscriptionManager(
 
     // Watchdog window for pushIdentityProvider: if the host never calls completion within this, fall
     // back to a token-less send so a misbehaving provider can't wedge sending for the whole process.
-    // ponytail: fixed 10s heuristic; a slow legitimate mint on a bad network is cut off and retried
+    // Fixed 10s heuristic; a slow legitimate mint on a bad network is cut off and retried
     // token-less (401 re-mints). Tune here (and keep parity with iOS) if that proves too tight.
     internal var identityTokenMintTimeoutMillis: Long = 10_000L
 
@@ -282,7 +282,15 @@ internal class PostHogPushSubscriptionManager(
     /** Opt-out: stop the retry/offline-poll timer now. The guard in [attempt] blocks any actual send. */
     fun onOptOut() {
         cancelTimer()
-        cachedIdentityToken = null
+        // Order both clears on the executor with the mint-completion cache write so an opt-out
+        // mid-mint can't leave a stale token cached (the residual race resolveIdentityToken notes).
+        // didAuthRetry is cleared too: a 401 before opt-out would otherwise strand the flag, and the
+        // retryPending() resume path after opt-in doesn't clear it, so the next 401 goes terminal
+        // with no refresh.
+        executor.executeSafely {
+            cachedIdentityToken = null
+            didAuthRetry = false
+        }
     }
 
     private fun isWithinBackoffWindow(): Boolean = System.currentTimeMillis() < nextAttemptAtMs
