@@ -1,5 +1,11 @@
 ## Next
 
+## 3.56.4
+
+### Patch Changes
+
+- 5433f29: Stop querying Android connectivity services synchronously while capturing events.
+
 ## 3.56.3
 
 ### Patch Changes
