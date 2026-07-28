@@ -37,8 +37,22 @@ internal class NativeCrashEventCoercerTest {
                     frames =
                         listOf(
                             // crash site first, as tombstones report it
-                            NativeCrashFrame(0x103d8, 0x7a12345103d8, "process_frame", 0xc, "/data/app/~~abc/libengine.so", "5c6893c3dc6e76d2cbd637e4c8b4e2aaf90088b3"),
-                            NativeCrashFrame(0x8501c, 0x7a123468501c, "__start_thread", 0x40, "/apex/com.android.runtime/lib64/bionic/libc.so", "aabbccdd"),
+                            NativeCrashFrame(
+                                relPc = 0x103d8,
+                                pc = 0x7a12345103d8,
+                                functionName = "process_frame",
+                                functionOffset = 0xc,
+                                fileName = "/data/app/~~abc/libengine.so",
+                                buildId = "5c6893c3dc6e76d2cbd637e4c8b4e2aaf90088b3",
+                            ),
+                            NativeCrashFrame(
+                                relPc = 0x8501c,
+                                pc = 0x7a123468501c,
+                                functionName = "__start_thread",
+                                functionOffset = 0x40,
+                                fileName = "/apex/com.android.runtime/lib64/bionic/libc.so",
+                                buildId = "aabbccdd",
+                            ),
                         ),
                 ),
             )
@@ -49,7 +63,7 @@ internal class NativeCrashEventCoercerTest {
         // Wire order is canonical bottom-up: outermost first, crash site last
         val outer = frames[0]
         assertEquals("native", outer["platform"])
-        assertEquals("0x7a123468501c", outer["instruction_addr"])
+        assertEquals("0x7a123468501d", outer["instruction_addr"])
         assertEquals("0x7a1234600000", outer["image_addr"])
         assertEquals("0x7a1234684fdc", outer["symbol_addr"])
         assertEquals("__start_thread", outer["function"])
@@ -58,7 +72,7 @@ internal class NativeCrashEventCoercerTest {
         assertEquals(false, outer["in_app"])
 
         val crash = frames[1]
-        assertEquals("0x7a12345103d8", crash["instruction_addr"])
+        assertEquals("0x7a12345103d9", crash["instruction_addr"])
         assertEquals("0x7a1234500000", crash["image_addr"])
         assertEquals("libengine.so", crash["module"])
         assertEquals(true, crash["in_app"])

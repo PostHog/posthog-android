@@ -19,7 +19,13 @@ internal class NativeCrashEventCoercer {
 
             val myFrame = mutableMapOf<String, Any>()
             myFrame["platform"] = "native"
-            myFrame["instruction_addr"] = hex(frame.pc)
+            // Tombstone pcs are already the right lookup address: the leaf is
+            // the faulting instruction, and libunwindstack rewinds every
+            // caller pc to the call instruction. The server applies a uniform
+            // -1 return-address adjustment, so bias by +1 to cancel it —
+            // otherwise the leaf shifts out of the crash line and callers get
+            // adjusted twice.
+            myFrame["instruction_addr"] = hex(frame.pc + 1)
             myFrame["image_addr"] = hex(imageAddr)
             myFrame["in_app"] = isInApp(frame.fileName)
             myFrame["synthetic"] = false
