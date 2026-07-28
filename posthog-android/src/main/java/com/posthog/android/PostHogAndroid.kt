@@ -21,6 +21,7 @@ import com.posthog.android.internal.getPackageInfo
 import com.posthog.android.internal.versionCodeCompat
 import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.android.replay.internal.PostHogLogCatIntegration
+import com.posthog.android.errortracking.PostHogNativeCrashIntegration
 import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
@@ -159,6 +160,9 @@ public class PostHogAndroid private constructor() {
             config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
             if (config.surveys) {
                 config.addIntegration(PostHogSurveysIntegration(context, config))
+            }
+            if (config.errorTrackingConfig.captureNativeCrashes) {
+                config.addIntegration(PostHogNativeCrashIntegration(context, config))
             }
         }
     }

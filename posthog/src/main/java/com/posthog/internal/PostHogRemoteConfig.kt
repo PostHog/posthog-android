@@ -635,6 +635,13 @@ public class PostHogRemoteConfig(
     public fun isAutocaptureExceptionsEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.autoCapture
 
     /**
+     * Returns whether native (NDK) crash capture is enabled.
+     * Both remote config (errorTracking.autocaptureExceptions) AND local config
+     * (PostHogConfig.errorTrackingConfig.captureNativeCrashes) must be enabled.
+     */
+    public fun isNativeCrashCaptureEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.captureNativeCrashes
+
+    /**
      * Returns whether console log recording is enabled remotely.
      * Both remote config (sessionRecording.consoleLogRecordingEnabled) AND local config must be enabled.
      * The local config is platform-specific (e.g., PostHogAndroidConfig.sessionReplayConfig.captureLogcat).
