@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.android.errortracking.PostHogNativeCrashIntegration
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
@@ -21,7 +22,6 @@ import com.posthog.android.internal.getPackageInfo
 import com.posthog.android.internal.versionCodeCompat
 import com.posthog.android.replay.PostHogReplayIntegration
 import com.posthog.android.replay.internal.PostHogLogCatIntegration
-import com.posthog.android.errortracking.PostHogNativeCrashIntegration
 import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
