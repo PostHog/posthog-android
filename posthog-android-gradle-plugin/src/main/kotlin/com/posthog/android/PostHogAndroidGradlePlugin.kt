@@ -32,6 +32,11 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 project.extensions.getByType(ApplicationAndroidComponentsExtension::class.java)
 
             androidComponentsExt.onVariants { variant ->
+                // Native symbol upload is independent of minification: native
+                // crashes need `.so` debug symbols whether or not the JVM side
+                // is obfuscated.
+                registerNativeSymbolsUpload(project, variant)
+
                 if (!variant.isMinifyEnabled) {
                     return@onVariants
                 }
@@ -61,6 +66,40 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
 
                     // TODO: flutter doesn't use the transform API, and manually wires up task dependencies
                 }
+            }
+        }
+    }
+
+    private fun registerNativeSymbolsUpload(
+        project: Project,
+        variant: ApplicationVariant,
+    ) {
+        val primaryOutput = variant.outputs.firstOrNull()
+        val uploadTask =
+            PostHogUploadNativeSymbolsTask.register(
+                project = project,
+                // The unstripped libraries as built; AGP strips them for
+                // packaging in a later task. The subdirectory layout varies
+                // across AGP versions, so point at the variant root and let
+                // the CLI scan recursively.
+                nativeLibsDirectory =
+                    project.layout.buildDirectory
+                        .dir("intermediates/merged_native_libs/${variant.name}"),
+                taskSuffix = variant.name.capitalizeUS(),
+                releaseName = variant.applicationId,
+                releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
+                build = primaryOutput?.versionCode,
+            )
+
+        project.afterEvaluate {
+            PostHogTasksProvider.getMergeNativeLibsTask(project, variant.name)?.let { merge ->
+                uploadTask.configure { dependsOn(merge) }
+            }
+            // Auto-upload alongside assemble/install/bundle only when the app
+            // module builds native code itself. Apps that only bundle prebuilt
+            // `.so` files from dependencies can run the task explicitly.
+            if (variant.externalNativeBuild != null) {
+                uploadTask.hookWithAssembleTasks(project, variant)
             }
         }
     }
