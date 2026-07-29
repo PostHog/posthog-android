@@ -4,6 +4,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogVisibleForTesting
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
@@ -22,8 +23,13 @@ internal class PostHogSendCachedEventsIntegration(
 ) : PostHogIntegration {
     private var ownsInstallation = false
 
-    private companion object {
+    internal companion object {
         private val integrationInstalled = AtomicBoolean(false)
+
+        @PostHogVisibleForTesting
+        internal fun resetInstallationForTesting() {
+            integrationInstalled.set(false)
+        }
     }
 
     @Synchronized

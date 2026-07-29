@@ -15,6 +15,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,8 +43,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
         return PostHogSendCachedEventsIntegration(config, api, executor = executor)
     }
 
+    @BeforeTest
+    fun `set up`() {
+        PostHogSendCachedEventsIntegration.resetInstallationForTesting()
+    }
+
     @AfterTest
     fun `set down`() {
+        PostHogSendCachedEventsIntegration.resetInstallationForTesting()
         tmpDir.root.deleteRecursively()
     }
 

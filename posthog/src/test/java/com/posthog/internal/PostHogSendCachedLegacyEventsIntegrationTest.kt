@@ -12,6 +12,7 @@ import org.mockito.Mockito.mock
 import java.io.File
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,8 +43,14 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         return PostHogSendCachedEventsIntegration(config, api, executor = executor)
     }
 
+    @BeforeTest
+    fun `set up`() {
+        PostHogSendCachedEventsIntegration.resetInstallationForTesting()
+    }
+
     @AfterTest
     fun `set down`() {
+        PostHogSendCachedEventsIntegration.resetInstallationForTesting()
         tmpDir.root.deleteRecursively()
     }
 
