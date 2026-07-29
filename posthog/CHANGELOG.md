@@ -1,5 +1,11 @@
 ## Next
 
+## 6.27.1
+
+### Patch Changes
+
+- 932118f: Prevent duplicate integration installation during concurrent SDK setup.
+
 ## 6.27.0
 
 ### Minor Changes

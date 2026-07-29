@@ -1,5 +1,11 @@
 ## Next
 
+## 3.56.6
+
+### Patch Changes
+
+- 932118f: Prevent duplicate integration installation during concurrent SDK setup.
+
 ## 3.56.5
 
 ### Patch Changes
