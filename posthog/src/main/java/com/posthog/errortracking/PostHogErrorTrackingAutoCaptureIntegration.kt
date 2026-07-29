@@ -106,8 +106,15 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
             ownsInstallation = false
             integrationInstalled.set(false)
+            // We're out of the chain now, so drop the delegate ref (a re-install re-reads it).
+            // postHog is kept: onRemoteConfig re-enable calls install(postHog) on this instance.
+            defaultExceptionHandler = null
+            config.logger.log("Exception autocapture is disabled.")
+        } else {
+            // Can't unlink — a handler installed after us keeps us as its delegate. Stay dormant
+            // (captureEnabled is already false) and keep delegating.
+            config.logger.log("Exception autocapture is dormant (still linked below another handler).")
         }
-        config.logger.log("Exception autocapture is disabled.")
     }
 
     override fun onRemoteConfig(loaded: Boolean) {
