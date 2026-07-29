@@ -72,6 +72,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
     fun `concurrent installs only schedule one legacy flush`() {
         val threadCount = 32
         val scheduledFlushes = AtomicInteger()
+        val shutdownExecutors = AtomicInteger()
         val start = CountDownLatch(1)
         val ready = CountDownLatch(threadCount)
         val integrations =
@@ -84,6 +85,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
                         }
 
                         override fun shutdown() {
+                            shutdownExecutors.incrementAndGet()
                         }
 
                         override fun shutdownNow(): List<Runnable> = emptyList()
@@ -115,6 +117,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
         try {
             assertEquals(1, scheduledFlushes.get())
+            assertEquals(threadCount, shutdownExecutors.get())
         } finally {
             integrations.forEach { it.uninstall() }
         }

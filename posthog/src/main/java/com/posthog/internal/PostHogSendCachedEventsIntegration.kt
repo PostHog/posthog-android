@@ -35,6 +35,7 @@ internal class PostHogSendCachedEventsIntegration(
     @Synchronized
     override fun install(postHog: PostHogInterface) {
         if (!integrationInstalled.compareAndSet(false, true)) {
+            executor.shutdown()
             return
         }
         ownsInstallation = true
