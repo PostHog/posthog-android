@@ -9,6 +9,7 @@ import com.posthog.internal.replay.RRPluginEvent
 import com.posthog.internal.replay.capture
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig) : PostHogIntegration {
     @Volatile
@@ -20,22 +21,23 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
         get() = postHog?.isSessionReplayActive() ?: false
 
     private var postHog: PostHogInterface? = null
+    private var ownsInstallation = false
 
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
-        if (integrationInstalled) {
-            return
-        }
         val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
         if (!config.sessionReplayConfig.captureLogcat || !captureLogcat) {
             return
         }
-        integrationInstalled = true
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
+        ownsInstallation = true
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
         val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
         cmd.add("-T")
@@ -107,11 +109,19 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     }
 
     @PostHogVisibleForTesting
-    internal fun isInstalled(): Boolean = integrationInstalled
+    internal fun isInstalled(): Boolean = integrationInstalled.get()
 
+    @Synchronized
     override fun uninstall() {
-        integrationInstalled = false
-        logcatInProgress = false
-        logcatThread?.interruptSafely()
+        if (!ownsInstallation) {
+            return
+        }
+        try {
+            logcatInProgress = false
+            logcatThread?.interruptSafely()
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
+        }
     }
 }

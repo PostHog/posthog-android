@@ -2540,8 +2540,17 @@ internal class PostHogTest {
         assertTrue(firstFrameMainException.containsKey("module"))
         assertTrue(firstFrameMainException.containsKey("function"))
         assertEquals("java", firstFrameMainException["platform"])
-        assertTrue(firstFrameMainException["in_app"] as Boolean)
-        assertTrue(firstFrameMainException["lineno"] is Number)
+
+        // Frames are emitted in canonical bottom-up order: frames[0] is the outermost/entry point,
+        // the last frame is the crash site. This is the reverse of Java's native innermost-first stackTrace.
+        val nativeMainFrames = exception.stackTrace
+        assertEquals(nativeMainFrames.size, framesMainException.size)
+        assertEquals(nativeMainFrames.last().methodName, firstFrameMainException["function"])
+        // The crash site (last frame) is the in-app test method that threw.
+        val lastFrameMainException = framesMainException.last() as Map<*, *>
+        assertEquals(nativeMainFrames.first().methodName, lastFrameMainException["function"])
+        assertTrue(lastFrameMainException["in_app"] as Boolean)
+        assertTrue(lastFrameMainException["lineno"] is Number)
 
         // Verify stack trace structure for cause exception
         val stackTraceCauseException = causeExceptionData["stacktrace"] as Map<*, *>
@@ -2555,8 +2564,16 @@ internal class PostHogTest {
         assertTrue(firstFrameCauseException.containsKey("module"))
         assertTrue(firstFrameCauseException.containsKey("function"))
         assertEquals("java", firstFrameCauseException["platform"])
-        assertTrue(firstFrameCauseException["in_app"] as Boolean)
-        assertTrue(firstFrameCauseException["lineno"] is Number)
+
+        // Canonical bottom-up order also applies to the cause's frames.
+        val nativeCauseFrames = causeException.stackTrace
+        assertEquals(nativeCauseFrames.size, framesCauseException.size)
+        assertEquals(nativeCauseFrames.last().methodName, firstFrameCauseException["function"])
+        // The crash site (last frame) is the in-app test method that threw.
+        val lastFrameCauseException = framesCauseException.last() as Map<*, *>
+        assertEquals(nativeCauseFrames.first().methodName, lastFrameCauseException["function"])
+        assertTrue(lastFrameCauseException["in_app"] as Boolean)
+        assertTrue(lastFrameCauseException["lineno"] is Number)
 
         sut.close()
     }
@@ -2625,8 +2642,17 @@ internal class PostHogTest {
         assertTrue(firstFrameMainException.containsKey("module"))
         assertTrue(firstFrameMainException.containsKey("function"))
         assertEquals("java", firstFrameMainException["platform"])
-        assertTrue(firstFrameMainException["in_app"] as Boolean)
-        assertTrue(firstFrameMainException["lineno"] is Number)
+
+        // Frames are emitted in canonical bottom-up order (entry point first, crash site last),
+        // the reverse of Java's native innermost-first stackTrace.
+        val nativeMainFrames = causeException.stackTrace
+        assertEquals(nativeMainFrames.size, framesMainException.size)
+        assertEquals(nativeMainFrames.last().methodName, firstFrameMainException["function"])
+        // The crash site (last frame) is the in-app test method that threw.
+        val lastFrameMainException = framesMainException.last() as Map<*, *>
+        assertEquals(nativeMainFrames.first().methodName, lastFrameMainException["function"])
+        assertTrue(lastFrameMainException["in_app"] as Boolean)
+        assertTrue(lastFrameMainException["lineno"] is Number)
 
         sut.close()
     }

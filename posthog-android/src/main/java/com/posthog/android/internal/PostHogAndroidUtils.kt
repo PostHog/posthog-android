@@ -1,7 +1,5 @@
 package com.posthog.android.internal
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -113,18 +111,6 @@ internal fun Context.hasPermission(permission: String): Boolean {
     ) == PackageManager.PERMISSION_GRANTED
 }
 
-@Suppress("DEPRECATION")
-@SuppressLint("MissingPermission")
-internal fun Context.isConnected(): Boolean {
-    val connectivityManager = connectivityManager() ?: return true
-
-    if (!hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
-        return true
-    }
-    val networkInfo = connectivityManager.activeNetworkInfo ?: return false
-    return networkInfo.isConnected
-}
-
 internal fun Context.connectivityManager(): ConnectivityManager? {
     return getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 }
@@ -133,21 +119,20 @@ internal fun Context.telephonyManager(): TelephonyManager? {
     return getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
 }
 
-@Suppress("DEPRECATION")
 internal fun Activity.activityLabelOrName(config: PostHogAndroidConfig): String? {
     return try {
-        val activityInfo = packageManager.getActivityInfo(componentName, GET_META_DATA)
-        val activityLabel = activityInfo.loadLabel(packageManager).toString()
+        val activityLabel = title?.toString().orEmpty()
+        val activityName = componentName.className
         val applicationLabel = applicationInfo.loadLabel(packageManager).toString()
 
         if (activityLabel.isNotEmpty() && activityLabel != applicationLabel) {
-            if (activityLabel == activityInfo.name) {
+            if (activityLabel == activityName) {
                 activityLabel.substringAfterLast('.')
             } else {
                 activityLabel
             }
         } else {
-            activityInfo.name.substringAfterLast('.')
+            localClassName.substringAfterLast('.')
         }
     } catch (e: Throwable) {
         config.logger.log("Error getting the Activity's label or name: $e.")

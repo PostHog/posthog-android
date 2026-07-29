@@ -8,14 +8,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.ConnectivityManager
-import android.net.NetworkInfo
 import android.net.Uri
 import android.telephony.TelephonyManager
 import android.util.DisplayMetrics
@@ -53,30 +51,19 @@ public fun mockScreenTitle(
 ): Activity {
     val activity = mock<Activity>()
     val pm = mock<PackageManager>()
-    val ac =
-        mock<ActivityInfo>().apply {
-            name = activityName
-        }
     val appInfo = mock<ApplicationInfo>()
 
-    whenever(ac.loadLabel(any())).thenReturn(title)
+    if (throws) {
+        whenever(activity.title).thenThrow(IllegalStateException("title unavailable"))
+    } else {
+        whenever(activity.title).thenReturn(title)
+    }
     whenever(appInfo.loadLabel(any())).thenReturn(applicationLabel)
 
-    if (throws) {
-        whenever(
-            pm.getActivityInfo(
-                any(),
-                any<Int>(),
-            ),
-        ).thenThrow(PackageManager.NameNotFoundException())
-    } else {
-        whenever(pm.getActivityInfo(any(), any<Int>())).thenReturn(ac)
-    }
-
-    whenever(pm.getApplicationInfo(any(), any<Int>())).thenReturn(appInfo)
-
     val component = mock<ComponentName>()
+    whenever(component.className).thenReturn(activityName)
     whenever(activity.componentName).thenReturn(component)
+    whenever(activity.localClassName).thenReturn(activityName)
     whenever(activity.packageManager).thenReturn(pm)
     whenever(activity.applicationInfo).thenReturn(appInfo) // Ensure applicationInfo is not null
 
@@ -140,45 +127,10 @@ public fun mockPermission(
     return cm
 }
 
-public fun mockNetworkInfo(
-    connectivityManager: ConnectivityManager,
-    hasNetwork: Boolean = true,
-    isConnected: Boolean = true,
-) {
-    if (hasNetwork) {
-        val ni = mock<NetworkInfo>()
-        whenever(connectivityManager.activeNetworkInfo).thenReturn(ni)
-        whenever(ni.isConnected).thenReturn(isConnected)
-    }
-}
-
 public fun Context.mockTelephone() {
     val tm = mock<TelephonyManager>()
     whenever(getSystemService(any())).thenReturn(tm)
     whenever(tm.networkOperatorName).thenReturn("name")
-}
-
-public fun mockGetNetworkInfo(
-    connectivityManager: ConnectivityManager,
-    networkType: Int,
-    isConnected: Boolean = true,
-) {
-    val network = mock<android.net.Network>()
-    whenever(connectivityManager.activeNetwork).thenReturn(if (isConnected) network else null)
-
-    if (isConnected) {
-        val capabilities = mock<android.net.NetworkCapabilities>()
-        whenever(connectivityManager.getNetworkCapabilities(network)).thenReturn(capabilities)
-
-        val transport =
-            when (networkType) {
-                ConnectivityManager.TYPE_WIFI -> android.net.NetworkCapabilities.TRANSPORT_WIFI
-                ConnectivityManager.TYPE_BLUETOOTH -> android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
-                ConnectivityManager.TYPE_MOBILE -> android.net.NetworkCapabilities.TRANSPORT_CELLULAR
-                else -> -1
-            }
-        whenever(capabilities.hasTransport(transport)).thenReturn(true)
-    }
 }
 
 public fun createPostHogFake(): PostHogFake {

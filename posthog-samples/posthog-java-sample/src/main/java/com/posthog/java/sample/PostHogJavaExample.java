@@ -3,7 +3,8 @@ package com.posthog.java.sample;
 import com.posthog.server.PostHog;
 import com.posthog.server.PostHogCaptureOptions;
 import com.posthog.server.PostHogConfig;
-import com.posthog.server.PostHogFeatureFlagOptions;
+import com.posthog.server.PostHogEvaluateFlagsOptions;
+import com.posthog.server.PostHogFeatureFlagEvaluations;
 import com.posthog.server.PostHogInterface;
 
 import java.io.BufferedReader;
@@ -212,31 +213,30 @@ public class PostHogJavaExample {
     private static void runFeatureFlagExamples(PostHogInterface posthog) {
         String distinctId = startUserExample("FEATURE FLAGS (Remote Evaluation)");
 
+        PostHogFeatureFlagEvaluations flags = posthog.evaluateFlags(distinctId);
+
         // Check a simple boolean flag
         System.out.println("\nChecking feature flag 'beta-feature'...");
-        Boolean isEnabled = posthog.isFeatureEnabled(distinctId, "beta-feature", false);
+        boolean isEnabled = flags.isEnabled("beta-feature");
         System.out.println("   Result: " + isEnabled);
 
         // Get flag with variant
         System.out.println("\nGetting feature flag 'multi-variate-flag'...");
-        Object flagValue = posthog.getFeatureFlag(distinctId, "multi-variate-flag", "default");
-        System.out.println("   Value: " + flagValue);
+        Object flagValue = flags.getFlag("multi-variate-flag");
+        System.out.println("   Value: " + (flagValue != null ? flagValue : "default"));
 
         // Get flag payload
         System.out.println("\nGetting feature flag payload 'multi-variate-flag'...");
-        Object payload = posthog.getFeatureFlagPayload(distinctId, "multi-variate-flag");
+        Object payload = flags.getFlagPayloadAs("multi-variate-flag", Object.class);
         System.out.println("   Payload: " + payload);
 
         // Feature flag with person properties
         System.out.println("\nChecking flag with person properties...");
-        Boolean hasFeature = posthog.isFeatureEnabled(
-                distinctId,
-                "file-previews",
-                PostHogFeatureFlagOptions.builder()
-                        .defaultValue(false)
-                        .personProperty("email", "example@example.com")
-                        .personProperty("plan", "enterprise")
-                        .build());
+        PostHogEvaluateFlagsOptions options = PostHogEvaluateFlagsOptions.builder()
+                .personProperty("email", "example@example.com")
+                .personProperty("plan", "enterprise")
+                .build();
+        boolean hasFeature = posthog.evaluateFlags(distinctId, options).isEnabled("file-previews");
         System.out.println("   Result: " + hasFeature);
     }
 

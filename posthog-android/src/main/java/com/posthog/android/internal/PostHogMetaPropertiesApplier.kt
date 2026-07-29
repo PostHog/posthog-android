@@ -36,26 +36,25 @@ internal class PostHogMetaPropertiesApplier() {
         config: PostHogAndroidConfig,
         releaseIdentifierFallback: String,
     ) {
-        val metaProperties = loadMetaProperties(context, config)
-
         // if releaseIdentifier is already set, we don't need to do anything
-        if (!config.releaseIdentifier.isNullOrEmpty() || metaProperties.isNullOrEmpty()) {
-            config.logger.log("releaseIdentifier not found, using fallback: $releaseIdentifierFallback")
-            config.releaseIdentifier = releaseIdentifierFallback
+        if (!config.releaseIdentifier.isNullOrEmpty()) {
             return
         }
 
-        for (property in metaProperties) {
+        val metaProperties = loadMetaProperties(context, config)
+
+        metaProperties?.forEach { property ->
             val uuid = property.getProperty(POSTHOG_PROGUARD_MAPPING_MAP_ID_PROPERTY)
 
-            if (uuid.isNullOrEmpty()) {
-                continue
+            if (!uuid.isNullOrEmpty()) {
+                config.logger.log("releaseIdentifier found: $uuid")
+                config.releaseIdentifier = uuid
+                return
             }
-
-            config.logger.log("releaseIdentifier found: $uuid")
-            config.releaseIdentifier = uuid
-            break
         }
+
+        config.logger.log("releaseIdentifier not found, using fallback: $releaseIdentifierFallback")
+        config.releaseIdentifier = releaseIdentifierFallback
     }
 
     companion object {

@@ -10,10 +10,11 @@ import java.util.Date
 /**
  * Provides the current time, corrected to network time when available.
  *
- * [Clock.millis] on the clock returned by [SystemClock.currentNetworkTimeClock] performs a Binder
- * IPC to a system service on every call, so querying it on each timestamp (e.g. on every touch
- * event) blocks the calling thread and can ANR under load. Instead the network time is sampled at
- * most once per [refreshIntervalMs] and subsequent timestamps are derived from the monotonic
+ * [Clock.millis] on the clock returned by [SystemClock.currentNetworkTimeClock] reads an OS-cached
+ * network-time sample; it does not make an NTP or other network request. Retrieving that cached
+ * sample uses Binder on Android 13-15, while Android 16 can use shared memory with a Binder fallback.
+ * We intentionally accept at most one synchronous IPC per [refreshIntervalMs] to keep this cache
+ * simple. Subsequent timestamps are derived from the monotonic
  * [android.os.SystemClock.elapsedRealtime] delta since that anchor.
  *
  * Once a sample has succeeded, later sampling failures extend the existing anchor rather than

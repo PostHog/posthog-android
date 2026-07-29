@@ -5,12 +5,14 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler {
     private val config: PostHogConfig
     private val adapterExceptionHandler: UncaughtExceptionHandlerAdapter
     private var defaultExceptionHandler: Thread.UncaughtExceptionHandler? = null
     private var postHog: PostHogInterface? = null
+    private var ownsInstallation = false
 
     // Tracks whether we should capture, separate from whether we're linked into the handler chain.
     // We can't always unlink (a handler installed after us keeps us as its delegate), so a disabled
@@ -29,17 +31,17 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
 
         // Already linked into the chain: just resume capturing. Re-running the link logic while
         // we're a mid-chain delegate would point defaultExceptionHandler back at a handler that
         // delegates to us, looping uncaughtException until it StackOverflows.
-        if (integrationInstalled) {
+        if (integrationInstalled.get()) {
             captureEnabled = true
             return
         }
@@ -75,24 +77,29 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     private fun installHandler() {
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
+        ownsInstallation = true
         adapterExceptionHandler.setDefaultUncaughtExceptionHandler(this)
-        integrationInstalled = true
         captureEnabled = true
         config.logger.log("Exception autocapture is enabled.")
     }
 
+    @Synchronized
     override fun uninstall() {
-        if (!integrationInstalled) {
+        if (!ownsInstallation) {
             return
         }
         // Stop capturing regardless of whether we can unlink.
         captureEnabled = false
-        // Only unlink (and clear the installed flag) if we're still the active handler. If something
+        // Only unlink (and release ownership) if we're still the active handler. If something
         // installed after us, we stay linked as its delegate: captureEnabled=false keeps us dormant,
-        // and leaving integrationInstalled=true stops a later re-enable from re-linking into a loop.
+        // and holding the install flags stops a later re-enable from re-linking into a loop.
         if (adapterExceptionHandler.getDefaultUncaughtExceptionHandler() === this) {
             adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
-            integrationInstalled = false
+            ownsInstallation = false
+            integrationInstalled.set(false)
         }
         config.logger.log("Exception autocapture is disabled.")
     }

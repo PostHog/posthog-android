@@ -1,5 +1,54 @@
 ## Next
 
+## 3.56.6
+
+### Patch Changes
+
+- 932118f: Prevent duplicate integration installation during concurrent SDK setup.
+
+## 3.56.5
+
+### Patch Changes
+
+- d23697e: Fix a manually configured `releaseIdentifier` being overwritten by the auto-generated fallback (`applicationId@versionName+versionCode`), which broke proguard symbolication due to the map-id mismatch. A pre-set `releaseIdentifier` is now preserved; the value from `posthog-meta.properties` is used when nothing was set, and the fallback only when neither exists.
+
+## 3.56.4
+
+### Patch Changes
+
+- 5433f29: Stop querying Android connectivity services synchronously while capturing events.
+
+## 3.56.3
+
+### Patch Changes
+
+- b3c6ccc: Avoid main-thread IPC candidates in screen autocapture and device type detection. Screen autocapture now uses the activity's current title, which may produce a different `$screen_name` for `$screen` events when apps set titles dynamically.
+
+## 3.56.2
+
+### Patch Changes
+
+- 4304d39: Fix session replay capturing nothing on screens with a continuously-rendering surface/texture-backed view (e.g. Rive).
+  Such libraries render on their own worker thread and never set `View.hasTransientState()`, so every frame was discarded as a "screen change". The animation-only redraw heuristic now also detects an actively-rendering `SurfaceView`/`TextureView` in the tree, whose geometry stays stable so masks remain aligned, and keeps the frame instead of dropping it.
+
+## 3.56.1
+
+### Patch Changes
+
+- ad72001: Prevent session replay from crashing when an image uses a `BitmapDrawable` with a null bitmap.
+
+## 3.56.0
+
+### Minor Changes
+
+- 2f95ef9: Send error tracking stack frames in canonical bottom-up order: `frames[0]` is the outermost/entry point and the last frame is the crash site. Previously frames were emitted in Java's native innermost-first order. This aligns the wire format with the cross-SDK convention and affects both the `posthog-android` and `posthog-server` `$lib`s, which share the exception coercer.
+
+## 3.55.3
+
+### Patch Changes
+
+- 0e3a3d0: Fix session replay dropping screen captures that fall inside a Throttler window but are not themselves throttled: the Throttler now always forwards the first event in a new window even when the per-second rate cap is reached, so no screens are silently skipped.
+
 ## 3.55.2
 
 ### Patch Changes

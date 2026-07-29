@@ -29,6 +29,10 @@ public abstract class PostHogCliExecTask : Exec() {
     @get:Optional
     public abstract val postHogApiKey: Property<String>
 
+    @get:Input
+    @get:Optional
+    public abstract val postHogDotenvFile: Property<String>
+
     init {
         postHogExecutable.convention(POSTHOG_CLI_DEFAULT_EXECUTABLE)
     }
@@ -63,6 +67,9 @@ public abstract class PostHogCliExecTask : Exec() {
         }
         postHogApiKey.orNull?.let {
             environment("POSTHOG_CLI_API_KEY", it)
+        }
+        postHogDotenvFile.orNull?.let {
+            environment("POSTHOG_CLI_DOTENV_FILE", it)
         }
 
         super.exec()
