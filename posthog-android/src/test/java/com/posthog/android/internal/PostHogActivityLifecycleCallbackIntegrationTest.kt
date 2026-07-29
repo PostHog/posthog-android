@@ -13,7 +13,9 @@ import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import java.util.concurrent.CountDownLatch
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,6 +43,55 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     }
 
     @Test
+    fun `concurrent installs only register one lifecycle callback`() {
+        val threadCount = 32
+        val integrations = List(threadCount) { getSut() }
+        val fake = createPostHogFake()
+        val ready = CountDownLatch(threadCount)
+        val start = CountDownLatch(1)
+        val threads =
+            integrations.map { integration ->
+                Thread {
+                    ready.countDown()
+                    start.await()
+                    integration.install(fake)
+                }.apply { start() }
+            }
+
+        ready.await()
+        start.countDown()
+        threads.forEach { it.join() }
+
+        try {
+            verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+        } finally {
+            integrations.forEach { it.uninstall() }
+        }
+    }
+
+    @Test
+    fun `uninstall from a non-owner keeps the winning installation`() {
+        val owner = getSut()
+        val nonOwner = getSut()
+        val laterInstance = getSut()
+        val fake = createPostHogFake()
+
+        try {
+            owner.install(fake)
+            nonOwner.install(fake)
+            nonOwner.uninstall()
+            laterInstance.install(fake)
+
+            verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+            verify(application, never()).unregisterActivityLifecycleCallbacks(any())
+        } finally {
+            owner.uninstall()
+            nonOwner.uninstall()
+            laterInstance.uninstall()
+        }
+    }
+
+    @Test
     fun `install registers the lifecycle callback`() {
         val sut = getSut()
 
@@ -56,7 +107,9 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     @Test
     fun `uninstall unregisters the lifecycle callback`() {
         val sut = getSut()
+        val fake = createPostHogFake()
 
+        sut.install(fake)
         sut.uninstall()
 
         verify(application).unregisterActivityLifecycleCallbacks(any())

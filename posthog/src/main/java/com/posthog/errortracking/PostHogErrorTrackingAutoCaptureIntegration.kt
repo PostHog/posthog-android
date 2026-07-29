@@ -5,12 +5,14 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler {
     private val config: PostHogConfig
     private val adapterExceptionHandler: UncaughtExceptionHandlerAdapter
     private var defaultExceptionHandler: Thread.UncaughtExceptionHandler? = null
     private var postHog: PostHogInterface? = null
+    private var ownsInstallation = false
 
     public constructor(config: PostHogConfig) {
         this.config = config
@@ -23,14 +25,14 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
 
-        if (integrationInstalled) {
+        if (integrationInstalled.get()) {
             return
         }
 
@@ -54,18 +56,26 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     }
 
     private fun installHandler() {
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
+        ownsInstallation = true
         adapterExceptionHandler.setDefaultUncaughtExceptionHandler(this)
-        integrationInstalled = true
         config.logger.log("Exception autocapture is enabled.")
     }
 
+    @Synchronized
     override fun uninstall() {
-        if (!integrationInstalled) {
+        if (!ownsInstallation) {
             return
         }
-        adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
-        integrationInstalled = false
-        config.logger.log("Exception autocapture is disabled.")
+        try {
+            adapterExceptionHandler.setDefaultUncaughtExceptionHandler(defaultExceptionHandler)
+            config.logger.log("Exception autocapture is disabled.")
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
+        }
     }
 
     override fun onRemoteConfig(loaded: Boolean) {

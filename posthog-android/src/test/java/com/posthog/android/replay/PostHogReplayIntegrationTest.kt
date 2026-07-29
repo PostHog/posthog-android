@@ -1156,6 +1156,7 @@ internal class PostHogReplayIntegrationTest {
         // modification — so an unsynchronized map can corrupt under this race (lost entries or an
         // infinite bucket-chain loop; the timeout catches the latter).
         val sut = getSut()
+        sut.install(mock())
         val appContext = ApplicationProvider.getApplicationContext<Context>()
         val listener = mock<NextDrawListener>()
         val probe = View(appContext)
