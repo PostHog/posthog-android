@@ -3,12 +3,14 @@ package com.posthog.android.replay
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.Window
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -21,6 +23,8 @@ import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
+import com.posthog.android.replay.internal.ComposeRole
+import com.posthog.android.replay.internal.ComposeSemanticsNode
 import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.EndpointSpec
@@ -35,6 +39,11 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.replay.RREvent
+import com.posthog.internal.replay.RRFullSnapshotEvent
+import com.posthog.internal.replay.RRIncrementalMutationData
+import com.posthog.internal.replay.RRIncrementalSnapshotEvent
+import com.posthog.internal.replay.RRWireframe
 import curtains.DispatchState
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -1470,6 +1479,205 @@ internal class PostHogReplayIntegrationTest {
 
             assertEquals(1, fake.captures)
             assertEquals("\$snapshot", fake.event)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    // Compose draws its whole UI into a single AndroidComposeView that has no child Views. The
+    // name matters: the integration identifies Compose roots by class name.
+    private class FakeAndroidComposeView(context: Context) : ViewGroup(context) {
+        // interop children fill the root, which is all these tests need from layout
+        override fun onLayout(
+            changed: Boolean,
+            l: Int,
+            t: Int,
+            r: Int,
+            b: Int,
+        ) {
+            for (i in 0 until childCount) {
+                getChildAt(i).layout(0, 0, r - l, b - t)
+            }
+        }
+    }
+
+    private fun wireframeFixture(): Pair<RealQueueFixture, PostHogFake> {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = ApplicationProvider.getApplicationContext(),
+            )
+        // wireframe mode is the default, spelled out because it is what these tests are about
+        fx.config.sessionReplayConfig.screenshot = false
+        val fake = PostHogFake()
+        fx.sut.install(fake)
+        fx.sut.start(resumeCurrent = true)
+        return fx to fake
+    }
+
+    private class ComposeWindow(val decorView: View, val composeView: View)
+
+    // Lays out a Compose root inside the activity window and registers the decor view with the
+    // integration so generateSnapshot() will walk it.
+    private fun composeWindow(fx: RealQueueFixture): ComposeWindow {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val composeView = FakeAndroidComposeView(activity)
+        activity.setContentView(composeView, ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val decorView = activity.window.decorView
+        makeWindowVisible(decorView)
+        decorView.measure(
+            View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY),
+        )
+        decorView.layout(0, 0, 1080, 1920)
+        fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        return ComposeWindow(decorView, composeView)
+    }
+
+    // stands in for the Compose semantics tree, which needs a Compose runtime to build
+    private fun ComposeWindow.fakeSemanticsReader(vararg nodes: ComposeSemanticsNode): (View) -> Map<View, List<ComposeSemanticsNode>> {
+        return { mapOf(composeView to nodes.toList()) }
+    }
+
+    // The decor view also holds the window decorations (action bar title and so on), so only the
+    // children of the Compose root are the content under test.
+    private fun PostHogFake.composeWireframes(window: ComposeWindow): List<RRWireframe> {
+        val composeViewId = System.identityHashCode(window.composeView)
+        return snapshotWireframes().filter { it.parentId == composeViewId }
+    }
+
+    private fun PostHogFake.snapshotEvents(): List<RREvent> {
+        @Suppress("UNCHECKED_CAST")
+        return properties?.get("\$snapshot_data") as? List<RREvent> ?: emptyList()
+    }
+
+    private fun PostHogFake.snapshotWireframes(): List<RRWireframe> {
+        val fullSnapshot = snapshotEvents().filterIsInstance<RRFullSnapshotEvent>().single()
+
+        @Suppress("UNCHECKED_CAST")
+        val roots = (fullSnapshot.data as Map<String, Any>)["wireframes"] as List<RRWireframe>
+        val flattened = mutableListOf<RRWireframe>()
+
+        fun flatten(wireframes: List<RRWireframe>) {
+            wireframes.forEach {
+                flattened.add(it)
+                it.childWireframes?.let(::flatten)
+            }
+        }
+        flatten(roots)
+        return flattened
+    }
+
+    @Test
+    fun `wireframe mode captures compose content from the semantics tree`() {
+        val (fx, fake) = wireframeFixture()
+        try {
+            val window = composeWindow(fx)
+            fx.sut.composeSemanticsReader =
+                window.fakeSemanticsReader(
+                    ComposeSemanticsNode(id = 1, bounds = Rect(0, 0, 500, 100), text = "Welcome back"),
+                    ComposeSemanticsNode(
+                        id = 2,
+                        bounds = Rect(0, 200, 500, 300),
+                        text = "Sign in",
+                        role = ComposeRole.Button,
+                    ),
+                )
+
+            fx.sut.generateSnapshot(WeakReference(window.decorView), WeakReference(mock<Window>()))
+
+            val wireframes = fake.composeWireframes(window)
+            assertEquals("************", wireframes.single { it.type == "text" }.text)
+            assertEquals("*******", wireframes.single { it.inputType == "button" }.value)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `wireframe mode without compose content produces an empty screen`() {
+        // Documents the bug this replaces: a Compose window has no child Views, so with nothing
+        // read from the semantics tree the snapshot carries no content at all and the player
+        // renders a blank screen.
+        val (fx, fake) = wireframeFixture()
+        try {
+            val window = composeWindow(fx)
+            fx.sut.composeSemanticsReader = { emptyMap() }
+
+            fx.sut.generateSnapshot(WeakReference(window.decorView), WeakReference(mock<Window>()))
+
+            assertTrue(fake.composeWireframes(window).isEmpty())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `each compose root contributes its own wireframes`() {
+        // a screen can hold many Compose roots (a ComposeView per list row); each root's content
+        // must land under that root and keep its own ids
+        val (fx, fake) = wireframeFixture()
+        try {
+            val window = composeWindow(fx)
+            val secondRoot = FakeAndroidComposeView(window.composeView.context)
+            (window.composeView as ViewGroup).addView(secondRoot, ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            window.decorView.measure(
+                View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY),
+            )
+            window.decorView.layout(0, 0, 1080, 1920)
+            fx.sut.composeSemanticsReader = {
+                mapOf(
+                    window.composeView to listOf(ComposeSemanticsNode(id = 1, bounds = Rect(0, 0, 500, 100), text = "first")),
+                    secondRoot to listOf(ComposeSemanticsNode(id = 1, bounds = Rect(0, 200, 500, 300), text = "second")),
+                )
+            }
+
+            fx.sut.generateSnapshot(WeakReference(window.decorView), WeakReference(mock<Window>()))
+
+            val first = fake.composeWireframes(window).single { it.type == "text" }
+            val second =
+                fake.snapshotWireframes()
+                    .single { it.parentId == System.identityHashCode(secondRoot) && it.type == "text" }
+            assertNotEquals(first.id, second.id, "the same semantics id in two roots must not collide")
+            assertEquals(0, first.y)
+            assertEquals(200, second.y)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `compose wireframes keep their ids across snapshots`() {
+        // ids are the only thing incremental mutations are matched on, so an unchanged node must
+        // not be re-added on every frame
+        val (fx, fake) = wireframeFixture()
+        try {
+            val window = composeWindow(fx)
+            fx.sut.composeSemanticsReader =
+                window.fakeSemanticsReader(ComposeSemanticsNode(id = 1, bounds = Rect(0, 0, 500, 100), text = "Welcome back"))
+
+            fx.sut.generateSnapshot(WeakReference(window.decorView), WeakReference(mock<Window>()))
+            val firstId = fake.composeWireframes(window).single().id
+            assertEquals(1, fake.captures)
+
+            fx.sut.generateSnapshot(WeakReference(window.decorView), WeakReference(mock<Window>()))
+
+            assertEquals(1, fake.captures, "an unchanged compose tree must not emit mutations")
+
+            fx.sut.composeSemanticsReader =
+                window.fakeSemanticsReader(ComposeSemanticsNode(id = 1, bounds = Rect(0, 0, 500, 100), text = "Welcome again"))
+            fx.sut.generateSnapshot(WeakReference(window.decorView), WeakReference(mock<Window>()))
+
+            val updates =
+                fake.snapshotEvents().filterIsInstance<RRIncrementalSnapshotEvent>()
+                    .single()
+                    .let { it.data as RRIncrementalMutationData }
+                    .updates.orEmpty()
+            assertEquals(listOf(firstId), updates.map { it.wireframe.id })
         } finally {
             fx.sut.uninstall()
         }

@@ -23,6 +23,7 @@ import android.graphics.drawable.VectorDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
@@ -49,10 +50,13 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogIntegration
@@ -66,10 +70,13 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
+import com.posthog.android.replay.internal.ComposeRole
+import com.posthog.android.replay.internal.ComposeSemanticsNode
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.android.replay.internal.toWireframes
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -101,6 +108,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -728,7 +737,13 @@ public class PostHogReplayIntegration(
                     window,
                 ) ?: return false
             } else {
-                view.toWireframe() ?: return false
+                // read up front, in one main-thread hop, so the walk itself stays on this thread
+                composeSemantics = composeSemanticsReader(view)
+                try {
+                    view.toWireframe() ?: return false
+                } finally {
+                    composeSemantics = emptyMap()
+                }
             }
 
         // if the decorView has no backgroundColor, we use the theme color
@@ -1183,6 +1198,164 @@ public class PostHogReplayIntegration(
         return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)
     }
 
+    private val loggedComposeWireframeMode = AtomicBoolean(false)
+
+    /**
+     * Compose draws its whole UI into a single `AndroidComposeView` that has no child Views, so the
+     * wireframe walk in [toWireframe] bottoms out there and the player is left with nothing but the
+     * window background — a blank screen. The semantics tree is the only structural description of
+     * the content available without capturing pixels, so wireframe mode is built from it.
+     *
+     * Reads every Compose root under the decor view at once, keyed by root, because semantics can
+     * only be read on the main thread and a screen can hold many roots (a `ComposeView` per list
+     * row, for instance) — one hop per capture instead of one per root.
+     *
+     * Compose is a `compileOnly` dependency, so its classes are absent unless the host app uses it.
+     * All Compose access goes through this seam to keep that constraint in one place, and so tests
+     * can drive the wireframe mapping without a Compose runtime on the classpath.
+     */
+    internal var composeSemanticsReader: (View) -> Map<View, List<ComposeSemanticsNode>> = { decorView ->
+        if (isComposeAvailable) {
+            decorView.readComposeSemanticsOnMainThread()
+        } else {
+            emptyMap()
+        }
+    }
+
+    // Set and cleared within a single [generateSnapshot] call, so the [toWireframe] walk it drives
+    // can look up each Compose root's nodes without threading them through the recursion. Never
+    // read outside that call, so it needs no synchronization.
+    private var composeSemantics: Map<View, List<ComposeSemanticsNode>> = emptyMap()
+
+    /**
+     * Compose used to be captured by screenshot mode only, and silently produced blank recordings
+     * otherwise, with nothing in the logs to explain it. Logged once per integration so a developer
+     * running with `debug = true` can tell wireframe mode apart from a broken recording.
+     */
+    private fun logComposeWireframeModeOnce() {
+        if (loggedComposeWireframeMode.compareAndSet(false, true)) {
+            config.logger.log(
+                "Session Replay detected Jetpack Compose content and is capturing it as a wireframe " +
+                    "from the semantics tree. Styling and content without semantics (custom Canvas " +
+                    "drawing, images, icons without a contentDescription) is not captured. For a " +
+                    "full fidelity recording set sessionReplayConfig.screenshot = true, but note " +
+                    "that screenshots may contain sensitive information.",
+            )
+        }
+    }
+
+    private fun View.readComposeSemanticsOnMainThread(): Map<View, List<ComposeSemanticsNode>> {
+        // compose requires the semantics tree to be read on the main thread
+        // see https://github.com/PostHog/posthog-android/issues/203
+        if (Looper.myLooper() == mainHandler.mainLooper) {
+            return readComposeSemantics()
+        }
+
+        // set before the countDown so awaiting the latch publishes the map safely
+        val semantics = AtomicReference<Map<View, List<ComposeSemanticsNode>>>(emptyMap())
+        val latch = CountDownLatch(1)
+
+        mainHandler.handler.post {
+            try {
+                semantics.set(readComposeSemantics())
+            } finally {
+                latch.countDown()
+            }
+        }
+
+        try {
+            // await for 1s max
+            latch.await(1000, TimeUnit.MILLISECONDS)
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay reading Compose semantics failed: $e")
+        }
+
+        return semantics.get()
+    }
+
+    private fun View.readComposeSemantics(): Map<View, List<ComposeSemanticsNode>> {
+        val semantics = mutableMapOf<View, List<ComposeSemanticsNode>>()
+
+        fun walk(view: View) {
+            // a hidden subtree is skipped by the wireframe walk anyway
+            if (view.visibility != View.VISIBLE) {
+                return
+            }
+            if (view.isComposeView()) {
+                logComposeWireframeModeOnce()
+                semantics[view] = view.readSemanticsNodes()
+                // fall through: a Compose root's View children are the interop views, which may
+                // host Compose roots of their own
+            }
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) {
+                    walk(view.getChildAt(i) ?: continue)
+                }
+            }
+        }
+        walk(this)
+
+        return semantics
+    }
+
+    private fun View.readSemanticsNodes(): List<ComposeSemanticsNode> {
+        return try {
+            val semanticsOwner =
+                (this as? RootForTest)?.semanticsOwner ?: run {
+                    config.logger.log("View is not a RootForTest: $this")
+                    return emptyList()
+                }
+
+            semanticsOwner.getAllSemanticsNodes(true).map { it.toComposeSemanticsNode() }
+        } catch (e: Throwable) {
+            // swallow possible errors due to compose versioning, etc
+            config.logger.log("Session Replay reading Compose semantics (main thread) failed: $e")
+            emptyList()
+        }
+    }
+
+    private fun SemanticsNode.toComposeSemanticsNode(): ComposeSemanticsNode {
+        val semantics = this.config
+        val text =
+            semantics.getOrNull(SemanticsProperties.Text)
+                ?.joinToString(separator = " ") { it.text }
+                ?: semantics.getOrNull(SemanticsProperties.EditableText)?.text
+        val checked =
+            when (semantics.getOrNull(SemanticsProperties.ToggleableState)) {
+                ToggleableState.On -> true
+                ToggleableState.Off -> false
+                else -> semantics.getOrNull(SemanticsProperties.Selected)
+            }
+
+        return ComposeSemanticsNode(
+            id = id,
+            bounds = boundsInWindow.toRect(),
+            text = text,
+            isEditable = semantics.contains(SemanticsProperties.EditableText),
+            isPassword = semantics.contains(SemanticsProperties.Password),
+            contentDescription =
+                semantics.getOrNull(SemanticsProperties.ContentDescription)
+                    ?.joinToString(separator = " "),
+            role = semantics.getOrNull(SemanticsProperties.Role).toComposeRole(),
+            checked = checked,
+            maskForced = hasActiveModifier(PostHogReplayMask),
+            unmaskForced = hasActiveModifier(PostHogReplayUnmask),
+        )
+    }
+
+    private fun Role?.toComposeRole(): ComposeRole {
+        return when (this) {
+            Role.Button -> ComposeRole.Button
+            Role.Checkbox -> ComposeRole.Checkbox
+            Role.Switch -> ComposeRole.Switch
+            Role.RadioButton -> ComposeRole.RadioButton
+            Role.Tab -> ComposeRole.Tab
+            Role.Image -> ComposeRole.Image
+            // roles added in newer Compose versions still render as text
+            else -> ComposeRole.None
+        }
+    }
+
     private val isComposeAvailable by lazy(LazyThreadSafetyMode.PUBLICATION) {
         try {
             Class.forName(ANDROID_COMPOSE_VIEW_CLASS_NAME)
@@ -1613,6 +1786,22 @@ public class PostHogReplayIntegration(
         }
 
         val children = mutableListOf<RRWireframe>()
+        val composeNodes = if (composeSemantics.isEmpty()) emptyList() else composeSemantics[view].orEmpty()
+        if (composeNodes.isNotEmpty()) {
+            // wireframe positions are absolute, so the semantics tree is flattened into a
+            // single level of children rather than mirrored as a nested tree
+            children.addAll(
+                composeNodes.toWireframes(
+                    hostViewId = viewId,
+                    parentId = viewId,
+                    density = screenDensity,
+                    maskAllTextInputs = config.sessionReplayConfig.maskAllTextInputs,
+                    ancestorUnmasked = isUnmasked,
+                ),
+            )
+        }
+        // an AndroidComposeView is a ViewGroup too, its children are the interop views
+        // (AndroidView, FragmentContainerView, etc)
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
