@@ -86,6 +86,11 @@ tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.postHogConfig(false)
 }
 
+animalsniffer {
+    // Android lint handles API compatibility checks; the previous plugin did not register Android targets.
+    defaultTargets = emptySet()
+}
+
 dependencies {
     // runtime
     api(project(mapOf("path" to ":posthog")))
