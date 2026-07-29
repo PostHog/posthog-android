@@ -28,6 +28,10 @@ subprojects {
     dependencyLocking {
         lockAllConfigurations()
     }
+
+    tasks.withType<Test>().configureEach {
+        jvmArgs("-Xshare:off")
+    }
 }
 
 spotless {
