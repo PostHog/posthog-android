@@ -42,15 +42,22 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
 
-        // Already linked into the chain: just resume capturing. Re-running the link logic while
-        // we're a mid-chain delegate would point defaultExceptionHandler back at a handler that
-        // delegates to us, looping uncaughtException until it StackOverflows.
-        if (integrationInstalled.get()) {
-            // Resume only if we own the link and both gates still allow capture; a non-owner
-            // isn't wired into the chain, so setting captureEnabled here would be inert.
-            if (ownsInstallation && canCapture()) {
+        // Already linked into the chain (possibly dormant below a handler installed after us):
+        // resume capturing in place. Re-running the link logic while we're a mid-chain delegate
+        // would point defaultExceptionHandler back at a handler that delegates to us, looping
+        // uncaughtException until it StackOverflows — so we never relink, only flip the gate.
+        if (ownsInstallation) {
+            if (canCapture()) {
                 captureEnabled = true
+                // Re-arm the process-wide flag: a dormant uninstall clears it, and while we
+                // capture again a fresh instance must not also link on top of us.
+                integrationInstalled.set(true)
             }
+            return
+        }
+
+        // A different instance is already linked and armed; don't double-link into the chain.
+        if (integrationInstalled.get()) {
             return
         }
 
@@ -114,8 +121,14 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             defaultExceptionHandler = null
             config.logger.log("Exception autocapture is disabled.")
         } else {
-            // Can't unlink — a handler installed after us keeps us as its delegate. Stay dormant
-            // (captureEnabled is already false) and keep delegating.
+            // Can't unlink — a handler installed after us keeps us as its delegate. Stay linked as
+            // a pass-through (captureEnabled is already false), but release the process-wide armed
+            // flag so a fresh integration can take over autocapture. We keep ownsInstallation=true
+            // so our own later re-enable resumes in place (above) instead of relinking into a loop.
+            // ponytail: if this same dormant instance is re-enabled *after* a fresh instance armed
+            // on top, both capture (duplicate events, not a loop). Requires a closed client to
+            // still receive onRemoteConfig, which doesn't happen in practice.
+            integrationInstalled.set(false)
             config.logger.log("Exception autocapture is dormant (still linked below another handler).")
         }
     }

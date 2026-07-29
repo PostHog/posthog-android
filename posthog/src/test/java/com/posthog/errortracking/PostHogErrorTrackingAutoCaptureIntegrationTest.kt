@@ -501,6 +501,42 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     }
 
     @Test
+    fun `a fresh instance takes over autocapture after the owner goes dormant on close`() {
+        // I1 installs by default, a third-party handler overlays on top, then the client closes:
+        // I1 can't unlink so it goes dormant. A later setup() must let a fresh instance take over
+        // autocapture instead of being permanently blocked by the still-held process-wide flag.
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        currentHandler = mockExceptionHandler
+
+        val first = getSut()
+        first.install(mockPostHog)
+
+        // Third-party overlay grabs the top slot, keeping `first` as its delegate.
+        val overlay = mock<Thread.UncaughtExceptionHandler>()
+        currentHandler = overlay
+
+        // Client closes: uninstall() can't unlink (overlay on top), so `first` goes dormant.
+        first.uninstall()
+
+        // Fresh setup(): a new instance must actually install on top of the overlay and capture.
+        val second = getSut()
+        second.install(mockPostHog)
+
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(second)
+
+        val thread = Thread.currentThread()
+        val throwable = RuntimeException("crash after re-setup")
+        second.uncaughtException(thread, throwable)
+
+        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(overlay).uncaughtException(thread, throwable)
+
+        currentHandler = second
+        second.uninstall()
+    }
+
+    @Test
     fun `onRemoteConfig keeps default install when remote config fetch fails`() {
         // Offline / failed first-launch fetch (loaded = false) must not tear down the default install.
         whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
