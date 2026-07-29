@@ -42,7 +42,13 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         // we're a mid-chain delegate would point defaultExceptionHandler back at a handler that
         // delegates to us, looping uncaughtException until it StackOverflows.
         if (integrationInstalled.get()) {
-            captureEnabled = true
+            // Resume only if we own the chain link and the local gate is still on. A non-owning
+            // instance isn't wired into the handler chain, so setting captureEnabled here would be
+            // inert and misleading; and a same-instance resume must honor autoCapture toggled off
+            // since install.
+            if (ownsInstallation && config.errorTrackingConfig.autoCapture) {
+                captureEnabled = true
+            }
             return
         }
 
