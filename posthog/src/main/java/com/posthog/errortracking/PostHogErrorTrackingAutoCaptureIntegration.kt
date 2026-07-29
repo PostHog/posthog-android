@@ -10,6 +10,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler {
     private val config: PostHogConfig
     private val adapterExceptionHandler: UncaughtExceptionHandlerAdapter
+
+    // @Volatile: read on the crashing thread in uncaughtException with no happens-before edge to
+    // the install()/uninstall() writes; a pre-existing thread could otherwise see a stale null and
+    // skip delegating to the app/system handler.
+    @Volatile
     private var defaultExceptionHandler: Thread.UncaughtExceptionHandler? = null
     private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
