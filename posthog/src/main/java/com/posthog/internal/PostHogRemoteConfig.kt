@@ -124,6 +124,11 @@ public class PostHogRemoteConfig(
     @Volatile
     private var autoCaptureExceptions = false
 
+    // Set by preloadErrorTrackingConfig when a disk-cached error-tracking config exists at startup.
+    // Survives clear()/reset(): it's project-level config, not user data, like the cached config.
+    @Volatile
+    private var errorTrackingConfigCached = false
+
     @Volatile
     private var consoleLogRecordingEnabled = true
 
@@ -519,19 +524,19 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun clearErrorTracking() {
-        autoCaptureExceptions = false
-        config.cachePreferences?.remove(ERROR_TRACKING)
-    }
-
     private fun processErrorTrackingConfig(
         errorTracking: Any?,
         persist: Boolean = true,
     ) {
         when (errorTracking) {
             is Boolean -> {
-                // if errorTracking is a Boolean, it's always false (disabled)
-                clearErrorTracking()
+                // A Boolean errorTracking means disabled; cache that stance so a future launch
+                // skips the default first-launch install before /config responds. Persisted only
+                // when actually disabled.
+                autoCaptureExceptions = false
+                if (persist && !errorTracking) {
+                    config.cachePreferences?.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to false))
+                }
             }
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
@@ -555,6 +560,7 @@ public class PostHogRemoteConfig(
                 @Suppress("UNCHECKED_CAST")
                 val errorTracking = preferences.getValue(ERROR_TRACKING) as? Map<String, Any>
                 if (errorTracking != null) {
+                    errorTrackingConfigCached = true
                     val autocaptureExceptions = errorTracking["autocaptureExceptions"]
                     autoCaptureExceptions = autocaptureExceptions as? Boolean ?: false
                 }
@@ -633,6 +639,16 @@ public class PostHogRemoteConfig(
      * (PostHogConfig.errorTrackingConfig.autoCapture) must be enabled.
      */
     public fun isAutocaptureExceptionsEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.autoCapture
+
+    /**
+     * Whether a disk-cached error tracking config was present at SDK startup, before any live
+     * `/config` fetch. Together with [hasRemoteConfigFetched] this tells the error-tracking
+     * integration whether the server's autocapture stance is already known: when neither is true
+     * (first launch, no cache) the integration installs by default so a crash in that first-launch
+     * window — before `/flags` responds — isn't silently missed; a cached-or-fetched config that
+     * disables autocapture blocks (or removes) it.
+     */
+    public fun hasCachedErrorTrackingConfig(): Boolean = errorTrackingConfigCached
 
     /**
      * Returns whether console log recording is enabled remotely.
