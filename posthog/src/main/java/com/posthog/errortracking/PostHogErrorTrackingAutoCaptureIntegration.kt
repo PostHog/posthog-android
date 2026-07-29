@@ -30,8 +30,12 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         this.adapterExceptionHandler = adapterExceptionHandler
     }
 
-    private companion object {
+    internal companion object {
         private val integrationInstalled = AtomicBoolean(false)
+
+        internal fun resetForTests() {
+            integrationInstalled.set(false)
+        }
     }
 
     @Synchronized

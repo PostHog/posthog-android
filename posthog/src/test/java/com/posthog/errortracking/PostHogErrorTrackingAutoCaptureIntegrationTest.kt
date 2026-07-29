@@ -13,7 +13,6 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -45,10 +44,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     fun tearDown() {
         // Force-reset the process-static install flag so a test that throws before its own
         // uninstall() can't leak install state into the next test's compareAndSet.
-        PostHogErrorTrackingAutoCaptureIntegration::class.java
-            .getDeclaredField("integrationInstalled")
-            .apply { isAccessible = true }
-            .let { (it.get(null) as AtomicBoolean).set(false) }
+        PostHogErrorTrackingAutoCaptureIntegration.resetForTests()
     }
 
     private fun getSut(autoCapture: Boolean = true): PostHogErrorTrackingAutoCaptureIntegration {
