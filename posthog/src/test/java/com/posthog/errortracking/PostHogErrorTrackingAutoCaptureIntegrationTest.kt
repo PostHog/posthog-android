@@ -405,6 +405,79 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.uninstall()
     }
 
+    // Mid-chain disable/re-enable (discussion_r3667142339): when a handler installs after us we
+    // can't unlink, so a disabled instance must stay dormant, keep delegating, and never re-link.
+
+    @Test
+    fun `uninstall stops capturing but keeps delegating when another handler installed after us`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        currentHandler = mockExceptionHandler
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        // A third party installs on top of us; we're now a mid-chain delegate.
+        val overlay = mock<Thread.UncaughtExceptionHandler>()
+        currentHandler = overlay
+
+        // Remote disables autocapture → we can't unlink (we're not the active handler).
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+        integration.onRemoteConfig(loaded = true)
+
+        // We did not clobber the overlay by restoring our saved handler.
+        verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
+
+        // A crash still routes through us: we must NOT capture (kill-switch), but must delegate down.
+        val thread = Thread.currentThread()
+        val throwable = RuntimeException("crash while dormant")
+        integration.uncaughtException(thread, throwable)
+
+        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        // Clear the process-wide install flag so it doesn't leak into the next test.
+        currentHandler = integration
+        integration.uninstall()
+    }
+
+    @Test
+    fun `onRemoteConfig re-enable resumes capturing without re-linking when mid-chain`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        currentHandler = mockExceptionHandler
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        // Overlay installs after us, then remote disables.
+        currentHandler = mock<Thread.UncaughtExceptionHandler>()
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+        integration.onRemoteConfig(loaded = true)
+
+        // Remote re-enables. We must resume capturing WITHOUT re-linking — re-linking here would
+        // point defaultExceptionHandler at the overlay (which delegates to us) and loop to a
+        // StackOverflow on the next crash.
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        integration.onRemoteConfig(loaded = true)
+
+        // Only the original install ever set the handler; no re-link.
+        verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(integration)
+
+        // Capturing is back on, and defaultExceptionHandler is still the original app handler.
+        val thread = Thread.currentThread()
+        val throwable = RuntimeException("crash after re-enable")
+        integration.uncaughtException(thread, throwable)
+
+        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        // Clear the process-wide install flag so it doesn't leak into the next test.
+        currentHandler = integration
+        integration.uninstall()
+    }
+
     @Test
     fun `onRemoteConfig keeps default install when remote config fetch fails`() {
         // Offline / failed first-launch fetch (loaded = false) must not tear down the default install.
