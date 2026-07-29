@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class PostHogTouchActivityIntegration(
     private val config: PostHogAndroidConfig,
 ) : PostHogIntegration {
+    private var ownsInstallation = false
+
     private companion object {
         private val integrationInstalled = AtomicBoolean(false)
     }
@@ -53,10 +55,12 @@ internal class PostHogTouchActivityIntegration(
             }
         }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         if (!isSupported() || !integrationInstalled.compareAndSet(false, true)) {
             return
         }
+        ownsInstallation = true
         try {
             Curtains.rootViews.forEach { view ->
                 view.phoneWindow?.let { window ->
@@ -71,7 +75,11 @@ internal class PostHogTouchActivityIntegration(
         }
     }
 
+    @Synchronized
     override fun uninstall() {
+        if (!ownsInstallation) {
+            return
+        }
         try {
             Curtains.onRootViewsChangedListeners -= onRootViewsChangedListener
             Curtains.rootViews.forEach { view ->
@@ -82,6 +90,7 @@ internal class PostHogTouchActivityIntegration(
         } catch (e: Throwable) {
             config.logger.log("PostHogTouchActivityIntegration uninstall failed: $e.")
         } finally {
+            ownsInstallation = false
             integrationInstalled.set(false)
         }
     }

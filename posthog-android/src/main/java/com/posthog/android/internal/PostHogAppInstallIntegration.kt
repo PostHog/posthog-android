@@ -17,10 +17,13 @@ internal class PostHogAppInstallIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
 ) : PostHogIntegration {
+    private var ownsInstallation = false
+
     private companion object {
         private val integrationInstalled = AtomicBoolean(false)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         // While the store is unreadable (Direct Boot) VERSION/BUILD read as absent, which would
         // fire a spurious "Application Installed" for an existing install and overwrite the
@@ -32,6 +35,7 @@ internal class PostHogAppInstallIntegration(
         if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
+        ownsInstallation = true
 
         getPackageInfo(context, config)?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
@@ -73,7 +77,12 @@ internal class PostHogAppInstallIntegration(
         }
     }
 
+    @Synchronized
     override fun uninstall() {
+        if (!ownsInstallation) {
+            return
+        }
+        ownsInstallation = false
         integrationInstalled.set(false)
     }
 }

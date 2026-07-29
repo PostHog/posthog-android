@@ -62,8 +62,33 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         start.countDown()
         threads.forEach { it.join() }
 
-        verify(application, times(1)).registerActivityLifecycleCallbacks(any())
-        integrations.forEach { it.uninstall() }
+        try {
+            verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+        } finally {
+            integrations.forEach { it.uninstall() }
+        }
+    }
+
+    @Test
+    fun `uninstall from a non-owner keeps the winning installation`() {
+        val owner = getSut()
+        val nonOwner = getSut()
+        val laterInstance = getSut()
+        val fake = createPostHogFake()
+
+        try {
+            owner.install(fake)
+            nonOwner.install(fake)
+            nonOwner.uninstall()
+            laterInstance.install(fake)
+
+            verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+            verify(application, never()).unregisterActivityLifecycleCallbacks(any())
+        } finally {
+            owner.uninstall()
+            nonOwner.uninstall()
+            laterInstance.uninstall()
+        }
     }
 
     @Test
@@ -82,7 +107,9 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     @Test
     fun `uninstall unregisters the lifecycle callback`() {
         val sut = getSut()
+        val fake = createPostHogFake()
 
+        sut.install(fake)
         sut.uninstall()
 
         verify(application).unregisterActivityLifecycleCallbacks(any())

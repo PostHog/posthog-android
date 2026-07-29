@@ -106,8 +106,11 @@ internal class PostHogSendCachedEventsIntegrationTest {
         start.countDown()
         threads.forEach { it.join() }
 
-        assertEquals(1, scheduledFlushes.get())
-        integrations.forEach { it.uninstall() }
+        try {
+            assertEquals(1, scheduledFlushes.get())
+        } finally {
+            integrations.forEach { it.uninstall() }
+        }
     }
 
     @Test

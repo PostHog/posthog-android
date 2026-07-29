@@ -192,6 +192,7 @@ public class PostHogReplayIntegration(
 
     private var postHog: PostHogInterface? = null
     private var replayQueue: PostHogReplayQueue? = null
+    private var ownsInstallation = false
 
     @Volatile
     private var replaySessionId: String? = null
@@ -525,10 +526,12 @@ public class PostHogReplayIntegration(
         decorViews.remove(view)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         if (!isSupported() || !integrationInstalled.compareAndSet(false, true)) {
             return
         }
+        ownsInstallation = true
         this.postHog = postHog
 
         // Wire up as buffer delegate for the replay queue
@@ -558,9 +561,12 @@ public class PostHogReplayIntegration(
         }
     }
 
+    @Synchronized
     override fun uninstall() {
+        if (!ownsInstallation) {
+            return
+        }
         try {
-            integrationInstalled.set(false)
             this.postHog = null
 
             // Clear buffer delegate
@@ -589,6 +595,9 @@ public class PostHogReplayIntegration(
             decorViews.clear()
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
         }
     }
 

@@ -19,6 +19,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     private val config: PostHogAndroidConfig,
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
     private var postHog: PostHogInterface? = null
+    private var ownsInstallation = false
 
     private companion object {
         private val integrationInstalled = AtomicBoolean(false)
@@ -83,18 +84,28 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     override fun onActivityDestroyed(activity: Activity) {
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
+        ownsInstallation = true
 
         this.postHog = postHog
         application.registerActivityLifecycleCallbacks(this)
     }
 
+    @Synchronized
     override fun uninstall() {
-        this.postHog = null
-        integrationInstalled.set(false)
-        application.unregisterActivityLifecycleCallbacks(this)
+        if (!ownsInstallation) {
+            return
+        }
+        try {
+            this.postHog = null
+            application.unregisterActivityLifecycleCallbacks(this)
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
+        }
     }
 }

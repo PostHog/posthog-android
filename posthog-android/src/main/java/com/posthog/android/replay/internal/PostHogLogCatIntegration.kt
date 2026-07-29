@@ -21,11 +21,13 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
         get() = postHog?.isSessionReplayActive() ?: false
 
     private var postHog: PostHogInterface? = null
+    private var ownsInstallation = false
 
     private companion object {
         private val integrationInstalled = AtomicBoolean(false)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
         val captureLogcat = config.remoteConfigHolder?.isConsoleLogRecordingEnabled() ?: true
@@ -35,6 +37,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
         if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
+        ownsInstallation = true
         val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
         val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
         cmd.add("-T")
@@ -108,9 +111,17 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
     @PostHogVisibleForTesting
     internal fun isInstalled(): Boolean = integrationInstalled.get()
 
+    @Synchronized
     override fun uninstall() {
-        integrationInstalled.set(false)
-        logcatInProgress = false
-        logcatThread?.interruptSafely()
+        if (!ownsInstallation) {
+            return
+        }
+        try {
+            logcatInProgress = false
+            logcatThread?.interruptSafely()
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
+        }
     }
 }

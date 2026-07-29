@@ -20,14 +20,18 @@ internal class PostHogSendCachedEventsIntegration(
     private val api: PostHogApi,
     private val executor: ExecutorService,
 ) : PostHogIntegration {
+    private var ownsInstallation = false
+
     private companion object {
         private val integrationInstalled = AtomicBoolean(false)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
         if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
+        ownsInstallation = true
 
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
@@ -137,7 +141,12 @@ internal class PostHogSendCachedEventsIntegration(
         iterator.remove()
     }
 
+    @Synchronized
     override fun uninstall() {
+        if (!ownsInstallation) {
+            return
+        }
+        ownsInstallation = false
         integrationInstalled.set(false)
     }
 }
