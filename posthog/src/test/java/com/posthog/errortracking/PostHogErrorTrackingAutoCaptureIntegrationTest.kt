@@ -413,27 +413,31 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.uninstall()
     }
 
-    // Mid-chain disable/re-enable (discussion_r3667142339): when a handler installs after us we
-    // can't unlink, so a disabled instance must stay dormant, keep delegating, and never re-link.
+    // Mid-chain disable/re-enable: when a handler installs after us we can't unlink, so a
+    // disabled instance must stay dormant, keep delegating, and never re-link.
 
-    @Test
-    fun `uninstall stops capturing but keeps delegating when another handler installed after us`() {
+    // Install with the app's handler present, let a third-party overlay take the top slot, then
+    // have remote config disable autocapture — the integration goes mid-chain-dormant.
+    private fun installedThenOverlaidAndRemoteDisabled(): PostHogErrorTrackingAutoCaptureIntegration {
         whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
         whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         currentHandler = mockExceptionHandler
 
         val integration = getSut()
         integration.install(mockPostHog)
-        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
 
-        // A third party installs on top of us; we're now a mid-chain delegate.
-        val overlay = mock<Thread.UncaughtExceptionHandler>()
-        currentHandler = overlay
-
-        // Remote disables autocapture → we can't unlink (we're not the active handler).
+        currentHandler = mock<Thread.UncaughtExceptionHandler>()
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(true)
         whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
         integration.onRemoteConfig(loaded = true)
+        return integration
+    }
 
+    @Test
+    fun `uninstall stops capturing but keeps delegating when another handler installed after us`() {
+        val integration = installedThenOverlaidAndRemoteDisabled()
+
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
         // We did not clobber the overlay by restoring our saved handler.
         verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
 
@@ -452,17 +456,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `onRemoteConfig re-enable resumes capturing without re-linking when mid-chain`() {
-        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
-        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
-        currentHandler = mockExceptionHandler
-
-        val integration = getSut()
-        integration.install(mockPostHog)
-
-        // Overlay installs after us, then remote disables.
-        currentHandler = mock<Thread.UncaughtExceptionHandler>()
-        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
-        integration.onRemoteConfig(loaded = true)
+        val integration = installedThenOverlaidAndRemoteDisabled()
 
         // Remote re-enables. We must resume capturing WITHOUT re-linking — re-linking here would
         // point defaultExceptionHandler at the overlay (which delegates to us) and loop to a
@@ -488,18 +482,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `a direct re-install on the owning instance honors the remote kill-switch`() {
-        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
-        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
-        currentHandler = mockExceptionHandler
-
-        val integration = getSut()
-        integration.install(mockPostHog)
-
-        // Overlay installs after us, then remote disables → dormant (flags held, capture off).
-        currentHandler = mock<Thread.UncaughtExceptionHandler>()
-        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(true)
-        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
-        integration.onRemoteConfig(loaded = true)
+        val integration = installedThenOverlaidAndRemoteDisabled()
 
         // A direct install() (e.g. re-init re-running config.integrations) must NOT resume
         // capture while the fetched/cached remote config still disables autocapture.

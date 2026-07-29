@@ -530,10 +530,9 @@ public class PostHogRemoteConfig(
     ) {
         when (errorTracking) {
             is Boolean -> {
-                // errorTracking as a Boolean means disabled. Persist the disabled stance instead of
-                // evicting the key, so the next launch skips the default first-launch install before
-                // its live /config lands. Only persist when actually disabled, so a truthy value never
-                // caches the disabled stance permanently.
+                // A Boolean errorTracking means disabled; cache that stance so a future launch
+                // skips the default first-launch install before /config responds. Persisted only
+                // when actually disabled.
                 autoCaptureExceptions = false
                 if (persist && !errorTracking) {
                     config.cachePreferences?.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to false))

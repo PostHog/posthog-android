@@ -46,23 +46,15 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         // we're a mid-chain delegate would point defaultExceptionHandler back at a handler that
         // delegates to us, looping uncaughtException until it StackOverflows.
         if (integrationInstalled.get()) {
-            // Resume only if we own the chain link and both gates still allow capturing. A
-            // non-owning instance isn't wired into the handler chain, so setting captureEnabled
-            // here would be inert and misleading; and a same-instance resume must honor both
-            // autoCapture toggled off since install and a remote config that has since disabled
-            // autocapture (the same kill-switch the fresh-install path checks).
-            if (ownsInstallation && config.errorTrackingConfig.autoCapture && !remoteKillSwitchActive()) {
+            // Resume only if we own the link and both gates still allow capture; a non-owner
+            // isn't wired into the chain, so setting captureEnabled here would be inert.
+            if (ownsInstallation && canCapture()) {
                 captureEnabled = true
             }
             return
         }
 
-        // Local config is the primary gate (the remote check below is only a kill-switch).
-        if (!config.errorTrackingConfig.autoCapture) {
-            return
-        }
-
-        if (remoteKillSwitchActive()) {
+        if (!canCapture()) {
             return
         }
 
@@ -79,6 +71,9 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             installHandler()
         }
     }
+
+    // Local config is the primary gate; remote config is only a kill-switch (below).
+    private fun canCapture(): Boolean = config.errorTrackingConfig.autoCapture && !remoteKillSwitchActive()
 
     // Remote config is a kill-switch, not a gate: it blocks capture only when a config that
     // already exists — fetched this session or cached from a prior launch — explicitly disables
