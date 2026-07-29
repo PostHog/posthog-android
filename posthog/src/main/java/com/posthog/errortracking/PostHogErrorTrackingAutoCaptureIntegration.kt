@@ -46,11 +46,12 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         // we're a mid-chain delegate would point defaultExceptionHandler back at a handler that
         // delegates to us, looping uncaughtException until it StackOverflows.
         if (integrationInstalled.get()) {
-            // Resume only if we own the chain link and the local gate is still on. A non-owning
-            // instance isn't wired into the handler chain, so setting captureEnabled here would be
-            // inert and misleading; and a same-instance resume must honor autoCapture toggled off
-            // since install.
-            if (ownsInstallation && config.errorTrackingConfig.autoCapture) {
+            // Resume only if we own the chain link and both gates still allow capturing. A
+            // non-owning instance isn't wired into the handler chain, so setting captureEnabled
+            // here would be inert and misleading; and a same-instance resume must honor both
+            // autoCapture toggled off since install and a remote config that has since disabled
+            // autocapture (the same kill-switch the fresh-install path checks).
+            if (ownsInstallation && config.errorTrackingConfig.autoCapture && !remoteKillSwitchActive()) {
                 captureEnabled = true
             }
             return
@@ -61,14 +62,7 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             return
         }
 
-        // Remote config is a kill-switch, not a gate: install by default and skip only when a
-        // config that already exists — fetched this session or cached from a prior launch —
-        // explicitly disables autocapture, keeping the first-launch window (before /flags) covered.
-        val remoteConfig = config.remoteConfigHolder
-        val hasRemoteConfig =
-            remoteConfig?.hasRemoteConfigFetched() == true ||
-                remoteConfig?.hasCachedErrorTrackingConfig() == true
-        if (hasRemoteConfig && remoteConfig?.isAutocaptureExceptionsEnabled() == false) {
+        if (remoteKillSwitchActive()) {
             return
         }
 
@@ -84,6 +78,16 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             defaultExceptionHandler = null
             installHandler()
         }
+    }
+
+    // Remote config is a kill-switch, not a gate: it blocks capture only when a config that
+    // already exists — fetched this session or cached from a prior launch — explicitly disables
+    // autocapture, keeping the first-launch window (before /flags) covered.
+    private fun remoteKillSwitchActive(): Boolean {
+        val remoteConfig = config.remoteConfigHolder ?: return false
+        val hasRemoteConfig =
+            remoteConfig.hasRemoteConfigFetched() || remoteConfig.hasCachedErrorTrackingConfig()
+        return hasRemoteConfig && !remoteConfig.isAutocaptureExceptionsEnabled()
     }
 
     private fun installHandler() {

@@ -487,6 +487,37 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     }
 
     @Test
+    fun `a direct re-install on the owning instance honors the remote kill-switch`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        currentHandler = mockExceptionHandler
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        // Overlay installs after us, then remote disables → dormant (flags held, capture off).
+        currentHandler = mock<Thread.UncaughtExceptionHandler>()
+        whenever(mockRemoteConfig.hasRemoteConfigFetched()).thenReturn(true)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(false)
+        integration.onRemoteConfig(loaded = true)
+
+        // A direct install() (e.g. re-init re-running config.integrations) must NOT resume
+        // capture while the fetched/cached remote config still disables autocapture.
+        integration.install(mockPostHog)
+
+        val thread = Thread.currentThread()
+        val throwable = RuntimeException("crash while remote-disabled")
+        integration.uncaughtException(thread, throwable)
+
+        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        // Clear the process-wide install flag so it doesn't leak into the next test.
+        currentHandler = integration
+        integration.uninstall()
+    }
+
+    @Test
     fun `onRemoteConfig keeps default install when remote config fetch fails`() {
         // Offline / failed first-launch fetch (loaded = false) must not tear down the default install.
         whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
