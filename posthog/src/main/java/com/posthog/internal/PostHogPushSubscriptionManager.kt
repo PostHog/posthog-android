@@ -12,6 +12,7 @@ import kotlin.math.min
 import kotlin.math.pow
 
 private const val PENDING_FILE_NAME = "push_subscription.pending"
+private const val PENDING_UNREGISTER_FILE_NAME = "push_subscription.unregister.pending"
 private const val INITIAL_RETRY_DELAY_SECONDS = 5
 private const val MAX_RETRY_DELAY_SECONDS = 30
 
@@ -25,9 +26,15 @@ private const val MAX_RETRY_DELAY_SECONDS = 30
  * can re-register the token whenever the user identifies as someone new.
  *
  * The record survives success (kept, not deleted) and non-retryable failures alike, so
- * [retryPending] can pick it back up on the next process start. In-session resume: offline
- * deferrals re-poll on a timer, and [retryPending] is also invoked from `flush()` (which the
- * Android SDK calls on app background), so an undelivered record doesn't wait for a relaunch.
+ * [retryPending] can pick it back up on the next process start. In-session resume: [retryPending]
+ * is invoked from `flush()` (which the Android SDK calls on app background), so an undelivered
+ * record doesn't wait for a relaunch. An offline deferral schedules no timer — recovery is driven
+ * by flush()/identify()/relaunch, matching iOS's passive model.
+ *
+ * Unregister (logout/reset) is durable the same way: a [PendingUnregister] intent is persisted
+ * before the DELETE and only cleared on a 2xx or a terminal 4xx, so an offline or failed logout
+ * is retried on flush()/next launch instead of leaving the device associated with the logged-out
+ * user. Like registration it carries no backoff machine of its own — [retryPending] replays it.
  */
 internal class PostHogPushSubscriptionManager(
     private val config: PostHogConfig,
@@ -43,6 +50,11 @@ internal class PostHogPushSubscriptionManager(
     @Volatile private var pendingRecord: PendingRecord? = null
 
     @Volatile private var hydratedFromDisk = false
+
+    // Single-slot, last-write-wins: only one identity's unregister can be pending at a time.
+    @Volatile private var pendingUnregister: PendingUnregister? = null
+
+    @Volatile private var hydratedUnregisterFromDisk = false
 
     @Volatile private var retryCount = 0
 
@@ -80,6 +92,11 @@ internal class PostHogPushSubscriptionManager(
         // Must stay out of <storagePrefix>/<apiKey>: PostHogQueue scans that whole directory as
         // cached event files and would send the record as an empty event, then delete it.
         File(File(File(prefix, "push"), config.apiKey), PENDING_FILE_NAME)
+    }
+
+    private val pendingUnregisterFile: File? by lazy {
+        val prefix = config.storagePrefix ?: return@lazy null
+        File(File(File(prefix, "push"), config.apiKey), PENDING_UNREGISTER_FILE_NAME)
     }
 
     // Test seam: computed backoff seconds are multiplied by this to get the scheduled delay in
@@ -123,7 +140,7 @@ internal class PostHogPushSubscriptionManager(
         val record = PendingRecord(deviceToken, appId, platform)
         pendingRecord = record
         hydratedFromDisk = true
-        pendingFile?.let { writeRecord(it, record) }
+        pendingFile?.let { writePending(it, record, "Failed to persist push subscription") }
         retryCount = 0
         nextAttemptAtMs = 0L
         halted = false
@@ -134,6 +151,10 @@ internal class PostHogPushSubscriptionManager(
 
     fun retryPending() {
         executor.executeSafely {
+            // Drain any pending unregister first: independent of the send record (usually absent after
+            // a logout) and ordered before a re-register so a DELETE can't land after the POST it precedes.
+            currentPendingUnregister()?.let { performUnregister(it) }
+
             val record = currentRecord() ?: return@executeSafely
             if (record.deliveredForDistinctId != null && record.deliveredForDistinctId == distinctIdProvider()) {
                 return@executeSafely
@@ -169,9 +190,10 @@ internal class PostHogPushSubscriptionManager(
     }
 
     /**
-     * Best-effort unregister: a single DELETE for [distinctId]. Unlike [register] there is no
-     * pending record, timer, or backoff — a failure is logged and dropped (the backend also unsets
-     * a dead token on the next send, and the durable path is the re-register POST).
+     * Unregister: `DELETE` for [distinctId]. The intent is persisted first, so an offline or failed
+     * attempt is retried on flush()/next launch (see [PendingUnregister]) rather than dropped —
+     * otherwise a logout while offline, or with an expired identity token, would leave the device
+     * associated with the logged-out user on the backend. Cleared on a 2xx or a terminal 4xx.
      */
     fun unregister(
         distinctId: String,
@@ -180,50 +202,83 @@ internal class PostHogPushSubscriptionManager(
         platform: String,
     ) {
         executor.executeSafely {
-            performUnregister(distinctId, deviceToken, appId, platform)
+            if (distinctId.isBlank() || deviceToken.isBlank() || appId.isBlank()) {
+                config.logger.log("Push unregister skipped: missing distinctId, token, or appId.")
+                return@executeSafely
+            }
+            val pending = PendingUnregister(distinctId, deviceToken, appId, platform)
+            writePendingUnregister(pending)
+            performUnregister(pending)
         }
     }
 
-    // Executor-thread body of [unregister]. [onComplete] runs after the DELETE has been sent (or
-    // skipped) so callers can chain work that must not race the DELETE on the wire — see [handleReset].
+    // Executor-thread body of [unregister]. On a 401 with a provider, re-mints once and retries;
+    // [isRetry] caps that to one re-mint. [onComplete] runs after the first DELETE round-trip (or a
+    // skip/offline defer) so callers can chain work that must not race the DELETE — see [handleReset];
+    // the 401 re-mint retry does not re-invoke it.
     private fun performUnregister(
-        distinctId: String,
-        deviceToken: String,
-        appId: String,
-        platform: String,
+        pending: PendingUnregister,
+        isRetry: Boolean = false,
         onComplete: (() -> Unit)? = null,
     ) {
         if (closed || config.optOut) {
             onComplete?.invoke()
             return
         }
-        if (distinctId.isBlank() || deviceToken.isBlank() || appId.isBlank()) {
+        if (pending.distinctId.isBlank() || pending.deviceToken.isBlank() || pending.appId.isBlank()) {
             config.logger.log("Push unregister skipped: missing distinctId, token, or appId.")
             onComplete?.invoke()
             return
         }
-        // Best-effort stays single-shot: the token is resolved once (old id on the reset path) and
-        // a 401 is not refreshed — the durable path is the re-register POST.
-        resolveIdentityToken(distinctId, appId) { identityToken ->
+        if (config.networkStatus?.isConnected() == false) {
+            config.logger.log("Push unregister deferred: no network. Will retry on flush/next launch.")
+            onComplete?.invoke()
+            return
+        }
+        resolveIdentityToken(pending.distinctId, pending.appId) { identityToken ->
             if (closed || config.optOut) {
                 onComplete?.invoke()
                 return@resolveIdentityToken
             }
             try {
                 api.pushUnsubscription(
-                    distinctId = distinctId,
-                    deviceToken = deviceToken,
-                    platform = platform,
-                    appId = appId,
+                    distinctId = pending.distinctId,
+                    deviceToken = pending.deviceToken,
+                    platform = pending.platform,
+                    appId = pending.appId,
                     identityToken = identityToken,
                 )
+                clearPendingUnregister(pending)
                 config.logger.log("Push notification token unregistered successfully.")
             } catch (e: Throwable) {
-                config.logger.log("Push unregister failed: $e. Ignoring (best-effort).")
+                handleUnregisterFailure(e, pending, isRetry)
             } finally {
                 onComplete?.invoke()
             }
         }
+    }
+
+    private fun handleUnregisterFailure(
+        e: Throwable,
+        pending: PendingUnregister,
+        isRetry: Boolean,
+    ) {
+        val statusCode = (e as? PostHogApiError)?.statusCode
+        // 401: identity verification failed. Re-mint once and retry, mirroring the send-path 401 refresh.
+        if (statusCode == 401 && config.pushIdentityProvider != null && !isRetry) {
+            cachedIdentityToken = null
+            config.logger.log("Push unregister rejected (401): refreshing identity token and retrying once.")
+            executor.executeSafely { performUnregister(pending, isRetry = true) }
+            return
+        }
+        // Retryable (transport error, 429, 5xx): keep the intent for flush/next launch.
+        if (isRetryable(e)) {
+            config.logger.log("Push unregister failed: $e. Will retry on flush/next launch.")
+            return
+        }
+        // Terminal (post-retry 401, 404 already gone, other 4xx): drop the intent, best-effort ceiling.
+        clearPendingUnregister(pending)
+        config.logger.log("Push unregister failed (status ${statusCode ?: "none"}): $e. Dropping (best-effort).")
     }
 
     /**
@@ -240,7 +295,9 @@ internal class PostHogPushSubscriptionManager(
             // DELETE would unset the very id we re-register under — and performRegister's dedup guard
             // would then skip the re-POST, leaving the device unregistered.
             if (oldDistinctId != distinctIdProvider()) {
-                performUnregister(oldDistinctId, record.deviceToken, record.appId, record.platform) {
+                val pending = PendingUnregister(oldDistinctId, record.deviceToken, record.appId, record.platform)
+                writePendingUnregister(pending)
+                performUnregister(pending) {
                     performRegister(record.deviceToken, record.appId, record.platform)
                 }
             } else {
@@ -260,8 +317,10 @@ internal class PostHogPushSubscriptionManager(
                 config.logger.log("Push unregister skipped: no registered token.")
                 return@executeSafely
             }
-            performUnregister(distinctIdProvider(), record.deviceToken, record.appId, record.platform)
+            val pending = PendingUnregister(distinctIdProvider(), record.deviceToken, record.appId, record.platform)
+            writePendingUnregister(pending)
             clearRecord()
+            performUnregister(pending)
         }
     }
 
@@ -279,7 +338,7 @@ internal class PostHogPushSubscriptionManager(
         cachedIdentityToken = null
     }
 
-    /** Opt-out: stop the retry/offline-poll timer now. The guard in [attempt] blocks any actual send. */
+    /** Opt-out: stop the retry timer now. The guard in [attempt] blocks any actual send. */
     fun onOptOut() {
         cancelTimer()
         // Order both clears on the executor with the mint-completion cache write so an opt-out
@@ -311,9 +370,8 @@ internal class PostHogPushSubscriptionManager(
         val record = currentRecord() ?: return
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push subscription deferred: no network.")
-            // Deferral burns no retry attempt; poll again so registration resumes
-            // within the session once connectivity returns.
-            scheduleRetry(MAX_RETRY_DELAY_SECONDS)
+            // Deferral burns no retry attempt and schedules no timer; recovery is driven by
+            // flush()/identify()/relaunch, matching iOS's passive model.
             return
         }
 
@@ -370,7 +428,11 @@ internal class PostHogPushSubscriptionManager(
             // Keep the record with the delivered marker so a later identify() can re-register.
             val delivered = record.copy(deliveredForDistinctId = distinctId)
             pendingRecord = delivered
-            pendingFile?.let { writeRecord(it, delivered) }
+            pendingFile?.let { writePending(it, delivered, "Failed to persist push subscription") }
+            // A fresh registration delivered to this identity supersedes any queued logout-DELETE for
+            // it (log out of A, then back into A): otherwise the next retryPending() drain would
+            // unregister the subscription we just re-registered.
+            clearPendingUnregister(PendingUnregister(distinctId, record.deviceToken, record.appId, record.platform))
         } catch (e: Throwable) {
             handleFailure(e)
         } finally {
@@ -562,7 +624,7 @@ internal class PostHogPushSubscriptionManager(
             hydratedFromDisk = true
             pendingFile?.takeIf { it.existsSafely(config) }?.let { file ->
                 pendingRecord =
-                    readRecord(file) ?: run {
+                    readPending<PendingRecord>(file, "Failed to read pending push subscription") ?: run {
                         file.deleteSafely(config)
                         null
                     }
@@ -571,29 +633,64 @@ internal class PostHogPushSubscriptionManager(
         return pendingRecord
     }
 
-    private fun writeRecord(
+    private fun currentPendingUnregister(): PendingUnregister? {
+        if (pendingUnregister == null && !hydratedUnregisterFromDisk) {
+            hydratedUnregisterFromDisk = true
+            pendingUnregisterFile?.takeIf { it.existsSafely(config) }?.let { file ->
+                pendingUnregister =
+                    readPending<PendingUnregister>(file, "Failed to read pending push unregister") ?: run {
+                        file.deleteSafely(config)
+                        null
+                    }
+            }
+        }
+        return pendingUnregister
+    }
+
+    private fun writePendingUnregister(pending: PendingUnregister) {
+        pendingUnregister = pending
+        hydratedUnregisterFromDisk = true
+        pendingUnregisterFile?.let { writePending(it, pending, "Failed to persist push unregister") }
+    }
+
+    // Clears the intent only if it's still the one that just resolved — a newer unregister (a second
+    // logout while this DELETE was in flight) may have overwritten the slot, and its intent must not
+    // be dropped by this stale completion.
+    private fun clearPendingUnregister(matching: PendingUnregister) {
+        if (currentPendingUnregister() != matching) {
+            return
+        }
+        pendingUnregister = null
+        pendingUnregisterFile?.deleteSafely(config)
+    }
+
+    private inline fun <reified T> writePending(
         file: File,
-        record: PendingRecord,
+        value: T,
+        failureLog: String,
     ) {
         try {
             file.parentFile?.mkdirs()
             val os = config.encryption?.encrypt(file.outputStream()) ?: file.outputStream()
             os.use { theOutputStream ->
-                config.serializer.serialize(record, theOutputStream.writer().buffered())
+                config.serializer.serialize(value, theOutputStream.writer().buffered())
             }
         } catch (e: Throwable) {
-            config.logger.log("Failed to persist push subscription: $e.")
+            config.logger.log("$failureLog: $e.")
         }
     }
 
-    private fun readRecord(file: File): PendingRecord? {
+    private inline fun <reified T> readPending(
+        file: File,
+        failureLog: String,
+    ): T? {
         return try {
             val input = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
             input.use {
-                config.serializer.deserialize<PendingRecord?>(it.reader().buffered())
+                config.serializer.deserialize<T?>(it.reader().buffered())
             }
         } catch (e: Throwable) {
-            config.logger.log("Failed to read pending push subscription: $e.")
+            config.logger.log("$failureLog: $e.")
             null
         }
     }
@@ -606,6 +703,16 @@ internal class PostHogPushSubscriptionManager(
         val platform: String,
         @SerializedName("delivered_for_distinct_id")
         val deliveredForDistinctId: String? = null,
+    )
+
+    internal data class PendingUnregister(
+        @SerializedName("distinct_id")
+        val distinctId: String,
+        @SerializedName("device_token")
+        val deviceToken: String,
+        @SerializedName("app_id")
+        val appId: String,
+        val platform: String,
     )
 
     private data class CachedIdentityToken(

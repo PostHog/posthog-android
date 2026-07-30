@@ -59,6 +59,9 @@ internal class PostHogPushSubscriptionManagerTest {
 
     private fun pendingFile(storagePrefix: String): File = File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.pending")
 
+    private fun pendingUnregisterFile(storagePrefix: String): File =
+        File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.unregister.pending")
+
     private fun flush() {
         executor.submit {}.get()
     }
@@ -67,6 +70,18 @@ internal class PostHogPushSubscriptionManagerTest {
         config: PostHogConfig,
         file: File,
     ): PostHogPushSubscriptionManager.PendingRecord? {
+        if (!file.exists()) return null
+        val input = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
+        return input.use {
+            config.serializer.deserialize(it.reader().buffered())
+        }
+    }
+
+    private fun readUnregister(
+        config: PostHogConfig,
+        file: File,
+    ): PostHogPushSubscriptionManager.PendingUnregister? {
+        if (!file.exists()) return null
         val input = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
         return input.use {
             config.serializer.deserialize(it.reader().buffered())
@@ -108,7 +123,7 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `register resumes via the offline poll once connectivity returns`() {
+    fun `register resumes on retryPending once connectivity returns, without an offline poll`() {
         val http = mockHttp()
         var connected = false
         val network =
@@ -122,11 +137,15 @@ internal class PostHogPushSubscriptionManagerTest {
         flush()
         assertEquals(0, http.requestCount)
 
+        // Passive model (parity with iOS): the offline deferral schedules no timer, so nothing is
+        // sent even after connectivity returns until a resume trigger fires.
         connected = true
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
 
-        // The offline deferral scheduled a poll without burning a retry attempt.
+        // flush()/relaunch drives recovery via retryPending().
+        sut.retryPending()
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
-        flush() // let the attempt finish writing the delivered marker
+        flush()
         assertEquals(1, http.requestCount)
         assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
     }
@@ -437,10 +456,10 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `unregister DELETE gets no 401 fresh-token refresh`() {
-        // Best-effort leg stays single-shot even with a provider: one mint, one DELETE, no retry.
-        val http = mockHttp(total = 2, response = MockResponse().setResponseCode(401))
-        val (sut, config, _) = getSut(http)
+    fun `unregister DELETE refreshes the identity token once on a 401`() {
+        // Durable parity with the send path: a 401 re-mints and retries the DELETE exactly once.
+        val http = mockHttp(total = 3, response = MockResponse().setResponseCode(401))
+        val (sut, config, storagePrefix) = getSut(http)
         val minted = java.util.concurrent.atomic.AtomicInteger(0)
         config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
 
@@ -448,9 +467,58 @@ internal class PostHogPushSubscriptionManagerTest {
         flush()
 
         assertEquals("DELETE", http.takeRequest().method)
+        // One fresh-token retry after the 401, then terminal — no infinite loop.
+        assertEquals("DELETE", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
-        assertEquals(1, http.requestCount)
-        assertEquals(1, minted.get())
+        assertEquals(2, http.requestCount)
+        assertEquals(2, minted.get())
+        // Post-retry 401 is terminal: the intent is dropped (best-effort ceiling), not left to loop.
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+    }
+
+    @Test
+    fun `unregister persists the intent and replays it on retryPending after a transient failure`() {
+        val http = mockHttp(total = 1, response = MockResponse().setResponseCode(503))
+        val (sut, config, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        flush()
+
+        // 503 is retryable: the DELETE fired but the intent is kept for a later drain.
+        assertEquals("DELETE", http.takeRequest().method)
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+
+        // A later flush()/relaunch replays it; server now accepts, intent cleared.
+        http.enqueue(MockResponse().setBody(""))
+        sut.retryPending()
+        flush()
+        assertEquals("DELETE", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+    }
+
+    @Test
+    fun `unregister while offline defers the DELETE and replays it on retryPending`() {
+        val http = mockHttp()
+        var connected = false
+        val network =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = connected
+            }
+        val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
+
+        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        flush()
+
+        // Offline: nothing sent, but the intent is persisted so the logout isn't dropped.
+        assertEquals(0, http.requestCount)
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+
+        connected = true
+        sut.retryPending()
+        flush()
+        assertEquals("DELETE", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
     }
 
     @Test
