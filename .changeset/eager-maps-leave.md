@@ -1,4 +1,5 @@
 ---
+"posthog": patch
 "posthog-android": patch
 ---
 
