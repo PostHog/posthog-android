@@ -1173,6 +1173,162 @@ internal class PostHogPushSubscriptionManagerTest {
         assertEquals(1, http.requestCount)
     }
 
+    @Test
+    fun `a successful send clears a still-pending unregister for the same identity outside retryPending`() {
+        val http = mockHttp(total = 1, response = MockResponse().setResponseCode(503))
+        val (sut, config, storagePrefix) = getSut(http)
+        distinctId = "user-A"
+
+        // A DELETE for user-A is queued and fails (retryable), so the intent stays persisted.
+        sut.unregister("user-A", "fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("DELETE", http.takeRequest().method)
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+
+        // A fresh register() for the same identity succeeds via attempt()/performSend directly
+        // (not retryPending()'s drain) and must clear the still-pending same-identity DELETE.
+        http.enqueue(MockResponse().setBody(""))
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("POST", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix)))
+
+        // A later retryPending() must not replay the now-cleared DELETE.
+        sut.retryPending()
+        flush()
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+    }
+
+    @Test
+    fun `a transport-level IOException is treated as retryable`() {
+        val http = mockHttp(total = 0)
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        // Force a raw transport failure (no HTTP response at all) rather than a status code.
+        http.shutdown()
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        // Kept for retry, not halted: the pending file survives an unclassified send error.
+        assertTrue(pendingFile(storagePrefix!!).exists())
+    }
+
+    @Test
+    fun `retryPending replays a differing-identity unregister deferred during handleReset`() {
+        val http = mockHttp(total = 1, response = MockResponse().setResponseCode(503))
+        var connected = true
+        val network =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = connected
+            }
+        val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
+
+        distinctId = "user-A"
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("POST", http.takeRequest().method)
+
+        // reset() to a new identity while the old identity's DELETE fails/defers: the intent for
+        // user-A survives, and a fresh record exists for anon-2 (currentRecord() != null).
+        distinctId = "anon-2"
+        http.enqueue(MockResponse().setResponseCode(503))
+        http.enqueue(MockResponse().setBody(""))
+        sut.handleReset("user-A")
+        flush()
+        assertEquals("DELETE", http.takeRequest().method)
+        assertEquals("POST", http.takeRequest().method)
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+
+        // retryPending()'s drain must take the differing-identity replay branch (not the
+        // same-identity drop), since the pending DELETE is for user-A while distinctId is anon-2.
+        http.enqueue(MockResponse().setBody(""))
+        sut.retryPending()
+        flush()
+        val replayed = http.takeRequest(2, TimeUnit.SECONDS)
+        assertEquals("DELETE", replayed!!.method)
+        assertEquals("user-A", parsedDistinctId(replayed))
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix)))
+    }
+
+    @Test
+    fun `a folded identical re-register does not clear a halt set by the in-flight send's own failure`() {
+        val http = mockHttp(total = 1, response = MockResponse().setResponseCode(400))
+        val (sut, config, storagePrefix) = getSut(http)
+        var holdNext = true
+        var heldCompletion: ((String?) -> Unit)? = null
+        config.pushIdentityProvider = { _, _, completion ->
+            if (holdNext) {
+                heldCompletion = completion
+            } else {
+                completion(null)
+            }
+        }
+        distinctId = "user-A"
+
+        // register()'s identity mint is held in flight (isSending claimed, no HTTP call yet).
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertNotNull(heldCompletion)
+        holdNext = false
+
+        // An identical re-register arrives mid-mint: isIdenticalUndelivered is true, so it folds in
+        // without resetting state (resetStateOnFold = false).
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        // The in-flight send's mint completes; performSend hits the 400 and halts the session.
+        heldCompletion?.invoke(null)
+        flush()
+        assertEquals("POST", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
+        assertEquals(1, http.requestCount)
+
+        // The folded replay must not have undone the halt: no second POST, and a later retryPending()
+        // stays a no-op.
+        sut.retryPending()
+        flush()
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertTrue(pendingFile(storagePrefix!!).exists())
+    }
+
+    @Test
+    fun `a new token folded in mid-send resets state and sends once the in-flight mint clears`() {
+        val http = mockHttp(total = 2)
+        val (sut, config, _) = getSut(http)
+        var holdNext = true
+        var heldCompletion: ((String?) -> Unit)? = null
+        config.pushIdentityProvider = { _, _, completion ->
+            if (holdNext) {
+                heldCompletion = completion
+            } else {
+                completion(null)
+            }
+        }
+        distinctId = "user-A"
+
+        // token-A's identity mint is held in flight.
+        sut.register("token-A", "firebase-project", "android")
+        flush()
+        assertNotNull(heldCompletion)
+        holdNext = false
+
+        // A different token folds in mid-mint: isIdenticalUndelivered is false, so it resets state
+        // synchronously and asks the fold to reset again (resetStateOnFold = true).
+        sut.register("token-B", "firebase-project", "android")
+        flush()
+
+        // token-A's stale mint completes; performSend detects the record changed underneath it and
+        // skips sending, then releases isSending and replays the folded token-B attempt with reset state.
+        heldCompletion?.invoke(null)
+        flush()
+
+        val sent = http.takeRequest(2, TimeUnit.SECONDS)
+        assertEquals("POST", sent!!.method)
+        assertTrue(sent.body.unGzip().contains("token-B"))
+        assertEquals(1, http.requestCount)
+    }
+
     private fun parsedDistinctId(request: okhttp3.mockwebserver.RecordedRequest): String? {
         val serializer = PostHogSerializer(PostHogConfig(API_KEY))
         val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())

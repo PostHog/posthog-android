@@ -5,6 +5,11 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.executeSafely
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Auto-registers this device's push token at startup so PostHog Workflows can deliver push
@@ -19,18 +24,43 @@ import com.posthog.android.PostHogAndroidConfig
 internal class PostHogPushSubscriptionIntegration(
     private val config: PostHogAndroidConfig,
     private val tokenFetcher: PushTokenFetcher = FirebasePushTokenFetcher(config),
+    // Mirrors PostHogReplayIntegration's injectable executor: install() runs on setup()'s caller
+    // thread (typically main, inside Application.onCreate()), and FirebaseMessaging's first-touch
+    // init is synchronous, so the fetch is hopped off-thread. Tests inject a synchronous executor.
+    private val executor: ExecutorService = Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogPushSub")),
 ) : PostHogIntegration {
     private var postHog: PostHogInterface? = null
+    private var ownsInstallation = false
 
+    private companion object {
+        private val integrationInstalled = AtomicBoolean(false)
+    }
+
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
+        ownsInstallation = true
         this.postHog = postHog
-        tokenFetcher.fetchToken { token, appId ->
-            this.postHog?.registerPushNotificationToken(token, appId)
+        executor.executeSafely {
+            tokenFetcher.fetchToken { token, appId ->
+                this.postHog?.registerPushNotificationToken(token, appId)
+            }
         }
     }
 
+    @Synchronized
     override fun uninstall() {
-        postHog = null
+        if (!ownsInstallation) {
+            return
+        }
+        try {
+            postHog = null
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
+        }
     }
 }
 
@@ -90,15 +120,21 @@ internal class FirebasePushTokenFetcher(
 
         try {
             FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    val token = task.result
-                    if (!token.isNullOrBlank()) {
-                        onToken(token, projectId)
+                // The completion runs later, on Play Services' Tasks executor — outside this
+                // try/catch's stack frame, so an uncaught throw here would crash the host app.
+                try {
+                    if (task.isSuccessful) {
+                        val token = task.result
+                        if (!token.isNullOrBlank()) {
+                            onToken(token, projectId)
+                        } else {
+                            config.logger.log("Firebase returned a blank push token, skipping registration.")
+                        }
                     } else {
-                        config.logger.log("Firebase returned a blank push token, skipping registration.")
+                        config.logger.log("Failed to fetch Firebase push token: ${task.exception}.")
                     }
-                } else {
-                    config.logger.log("Failed to fetch Firebase push token: ${task.exception}.")
+                } catch (e: Throwable) {
+                    config.logger.log("Failed to handle Firebase push token completion: $e.")
                 }
             }
         } catch (e: Throwable) {

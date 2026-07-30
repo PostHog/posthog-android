@@ -84,6 +84,11 @@ internal class PostHogPushSubscriptionManager(
     // so the latest token isn't stranded behind the finished send. Executor-thread only.
     @Volatile private var pendingResend = false
 
+    // Whether the folded-in caller (above) wanted retry state reset before its replay — carries
+    // performRegister/resendIfDistinctIdChanged's reset decision through the fold so a mid-send
+    // identical re-register can't silently undo the halt this send's own failure just set.
+    @Volatile private var pendingResendResetsState = false
+
     private val pendingFile: File? by lazy {
         val prefix = config.storagePrefix ?: return@lazy null
         // Must stay out of <storagePrefix>/<apiKey>: PostHogQueue scans that whole directory as
@@ -151,7 +156,7 @@ internal class PostHogPushSubscriptionManager(
             halted = false
             didAuthRetry = false
         }
-        attempt()
+        attempt(resetStateOnFold = !isIdenticalUndelivered)
     }
 
     fun retryPending() {
@@ -178,7 +183,7 @@ internal class PostHogPushSubscriptionManager(
             }
             // retryCount deliberately not reset: the exponential ladder persists across triggers, so
             // repeated failures still exhaust maxRetries and halt for the session.
-            attempt()
+            attempt(resetStateOnFold = false)
         }
     }
 
@@ -197,7 +202,7 @@ internal class PostHogPushSubscriptionManager(
             nextAttemptAtMs = 0L
             halted = false
             didAuthRetry = false
-            attempt()
+            attempt(resetStateOnFold = true)
         }
     }
 
@@ -372,7 +377,7 @@ internal class PostHogPushSubscriptionManager(
 
     private fun isWithinBackoffWindow(): Boolean = System.currentTimeMillis() < nextAttemptAtMs
 
-    private fun attempt() {
+    private fun attempt(resetStateOnFold: Boolean) {
         if (closed || config.optOut) {
             // Opt-out and shutdown both stop every send. Guarding at this single choke point covers
             // all callers: register, startup/flush retryPending, and identify resend.
@@ -400,8 +405,11 @@ internal class PostHogPushSubscriptionManager(
 
         if (!isSending.compareAndSet(false, true)) {
             // A send is already in flight (isSending is held across the async mint). Fold this request
-            // in: [performSend] replays one fresh attempt on release so this token isn't dropped.
+            // in: [performSend] replays one fresh attempt on release so this token isn't dropped. Carry
+            // this caller's reset decision through the fold — if any folded-in caller wanted a reset,
+            // the replay must honor it, so OR rather than overwrite.
             pendingResend = true
+            pendingResendResetsState = pendingResendResetsState || resetStateOnFold
             return
         }
 
@@ -472,14 +480,22 @@ internal class PostHogPushSubscriptionManager(
             return
         }
         pendingResend = false
+        val resetState = pendingResendResetsState
+        pendingResendResetsState = false
         if (closed || config.optOut || currentRecord() == null) {
             return
         }
-        retryCount = 0
-        nextAttemptAtMs = 0L
-        halted = false
-        didAuthRetry = false
-        attempt()
+        // Only reset retry state if a folded-in caller actually wanted a reset (a new token, or an
+        // identity change). A folded-in retryPending()/servicePendingResend replay must not clear a
+        // halt this same send's failure just set — otherwise a mid-send identical re-register would
+        // silently undo the halt.
+        if (resetState) {
+            retryCount = 0
+            nextAttemptAtMs = 0L
+            halted = false
+            didAuthRetry = false
+        }
+        attempt(resetStateOnFold = resetState)
     }
 
     private fun handleFailure(e: Throwable) {
@@ -491,7 +507,7 @@ internal class PostHogPushSubscriptionManager(
                 didAuthRetry = true
                 cachedIdentityToken = null
                 config.logger.log("Push subscription rejected (401): refreshing identity token and retrying once.")
-                executor.executeSafely { attempt() }
+                executor.executeSafely { attempt(resetStateOnFold = false) }
                 return
             }
             config.logger.log(

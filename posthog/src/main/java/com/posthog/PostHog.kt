@@ -279,6 +279,10 @@ public class PostHog private constructor(
                 queue.start()
                 logsQueue.start()
 
+                // Force the persisted OPT_OUT to hydrate before this passive push trigger: the
+                // manager reads config.optOut directly, and it is otherwise resolved lazily on
+                // first isOptedOut() call, which retryPending() here would race ahead of.
+                isOptedOut()
                 pushSubscriptionManager?.retryPending()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
@@ -1105,8 +1109,8 @@ public class PostHog private constructor(
             optOutLoaded = true
             exceptionStepsBuffer?.clear()
         }
-        // Stop any pending push-token retry/offline-poll timer; the send guard in the manager
-        // already blocks sends while opted out, this just tears the timer down immediately.
+        // Clear cached identity-token state so a stale token/401 flag isn't reused after
+        // re-opting-in; the send guard in the manager already blocks sends while opted out.
         pushSubscriptionManager?.onOptOut()
     }
 
@@ -1319,6 +1323,8 @@ public class PostHog private constructor(
             // Automatically set person properties for feature flags during identify() call
             setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
 
+            // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+            isOptedOut()
             pushSubscriptionManager?.resendIfDistinctIdChanged()
 
             // only because of testing in isolation, this flag is always enabled
@@ -1766,6 +1772,8 @@ public class PostHog private constructor(
         super.flush()
         replayQueue?.flush()
         logsQueue?.flush()
+        // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+        isOptedOut()
         pushSubscriptionManager?.retryPending()
     }
 
@@ -1862,6 +1870,8 @@ public class PostHog private constructor(
         endSession()
         startSession()
 
+        // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+        isOptedOut()
         pushSubscriptionManager?.handleReset(previousDistinctId)
 
         // reload flags as anon user

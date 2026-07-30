@@ -16,11 +16,31 @@ import org.mockito.Mockito.mockStatic
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.TimeUnit
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+/** Runs submitted tasks inline so install()'s async token fetch is deterministic in tests. */
+private class SameThreadExecutorService : AbstractExecutorService() {
+    override fun execute(command: Runnable) = command.run()
+
+    override fun shutdown() {}
+
+    override fun shutdownNow(): MutableList<Runnable> = mutableListOf()
+
+    override fun isShutdown() = false
+
+    override fun isTerminated() = false
+
+    override fun awaitTermination(
+        timeout: Long,
+        unit: TimeUnit,
+    ) = true
+}
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogPushSubscriptionIntegrationTest {
@@ -43,7 +63,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
     fun `install registers the fetched token and app id`() {
         val config = PostHogAndroidConfig(API_KEY)
         val fetcher = PushTokenFetcher { onToken -> onToken("fcm-token", "firebase-project") }
-        val sut = PostHogPushSubscriptionIntegration(config, fetcher)
+        val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
 
         sut.install(fake)
@@ -56,10 +76,30 @@ internal class PostHogPushSubscriptionIntegrationTest {
     }
 
     @Test
+    fun `a second install is a no-op while already installed`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        var fetchCount = 0
+        val fetcher =
+            PushTokenFetcher { onToken ->
+                fetchCount++
+                onToken("fcm-token", "firebase-project")
+            }
+        val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.install(fake)
+
+        assertEquals(1, fetchCount)
+
+        sut.uninstall()
+    }
+
+    @Test
     fun `install does not register when the fetcher yields no token`() {
         val config = PostHogAndroidConfig(API_KEY)
         val fetcher = PushTokenFetcher { /* no token available */ }
-        val sut = PostHogPushSubscriptionIntegration(config, fetcher)
+        val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
 
         sut.install(fake)

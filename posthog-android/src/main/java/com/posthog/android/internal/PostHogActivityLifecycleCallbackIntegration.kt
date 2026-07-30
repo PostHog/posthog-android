@@ -83,12 +83,15 @@ internal class PostHogActivityLifecycleCallbackIntegration(
             if (messageId == lastHandledPushMessageId) {
                 return
             }
+            // Read the risky full Bundle before marking handled: if toMap() throws, the id must
+            // stay unmarked so a later activity (e.g. a trampoline) with a clean Bundle can retry.
+            val payload = intent.extras?.toMap()
             lastHandledPushMessageId = messageId
 
             postHog?.capturePushNotificationOpened(
                 title = null,
                 body = null,
-                payload = intent.extras?.toMap(),
+                payload = payload,
             )
         } catch (e: Throwable) {
             config.logger.log("Failed to capture push notification opened: $e.")
