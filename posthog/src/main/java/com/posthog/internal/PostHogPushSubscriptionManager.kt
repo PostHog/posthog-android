@@ -42,7 +42,6 @@ internal class PostHogPushSubscriptionManager(
     private val executor: ExecutorService,
     private val distinctIdProvider: () -> String,
 ) {
-    private val timerLock = Any()
     private val isSending = AtomicBoolean(false)
 
     // Authoritative record within a process; disk is only the cross-launch backing store,
@@ -58,11 +57,10 @@ internal class PostHogPushSubscriptionManager(
 
     @Volatile private var retryCount = 0
 
-    @Volatile private var timer: Timer? = null
-
     // Not-before gate for server-driven backoff (Retry-After / 429 / 5xx): while now < nextAttemptAtMs
-    // the scheduled timer owns the next send, so resume paths (flush/identify) must not cancel it and
-    // re-hit the endpoint early. Zero when no backoff window is active.
+    // resume paths (flush/identify) must not re-hit the endpoint early. No timer is scheduled; the
+    // next attempt happens when flush()/identify()/relaunch calls in after the window elapses.
+    // Zero when no backoff window is active.
     @Volatile private var nextAttemptAtMs: Long = 0L
 
     // Set after a non-retryable failure or once retries are exhausted: no more attempts this session,
@@ -144,7 +142,6 @@ internal class PostHogPushSubscriptionManager(
         nextAttemptAtMs = 0L
         halted = false
         didAuthRetry = false
-        cancelTimer()
         attempt()
     }
 
@@ -159,11 +156,11 @@ internal class PostHogPushSubscriptionManager(
                 return@executeSafely
             }
             if (isWithinBackoffWindow()) {
-                // A Retry-After/backoff retry is already scheduled; let it fire instead of re-hitting now.
+                // Honor the active Retry-After/backoff window; a later trigger retries once it elapses.
                 return@executeSafely
             }
-            retryCount = 0
-            cancelTimer()
+            // retryCount deliberately not reset: the exponential ladder persists across triggers, so
+            // repeated failures still exhaust maxRetries and halt for the session.
             attempt()
         }
     }
@@ -172,18 +169,17 @@ internal class PostHogPushSubscriptionManager(
         executor.executeSafely {
             val record = currentRecord() ?: return@executeSafely
             val currentDistinctId = distinctIdProvider()
-            if (currentDistinctId.isBlank() || record.deliveredForDistinctId == currentDistinctId) {
+            // Only a record already delivered to a DIFFERENT id is fresh state; an undelivered
+            // record keeps its backoff/halt and is driven by retryPending() instead.
+            val delivered = record.deliveredForDistinctId
+            if (currentDistinctId.isBlank() || delivered == null || delivered == currentDistinctId) {
                 return@executeSafely
             }
-            if (isWithinBackoffWindow()) {
-                // Honor the active Retry-After/backoff window; the scheduled timer reads the current
-                // distinctId at send time, so the id change is still picked up when it fires.
-                return@executeSafely
-            }
+            // An identity change is fresh state: clear any backoff window and retry immediately.
             retryCount = 0
+            nextAttemptAtMs = 0L
             halted = false
             didAuthRetry = false
-            cancelTimer()
             attempt()
         }
     }
@@ -314,20 +310,17 @@ internal class PostHogPushSubscriptionManager(
     private fun clearRecord() {
         pendingRecord = null
         hydratedFromDisk = true
-        cancelTimer()
         pendingFile?.deleteSafely(config)
     }
 
     fun close() {
         closed = true
-        cancelTimer()
         retryCount = 0
         cachedIdentityToken = null
     }
 
-    /** Opt-out: stop the retry timer now. The guard in [attempt] blocks any actual send. */
+    /** Opt-out: the guard in [attempt] blocks any actual send. */
     fun onOptOut() {
-        cancelTimer()
         // Order both clears on the executor with the mint-completion cache write so an opt-out
         // mid-mint can't leave a stale token cached (the residual race resolveIdentityToken notes).
         // didAuthRetry is cleared too: a 401 before opt-out would otherwise strand the flag, and the
@@ -344,16 +337,15 @@ internal class PostHogPushSubscriptionManager(
     private fun attempt() {
         if (closed || config.optOut) {
             // Opt-out and shutdown both stop every send. Guarding at this single choke point covers
-            // all callers: register, startup/flush retryPending, identify resend, and the retry timer.
-            cancelTimer()
+            // all callers: register, startup/flush retryPending, and identify resend.
             return
         }
         if (halted) {
             // Session halt set in handleFailure; this choke point makes flush()-driven retryPending() a no-op.
             return
         }
-        // Read the record here, not from the caller: a retry timer may fire after unregisterCurrent()
-        // cleared it (cancelTimer can't un-queue an already-fired callback), so a null means "don't send".
+        // Read the record here, not from the caller: an already-queued executor task can run after
+        // unregisterCurrent() cleared it, so a null means "don't send".
         val record = currentRecord() ?: return
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push subscription deferred: no network.")
@@ -443,7 +435,6 @@ internal class PostHogPushSubscriptionManager(
         nextAttemptAtMs = 0L
         halted = false
         didAuthRetry = false
-        cancelTimer()
         attempt()
     }
 
@@ -489,11 +480,13 @@ internal class PostHogPushSubscriptionManager(
         }
 
         val delay = nextBackoffSeconds(retryCount, (e as? PostHogApiError)?.retryAfterSeconds)
-        // Server-driven backoff: gate resume paths so flush()/identify() don't cancel this window
-        // and immediately re-hit the endpoint, ignoring the server's Retry-After.
+        // Server-driven backoff: gate resume paths so flush() doesn't immediately re-hit the
+        // endpoint, ignoring the server's Retry-After. No timer — the next attempt is driven by
+        // flush()/identify()/relaunch once the window elapses.
         nextAttemptAtMs = System.currentTimeMillis() + delay * retryDelayMillisPerSecond
-        config.logger.log("Push subscription failed: $e. Retrying in ${delay}s (attempt $retryCount).")
-        scheduleRetry(delay)
+        config.logger.log(
+            "Push subscription failed: $e. Will retry on flush/identify/next launch after ${delay}s (attempt $retryCount).",
+        )
     }
 
     // Stop retrying for this process; the persisted record is kept so the next launch (fresh
@@ -513,24 +506,6 @@ internal class PostHogPushSubscriptionManager(
         }
         val exponential = INITIAL_RETRY_DELAY_SECONDS * 2.0.pow((attempt - 1).toDouble()).toInt()
         return min(exponential, MAX_RETRY_DELAY_SECONDS)
-    }
-
-    private fun scheduleRetry(delaySeconds: Int) {
-        synchronized(timerLock) {
-            cancelTimer()
-            val t = Timer(true)
-            t.schedule(delaySeconds * retryDelayMillisPerSecond) {
-                executor.executeSafely { attempt() }
-            }
-            timer = t
-        }
-    }
-
-    private fun cancelTimer() {
-        synchronized(timerLock) {
-            timer?.cancel()
-            timer = null
-        }
     }
 
     // Resolves the identity token for [distinctId]/[appId], preferring a cached exact match. The

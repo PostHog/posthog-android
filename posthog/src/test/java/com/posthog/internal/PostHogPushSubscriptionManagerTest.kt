@@ -216,7 +216,11 @@ internal class PostHogPushSubscriptionManagerTest {
         sut.register("fcm-token", "firebase-project", "android")
 
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // initial 500
-        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // retry ~5ms -> 200
+        // No self-firing timer: nothing retries until an external trigger lands after the window.
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        Thread.sleep(50) // backoff window is ~5ms at the test's 1ms/s scale
+        sut.retryPending()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // flush-driven retry -> 200
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS)) // no duplicate
         assertEquals(2, http.requestCount)
 
@@ -239,14 +243,18 @@ internal class PostHogPushSubscriptionManagerTest {
 
         sut.register("fcm-token", "firebase-project", "android")
 
-        // Vector 4: 500 -> retry, 500 -> retry, then give up after maxRetries.
+        // Vector 4: the retry ladder persists across flush-driven triggers, so repeated failures
+        // exhaust maxRetries: 500, then flush retry 500, flush retry 500, halt.
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // initial
-        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // retry 1
-        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // retry 2
-        assertNull(http.takeRequest(1, TimeUnit.SECONDS)) // gave up, record kept
+        repeat(2) {
+            Thread.sleep(50) // let the ms-scaled backoff window elapse
+            sut.retryPending()
+            assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        }
         assertTrue(pendingFile(storagePrefix).exists())
 
         // Halted for the rest of this session: flush()-driven retryPending() must not re-hit the endpoint.
+        Thread.sleep(50)
         sut.retryPending()
         flush()
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
@@ -909,6 +917,8 @@ internal class PostHogPushSubscriptionManagerTest {
         sut.register("fcm-token", "firebase-project", "android")
 
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-1\""))
+        Thread.sleep(50) // let the ms-scaled backoff window elapse
+        sut.retryPending()
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-1\""))
         assertEquals(2, http.requestCount)
         assertEquals(1, minted.get())
