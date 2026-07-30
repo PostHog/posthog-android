@@ -226,6 +226,62 @@ internal class PostHogBootstrapTest {
     }
 
     @Test
+    fun `identify upgrades a non-identified bootstrap whose id matches the identify id`() {
+        val http = mockHttp()
+        val prefs = PostHogMemoryPreferences()
+        // Non-identified bootstrap seeds the id as the anonymous id, so distinct id already
+        // equals the id we later identify with while the user is still anonymous.
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123"),
+                cachePreferences = prefs,
+                reloadFeatureFlags = false,
+            )
+
+        sut.identify("user-123")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // No $identify (nothing to merge); a single person-processed $set marks the transition.
+        val event = firstEvent(http, "\$set")
+        assertEquals("user-123", event.distinctId)
+        assertEquals(true, event.properties?.get("\$process_person_profile"))
+        assertEquals(true, prefs.getValue(IS_IDENTIFIED))
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `a repeated matching-id identify does not emit a second set event`() {
+        val http = mockHttp()
+        val prefs = PostHogMemoryPreferences()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(distinctId = "user-123"),
+                cachePreferences = prefs,
+                reloadFeatureFlags = false,
+                flushAt = 2,
+            )
+
+        sut.identify("user-123") // transition: one $set
+        sut.identify("user-123") // already identified: no event
+        sut.capture("event") // flushes the batch (flushAt = 2)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())!!
+        assertEquals(2, batch.batch.size)
+        assertEquals("\$set", batch.batch[0].event)
+        assertEquals("event", batch.batch[1].event)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `blank bootstrap distinct id is a no-op`() {
         val sut = getSut(bootstrap = PostHogBootstrapConfig(distinctId = "   "))
 
