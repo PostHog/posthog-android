@@ -1274,14 +1274,23 @@ public class PostHog private constructor(
         }
 
         val hasDifferentDistinctId = previousDistinctId != distinctId
-        val shouldTransitionToIdentified = !hasDifferentDistinctId && !isIdentified
-        if (hasDifferentDistinctId && !isIdentified) {
-            // this has to be set before capture since this flag will be read during the event
-            // capture
-            synchronized(identifiedLock) {
+
+        // Read isIdentified, decide the transition, and persist it atomically so two concurrent
+        // identify() calls on an anonymous user can't both observe isIdentified == false and each
+        // emit a person-processed event for the same identity transition. isIdentified must also be
+        // set before capture() below, which reads it during event enrichment.
+        val shouldIdentify: Boolean
+        val shouldTransitionToIdentified: Boolean
+        synchronized(identifiedLock) {
+            val alreadyIdentified = isIdentified
+            shouldIdentify = hasDifferentDistinctId && !alreadyIdentified
+            shouldTransitionToIdentified = !hasDifferentDistinctId && !alreadyIdentified
+            if (shouldIdentify || shouldTransitionToIdentified) {
                 isIdentified = true
             }
+        }
 
+        if (shouldIdentify) {
             capture(
                 PostHogEventName.IDENTIFY.event,
                 distinctId = distinctId,
@@ -1313,9 +1322,7 @@ public class PostHog private constructor(
             // Matching id while still anonymous (e.g. a non-identified bootstrap seeded the same
             // id): upgrade to identified and emit one person-processed $set — there is no
             // anonymous id to merge, so no $identify (matches posthog-js).
-            synchronized(identifiedLock) {
-                isIdentified = true
-            }
+            // isIdentified was already set above under identifiedLock.
             this.distinctId = distinctId
 
             setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
