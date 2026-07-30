@@ -28,7 +28,7 @@ private const val MAX_RETRY_DELAY_SECONDS = 30
  * [retryPending] can pick it back up on the next process start. In-session resume: [retryPending]
  * is invoked from `flush()` (which the Android SDK calls on app background), so an undelivered
  * record doesn't wait for a relaunch. An offline deferral schedules no timer — recovery is driven
- * by flush()/identify()/relaunch, matching iOS's passive model.
+ * by flush()/identify()/relaunch.
  *
  * Unregister (logout/reset) is durable the same way: a [PendingUnregister] intent is persisted
  * before the DELETE and only cleared on a 2xx or a terminal 4xx, so an offline or failed logout
@@ -108,7 +108,7 @@ internal class PostHogPushSubscriptionManager(
     // Watchdog window for pushIdentityProvider: if the host never calls completion within this, fall
     // back to a token-less send so a misbehaving provider can't wedge sending for the whole process.
     // Fixed 10s heuristic; a slow legitimate mint on a bad network is cut off and retried
-    // token-less (401 re-mints). Tune here (and keep parity with iOS) if that proves too tight.
+    // token-less (401 re-mints). Tune here if that proves too tight.
     internal var identityTokenMintTimeoutMillis: Long = 10_000L
 
     fun register(
@@ -314,7 +314,7 @@ internal class PostHogPushSubscriptionManager(
      * reset()/logout: unregister the stored token for the old identity, then re-register it under
      * the new anonymous id ([performRegister] reads the current id at send time). No-op when nothing
      * is stored. The two legs are independent — the backend keys subscriptions per (person, app_id),
-     * so the old-id DELETE and new-id POST can't affect each other in any order (matches iOS).
+     * so the old-id DELETE and new-id POST can't affect each other in any order.
      */
     fun handleReset(oldDistinctId: String) {
         executor.executeSafely {
@@ -393,7 +393,7 @@ internal class PostHogPushSubscriptionManager(
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push subscription deferred: no network.")
             // Deferral burns no retry attempt and schedules no timer; recovery is driven by
-            // flush()/identify()/relaunch, matching iOS's passive model.
+            // flush()/identify()/relaunch.
             return
         }
 
@@ -577,7 +577,7 @@ internal class PostHogPushSubscriptionManager(
         onResolved: (String?) -> Unit,
     ) {
         // Provider is checked before the cache: clearing pushIdentityProvider mid-session means "stop
-        // attaching tokens now", so a stale cached credential must not outlive it (matches iOS).
+        // attaching tokens now", so a stale cached credential must not outlive it.
         val provider = config.pushIdentityProvider
         if (provider == null) {
             config.logger.log("No identity token attached to push request (no pushIdentityProvider).")
