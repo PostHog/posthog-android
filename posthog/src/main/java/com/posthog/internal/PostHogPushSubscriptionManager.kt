@@ -119,8 +119,7 @@ internal class PostHogPushSubscriptionManager(
         }
     }
 
-    // Executor-thread body of [register]. Kept separate so [handleReset] can chain a DELETE and a
-    // re-register in a single executor task (ordered, and drained by one flush in tests).
+    // Executor-thread body of [register], shared with [handleReset]'s re-register leg.
     private fun performRegister(
         deviceToken: String,
         appId: String,
@@ -213,31 +212,24 @@ internal class PostHogPushSubscriptionManager(
     }
 
     // Executor-thread body of [unregister]. On a 401 with a provider, re-mints once and retries;
-    // [isRetry] caps that to one re-mint. [onComplete] runs after the first DELETE round-trip (or a
-    // skip/offline defer) so callers can chain work that must not race the DELETE — see [handleReset];
-    // the 401 re-mint retry does not re-invoke it.
+    // [isRetry] caps that to one re-mint.
     private fun performUnregister(
         pending: PendingUnregister,
         isRetry: Boolean = false,
-        onComplete: (() -> Unit)? = null,
     ) {
         if (closed || config.optOut) {
-            onComplete?.invoke()
             return
         }
         if (pending.distinctId.isBlank() || pending.deviceToken.isBlank() || pending.appId.isBlank()) {
             config.logger.log("Push unregister skipped: missing distinctId, token, or appId.")
-            onComplete?.invoke()
             return
         }
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push unregister deferred: no network. Will retry on flush/next launch.")
-            onComplete?.invoke()
             return
         }
         resolveIdentityToken(pending.distinctId, pending.appId) { identityToken ->
             if (closed || config.optOut) {
-                onComplete?.invoke()
                 return@resolveIdentityToken
             }
             try {
@@ -252,8 +244,6 @@ internal class PostHogPushSubscriptionManager(
                 config.logger.log("Push notification token unregistered successfully.")
             } catch (e: Throwable) {
                 handleUnregisterFailure(e, pending, isRetry)
-            } finally {
-                onComplete?.invoke()
             }
         }
     }
@@ -284,8 +274,8 @@ internal class PostHogPushSubscriptionManager(
     /**
      * reset()/logout: unregister the stored token for the old identity, then re-register it under
      * the new anonymous id ([performRegister] reads the current id at send time). No-op when nothing
-     * is stored. The re-register is chained on the DELETE's completion so the DELETE reaches the wire
-     * before the re-register POST, even though identity-token minting makes both legs asynchronous.
+     * is stored. The two legs are independent — the backend keys subscriptions per (person, app_id),
+     * so the old-id DELETE and new-id POST can't affect each other in any order (matches iOS).
      */
     fun handleReset(oldDistinctId: String) {
         executor.executeSafely {
@@ -297,12 +287,9 @@ internal class PostHogPushSubscriptionManager(
             if (oldDistinctId != distinctIdProvider()) {
                 val pending = PendingUnregister(oldDistinctId, record.deviceToken, record.appId, record.platform)
                 writePendingUnregister(pending)
-                performUnregister(pending) {
-                    performRegister(record.deviceToken, record.appId, record.platform)
-                }
-            } else {
-                performRegister(record.deviceToken, record.appId, record.platform)
+                performUnregister(pending)
             }
+            performRegister(record.deviceToken, record.appId, record.platform)
         }
     }
 
