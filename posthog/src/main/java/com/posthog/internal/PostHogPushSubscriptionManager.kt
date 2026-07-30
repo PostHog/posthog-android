@@ -3,7 +3,6 @@ package com.posthog.internal
 import com.google.gson.annotations.SerializedName
 import com.posthog.PostHogConfig
 import java.io.File
-import java.io.IOException
 import java.util.Timer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
@@ -147,9 +146,16 @@ internal class PostHogPushSubscriptionManager(
 
     fun retryPending() {
         executor.executeSafely {
-            // Drain any pending unregister first: independent of the send record (usually absent after
-            // a logout) and ordered before a re-register so a DELETE can't land after the POST it precedes.
-            currentPendingUnregister()?.let { performUnregister(it) }
+            // Drain any pending unregister first (independent of the send record, usually absent after
+            // a logout). If a same-identity registration is queued (logged out of A offline, then back
+            // into A), drop the DELETE — completing after the POST it would kill the subscription just delivered.
+            currentPendingUnregister()?.let { pending ->
+                if (currentRecord() != null && pending.distinctId == distinctIdProvider()) {
+                    clearPendingUnregister(pending)
+                } else {
+                    performUnregister(pending)
+                }
+            }
 
             val record = currentRecord() ?: return@executeSafely
             if (record.deliveredForDistinctId != null && record.deliveredForDistinctId == distinctIdProvider()) {

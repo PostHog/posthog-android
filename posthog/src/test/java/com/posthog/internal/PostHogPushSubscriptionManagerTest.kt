@@ -530,6 +530,34 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `retryPending drops a pending unregister for the current identity when a registration is queued`() {
+        val http = mockHttp()
+        var connected = false
+        val network =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = connected
+            }
+        val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
+
+        // Log out of distinct-1 while offline, then re-register for the same identity.
+        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals(0, http.requestCount)
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+
+        connected = true
+        sut.retryPending()
+        flush()
+
+        // Register supersedes the queued DELETE: only the POST goes out, the intent is dropped.
+        val request = http.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("POST", request.method)
+        assertEquals(1, http.requestCount)
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix)))
+    }
+
+    @Test
     fun `handleReset unregisters the old identity then re-registers under the new anonymous id`() {
         val http = mockHttp(total = 3, response = MockResponse().setBody(""))
         val (sut, config, storagePrefix) = getSut(http)
