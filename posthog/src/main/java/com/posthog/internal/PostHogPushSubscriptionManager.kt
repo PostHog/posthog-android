@@ -601,8 +601,9 @@ internal class PostHogPushSubscriptionManager(
     private fun isRetryable(e: Throwable): Boolean {
         return when (e) {
             is PostHogApiError -> e.statusCode == 429 || e.statusCode in 500..599
-            is IOException -> true
-            else -> false
+            // Anything without an HTTP status (transport failures, unexpected throwables) is
+            // retryable — unknown means keep trying.
+            else -> true
         }
     }
 
