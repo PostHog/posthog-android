@@ -18,9 +18,8 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
-import java.util.concurrent.CountDownLatch
-
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CountDownLatch
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
