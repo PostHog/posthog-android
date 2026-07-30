@@ -728,6 +728,17 @@ internal class PostHogPushSubscriptionManager(
         val deliveredForDistinctId: String? = null,
     )
 
+    /**
+     * A durable "delete this subscription" intent for the identity it names, persisted so an
+     * offline or failed unregister (logout/reset) is retried on flush()/next launch instead of
+     * silently leaving the device associated with a logged-out user. Separate key from
+     * [PendingRecord] so it coexists with a fresh registration the reset path writes under the
+     * new anonymous id.
+     *
+     * Single-slot, last-write-wins: only one identity's unregister can be pending at a time. Two
+     * overlapping logouts (rapid double-reset) drop the older intent — acceptable given one device
+     * token and how rare that is; a per-identity queue would fix it if it ever matters.
+     */
     internal data class PendingUnregister(
         @SerializedName("distinct_id")
         val distinctId: String,
