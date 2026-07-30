@@ -133,14 +133,24 @@ internal class PostHogPushSubscriptionManager(
             // Same token already delivered for this user; don't re-POST it on every cold start.
             return
         }
+        // Same (token, appId) as the current undelivered record: this is register spam (e.g. FCM
+        // redelivering onNewToken), not a genuinely new registration. Keep the existing retry state
+        // so it can't be used to defeat backoff by re-registering on a loop.
+        val isIdenticalUndelivered =
+            existing != null &&
+                existing.deviceToken == deviceToken &&
+                existing.appId == appId &&
+                existing.platform == platform
         val record = PendingRecord(deviceToken, appId, platform)
         pendingRecord = record
         hydratedFromDisk = true
         pendingFile?.let { writePending(it, record, "Failed to persist push subscription") }
-        retryCount = 0
-        nextAttemptAtMs = 0L
-        halted = false
-        didAuthRetry = false
+        if (!isIdenticalUndelivered) {
+            retryCount = 0
+            nextAttemptAtMs = 0L
+            halted = false
+            didAuthRetry = false
+        }
         attempt()
     }
 
@@ -150,7 +160,8 @@ internal class PostHogPushSubscriptionManager(
             // a logout). If a same-identity registration is queued (logged out of A offline, then back
             // into A), drop the DELETE — completing after the POST it would kill the subscription just delivered.
             currentPendingUnregister()?.let { pending ->
-                if (currentRecord() != null && pending.distinctId == distinctIdProvider()) {
+                val record = currentRecord()
+                if (record != null && pending.distinctId == distinctIdProvider() && pending.appId == record.appId) {
                     clearPendingUnregister(pending)
                 } else {
                     performUnregister(pending)
@@ -234,6 +245,18 @@ internal class PostHogPushSubscriptionManager(
             if (closed || config.optOut) {
                 return@resolveIdentityToken
             }
+            // A same-identity same-app registration can queue and even complete while this DELETE's
+            // identity token was minting; firing now would kill the subscription just re-registered.
+            // Mirrors the drain-time supersede rule in retryPending.
+            val currentPending = currentPendingUnregister()
+            if (currentPending != pending) {
+                return@resolveIdentityToken
+            }
+            val record = currentRecord()
+            if (record != null && pending.distinctId == distinctIdProvider() && pending.appId == record.appId) {
+                clearPendingUnregister(pending)
+                return@resolveIdentityToken
+            }
             try {
                 api.pushUnsubscription(
                     distinctId = pending.distinctId,
@@ -268,7 +291,16 @@ internal class PostHogPushSubscriptionManager(
             config.logger.log("Push unregister failed: $e. Will retry on flush/next launch.")
             return
         }
-        // Terminal (post-retry 401, 404 already gone, other 4xx): drop the intent, best-effort ceiling.
+        // A non-retryable 401 (no provider to mint with, or the one re-mint already burned) means we
+        // couldn't prove identity this session — not that the logout intent is invalid. Dropping it
+        // here would permanently strand the device on the logged-out user. Keep the intent persisted;
+        // retryPending() re-attempts with a fresh mint on the next flush/relaunch, mirroring the send
+        // path's haltForSession semantics.
+        if (statusCode == 401) {
+            config.logger.log("Push unregister failed (401): $e. Keeping intent for next launch.")
+            return
+        }
+        // Genuinely permanent (400/403/404/other 4xx): drop the intent, best-effort ceiling.
         clearPendingUnregister(pending)
         config.logger.log("Push unregister failed (status ${statusCode ?: "none"}): $e. Dropping (best-effort).")
     }
@@ -397,6 +429,12 @@ internal class PostHogPushSubscriptionManager(
             val current = currentRecord()
             if (current == null || current.deviceToken != record.deviceToken || current.appId != record.appId) {
                 config.logger.log("Push subscription send skipped: record changed during identity token mint.")
+                return
+            }
+            // The identity itself can also change during the async mint (logout/login while minting);
+            // a stale identity's token must not be sent under a new user's distinctId.
+            if (distinctIdProvider() != distinctId) {
+                config.logger.log("Push subscription send skipped: distinctId changed during identity token mint.")
                 return
             }
             api.pushSubscription(

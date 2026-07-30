@@ -433,10 +433,11 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Unregisters this device's push token from PostHog so Workflows stop targeting it — for example
      * from your logout flow.
      *
-     * Sends a best-effort `DELETE /api/push_subscriptions` for the current [distinctId] (the backend
-     * unsets the subscription property) and forgets the locally stored token. Unlike registration
-     * this is not retried. On [reset] the SDK already moves any registered token to the new anonymous
-     * identity (unregister then re-register), independently of `capturePushNotificationSubscriptions` —
+     * Sends a `DELETE /api/push_subscriptions` for the current [distinctId] (the backend unsets the
+     * subscription property) and forgets the locally stored token. The DELETE intent is durable: an
+     * offline or transiently failed attempt is persisted and retried passively on the next flush or
+     * app launch, the same way registration is. On [reset] the SDK already moves any registered token
+     * to the new anonymous identity (unregister then re-register), independently of `capturePushNotificationSubscriptions` —
      * that flag only gates automatic token subscription at startup. Call it directly if you manage
      * push subscriptions yourself.
      */

@@ -480,8 +480,9 @@ internal class PostHogPushSubscriptionManagerTest {
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(2, http.requestCount)
         assertEquals(2, minted.get())
-        // Post-retry 401 is terminal: the intent is dropped (best-effort ceiling), not left to loop.
-        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+        // Post-retry 401 stops for this session but keeps the intent: dropping it here would
+        // permanently strand the device on the logged-out user. retryPending() re-attempts later.
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
     }
 
     @Test
@@ -1076,6 +1077,98 @@ internal class PostHogPushSubscriptionManagerTest {
         flush()
 
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"first\""))
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `performSend skips when distinctId changes during identity token mint`() {
+        val http = mockHttp(total = 1, response = MockResponse().setBody(""))
+        val (sut, config, _) = getSut(http)
+        val mints = java.util.concurrent.LinkedBlockingQueue<(String?) -> Unit>()
+        config.pushIdentityProvider = { _, _, completion -> mints.add(completion) }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        // Identity changes (login/logout) while the token minted for the original user is still
+        // outstanding.
+        distinctId = "distinct-2"
+
+        val completion = mints.poll(2, TimeUnit.SECONDS)!!
+        completion("jwt-stale")
+        flush()
+
+        // The stale send must bail: nothing is posted under the new user's distinctId for a token
+        // minted under the old one.
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+    }
+
+    @Test
+    fun `retryPending still fires the DELETE for a different appId even when a same-identity registration is queued`() {
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        var connected = false
+        val network =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = connected
+            }
+        val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
+
+        // Log out of app-a while offline, then register for app-b under the same identity.
+        sut.unregister("distinct-1", "fcm-token-a", "app-a", "android")
+        sut.register("fcm-token-b", "app-b", "android")
+        flush()
+        assertEquals(0, http.requestCount)
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+
+        connected = true
+        sut.retryPending()
+        flush()
+
+        // Different appId: the backend keys subscriptions per (person, app_id), so app-a's DELETE
+        // is independent of the app-b registration and must still fire — unlike the same-appId case.
+        val delete = http.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("DELETE", delete.method)
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix)))
+    }
+
+    @Test
+    fun `unregister keeps the intent on a 401 with no identity provider and retryPending re-attempts`() {
+        val http = mockHttp(total = 1, response = MockResponse().setResponseCode(401))
+        val (sut, config, storagePrefix) = getSut(http)
+        // No pushIdentityProvider configured: the 401 can't be re-minted against.
+
+        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        flush()
+
+        assertEquals("DELETE", http.takeRequest().method)
+        // Stops for this session, but the logout intent survives so a later launch can retry once
+        // identity can be proven — dropping it here would permanently strand the device.
+        assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
+
+        http.enqueue(MockResponse().setBody(""))
+        sut.retryPending()
+        flush()
+
+        assertEquals("DELETE", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
+        assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix)))
+    }
+
+    @Test
+    fun `register does not reset backoff when the incoming registration is identical to the current undelivered record`() {
+        val http = mockHttp(total = 1, response = MockResponse().setResponseCode(500))
+        val (sut, _, _) = getSut(http, maxRetries = 0)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("POST", http.takeRequest().method)
+
+        // maxRetries is 0, so the single failure above already halted the session.
+        // Re-registering the exact same (token, appId, platform) must not clear that halt — it's
+        // register spam (e.g. FCM redelivering onNewToken), not a genuinely new registration.
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(1, http.requestCount)
     }
