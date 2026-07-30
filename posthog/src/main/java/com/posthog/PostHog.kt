@@ -2021,8 +2021,12 @@ public class PostHog private constructor(
             return
         }
 
-        surveysHandler?.displaySurvey(surveyId) ?: run {
-            config?.logger?.log("Cannot display survey $surveyId - surveys integration isn't installed.")
+        try {
+            surveysHandler?.displaySurvey(surveyId) ?: run {
+                config?.logger?.log("Cannot display survey $surveyId - surveys integration isn't installed.")
+            }
+        } catch (e: Throwable) {
+            config?.logger?.log("Failed to display survey $surveyId: $e.")
         }
     }
 

@@ -72,6 +72,8 @@ internal class PostHogSurveysDisplaySurveyTest {
         id: String,
         type: SurveyType,
         conditions: SurveyConditions? = null,
+        startDate: java.util.Date? = java.util.Date(),
+        endDate: java.util.Date? = null,
     ): Survey {
         return Survey(
             id = id,
@@ -87,8 +89,8 @@ internal class PostHogSurveysDisplaySurveyTest {
             appearance = null,
             currentIteration = null,
             currentIterationStartDate = null,
-            startDate = java.util.Date(),
-            endDate = null,
+            startDate = startDate,
+            endDate = endDate,
             schedule = null,
         )
     }
@@ -143,6 +145,28 @@ internal class PostHogSurveysDisplaySurveyTest {
         integration.onSurveysLoaded(listOf(createSurvey("api-1", SurveyType.API)))
 
         integration.displaySurvey("unknown-id")
+
+        assertEquals(emptyList(), delegate.renderedSurveyIds)
+    }
+
+    @Test
+    fun `displaySurvey does nothing when the survey has already been stopped`() {
+        val delegate = RecordingDelegate()
+        val integration = createIntegration(delegate)
+        integration.onSurveysLoaded(listOf(createSurvey("api-1", SurveyType.API, endDate = java.util.Date())))
+
+        integration.displaySurvey("api-1")
+
+        assertEquals(emptyList(), delegate.renderedSurveyIds)
+    }
+
+    @Test
+    fun `displaySurvey does nothing when the survey has not started`() {
+        val delegate = RecordingDelegate()
+        val integration = createIntegration(delegate)
+        integration.onSurveysLoaded(listOf(createSurvey("api-1", SurveyType.API, startDate = null)))
+
+        integration.displaySurvey("api-1")
 
         assertEquals(emptyList(), delegate.renderedSurveyIds)
     }
