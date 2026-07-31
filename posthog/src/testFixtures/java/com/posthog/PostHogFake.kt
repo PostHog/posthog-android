@@ -15,6 +15,7 @@ public class PostHogFake : PostHogInterface {
     public var sessionReplayActive: Boolean = false
     public var startSessionReplayCalls: Int = 0
     public var stopSessionReplayCalls: Int = 0
+    public val displaySurveyCalls: MutableList<String> = mutableListOf()
 
     // `PostHogLogger`'s constructor is `internal`. Test fixtures live in the
     // same module, so we can construct a silent no-op here without exposing
@@ -230,6 +231,10 @@ public class PostHogFake : PostHogInterface {
     override fun stopSessionReplay() {
         stopSessionReplayCalls++
         sessionReplayActive = false
+    }
+
+    override fun displaySurvey(surveyId: String) {
+        displaySurveyCalls.add(surveyId)
     }
 
     override fun getSessionId(): UUID? {

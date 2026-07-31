@@ -325,6 +325,21 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun stopSessionReplay()
 
     /**
+     * Displays the survey with the given ID on demand, regardless of its display conditions.
+     *
+     * The survey must be running and returned by the project's remote config; targeting flags,
+     * event triggers, and the seen/wait-period checks are bypassed. Use this to display surveys
+     * of type API, or to trigger a popover survey from your own logic. If another survey is
+     * already being displayed, this call is ignored.
+     *
+     * Requires the surveys integration to be enabled via `PostHogConfig.surveys`.
+     * Android only.
+     *
+     * @param surveyId The ID of the survey to display
+     */
+    public fun displaySurvey(surveyId: String)
+
+    /**
      * Returns the session Id if a session is active
      * @return The current session ID, or null if no session is active.
      */

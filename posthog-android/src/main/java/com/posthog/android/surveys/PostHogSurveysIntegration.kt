@@ -138,6 +138,41 @@ public class PostHogSurveysIntegration(
     }
 
     /**
+     * Displays the survey with the given ID on demand.
+     *
+     * Unlike automatic display, this bypasses display conditions (targeting flags,
+     * event triggers, and the seen/wait-period checks), so it also works for
+     * API-type surveys, which are never auto-displayed. The survey must be present
+     * in the surveys loaded from remote config and still running (started and not
+     * yet stopped). If another survey is already being displayed, this call is ignored.
+     *
+     * @param surveyId The ID of the survey to display
+     */
+    public override fun displaySurvey(surveyId: String) {
+        if (!config.surveys) {
+            config.logger.log("[Surveys] Cannot display survey $surveyId - surveys are disabled in the config")
+            return
+        }
+        val isIntegrationStarted = synchronized(lifecycleLock) { isStarted }
+        if (!isIntegrationStarted) {
+            config.logger.log("[Surveys] Cannot display survey $surveyId - surveys integration is not started")
+            return
+        }
+        val survey = synchronized(surveysLock) { cachedSurveys.firstOrNull { it.id == surveyId } }
+        if (survey == null) {
+            config.logger.log("[Surveys] Cannot display survey $surveyId - survey not found")
+            return
+        }
+        // The cached surveys are the raw remote config list, so they can include surveys that
+        // haven't started yet or have already been stopped. Only display conditions are bypassed.
+        if (!isSurveyRunning(survey)) {
+            config.logger.log("[Surveys] Cannot display survey $surveyId - survey is not running")
+            return
+        }
+        showSurvey(survey)
+    }
+
+    /**
      * Resolves the surveys delegate.
      *
      * If the consumer explicitly set a delegate on
@@ -223,12 +258,17 @@ public class PostHogSurveysIntegration(
         }
     }
 
+    /**
+     * Whether the survey is currently running, i.e. it has been started and not yet stopped.
+     */
+    private fun isSurveyRunning(survey: Survey): Boolean = survey.startDate != null && survey.endDate == null
+
     private fun getActiveMatchingSurveys(surveys: List<Survey>): List<Survey> {
         val postHog = postHog ?: return emptyList()
 
         return surveys.filter { survey ->
             // 1. Filter out inactive surveys (must have start date and no end date)
-            if (survey.startDate == null || survey.endDate != null) return@filter false
+            if (!isSurveyRunning(survey)) return@filter false
 
             // 2. Filter out surveys that don't match device type
             if (!doesSurveyDeviceTypesMatch(survey)) return@filter false
