@@ -69,6 +69,9 @@ object PosthogBuildConfig {
         val ANDROIDX_CORE = "1.5.0"
         val ANDROIDX_COMPOSE = "1.0.0"
 
+        // matches firebase-bom 34.16.0
+        val FIREBASE_MESSAGING = "25.1.1"
+
         // Provides ComponentDialog (LifecycleOwner + OnBackPressedDispatcher) for the surveys-compose UI.
         val ANDROIDX_ACTIVITY = "1.8.2"
 

@@ -15,6 +15,7 @@ import com.posthog.android.internal.PostHogAndroidNetworkStatusIntegration
 import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogMetaPropertiesApplier
+import com.posthog.android.internal.PostHogPushSubscriptionIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.PostHogTouchActivityIntegration
 import com.posthog.android.internal.appContext
@@ -161,7 +162,9 @@ public class PostHogAndroid private constructor() {
             config.addIntegration(PostHogTouchActivityIntegration(config))
             config.addIntegration(PostHogLogCatIntegration(config))
             if (context is Application) {
-                if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
+                if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay ||
+                    config.capturePushNotificationOpened
+                ) {
                     config.addIntegration(
                         PostHogActivityLifecycleCallbackIntegration(
                             context,
@@ -176,6 +179,9 @@ public class PostHogAndroid private constructor() {
             config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
             if (config.surveys) {
                 config.addIntegration(PostHogSurveysIntegration(context, config))
+            }
+            if (config.capturePushNotificationSubscriptions) {
+                config.addIntegration(PostHogPushSubscriptionIntegration(config))
             }
         }
     }
