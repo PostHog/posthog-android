@@ -623,6 +623,7 @@ public open class PostHogStateless protected constructor(
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
                     inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
+                    releaseIdentifier = config?.releaseIdentifier,
                 )
 
             properties?.let {
