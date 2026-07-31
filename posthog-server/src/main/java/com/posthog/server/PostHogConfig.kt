@@ -167,6 +167,15 @@ public open class PostHogConfig constructor(
      */
     public var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
 
+    /**
+     * Identifier attached as `map_id` to exception stack frames so PostHog can symbolicate
+     * them against an uploaded ProGuard/R8 mapping. It must match the map-id used when
+     * uploading the mapping, e.g. via
+     * `posthog-cli exp proguard upload --path "mapping.txt" --map-id "<releaseIdentifier>"`.
+     * Defaults to null (no `map_id` attached).
+     */
+    public var releaseIdentifier: String? = null
+
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
 
@@ -245,6 +254,9 @@ public open class PostHogConfig constructor(
         // Propagate evaluationContexts if set
         coreConfig.evaluationContexts = evaluationContexts
 
+        // Propagate releaseIdentifier so exception frames carry map_id for symbolication
+        coreConfig.releaseIdentifier = releaseIdentifier
+
         return coreConfig
     }
 
@@ -305,6 +317,7 @@ public open class PostHogConfig constructor(
         private var pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS
         private var evaluationContexts: List<String>? = null
         private var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
+        private var releaseIdentifier: String? = null
 
         /**
          * Sets the PostHog ingestion host.
@@ -486,6 +499,14 @@ public open class PostHogConfig constructor(
             apply { this.flagDefinitionCacheProvider = flagDefinitionCacheProvider }
 
         /**
+         * Sets the identifier attached as `map_id` to exception stack frames for symbolication.
+         *
+         * @param releaseIdentifier The map-id used when uploading the ProGuard/R8 mapping, or null.
+         * @return This builder.
+         */
+        public fun releaseIdentifier(releaseIdentifier: String?): Builder = apply { this.releaseIdentifier = releaseIdentifier }
+
+        /**
          * Builds a [PostHogConfig] from the accumulated values.
          *
          * @return The configured server SDK config.
@@ -516,6 +537,7 @@ public open class PostHogConfig constructor(
                     evaluationContexts = evaluationContexts,
                 )
             config.flagDefinitionCacheProvider = flagDefinitionCacheProvider
+            config.releaseIdentifier = releaseIdentifier
             return config
         }
     }

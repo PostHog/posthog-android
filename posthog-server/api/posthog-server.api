@@ -149,6 +149,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getPollIntervalSeconds ()I
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getProxy ()Ljava/net/Proxy;
+	public final fun getReleaseIdentifier ()Ljava/lang/String;
 	public final fun getRemoteConfig ()Z
 	public final fun getSendFeatureFlagEvent ()Z
 	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
@@ -169,6 +170,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun setPollIntervalSeconds (I)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setProxy (Ljava/net/Proxy;)V
+	public final fun setReleaseIdentifier (Ljava/lang/String;)V
 	public final fun setRemoteConfig (Z)V
 	public final fun setSendFeatureFlagEvent (Z)V
 }
@@ -194,6 +196,7 @@ public final class com/posthog/server/PostHogConfig$Builder {
 	public final fun pollIntervalSeconds (I)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun preloadFeatureFlags (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun proxy (Ljava/net/Proxy;)Lcom/posthog/server/PostHogConfig$Builder;
+	public final fun releaseIdentifier (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun remoteConfig (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun sendFeatureFlagEvent (Z)Lcom/posthog/server/PostHogConfig$Builder;
 }

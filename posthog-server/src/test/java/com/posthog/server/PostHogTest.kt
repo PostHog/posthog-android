@@ -315,6 +315,40 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `captureException stamps frames with map_id when releaseIdentifier is set`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .releaseIdentifier("release-123")
+                    .build(),
+            )
+
+        postHog.captureException(RuntimeException("boom"), "user123")
+
+        val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(request, "Expected /batch request within 5 seconds")
+
+        val props = request.parseBatch().firstEventProperties()
+        val exceptionList = props["\$exception_list"] as List<*>
+        val stacktrace = (exceptionList.first() as Map<*, *>)["stacktrace"] as Map<*, *>
+        val frames = stacktrace["frames"] as List<*>
+        assertTrue(frames.isNotEmpty())
+        frames.forEach { frame ->
+            assertEquals("release-123", (frame as Map<*, *>)["map_id"])
+        }
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `capture with appendFeatureFlags false does not enrich properties`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(MockResponse().setResponseCode(200))
