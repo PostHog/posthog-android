@@ -11,6 +11,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogSessionManager
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures app opened and backgrounded events
@@ -32,6 +33,7 @@ internal class PostHogLifecycleObserverIntegration(
     private val bgEndSessionDelayMs = (1000 * 60 * 30).toLong() // 30 minutes
 
     private var postHog: PostHogInterface? = null
+    private var ownsInstallation = false
 
     private companion object {
         // in case there are multiple instances or the SDK is closed/setup again
@@ -40,8 +42,7 @@ internal class PostHogLifecycleObserverIntegration(
         @Volatile
         private var fromBackground = false
 
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -124,11 +125,12 @@ internal class PostHogLifecycleObserverIntegration(
         lifecycle.addObserver(this)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled) {
+        if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
+        ownsInstallation = true
 
         try {
             this.postHog = postHog
@@ -148,9 +150,12 @@ internal class PostHogLifecycleObserverIntegration(
         lifecycle.removeObserver(this)
     }
 
+    @Synchronized
     override fun uninstall() {
+        if (!ownsInstallation) {
+            return
+        }
         try {
-            integrationInstalled = false
             this.postHog = null
             if (isMainThread(mainHandler)) {
                 remove()
@@ -161,6 +166,9 @@ internal class PostHogLifecycleObserverIntegration(
             }
         } catch (e: Throwable) {
             config.logger.log("Failed to uninstall PostHogLifecycleObserverIntegration: $e")
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
         }
     }
 }

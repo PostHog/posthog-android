@@ -11,9 +11,11 @@ import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidDateProvider
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
+import com.posthog.android.internal.PostHogAndroidNetworkStatusIntegration
 import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogMetaPropertiesApplier
+import com.posthog.android.internal.PostHogPushSubscriptionIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.android.internal.PostHogTouchActivityIntegration
 import com.posthog.android.internal.appContext
@@ -91,8 +93,25 @@ public class PostHogAndroid private constructor() {
                 config.errorTrackingConfig.inAppIncludes.add(packageName)
             }
 
-            val androidContext = config.context ?: PostHogAndroidContext(context, config)
-            config.context = androidContext
+            if (config.context == null) {
+                val contextNetworkStatus =
+                    (config.networkStatus as? PostHogAndroidNetworkStatus)
+                        ?: PostHogAndroidNetworkStatus(context)
+                if (config.networkStatus == null) {
+                    config.networkStatus = contextNetworkStatus
+                }
+                config.context =
+                    PostHogAndroidContext(
+                        context,
+                        config,
+                        contextNetworkStatus::getNetworkProperties,
+                    )
+                if (config.networkStatus !== contextNetworkStatus) {
+                    config.addIntegration(PostHogAndroidNetworkStatusIntegration(contextNetworkStatus))
+                }
+            } else if (config.networkStatus == null) {
+                config.networkStatus = PostHogAndroidNetworkStatus(context)
+            }
 
             val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
             val path = File(context.cacheDir, "posthog-disk-queue")
@@ -116,7 +135,6 @@ public class PostHogAndroid private constructor() {
                     PostHogSessionManager.setDateProvider(config.dateProvider)
                 }
             }
-            config.networkStatus = config.networkStatus ?: PostHogAndroidNetworkStatus(context)
             // Flutter, RN, and KMP SDKs set the sdkName and sdkVersion, so this guard is not to allow
             // the values to be overwritten again
             if (config.sdkName != "posthog-flutter" &&
@@ -144,7 +162,9 @@ public class PostHogAndroid private constructor() {
             config.addIntegration(PostHogTouchActivityIntegration(config))
             config.addIntegration(PostHogLogCatIntegration(config))
             if (context is Application) {
-                if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay) {
+                if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay ||
+                    config.capturePushNotificationOpened
+                ) {
                     config.addIntegration(
                         PostHogActivityLifecycleCallbackIntegration(
                             context,
@@ -159,6 +179,9 @@ public class PostHogAndroid private constructor() {
             config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
             if (config.surveys) {
                 config.addIntegration(PostHogSurveysIntegration(context, config))
+            }
+            if (config.capturePushNotificationSubscriptions) {
+                config.addIntegration(PostHogPushSubscriptionIntegration(config))
             }
         }
     }

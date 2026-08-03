@@ -7,10 +7,13 @@ import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
+import com.posthog.android.internal.PostHogAndroidNetworkStatusIntegration
 import com.posthog.android.internal.PostHogAppInstallIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
+import com.posthog.android.internal.PostHogPushSubscriptionIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogNetworkStatus
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -21,6 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -118,6 +122,24 @@ internal class PostHogAndroidTest {
         PostHogAndroid.setup(context, config)
 
         assertTrue(config.networkStatus is PostHogAndroidNetworkStatus)
+    }
+
+    @Test
+    fun `adds connectivity monitor when custom network status is configured`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        val customNetworkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = true
+            }
+        config.networkStatus = customNetworkStatus
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertSame(customNetworkStatus, config.networkStatus)
+        assertTrue(config.context is PostHogAndroidContext)
+        assertNotNull(config.integrations.find { it is PostHogAndroidNetworkStatusIntegration })
     }
 
     @Test
@@ -229,6 +251,7 @@ internal class PostHogAndroidTest {
                 captureDeepLinks = false
                 captureScreenViews = false
                 sessionReplay = false
+                capturePushNotificationOpened = false
             }
 
         mockContextAppStart(context, tmpDir)
@@ -238,6 +261,59 @@ internal class PostHogAndroidTest {
         assertNull(
             config.integrations.find {
                 it is PostHogActivityLifecycleCallbackIntegration
+            },
+        )
+    }
+
+    @Test
+    fun `adds activity lifecycle integration when only capturePushNotificationOpened is enabled`() {
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                captureDeepLinks = false
+                captureScreenViews = false
+                sessionReplay = false
+            }
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertNotNull(
+            config.integrations.find {
+                it is PostHogActivityLifecycleCallbackIntegration
+            },
+        )
+    }
+
+    @Test
+    fun `adds capturePushNotificationSubscriptions integration`() {
+        val config = PostHogAndroidConfig(API_KEY)
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertNotNull(
+            config.integrations.find {
+                it is PostHogPushSubscriptionIntegration
+            },
+        )
+    }
+
+    @Test
+    fun `does not add capturePushNotificationSubscriptions integration if disabled`() {
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                capturePushNotificationSubscriptions = false
+            }
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertNull(
+            config.integrations.find {
+                it is PostHogPushSubscriptionIntegration
             },
         )
     }

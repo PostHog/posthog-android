@@ -12,6 +12,7 @@ import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_AT
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.MINIMAL_FLAG_CALLED_EVENTS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
@@ -100,6 +101,11 @@ public class PostHogRemoteConfig(
     private var requestId: String? = null
     private var evaluatedAt: Long? = null
 
+    // Server-controlled gate for minimal $feature_flag_called events (top-level
+    // minimalFlagCalledEvents of the v2 /flags response). Absent means full events, so it is
+    // overwritten from every /flags response rather than merged. Guarded by featureFlagsLock.
+    private var minimalFlagCalledEvents: Boolean = false
+
     private var surveys: List<Survey>? = null
 
     @Volatile
@@ -123,6 +129,11 @@ public class PostHogRemoteConfig(
     // The effective state is: remoteEnabled AND localEnabled.
     @Volatile
     private var autoCaptureExceptions = false
+
+    // Set by preloadErrorTrackingConfig when a disk-cached error-tracking config exists at startup.
+    // Survives clear()/reset(): it's project-level config, not user data, like the cached config.
+    @Volatile
+    private var errorTrackingConfigCached = false
 
     @Volatile
     private var consoleLogRecordingEnabled = true
@@ -519,19 +530,19 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun clearErrorTracking() {
-        autoCaptureExceptions = false
-        config.cachePreferences?.remove(ERROR_TRACKING)
-    }
-
     private fun processErrorTrackingConfig(
         errorTracking: Any?,
         persist: Boolean = true,
     ) {
         when (errorTracking) {
             is Boolean -> {
-                // if errorTracking is a Boolean, it's always false (disabled)
-                clearErrorTracking()
+                // A Boolean errorTracking means disabled; cache that stance so a future launch
+                // skips the default first-launch install before /config responds. Persisted only
+                // when actually disabled.
+                autoCaptureExceptions = false
+                if (persist && !errorTracking) {
+                    config.cachePreferences?.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to false))
+                }
             }
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
@@ -555,6 +566,7 @@ public class PostHogRemoteConfig(
                 @Suppress("UNCHECKED_CAST")
                 val errorTracking = preferences.getValue(ERROR_TRACKING) as? Map<String, Any>
                 if (errorTracking != null) {
+                    errorTrackingConfigCached = true
                     val autocaptureExceptions = errorTracking["autocaptureExceptions"]
                     autoCaptureExceptions = autocaptureExceptions as? Boolean ?: false
                 }
@@ -633,6 +645,16 @@ public class PostHogRemoteConfig(
      * (PostHogConfig.errorTrackingConfig.autoCapture) must be enabled.
      */
     public fun isAutocaptureExceptionsEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.autoCapture
+
+    /**
+     * Whether a disk-cached error tracking config was present at SDK startup, before any live
+     * `/config` fetch. Together with [hasRemoteConfigFetched] this tells the error-tracking
+     * integration whether the server's autocapture stance is already known: when neither is true
+     * (first launch, no cache) the integration installs by default so a crash in that first-launch
+     * window — before `/flags` responds — isn't silently missed; a cached-or-fetched config that
+     * disables autocapture blocks (or removes) it.
+     */
+    public fun hasCachedErrorTrackingConfig(): Boolean = errorTrackingConfigCached
 
     /**
      * Returns whether console log recording is enabled remotely.
@@ -734,6 +756,10 @@ public class PostHogRemoteConfig(
 
                     val normalizedResponse = normalizeFlagsResponse(it)
 
+                    // A response without the gate (legacy shape or ungated team) disables it,
+                    // so full events resume as soon as the server stops sending the field.
+                    minimalFlagCalledEvents = it.minimalFlagCalledEvents == true
+
                     if (normalizedResponse.errorsWhileComputingFlags) {
                         // Partial/errored response: merge into the existing served flags (which may be
                         // the bootstrap snapshot) so un-recomputed values, including bootstrapped ones,
@@ -823,6 +849,14 @@ public class PostHogRemoteConfig(
                             payloads.filterKeys { it in serverEvaluatedPayloadKeys }
                         }
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, serverPayloads)
+
+                    // Persist the gate alongside the cached flags so it survives restarts;
+                    // an absent cache entry means full events (fail-safe).
+                    if (this.minimalFlagCalledEvents) {
+                        preferences.setValue(MINIMAL_FLAG_CALLED_EVENTS, true)
+                    } else {
+                        preferences.remove(MINIMAL_FLAG_CALLED_EVENTS)
+                    }
                 }
                 isFeatureFlagsLoaded = true
                 setFlagsLoadedFromRemote()
@@ -981,6 +1015,8 @@ public class PostHogRemoteConfig(
 
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
             val cachedEvaluatedAt = preferences.getValue(FEATURE_FLAG_EVALUATED_AT) as? Long
+            // Absent from the cache means full events (fail-safe).
+            val cachedMinimalFlagCalledEvents = preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS) as? Boolean ?: false
 
             synchronized(featureFlagsLock) {
                 this.flags = flags
@@ -988,6 +1024,7 @@ public class PostHogRemoteConfig(
                 this.featureFlagPayloads = payloads
                 this.requestId = cachedRequestId
                 this.evaluatedAt = cachedEvaluatedAt
+                this.minimalFlagCalledEvents = cachedMinimalFlagCalledEvents
                 // Bootstrap is an initial snapshot that wins over persisted flags (spec precedence).
                 applyBootstrapSnapshotLocked()
                 isFeatureFlagsLoaded = true
@@ -1240,6 +1277,13 @@ public class PostHogRemoteConfig(
         }
     }
 
+    override fun isMinimalFlagCalledEventsEnabled(): Boolean {
+        loadFeatureFlagsFromCacheIfNeeded()
+        synchronized(featureFlagsLock) {
+            return minimalFlagCalledEvents
+        }
+    }
+
     public fun getSurveys(): List<Survey>? {
         synchronized(remoteConfigLock) {
             return surveys
@@ -1253,6 +1297,7 @@ public class PostHogRemoteConfig(
         this.flags = null
         this.requestId = null
         this.evaluatedAt = null
+        this.minimalFlagCalledEvents = false
 
         config.cachePreferences?.let { preferences ->
             preferences.remove(FLAGS)
@@ -1260,6 +1305,7 @@ public class PostHogRemoteConfig(
             preferences.remove(FEATURE_FLAGS_PAYLOAD)
             preferences.remove(FEATURE_FLAG_REQUEST_ID)
             preferences.remove(FEATURE_FLAG_EVALUATED_AT)
+            preferences.remove(MINIMAL_FLAG_CALLED_EVENTS)
         }
     }
 
