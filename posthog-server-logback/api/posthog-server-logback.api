@@ -1,0 +1,21 @@
+public final class com/posthog/server/logback/PostHogAppender : ch/qos/logback/core/AppenderBase {
+	public static final field Companion Lcom/posthog/server/logback/PostHogAppender$Companion;
+	public fun <init> ()V
+	public synthetic fun append (Ljava/lang/Object;)V
+	public static final fun clearPostHog ()V
+	public final fun getApiKey ()Ljava/lang/String;
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getMinimumCaptureLevel ()Lch/qos/logback/classic/Level;
+	public final fun setApiKey (Ljava/lang/String;)V
+	public final fun setHost (Ljava/lang/String;)V
+	public final fun setMinimumCaptureLevel (Lch/qos/logback/classic/Level;)V
+	public static final fun setPostHog (Lcom/posthog/server/PostHogInterface;)V
+	public fun start ()V
+	public fun stop ()V
+}
+
+public final class com/posthog/server/logback/PostHogAppender$Companion {
+	public final fun clearPostHog ()V
+	public final fun setPostHog (Lcom/posthog/server/PostHogInterface;)V
+}
+

@@ -65,6 +65,9 @@ object PosthogBuildConfig {
         val GSON = "2.10.1"
 
         val OKHTTP = "4.12.0"
+
+        // Logback appender: 1.3.x is the last line targeting Java 8 (1.4.x+ requires Java 11).
+        val LOGBACK = "1.3.14"
         val CURTAINS = "1.2.5"
         val ANDROIDX_CORE = "1.5.0"
         val ANDROIDX_COMPOSE = "1.0.0"
