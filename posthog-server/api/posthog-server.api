@@ -134,6 +134,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public static final fun builder (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun getApiKey ()Ljava/lang/String;
+	public final fun getCaptureUncaughtExceptions ()Z
 	public final fun getDebug ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getEvaluationContexts ()Ljava/util/List;
@@ -158,6 +159,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getRemoteConfig ()Z
 	public final fun getSendFeatureFlagEvent ()Z
 	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
+	public final fun setCaptureUncaughtExceptions (Z)V
 	public final fun setDebug (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setEvaluationContexts (Ljava/util/List;)V
@@ -185,6 +187,7 @@ public class com/posthog/server/PostHogConfig {
 public final class com/posthog/server/PostHogConfig$Builder {
 	public fun <init> (Ljava/lang/String;)V
 	public final fun build ()Lcom/posthog/server/PostHogConfig;
+	public final fun captureUncaughtExceptions (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun debug (Z)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun encryption (Lcom/posthog/PostHogEncryption;)Lcom/posthog/server/PostHogConfig$Builder;
 	public final fun evaluationContexts (Ljava/util/List;)Lcom/posthog/server/PostHogConfig$Builder;
