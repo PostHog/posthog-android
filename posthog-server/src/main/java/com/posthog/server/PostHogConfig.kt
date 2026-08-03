@@ -176,6 +176,29 @@ public open class PostHogConfig constructor(
      */
     public var releaseIdentifier: String? = null
 
+    /**
+     * Package prefixes whose stack trace frames are marked in-app (`in_app: true`) on captured
+     * exceptions, e.g. `listOf("com.yourcompany")`.
+     * Docs https://posthog.com/docs/error-tracking
+     *
+     * When empty, every frame not matched by [inAppExcludes] is considered in-app.
+     * [inAppExcludes] always wins over this list.
+     * Defaults to an empty list.
+     */
+    public var inAppIncludes: List<String> = emptyList()
+
+    /**
+     * Package prefixes whose stack trace frames are never marked in-app on captured exceptions.
+     * Excludes always win over [inAppIncludes].
+     * Docs https://posthog.com/docs/error-tracking
+     *
+     * Defaults to [DEFAULT_IN_APP_EXCLUDES], which covers common JVM and framework packages
+     * (JDK, Kotlin, Spring, Netty, servlet containers, HTTP clients, the PostHog SDK, ...).
+     * Assigning your own list replaces these defaults; start from [DEFAULT_IN_APP_EXCLUDES]
+     * if you only want to add entries.
+     */
+    public var inAppExcludes: List<String> = DEFAULT_IN_APP_EXCLUDES
+
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
 
@@ -257,6 +280,10 @@ public open class PostHogConfig constructor(
         // Propagate releaseIdentifier so exception frames carry map_id for symbolication
         coreConfig.releaseIdentifier = releaseIdentifier
 
+        // Error tracking: in-app frame classification
+        coreConfig.errorTrackingConfig.inAppIncludes.addAll(inAppIncludes)
+        coreConfig.errorTrackingConfig.inAppExcludes.addAll(inAppExcludes)
+
         return coreConfig
     }
 
@@ -278,6 +305,33 @@ public open class PostHogConfig constructor(
         public const val DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS: Int = 5 * 60 * 1000 // 5 minutes
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
         public const val DEFAULT_POLL_INTERVAL_SECONDS: Int = 30
+
+        /**
+         * Default [inAppExcludes] prefixes: common JVM, Kotlin, and server-framework packages
+         * whose frames are noise in application stack traces. Assigning your own list to
+         * [inAppExcludes] replaces these defaults.
+         */
+        @JvmField
+        public val DEFAULT_IN_APP_EXCLUDES: List<String> =
+            listOf(
+                "java.",
+                "javax.",
+                "jakarta.",
+                "kotlin.",
+                "kotlinx.",
+                "scala.",
+                "sun.",
+                "com.sun.",
+                "jdk.",
+                "org.springframework.",
+                "io.netty.",
+                "org.apache.",
+                "org.eclipse.jetty.",
+                "io.undertow.",
+                "okhttp3.",
+                "okio.",
+                "com.posthog.",
+            )
 
         /**
          * Creates a Java-friendly builder.
@@ -318,6 +372,8 @@ public open class PostHogConfig constructor(
         private var evaluationContexts: List<String>? = null
         private var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
         private var releaseIdentifier: String? = null
+        private var inAppIncludes: List<String> = emptyList()
+        private var inAppExcludes: List<String> = DEFAULT_IN_APP_EXCLUDES
 
         /**
          * Sets the PostHog ingestion host.
@@ -507,6 +563,24 @@ public open class PostHogConfig constructor(
         public fun releaseIdentifier(releaseIdentifier: String?): Builder = apply { this.releaseIdentifier = releaseIdentifier }
 
         /**
+         * Sets the package prefixes whose stack trace frames are marked in-app on captured
+         * exceptions. [inAppExcludes] always wins over this list.
+         *
+         * @param inAppIncludes Package prefixes, e.g. `listOf("com.yourcompany")`.
+         * @return This builder.
+         */
+        public fun inAppIncludes(inAppIncludes: List<String>): Builder = apply { this.inAppIncludes = inAppIncludes }
+
+        /**
+         * Sets the package prefixes whose stack trace frames are never marked in-app on captured
+         * exceptions, replacing [DEFAULT_IN_APP_EXCLUDES]. Excludes win over [inAppIncludes].
+         *
+         * @param inAppExcludes Package prefixes to exclude from in-app classification.
+         * @return This builder.
+         */
+        public fun inAppExcludes(inAppExcludes: List<String>): Builder = apply { this.inAppExcludes = inAppExcludes }
+
+        /**
          * Builds a [PostHogConfig] from the accumulated values.
          *
          * @return The configured server SDK config.
@@ -538,6 +612,8 @@ public open class PostHogConfig constructor(
                 )
             config.flagDefinitionCacheProvider = flagDefinitionCacheProvider
             config.releaseIdentifier = releaseIdentifier
+            config.inAppIncludes = inAppIncludes
+            config.inAppExcludes = inAppExcludes
             return config
         }
     }

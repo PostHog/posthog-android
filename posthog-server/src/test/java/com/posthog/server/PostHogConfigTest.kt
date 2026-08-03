@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @Suppress("DEPRECATION")
 internal class PostHogConfigTest {
@@ -659,6 +660,91 @@ internal class PostHogConfigTest {
 
         val config = builder.build()
         assertEquals(provider, config.flagDefinitionCacheProvider)
+    }
+
+    // Error tracking config tests
+
+    @Test
+    fun `in-app classification properties have expected defaults`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+
+        assertTrue(config.inAppIncludes.isEmpty())
+        assertEquals(PostHogConfig.DEFAULT_IN_APP_EXCLUDES, config.inAppExcludes)
+    }
+
+    @Test
+    fun `DEFAULT_IN_APP_EXCLUDES covers JVM and framework prefixes`() {
+        val expected =
+            listOf(
+                "java.",
+                "javax.",
+                "jakarta.",
+                "kotlin.",
+                "kotlinx.",
+                "scala.",
+                "sun.",
+                "com.sun.",
+                "jdk.",
+                "org.springframework.",
+                "io.netty.",
+                "org.apache.",
+                "org.eclipse.jetty.",
+                "io.undertow.",
+                "okhttp3.",
+                "okio.",
+                "com.posthog.",
+            )
+
+        assertEquals(expected, PostHogConfig.DEFAULT_IN_APP_EXCLUDES)
+    }
+
+    @Test
+    fun `asCoreConfig propagates in-app classification settings to core config`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        config.inAppIncludes = listOf("com.myapp.")
+        config.inAppExcludes = listOf("com.thirdparty.")
+
+        val coreConfig = config.asCoreConfig()
+
+        assertEquals(listOf("com.myapp."), coreConfig.errorTrackingConfig.inAppIncludes)
+        assertEquals(listOf("com.thirdparty."), coreConfig.errorTrackingConfig.inAppExcludes)
+    }
+
+    @Test
+    fun `asCoreConfig propagates default excludes`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+
+        val coreConfig = config.asCoreConfig()
+
+        assertTrue(coreConfig.errorTrackingConfig.inAppIncludes.isEmpty())
+        assertEquals(PostHogConfig.DEFAULT_IN_APP_EXCLUDES, coreConfig.errorTrackingConfig.inAppExcludes)
+    }
+
+    @Test
+    fun `builder inAppIncludes method sets value and returns builder`() {
+        val builder = PostHogConfig.builder(TEST_API_KEY)
+        val result = builder.inAppIncludes(listOf("com.myapp."))
+        assertEquals(builder, result)
+
+        val config = builder.build()
+        assertEquals(listOf("com.myapp."), config.inAppIncludes)
+    }
+
+    @Test
+    fun `builder inAppExcludes method replaces default excludes and returns builder`() {
+        val builder = PostHogConfig.builder(TEST_API_KEY)
+        val result = builder.inAppExcludes(listOf("com.thirdparty."))
+        assertEquals(builder, result)
+
+        val config = builder.build()
+        assertEquals(listOf("com.thirdparty."), config.inAppExcludes)
+    }
+
+    @Test
+    fun `builder keeps default excludes when inAppExcludes is not called`() {
+        val config = PostHogConfig.builder(TEST_API_KEY).build()
+
+        assertEquals(PostHogConfig.DEFAULT_IN_APP_EXCLUDES, config.inAppExcludes)
     }
 
     private class NoOpFlagDefinitionCacheProvider : PostHogBlockingFlagDefinitionCacheProvider() {

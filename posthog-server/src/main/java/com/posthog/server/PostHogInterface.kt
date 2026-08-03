@@ -809,4 +809,43 @@ public sealed interface PostHogInterface {
             null,
         )
     }
+
+    /**
+     * Captures an exception
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
+     *   distinct ID is used; if none exists, a personless UUID is generated.
+     * @param options capture options containing properties, user properties, groups, timestamp,
+     *   and feature flag snapshot settings. Reserved exception properties such as
+     *   `$exception_level` can be overridden via the options properties.
+     *
+     * Java callers passing an explicit untyped `null` third argument must cast it
+     * (`captureException(e, id, (Map<String, Object>) null)`) since it now matches both this
+     * overload and the properties one.
+     */
+    public fun captureException(
+        exception: Throwable,
+        distinctId: String?,
+        options: PostHogCaptureOptions,
+    )
+
+    /**
+     * Captures an exception using the current [PostHogRequestContext] distinct ID, or as a
+     * personless event when no request context identity is active.
+     * Docs https://posthog.com/docs/error-tracking
+     * @param exception the exception to capture
+     * @param options capture options containing properties, user properties, groups, timestamp,
+     *   and feature flag snapshot settings
+     */
+    public fun captureException(
+        exception: Throwable,
+        options: PostHogCaptureOptions,
+    ) {
+        captureException(
+            exception,
+            null,
+            options,
+        )
+    }
 }

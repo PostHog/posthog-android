@@ -1,6 +1,7 @@
 package com.posthog.server
 
 import com.posthog.FeatureFlagResult
+import com.posthog.PostHogEventName
 import com.posthog.PostHogStateless
 import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
@@ -67,34 +68,14 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     ) {
         val captureContext = PostHogRequestContext.resolveCaptureContext(distinctId, properties)
         val mergedProperties =
-            when {
-                flags != null -> {
-                    if (appendFeatureFlags) {
-                        getConfig<com.posthog.PostHogConfig>()?.logger?.log(
-                            "capture() received both `flags` and `appendFeatureFlags=true`; " +
-                                "using the supplied snapshot and skipping the redundant /flags fetch.",
-                        )
-                    }
-                    mergeFeatureFlagPropertiesFromSnapshot(captureContext.properties, flags)
-                }
-                appendFeatureFlags -> {
-                    getConfig<com.posthog.PostHogConfig>()?.logger?.log(
-                        "DEPRECATION: capture(appendFeatureFlags = true) is deprecated and will be " +
-                            "removed in the next major. Call evaluateFlags(distinctId) once and pass the " +
-                            "snapshot via capture(flags = …) instead — that path attaches " +
-                            "\$feature/<key> properties without a redundant /flags request and lets you " +
-                            "scope which flags to attach via flags.onlyAccessed() or flags.only(...).",
-                    )
-                    mergeFeatureFlagProperties(
-                        distinctId = captureContext.distinctId,
-                        groups = groups,
-                        userProperties = userProperties,
-                        groupProperties = null,
-                        properties = captureContext.properties,
-                    )
-                }
-                else -> captureContext.properties
-            }
+            mergeCaptureProperties(
+                distinctId = captureContext.distinctId,
+                properties = captureContext.properties,
+                userProperties = userProperties,
+                groups = groups,
+                appendFeatureFlags = appendFeatureFlags,
+                flags = flags,
+            )
 
         super.captureStateless(
             event,
@@ -106,6 +87,48 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             timestamp,
         )
     }
+
+    /**
+     * Applies the shared capture-options merging semantics: a pre-evaluated [flags] snapshot wins,
+     * otherwise [appendFeatureFlags] triggers a (deprecated) flag evaluation, otherwise
+     * [properties] pass through unchanged.
+     */
+    private fun mergeCaptureProperties(
+        distinctId: String,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        groups: Map<String, String>?,
+        appendFeatureFlags: Boolean,
+        flags: PostHogFeatureFlagEvaluations?,
+    ): Map<String, Any>? =
+        when {
+            flags != null -> {
+                if (appendFeatureFlags) {
+                    getConfig<com.posthog.PostHogConfig>()?.logger?.log(
+                        "capture() received both `flags` and `appendFeatureFlags=true`; " +
+                            "using the supplied snapshot and skipping the redundant /flags fetch.",
+                    )
+                }
+                mergeFeatureFlagPropertiesFromSnapshot(properties, flags)
+            }
+            appendFeatureFlags -> {
+                getConfig<com.posthog.PostHogConfig>()?.logger?.log(
+                    "DEPRECATION: capture(appendFeatureFlags = true) is deprecated and will be " +
+                        "removed in the next major. Call evaluateFlags(distinctId) once and pass the " +
+                        "snapshot via capture(flags = …) instead — that path attaches " +
+                        "\$feature/<key> properties without a redundant /flags request and lets you " +
+                        "scope which flags to attach via flags.onlyAccessed() or flags.only(...).",
+                )
+                mergeFeatureFlagProperties(
+                    distinctId = distinctId,
+                    groups = groups,
+                    userProperties = userProperties,
+                    groupProperties = null,
+                    properties = properties,
+                )
+            }
+            else -> properties
+        }
 
     @Deprecated(
         message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
@@ -245,6 +268,56 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             distinctId = captureContext.distinctId,
             properties = captureContext.properties,
         )
+    }
+
+    override fun captureException(
+        exception: Throwable,
+        distinctId: String?,
+        options: PostHogCaptureOptions,
+    ) {
+        if (!enabled) {
+            return
+        }
+
+        try {
+            val captureContext = PostHogRequestContext.resolveCaptureContext(distinctId, options.properties)
+            val callerProperties =
+                mergeCaptureProperties(
+                    distinctId = captureContext.distinctId,
+                    properties = captureContext.properties,
+                    userProperties = options.userProperties,
+                    groups = options.groups,
+                    appendFeatureFlags = options.appendFeatureFlags,
+                    flags = options.flags,
+                )
+
+            val config = getConfig<com.posthog.PostHogConfig>()
+            val exceptionProperties =
+                throwableCoercer.fromThrowableToPostHogProperties(
+                    exception,
+                    inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
+                    releaseIdentifier = config?.releaseIdentifier,
+                    inAppExcludes = config?.errorTrackingConfig?.inAppExcludes ?: listOf(),
+                )
+            // Caller properties merge AFTER the coerced exception properties (same order as core
+            // captureExceptionStateless) so options can override reserved keys like $exception_level.
+            callerProperties?.let { exceptionProperties.putAll(it) }
+
+            // captureExceptionStateless cannot carry groups/user properties/timestamp, so the
+            // options overload coerces above and goes through captureStateless directly.
+            super.captureStateless(
+                PostHogEventName.EXCEPTION.event,
+                captureContext.distinctId,
+                exceptionProperties,
+                options.userProperties,
+                options.userPropertiesSetOnce,
+                options.groups,
+                options.timestamp,
+            )
+        } catch (e: Throwable) {
+            // error capture must never throw into user code (parity with captureExceptionStateless)
+            getConfig<com.posthog.PostHogConfig>()?.logger?.log("captureException has thrown an exception: $e.")
+        }
     }
 
     private fun mergeFeatureFlagProperties(
