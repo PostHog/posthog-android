@@ -2781,17 +2781,21 @@ internal class PostHogTest {
         assertEquals("Exception", causeExceptionData["type"])
         assertEquals(threadId, (causeExceptionData["thread_id"] as Number).toLong())
 
-        // Verify mechanism structure for main exception
+        // Verify mechanism structure for main exception: item 0, generic, no parent
         val mechanism = mainException["mechanism"] as Map<*, *>
         assertEquals(true, mechanism["handled"])
         assertEquals(false, mechanism["synthetic"])
         assertEquals("generic", mechanism["type"])
+        assertEquals(0, (mechanism["exception_id"] as Number).toInt())
+        assertFalse(mechanism.containsKey("parent_id"))
 
-        // Verify mechanism structure for cause exception
+        // Verify mechanism structure for cause exception: item 1, chained, parent is item 0
         val causeMechanism = causeExceptionData["mechanism"] as Map<*, *>
         assertEquals(true, causeMechanism["handled"])
         assertEquals(false, causeMechanism["synthetic"])
-        assertEquals("generic", causeMechanism["type"])
+        assertEquals("chained", causeMechanism["type"])
+        assertEquals(1, (causeMechanism["exception_id"] as Number).toInt())
+        assertEquals(0, (causeMechanism["parent_id"] as Number).toInt())
 
         // Verify stack trace structure for main exception
         val stackTraceMainException = mainException["stacktrace"] as Map<*, *>
@@ -2894,6 +2898,9 @@ internal class PostHogTest {
         assertEquals(false, mechanism["handled"])
         assertEquals(false, mechanism["synthetic"])
         assertEquals("UncaughtExceptionHandler", mechanism["type"])
+        // A single-item list carries no chain ids at all.
+        assertFalse(mechanism.containsKey("exception_id"))
+        assertFalse(mechanism.containsKey("parent_id"))
 
         // Verify stack trace structure for main exception
         val stackTraceMainException = mainException["stacktrace"] as Map<*, *>

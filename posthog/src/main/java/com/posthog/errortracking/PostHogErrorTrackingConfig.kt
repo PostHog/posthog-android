@@ -7,6 +7,10 @@ import com.posthog.PostHog
  */
 public class PostHogErrorTrackingConfig
     @JvmOverloads
+    // New options are APPENDED as trailing defaulted params so every previously-shipped
+    // @JvmOverloads constructor overload is kept and existing source stays compatible. This mirrors
+    // how `exceptionSteps` was added (a released minor, core-v6.21.0); as there, the generated
+    // Kotlin `$default` descriptor changes, so consumers using default args recompile on upgrade.
     public constructor(
         /**
          * Enable autocapture of exceptions
@@ -45,4 +49,15 @@ public class PostHogErrorTrackingConfig
          * Defaults to empty.
          */
         public val ignoredExceptionTypes: MutableList<Class<out Throwable>> = mutableListOf(),
+        /**
+         * List of package names to be excluded from inApp frames for error tracking
+         *
+         * inApp Example:
+         * inAppExcludes=["com.thirdparty"]
+         * All Exception stacktrace frames that start with com.thirdparty will NOT be considered inApp
+         *
+         * Excludes win over [inAppIncludes]: a frame matching an exclude prefix is never inApp,
+         * even if it also matches an include prefix.
+         */
+        public val inAppExcludes: MutableList<String> = mutableListOf(),
     )
