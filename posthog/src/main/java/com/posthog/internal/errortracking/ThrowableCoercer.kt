@@ -162,6 +162,10 @@ public class ThrowableCoercer {
      * set for chained/suppressed items to the id of the throwable this one hangs off.
      * [mechanismType] carries "chained"/"suppressed" for derived items, or the primary throwable's
      * own mechanism ("generic" or the [PostHogThrowable] override) for the first item.
+     *
+     * Note: `exception_id`/`parent_id` are emitted on the wire for parity with the other SDKs, but
+     * PostHog's ingestion currently drops them — its mechanism schema does not model the ids yet, so
+     * the chain relationships are not persisted until that server-side change lands.
      */
     private fun buildExceptionItem(
         throwable: Throwable,
