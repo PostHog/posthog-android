@@ -3,6 +3,7 @@ packages:
     - "posthog-android"
     - "posthog-android-surveys-compose"
     - "posthog-server"
+    - "posthog-server-logback"
     - "posthog-android-gradle-plugin"
 
 minimumReleaseAge: 10080
