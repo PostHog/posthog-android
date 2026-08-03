@@ -188,6 +188,12 @@ internal class ThrowableCoercerTest {
                 // lambdas
                 Case("com.app.Service", "lambda\$doWork\$0", true, "lambda method"),
                 Case("com.app.Service\$\$Lambda\$14", "run", true, "lambda class"),
+                Case("com.app.MainActivity", "onCreate\$lambda\$3", true, "kotlin indy lambda method"),
+                // Android D8/R8 desugaring: the common shape on the Android runtime
+                Case("com.app.MainActivity\$\$ExternalSyntheticLambda0", "onClick", true, "d8 desugared lambda"),
+                Case("com.app.MainActivity\$\$InternalSyntheticLambda\$1\$abc\$0", "run", true, "d8 internal lambda"),
+                Case("com.app.Repo\$\$ExternalSyntheticOutline0", "m", true, "d8 outlined method"),
+                Case("com.app.-\$\$Lambda\$MainActivity\$abc123", "run", true, "legacy d8 lambda class"),
                 // Spring CGLIB
                 Case("com.app.Bean\$\$FastClassBySpringCGLIB\$\$abc", "invoke", true, "spring fastclass"),
                 Case("com.app.Bean\$\$EnhancerBySpringCGLIB\$\$abc", "doStuff", true, "spring enhancer"),
@@ -202,6 +208,7 @@ internal class ThrowableCoercerTest {
                 Case("com.app.RealService", "doWork", false, "ordinary frame"),
                 Case("jdk.internal.reflect.DirectMethodHandleAccessor", "invoke", false, "plain reflect frame (not an accessor)"),
                 Case("com.app.ProxyHelper", "handle", false, "class merely containing Proxy"),
+                Case("com.app.SyntheticEventBuilder", "build", false, "class merely containing Synthetic"),
             )
 
         cases.forEach { case ->

@@ -51,9 +51,21 @@ public class ThrowableCoercer {
         className: String,
         methodName: String,
     ): Boolean {
-        // lambdas: synthetic method `lambda$...` or the invokedynamic-generated `$$Lambda` class
-        if (methodName.startsWith(LAMBDA_METHOD_PREFIX) || className.contains(LAMBDA_CLASS_MARKER)) {
+        // lambdas: javac's synthetic `lambda$...` method, Kotlin's indy-generated `foo$lambda$N`,
+        // or the invokedynamic `$$Lambda` class (also the legacy D8 `-$$Lambda$Foo$hash` form)
+        if (methodName.startsWith(LAMBDA_METHOD_PREFIX) ||
+            methodName.contains(LAMBDA_METHOD_MARKER) ||
+            className.contains(LAMBDA_CLASS_MARKER)
+        ) {
             return true
+        }
+
+        // Android D8/R8 desugaring and outlining, which is the common shape on the Android runtime:
+        // `Foo$$ExternalSyntheticLambda0`, `Foo$$InternalSyntheticLambda$..`, `$$ExternalSyntheticOutline0`
+        DESUGARED_CLASS_MARKERS.forEach { marker ->
+            if (className.contains(marker)) {
+                return true
+            }
         }
 
         // Spring CGLIB generated subclasses / fast-class dispatchers
@@ -352,7 +364,13 @@ public class ThrowableCoercer {
 
         // Synthetic-frame heuristics.
         private const val LAMBDA_METHOD_PREFIX = "lambda$"
+        private const val LAMBDA_METHOD_MARKER = "\$lambda\$"
         private const val LAMBDA_CLASS_MARKER = "\$\$Lambda"
+        private val DESUGARED_CLASS_MARKERS =
+            listOf(
+                "\$\$ExternalSynthetic",
+                "\$\$InternalSynthetic",
+            )
         private val CGLIB_CLASS_MARKERS =
             listOf(
                 "\$\$FastClassBySpringCGLIB\$\$",
