@@ -168,12 +168,15 @@ internal class ThrowableCoercerTest {
             val t = throwableWith("boom", arrayOf(frame(case.className, case.methodName)))
             val emitted = coercer.fromThrowableToPostHogProperties(t).exceptionList()[0].frames().first()
             if (case.synthetic) {
-                assertEquals(true, emitted["synthetic"], "expected synthetic for ${case.label}")
+                assertEquals(true, emitted["method_synthetic"], "expected method_synthetic for ${case.label}")
             } else {
                 // omitted (not false) when not synthetic
-                assertFalse(emitted.containsKey("synthetic"), "expected no synthetic key for ${case.label}")
-                assertNull(emitted["synthetic"])
+                assertFalse(emitted.containsKey("method_synthetic"), "expected no method_synthetic key for ${case.label}")
+                assertNull(emitted["method_synthetic"])
             }
+            // the compiler-generated flag must never be sent as the common frame-level `synthetic`
+            // field, which the server reads as "SDK-constructed frame"
+            assertFalse(emitted.containsKey("synthetic"), "must not emit frame `synthetic` for ${case.label}")
         }
     }
 

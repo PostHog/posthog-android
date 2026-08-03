@@ -41,7 +41,11 @@ public class ThrowableCoercer {
     /**
      * Marks JVM-synthesized "noise" frames (lambdas, CGLIB/Spring proxies, reflection accessors,
      * dynamic proxies) so consumers can de-emphasize them. Frames are kept, never dropped; callers
-     * only add the `synthetic` field when this returns true.
+     * only add the `method_synthetic` field when this returns true.
+     *
+     * `method_synthetic` (not the common `synthetic` field) is the java-specific frame flag: on the
+     * server, frame-level `synthetic` means "this frame was constructed by the SDK", which is a
+     * different claim from "the compiler generated this method".
      */
     private fun isSyntheticFrame(
         className: String,
@@ -134,7 +138,7 @@ public class ThrowableCoercer {
 
             // only present when true; false is the implied default
             if (isSyntheticFrame(frame.className, frame.methodName)) {
-                myFrame["synthetic"] = true
+                myFrame["method_synthetic"] = true
             }
 
             frames.add(myFrame)
