@@ -249,35 +249,41 @@ public class ThrowableCoercer {
         // Traversal order (deterministic):
         //   1. the primary cause chain, root-most last: [main, main.cause, main.cause.cause, ...]
         //   2. then, in that same order, each throwable's directly-suppressed exceptions appended
-        //      after the chain (one level only — suppressed-of-suppressed is NOT recursed, keeping
-        //      the walk bounded).
+        //      after the chain (one level only — suppressed-of-suppressed is NOT recursed).
         // exception_id is the 0-based index in this final list; parent_id points at the throwable a
-        // cause/suppressed item hangs off. The list is capped to MAX_EXCEPTION_LIST_SIZE keeping the
-        // earliest (primary + nearest-cause) items.
-        val chain = mutableListOf<Throwable>()
-        while (currentThrowable != null && circularDetector.add(currentThrowable)) {
-            chain.add(currentThrowable)
-            currentThrowable = currentThrowable.cause
-        }
-
+        // cause/suppressed item hangs off.
+        //
+        // MAX_EXCEPTION_LIST_SIZE bounds the WALK, not just the output: we stop following `cause` as
+        // soon as the list is full and never build an unbounded intermediate collection, so a
+        // pathological chain (very deep, or one whose `cause` mints a fresh throwable on every read
+        // and therefore slips past the identity guard) costs at most the cap.
         val items = mutableListOf<ExceptionRef>()
 
         // primary cause chain: first item keeps the primary mechanism type; the rest are "chained"
         // with parent_id = the id of the item they are the cause OF (the previous item).
-        chain.forEachIndexed { index, item ->
+        while (currentThrowable != null &&
+            items.size < MAX_EXCEPTION_LIST_SIZE &&
+            circularDetector.add(currentThrowable)
+        ) {
+            val index = items.size
             items.add(
                 ExceptionRef(
-                    throwable = item,
+                    throwable = currentThrowable,
                     parentId = if (index == 0) null else index - 1,
                     mechanismType = if (index == 0) mechanismType else "chained",
                 ),
             )
+            currentThrowable = currentThrowable.cause
         }
 
-        // suppressed exceptions: appended after the chain, in chain order, each attributed to its
-        // holder via parent_id and marked mechanism type "suppressed".
-        chain.forEachIndexed { holderId, holder ->
-            holder.suppressed.forEach { suppressed ->
+        // suppressed exceptions fill whatever capacity the chain left over, in chain order, each
+        // attributed to its holder via parent_id and marked mechanism type "suppressed".
+        val chainSize = items.size
+        holders@ for (holderId in 0 until chainSize) {
+            for (suppressed in items[holderId].throwable.suppressed) {
+                if (items.size >= MAX_EXCEPTION_LIST_SIZE) {
+                    break@holders
+                }
                 if (circularDetector.add(suppressed)) {
                     items.add(
                         ExceptionRef(
@@ -290,20 +296,12 @@ public class ThrowableCoercer {
             }
         }
 
-        // keep the earliest (root-most primary chain) items when over the cap
-        val cappedItems =
-            if (items.size > MAX_EXCEPTION_LIST_SIZE) {
-                items.subList(0, MAX_EXCEPTION_LIST_SIZE)
-            } else {
-                items
-            }
-
         // A single-item list needs no chain ids at all (parity with the other SDKs, which only link
         // a chain when there is more than one exception).
-        val linkChain = cappedItems.size > 1
+        val linkChain = items.size > 1
 
         val cappedExceptions =
-            cappedItems.mapIndexed { index, ref ->
+            items.mapIndexed { index, ref ->
                 buildExceptionItem(
                     throwable = ref.throwable,
                     exceptionId = if (linkChain) index else null,
@@ -340,8 +338,9 @@ public class ThrowableCoercer {
         const val EXCEPTION_LEVEL_FATAL = "fatal"
         const val EXCEPTION_LEVEL_ATTRIBUTE = "\$exception_level"
 
-        // Max number of items serialized into `$exception_list`; excess is dropped keeping the
-        // earliest (primary + nearest-cause) items.
+        // Max number of items serialized into `$exception_list`. Bounds the traversal itself: the
+        // cause walk stops here, keeping the earliest (primary + nearest-cause) items, and only then
+        // do suppressed exceptions fill any leftover capacity.
         const val MAX_EXCEPTION_LIST_SIZE = 50
 
         // Max frames per stacktrace; excess is dropped keeping the frames nearest the crash.
