@@ -125,6 +125,46 @@ internal class ThrowableCoercerTest {
     }
 
     @Test
+    fun `bounds the cause walk itself on an endless chain`() {
+        // GrowingCauseThrowable mints a brand new cause on every read, so the identity guard can
+        // never stop it: only a bounded walk terminates here at all.
+        val reads = intArrayOf(0)
+        val t = GrowingCauseThrowable(0, reads)
+
+        val list = coercer.fromThrowableToPostHogProperties(t).exceptionList()
+
+        assertEquals(ThrowableCoercer.MAX_EXCEPTION_LIST_SIZE, list.size)
+        // the walk must stop AT the cap rather than collect everything and slice afterwards
+        assertTrue(
+            reads[0] <= ThrowableCoercer.MAX_EXCEPTION_LIST_SIZE + 1,
+            "expected at most ${ThrowableCoercer.MAX_EXCEPTION_LIST_SIZE + 1} cause reads, got ${reads[0]}",
+        )
+    }
+
+    @Test
+    fun `suppressed exceptions only fill the capacity the chain leaves over`() {
+        val root = throwableWith("root", arrayOf(frame("com.app.Root", "root")))
+        val top = throwableWith("top", arrayOf(frame("com.app.Top", "top")), cause = root)
+        repeat(ThrowableCoercer.MAX_EXCEPTION_LIST_SIZE * 2) { i ->
+            top.addSuppressed(throwableWith("sup$i", arrayOf(frame("com.app.Sup$i", "s"))))
+        }
+
+        val list = coercer.fromThrowableToPostHogProperties(top).exceptionList()
+
+        assertEquals(ThrowableCoercer.MAX_EXCEPTION_LIST_SIZE, list.size)
+        // 2 chain items first, then suppressed items attributed to the holder (id 0) fill the rest
+        assertEquals("generic", list[0].mechanism()["type"])
+        assertEquals("chained", list[1].mechanism()["type"])
+        assertEquals("suppressed", list[2].mechanism()["type"])
+        assertEquals(0, (list[2].mechanism()["parent_id"] as Number).toInt())
+        assertEquals("suppressed", list.last().mechanism()["type"])
+        assertEquals(
+            ThrowableCoercer.MAX_EXCEPTION_LIST_SIZE - 1,
+            (list.last().mechanism()["exception_id"] as Number).toInt(),
+        )
+    }
+
+    @Test
     fun `caps frames per stacktrace keeping the crash-side frames`() {
         val total = ThrowableCoercer.MAX_FRAMES_PER_STACKTRACE + 20
         // JVM order: index 0 is the crash site. Name frames by distance from crash.
@@ -208,6 +248,21 @@ internal class ThrowableCoercerTest {
         assertEquals(false, byModule["com.app.feature.internal.Excluded"]!!["in_app"])
         // outside includes => not in app
         assertEquals(false, byModule["org.thirdparty.Lib"]!!["in_app"])
+    }
+
+    /**
+     * A cause chain with no end: every `cause` read returns a fresh instance, which defeats the
+     * identity-based circular guard. Counts reads so a test can assert the walk is bounded.
+     */
+    private class GrowingCauseThrowable(
+        private val depth: Int,
+        private val reads: IntArray,
+    ) : RuntimeException("depth-$depth") {
+        override val cause: Throwable
+            get() {
+                reads[0]++
+                return GrowingCauseThrowable(depth + 1, reads)
+            }
     }
 
     private class ValueEqualThrowable(private val token: String) : RuntimeException(token) {
