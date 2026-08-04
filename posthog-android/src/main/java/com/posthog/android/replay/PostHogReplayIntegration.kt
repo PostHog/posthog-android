@@ -101,6 +101,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -191,6 +192,7 @@ public class PostHogReplayIntegration(
 
     private var postHog: PostHogInterface? = null
     private var replayQueue: PostHogReplayQueue? = null
+    private var ownsInstallation = false
 
     @Volatile
     private var replaySessionId: String? = null
@@ -524,11 +526,12 @@ public class PostHogReplayIntegration(
         decorViews.remove(view)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled || !isSupported()) {
+        if (!isSupported() || !integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
+        ownsInstallation = true
         this.postHog = postHog
 
         // Wire up as buffer delegate for the replay queue
@@ -558,9 +561,12 @@ public class PostHogReplayIntegration(
         }
     }
 
+    @Synchronized
     override fun uninstall() {
+        if (!ownsInstallation) {
+            return
+        }
         try {
-            integrationInstalled = false
             this.postHog = null
 
             // Clear buffer delegate
@@ -589,6 +595,9 @@ public class PostHogReplayIntegration(
             decorViews.clear()
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
         }
     }
 
@@ -2335,7 +2344,6 @@ public class PostHogReplayIntegration(
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
 
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 }

@@ -4,9 +4,11 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogVisibleForTesting
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The integration that sends all the cached legacy events, triggered once the SDK is setup
@@ -19,16 +21,24 @@ internal class PostHogSendCachedEventsIntegration(
     private val api: PostHogApi,
     private val executor: ExecutorService,
 ) : PostHogIntegration {
-    private companion object {
-        @Volatile
-        private var integrationInstalled = false
+    private var ownsInstallation = false
+
+    internal companion object {
+        private val integrationInstalled = AtomicBoolean(false)
+
+        @PostHogVisibleForTesting
+        internal fun resetInstallationForTesting() {
+            integrationInstalled.set(false)
+        }
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled) {
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            executor.shutdown()
             return
         }
-        integrationInstalled = true
+        ownsInstallation = true
 
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
@@ -138,7 +148,12 @@ internal class PostHogSendCachedEventsIntegration(
         iterator.remove()
     }
 
+    @Synchronized
     override fun uninstall() {
-        integrationInstalled = false
+        if (!ownsInstallation) {
+            return
+        }
+        ownsInstallation = false
+        integrationInstalled.set(false)
     }
 }

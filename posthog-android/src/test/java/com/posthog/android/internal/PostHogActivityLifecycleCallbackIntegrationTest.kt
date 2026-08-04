@@ -1,6 +1,9 @@
 package com.posthog.android.internal
 
+import android.app.Activity
 import android.app.Application
+import android.content.Intent
+import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.PostHogFake
@@ -13,7 +16,10 @@ import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
+import java.util.concurrent.CountDownLatch
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,18 +32,79 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     private fun getSut(
         captureDeepLinks: Boolean = true,
         captureScreenViews: Boolean = true,
+        capturePushNotificationOpened: Boolean = true,
     ): PostHogActivityLifecycleCallbackIntegration {
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 this.captureDeepLinks = captureDeepLinks
                 this.captureScreenViews = captureScreenViews
+                this.capturePushNotificationOpened = capturePushNotificationOpened
             }
         return PostHogActivityLifecycleCallbackIntegration(application, config)
+    }
+
+    private fun mockActivityWithExtras(vararg extras: Pair<String, String>): Activity {
+        val activity = mock<Activity>()
+        val intent =
+            Intent().apply {
+                extras.forEach { (key, value) -> putExtra(key, value) }
+            }
+        whenever(activity.intent).thenReturn(intent)
+        return activity
     }
 
     @BeforeTest
     fun `set up`() {
         PostHog.resetSharedInstance()
+    }
+
+    @Test
+    fun `concurrent installs only register one lifecycle callback`() {
+        val threadCount = 32
+        val integrations = List(threadCount) { getSut() }
+        val fake = createPostHogFake()
+        val ready = CountDownLatch(threadCount)
+        val start = CountDownLatch(1)
+        val threads =
+            integrations.map { integration ->
+                Thread {
+                    ready.countDown()
+                    start.await()
+                    integration.install(fake)
+                }.apply { start() }
+            }
+
+        ready.await()
+        start.countDown()
+        threads.forEach { it.join() }
+
+        try {
+            verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+        } finally {
+            integrations.forEach { it.uninstall() }
+        }
+    }
+
+    @Test
+    fun `uninstall from a non-owner keeps the winning installation`() {
+        val owner = getSut()
+        val nonOwner = getSut()
+        val laterInstance = getSut()
+        val fake = createPostHogFake()
+
+        try {
+            owner.install(fake)
+            nonOwner.install(fake)
+            nonOwner.uninstall()
+            laterInstance.install(fake)
+
+            verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+            verify(application, never()).unregisterActivityLifecycleCallbacks(any())
+        } finally {
+            owner.uninstall()
+            nonOwner.uninstall()
+            laterInstance.uninstall()
+        }
     }
 
     @Test
@@ -56,7 +123,9 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
     @Test
     fun `uninstall unregisters the lifecycle callback`() {
         val sut = getSut()
+        val fake = createPostHogFake()
 
+        sut.install(fake)
         sut.uninstall()
 
         verify(application).unregisterActivityLifecycleCallbacks(any())
@@ -239,5 +308,94 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         val fake = executeCaptureScreenViewsTest(title = "")
 
         assertEquals("MyActivity", fake.screenTitle)
+    }
+
+    @Test
+    fun `onActivityCreated captures push notification opened from tray intent`() {
+        val sut = getSut()
+        val activity =
+            mockActivityWithExtras(
+                "google.message_id" to "m1",
+                "posthog" to """{"campaign":"summer"}""",
+            )
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(1, fake.pushOpenedCaptures)
+        assertNull(fake.pushOpenedTitle)
+        assertNull(fake.pushOpenedBody)
+        assertEquals("m1", fake.pushOpenedPayload?.get("google.message_id"))
+        assertEquals("""{"campaign":"summer"}""", fake.pushOpenedPayload?.get("posthog"))
+    }
+
+    @Test
+    fun `onActivityCreated dedups push notification by message id across recreations`() {
+        val sut = getSut()
+        val activity = mockActivityWithExtras("google.message_id" to "m1")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(1, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated does not re-capture push after process death restore`() {
+        // A process kill resets the in-memory dedup, so a fresh integration models the restored process.
+        // The redelivered launch intent arrives with non-null saved state, so it must not re-capture.
+        val sut = getSut()
+        val activity = mockActivityWithExtras("google.message_id" to "m1")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, Bundle())
+        sut.uninstall()
+
+        assertEquals(0, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated captures again for a new message id`() {
+        val sut = getSut()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(mockActivityWithExtras("google.message_id" to "m1"), null)
+        sut.onActivityCreated(mockActivityWithExtras("google.message_id" to "m2"), null)
+        sut.uninstall()
+
+        assertEquals(2, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated does not capture push when no google message id`() {
+        val sut = getSut()
+        val activity = mockActivityWithExtras("some_key" to "value")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(0, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `onActivityCreated does not capture push when disabled`() {
+        val sut = getSut(capturePushNotificationOpened = false)
+        val activity = mockActivityWithExtras("google.message_id" to "m1")
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(activity, null)
+        sut.uninstall()
+
+        assertEquals(0, fake.pushOpenedCaptures)
     }
 }

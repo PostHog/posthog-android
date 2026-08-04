@@ -3,6 +3,7 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
@@ -516,6 +517,270 @@ internal class PostHogTest {
         assertFalse(eventsByFlag["splashScreenName"]!!.properties!!.containsKey("\$feature_flag_has_experiment"))
 
         sut.close()
+    }
+
+    @Test
+    fun `feature flag called event is minimal when gated and the flag has no experiment`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(GROUPS, groups)
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                cachePreferences = myPrefs,
+                context = TestPostHogContext(),
+            )
+
+        // a registered super property must be stripped from the minimal event
+        sut.register("myCustomProp", "value")
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment: false in the flag metadata
+        assertFalse(sut.getFeatureFlag("IAmInactive") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertNotNull(theEvent.distinctId)
+        assertNotNull(theEvent.timestamp)
+        assertNotNull(theEvent.uuid)
+
+        // strict allowlist: everything else (super props, context envelope, $feature/<key>
+        // enumeration, $active_feature_flags, $is_identified, ...) is stripped
+        val expectedKeys =
+            setOf(
+                "\$feature_flag",
+                "\$feature_flag_response",
+                "\$feature_flag_has_experiment",
+                "\$feature_flag_id",
+                "\$feature_flag_version",
+                "\$feature_flag_reason",
+                "\$feature_flag_request_id",
+                "\$groups",
+                "\$process_person_profile",
+                "\$session_id",
+                "\$lib",
+                "\$lib_version",
+            )
+        assertEquals(expectedKeys, theEvent.properties!!.keys)
+
+        assertEquals("IAmInactive", theEvent.properties!!["\$feature_flag"])
+        assertEquals(false, theEvent.properties!!["\$feature_flag_response"])
+        assertEquals(false, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_id"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_version"])
+        assertEquals("No matching condition set", theEvent.properties!!["\$feature_flag_reason"])
+        assertEquals("171d83c3-4ac2-4bff-961d-efe3a0c3539c", theEvent.properties!!["\$feature_flag_request_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `feature flag called event keeps the full shape when gated and the flag has an experiment`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment: true in the flag metadata, so the full envelope is kept
+        assertTrue(sut.getFeatureFlag("4535-funnel-bar-viz") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals(true, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
+        assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `feature flag called event keeps the full shape when gated and has_experiment is absent`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment is absent from the flag metadata, so the full envelope is kept
+        assertEquals("SplashV2", sut.getFeatureFlag("splashScreenName") as String)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertFalse(theEvent.properties!!.containsKey("\$feature_flag_has_experiment"))
+        assertEquals("SplashV2", theEvent.properties!!["\$feature/splashScreenName"])
+        assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `feature flag called event keeps the full shape when the server does not send the gate`() {
+        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        // has_experiment: false, but the response has no minimalFlagCalledEvents field
+        assertFalse(sut.getFeatureFlag("IAmInactive") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals(false, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `minimal flag called gate persists across SDK restarts`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        http.enqueue(
+            MockResponse()
+                .setBody(""),
+        )
+        val url = http.url("/")
+
+        val cachePreferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        sut.reloadFeatureFlags()
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // remove from the http queue
+        http.takeRequest()
+
+        sut.close()
+
+        // re-init with the same preferences, serving flags and the gate from the cache
+        val sut2 = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cachePreferences)
+
+        assertFalse(sut2.getFeatureFlag("IAmInactive") as Boolean)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals(false, theEvent.properties!!["\$feature_flag_has_experiment"])
+        assertEquals(2, theEvent.properties!!["\$feature_flag_id"])
+        assertFalse(theEvent.properties!!.containsKey("\$active_feature_flags"))
+        assertFalse(theEvent.properties!!.containsKey("\$feature/IAmInactive"))
+        assertFalse(theEvent.properties!!.containsKey("\$is_identified"))
+
+        sut2.close()
     }
 
     @Test
@@ -4103,5 +4368,272 @@ internal class PostHogTest {
         assertEquals(listOf("A", "B"), exceptionStepMessages(theEvent))
 
         sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken posts to push_subscriptions endpoint`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken(
+            deviceToken = "fcm-token",
+            appId = "firebase-project",
+        )
+
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/push_subscriptions/", request.path)
+
+        val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        assertEquals("fcm-token", parsed["device_token"])
+        assertEquals("firebase-project", parsed["app_id"])
+        assertEquals("android", parsed["platform"])
+        assertEquals(sut.distinctId(), parsed["distinct_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when deviceToken is blank`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("   ", "firebase-project")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken is a no-op when appId is blank`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken("fcm-token", "")
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken after close does not crash and sends nothing`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        sut.close()
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project")
+
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `capturePushNotificationOpened maps title body and posthog map into notification props`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Vector 1: posthog map spread into $notification_* props alongside title/body.
+        sut.capturePushNotificationOpened(
+            title = "Hello",
+            body = "World",
+            payload = mapOf("posthog" to mapOf("campaign" to "summer", "message_id" to "42")),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("\$push_notification_opened", theEvent.event)
+        assertEquals("Hello", theEvent.properties!!["\$notification_title"])
+        assertEquals("World", theEvent.properties!!["\$notification_body"])
+        assertEquals("summer", theEvent.properties!!["\$notification_campaign"])
+        assertEquals("42", theEvent.properties!!["\$notification_message_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened parses posthog data supplied as a json string`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // FCM data maps are string->string, so the posthog entry arrives as a JSON string.
+        sut.capturePushNotificationOpened(
+            title = "Hello",
+            body = "World",
+            payload = mapOf("posthog" to """{"campaign":"summer","message_id":"42"}"""),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("summer", theEvent.properties!!["\$notification_campaign"])
+        assertEquals("42", theEvent.properties!!["\$notification_message_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened without posthog key only sets title and body`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Vector 2: no posthog key -> only title/body props.
+        sut.capturePushNotificationOpened(
+            title = "Hello",
+            body = "World",
+            payload = mapOf("google.message_id" to "abc"),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("Hello", theEvent.properties!!["\$notification_title"])
+        assertEquals("World", theEvent.properties!!["\$notification_body"])
+        assertTrue(
+            theEvent.properties!!.keys.none {
+                it.startsWith("\$notification_") && it !in setOf("\$notification_title", "\$notification_body")
+            },
+        )
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures even when all params are null`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capturePushNotificationOpened()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("\$push_notification_opened", theEvent.event)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened sets notification_action for a non-default action`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capturePushNotificationOpened(title = "Hello", body = "World", action = "reply")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("reply", theEvent.properties!!["\$notification_action"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened omits empty title body and action`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Empty strings are treated as absent (matches iOS), so no empty-valued props are sent.
+        sut.capturePushNotificationOpened(title = "", body = "", action = "")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val theEvent = firstBatchEvent(http)
+        assertEquals("\$push_notification_opened", theEvent.event)
+        assertTrue(theEvent.properties!!.keys.none { it.startsWith("\$notification_") })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened is a no-op when optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        // Vector 6: opted out -> no event.
+        sut.capturePushNotificationOpened(title = "Hello", body = "World")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `flush retries a push subscription registration deferred while offline`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        var connected = false
+        config.networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = connected
+            }
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project")
+        queueExecutor.awaitExecution()
+        assertEquals(0, http.requestCount)
+
+        connected = true
+        sut.flush()
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        // exactly one request: the queue flush must not have consumed the pending record
+        // (regression: the pending file used to live inside the queue's scan directory)
+        assertEquals("/api/push_subscriptions/", request.path)
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    private fun firstBatchEvent(http: okhttp3.mockwebserver.MockWebServer): PostHogEvent {
+        val content = http.takeRequest().body.unGzip()
+        return serializer.deserialize<PostHogBatchEvent>(content.reader())!!.batch.first()
     }
 }

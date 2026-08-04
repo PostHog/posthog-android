@@ -6,6 +6,7 @@ import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures app installed and updated events
@@ -16,15 +17,14 @@ internal class PostHogAppInstallIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
 ) : PostHogIntegration {
+    private var ownsInstallation = false
+
     private companion object {
-        @Volatile
-        private var integrationInstalled = false
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled) {
-            return
-        }
         // While the store is unreadable (Direct Boot) VERSION/BUILD read as absent, which would
         // fire a spurious "Application Installed" for an existing install and overwrite the
         // persisted previous build on unlock. Stay uninstalled so the correct event can still be
@@ -32,7 +32,10 @@ internal class PostHogAppInstallIntegration(
         if (config.cachePreferences?.isAvailable() == false) {
             return
         }
-        integrationInstalled = true
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
+        ownsInstallation = true
 
         getPackageInfo(context, config)?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
@@ -74,7 +77,12 @@ internal class PostHogAppInstallIntegration(
         }
     }
 
+    @Synchronized
     override fun uninstall() {
-        integrationInstalled = false
+        if (!ownsInstallation) {
+            return
+        }
+        ownsInstallation = false
+        integrationInstalled.set(false)
     }
 }
