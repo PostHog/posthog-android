@@ -1561,6 +1561,17 @@ internal class PostHogReplayIntegrationTest {
         assertFalse(sut.shouldKeepFrame(dirtyDrawState(), maskWalk(), poisonedWalk()))
     }
 
+    @Test
+    fun `frame with a poisoned walk is discarded even when nothing redrew`() {
+        // A poisoned walk's rect set may be silently incomplete (e.g. a Compose semantics pass
+        // timed out with no redraw of this window), so the clean-frame path must not bypass it —
+        // painting incomplete rects ships the unmasked content.
+        val sut = getSut()
+
+        assertFalse(sut.shouldKeepFrame(WindowDrawState(), poisonedWalk(), maskWalk()))
+        assertFalse(sut.shouldKeepFrame(WindowDrawState(), maskWalk(), poisonedWalk()))
+    }
+
     // A layout whose children are inspected by the mask walks; runs [onWalkTouch] on every
     // getChildAt call, so tests can inject draws or geometry changes between the pre-copy and
     // post-copy walks — deterministically hitting the race the discard guard protects against.

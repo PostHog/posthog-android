@@ -1157,11 +1157,14 @@ public class PostHogReplayIntegration(
     }
 
     // Decides whether a captured frame is safe to ship, i.e. whether the mask rects painted over
-    // the bitmap are guaranteed to match the pixels frozen at PixelCopy time. Keep the frame when:
+    // the bitmap are guaranteed to match the pixels frozen at PixelCopy time. A poisoned walk
+    // always discards — its rect set may be silently incomplete (pruned unstable view, timed-out
+    // Compose pass), so painting it would leak the unmasked content even when nothing redrew.
+    // Otherwise keep the frame when:
     // - nothing redrew in this window during the capture (pixels match the walked view state), or
-    // - the mask rects sampled before the copy equal the rects sampled after it, no layout pass
-    //   ran in between, and neither walk was poisoned: geometry provably didn't move, so
-    //   pixel-only redraws (spinners, GIFs, Lottie, Compose animations) can't drift a mask.
+    // - the mask rects sampled before the copy equal the rects sampled after it and no layout
+    //   pass ran in between: geometry provably didn't move, so pixel-only redraws (spinners,
+    //   GIFs, Lottie, Compose animations) can't drift a mask.
     // This replaces the earlier heuristic exemptions (decor hasTransientState for ValueAnimator
     // content, surface/texture-view detection for Rive): frames those heuristics legitimately
     // kept have stable geometry and pass rect equality anyway, and frames they kept with moving
@@ -1171,12 +1174,13 @@ public class PostHogReplayIntegration(
         preWalk: MaskWalk,
         postWalk: MaskWalk,
     ): Boolean {
+        if (preWalk.poisoned || postWalk.poisoned) {
+            return false
+        }
         if (!drawState.isOnDrawnCalled) {
             return true
         }
         return !drawState.didLayoutSinceReset &&
-            !preWalk.poisoned &&
-            !postWalk.poisoned &&
             preWalk.rects == postWalk.rects
     }
 
@@ -1283,8 +1287,10 @@ public class PostHogReplayIntegration(
                     config.logger.log("Session Replay PixelCopy failed: $e.")
                     success = false
                 } finally {
-                    // reset the draw-dirty flags since we've taken the screenshot
-                    drawState.reset()
+                    // No drawState.reset() here: after a latch timeout this callback fires while
+                    // a newer capture for the same window may be in flight, and resetting would
+                    // erase draw/layout flags that capture depends on. The reset at capture start
+                    // (and in the executor's finally) provides the per-capture hygiene.
                     callbackCompleted = true
                     latch.countDown()
                 }
