@@ -1498,10 +1498,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `dirty frame is kept when mask rects are unchanged across the capture`() {
-        // The fix for continuously animating screens (spinners, GIFs, Lottie, Compose loaders):
-        // pixel-only redraws can't move mask geometry, which is proven by the pre-copy and
-        // post-copy mask walks returning identical rects. Discarding these frames forever meant
-        // whole loading screens were missing from replays.
+        // Pixel-only redraws (spinners, GIFs, Lottie) must be kept, else loading screens vanish.
         val sut = getSut()
 
         assertTrue(
@@ -1528,8 +1525,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `dirty frame is discarded when a mask rect appeared or disappeared mid-capture`() {
-        // A masked widget removed after the pixels were frozen leaves its sensitive content in the
-        // bitmap with no rect to cover it; the pre-copy walk catches exactly this case.
+        // A masked widget removed mid-capture leaves its content in the bitmap with no rect.
         val sut = getSut()
 
         assertFalse(
@@ -1543,8 +1539,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `dirty frame is discarded after a layout pass even with unchanged mask rects`() {
-        // A layout pass may have moved unmasked-but-sensitive structure the rect comparison
-        // can't see, so it always fails closed.
+        // A layout pass can move structure the rect comparison can't see.
         val sut = getSut()
         val drawState = dirtyDrawState().apply { didLayoutSinceReset = true }
 
@@ -1553,8 +1548,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `dirty frame is discarded when either mask walk is poisoned`() {
-        // A poisoned walk saw a rendered view whose geometry it couldn't trust (mid animation,
-        // transient state) or lost its Compose rects to a timeout; rect equality proves nothing.
+        // A poisoned walk may be missing rects, so rect equality proves nothing.
         val sut = getSut()
 
         assertFalse(sut.shouldKeepFrame(dirtyDrawState(), poisonedWalk(), maskWalk()))
@@ -1563,18 +1557,14 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `frame with a poisoned walk is discarded even when nothing redrew`() {
-        // A poisoned walk's rect set may be silently incomplete (e.g. a Compose semantics pass
-        // timed out with no redraw of this window), so the clean-frame path must not bypass it —
-        // painting incomplete rects ships the unmasked content.
+        // The clean-frame path must not bypass poison: incomplete rects ship unmasked content.
         val sut = getSut()
 
         assertFalse(sut.shouldKeepFrame(WindowDrawState(), poisonedWalk(), maskWalk()))
         assertFalse(sut.shouldKeepFrame(WindowDrawState(), maskWalk(), poisonedWalk()))
     }
 
-    // A layout whose children are inspected by the mask walks; runs [onWalkTouch] on every
-    // getChildAt call, so tests can inject draws or geometry changes between the pre-copy and
-    // post-copy walks — deterministically hitting the race the discard guard protects against.
+    // Runs [onWalkTouch] per mask-walk visit, so tests can inject changes between the walks.
     private class WalkHookLayout(context: Context) : FrameLayout(context) {
         var onWalkTouch: (() -> Unit)? = null
 
@@ -1593,8 +1583,7 @@ internal class PostHogReplayIntegrationTest {
         val window: Window,
     )
 
-    // A capturable window whose view tree reports every mask-walk visit, with a masked child so
-    // the walks produce a rect to compare.
+    // A capturable window with a masked child, so the walks produce a rect to compare.
     private fun screenshotCaptureHarness(): ScreenshotCaptureHarness {
         val (fx, fake) = screenshotFixture()
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
@@ -1615,9 +1604,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
     fun `screenshot capture keeps the frame when redraws leave mask geometry untouched`() {
-        // End-to-end fix path: the window redraws during the capture (an animation frame), but
-        // the pre- and post-copy mask walks agree, so the frame must be kept instead of being
-        // discarded as a screen change.
+        // The fix path end to end: redraws with agreeing walks must not discard the frame.
         val h = screenshotCaptureHarness()
         try {
             h.hookLayout.onWalkTouch = { h.fx.sut.onDrawCallback(h.status.drawState) }
@@ -1640,9 +1627,7 @@ internal class PostHogReplayIntegrationTest {
             h.hookLayout.onWalkTouch = {
                 h.fx.sut.onDrawCallback(h.status.drawState)
                 touches++
-                // The walk visits the single child once per pass, so the second touch is the
-                // post-copy walk: move the masked child so its rect no longer matches the
-                // position frozen in the pixels.
+                // The second touch is the post-copy walk: move the masked child mid-capture.
                 if (touches == 2) {
                     h.child.layout(0, 50, 100, 70)
                 }
@@ -1677,11 +1662,8 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
     fun `dirty capture fails closed when a masked view is mid legacy animation`() {
-        // The error-shake pattern: a legacy view.animation transforms drawing without a layout
-        // pass, and the animating view is pruned from the mask walks (its geometry is
-        // unknowable), so its mask rect is missing from BOTH walks and rect equality would pass.
-        // The walk must poison the frame instead — otherwise the animated masked view ships
-        // unmasked.
+        // A legacy animation prunes the view from BOTH walks, so rect equality would pass;
+        // poison must discard instead, or the animated masked view ships unmasked.
         val h = screenshotCaptureHarness()
         try {
             val animation = mock<Animation>()
@@ -1701,10 +1683,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
     fun `a redraw and layout in another window does not discard this window's capture`() {
-        // Draw-dirty state is scoped per window: PixelCopy copies a single window's surface and
-        // masks come from that window's own tree, so a dialog spinner redrawing (and laying out)
-        // must not poison captures of the static activity behind it — it used to, via flags
-        // shared across all tracked windows.
+        // Draw state is per window: a dialog spinner must not poison the activity's capture.
         val h = screenshotCaptureHarness()
         try {
             val otherWindowState = WindowDrawState()
