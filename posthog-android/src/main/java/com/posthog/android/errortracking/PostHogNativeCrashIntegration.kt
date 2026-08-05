@@ -1,17 +1,24 @@
 package com.posthog.android.errortracking
 
-import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
+import android.os.UserManager
 import androidx.annotation.RequiresApi
 import com.posthog.PostHogEventName
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.errortracking.NativeCrashEventCoercer
+import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TombstoneParser
+import com.posthog.android.internal.getActivityManager
+import com.posthog.internal.PostHogThreadFactory
 import java.util.Date
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures native (NDK) crashes from previous runs of the app.
@@ -19,52 +26,87 @@ import java.util.Date
  * A native signal (e.g. SIGSEGV) kills the process before any JVM handler
  * runs, so nothing can be captured in-process. Instead, on startup this
  * integration reads the crash records the OS kept via
- * [ActivityManager.getHistoricalProcessExitReasons], parses the attached
- * tombstone, and captures an `$exception` event with raw native stack frames
- * and the `$debug_images` needed for server-side symbolication against
+ * [android.app.ActivityManager.getHistoricalProcessExitReasons], parses the
+ * attached tombstone, and captures an `$exception` event with raw native stack
+ * frames and the `$debug_images` needed for server-side symbolication against
  * uploaded `.so` debug symbols.
  *
  * Requires Android 12 (API 31), where native crash records carry a tombstone.
  * Enable with `errorTrackingConfig.captureNativeCrashes`; error tracking
  * autocapture must also be enabled in the project settings.
  */
-public class PostHogNativeCrashIntegration(
-    private val context: Context,
-    private val config: PostHogAndroidConfig,
-) : PostHogIntegration {
+public class PostHogNativeCrashIntegration : PostHogIntegration {
+    private val context: Context
+    private val config: PostHogAndroidConfig
+    private val executor: ExecutorService
     private var postHog: PostHogInterface? = null
 
-    private companion object {
-        private const val LAST_CAPTURED_TIMESTAMP_KEY = "nativeCrashLastCapturedTimestamp"
-        private const val MAX_EXIT_RECORDS = 20
+    // Whether this instance owns the process-wide scanner guard, so only the
+    // owner can release it on uninstall.
+    @Volatile
+    private var installedByThisInstance = false
 
-        @Volatile
-        private var integrationInstalled = false
+    public constructor(context: Context, config: PostHogAndroidConfig) : this(
+        context,
+        config,
+        Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogNativeCrashThread")),
+    )
+
+    internal constructor(context: Context, config: PostHogAndroidConfig, executor: ExecutorService) {
+        this.context = context
+        this.config = config
+        this.executor = executor
+    }
+
+    private companion object {
+        // One scanner per process: concurrent scanners would race the watermark
+        // and capture the same crash records twice.
+        private val integrationInstalled = AtomicBoolean(false)
     }
 
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
 
-        if (integrationInstalled || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return
         }
         if (config.remoteConfigHolder?.isNativeCrashCaptureEnabled() != true) {
             return
         }
-        // While the store is unreadable (Direct Boot) the watermark reads as
-        // absent, which would re-capture already-reported crashes.
-        if (config.cachePreferences?.isAvailable() == false) {
+        // While the device is locked (Direct Boot) the watermark store is
+        // unreadable and scanning would re-capture already-reported crashes.
+        val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager
+        if (userManager?.isUserUnlocked == false) {
             return
         }
-        integrationInstalled = true
+        if (!integrationInstalled.compareAndSet(false, true)) {
+            return
+        }
+        installedByThisInstance = true
 
-        Thread({ scanSafely(postHog) }, "PostHogNativeCrashScanner")
-            .apply { isDaemon = true }
-            .start()
+        try {
+            executor.submit { scanSafely(postHog) }
+        } catch (e: Throwable) {
+            config.logger.log("Native crash scan could not be scheduled: $e.")
+            installedByThisInstance = false
+            integrationInstalled.set(false)
+        }
     }
 
     override fun uninstall() {
-        integrationInstalled = false
+        if (!installedByThisInstance) {
+            return
+        }
+        // Stop the scanner before releasing the process-wide guard, so a new
+        // install cannot start a second scanner while this one is still running.
+        executor.shutdownNow()
+        try {
+            executor.awaitTermination(1, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        installedByThisInstance = false
+        integrationInstalled.set(false)
     }
 
     override fun onRemoteConfig(loaded: Boolean) {
@@ -88,14 +130,16 @@ public class PostHogNativeCrashIntegration(
 
     @RequiresApi(Build.VERSION_CODES.S)
     private fun scan(postHog: PostHogInterface) {
-        val activityManager =
-            context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
-        val preferences = config.cachePreferences ?: return
+        val activityManager = getActivityManager(context) ?: return
+        val watermarkStore = NativeCrashWatermarkStore(context)
+        val watermark = watermarkStore.get()
 
-        val watermark = preferences.getValue(LAST_CAPTURED_TIMESTAMP_KEY) as? Long ?: 0L
+        // maxNum 0 returns every retained record. A positive cap is applied
+        // before the reason filter, so enough newer non-crash exits would
+        // starve an older native crash out of every scan.
         val crashes =
             activityManager
-                .getHistoricalProcessExitReasons(context.packageName, 0, MAX_EXIT_RECORDS)
+                .getHistoricalProcessExitReasons(context.packageName, 0, 0)
                 .filter { it.reason == ApplicationExitInfo.REASON_CRASH_NATIVE && it.timestamp > watermark }
                 // oldest first, so events arrive in crash order
                 .sortedBy { it.timestamp }
@@ -107,7 +151,12 @@ public class PostHogNativeCrashIntegration(
         val parser = TombstoneParser()
         val coercer = NativeCrashEventCoercer()
 
-        crashes.forEach { exitInfo ->
+        for (exitInfo in crashes) {
+            // uninstall interrupts the scanner; stop before acknowledging more records
+            if (Thread.currentThread().isInterrupted) {
+                return
+            }
+
             val properties =
                 try {
                     exitInfo.traceInputStream?.use { stream ->
@@ -126,9 +175,11 @@ public class PostHogNativeCrashIntegration(
                 )
             }
 
-            // Advance per record — unparsable ones too, retrying can't succeed —
-            // so dying mid-scan never re-captures already-reported crashes.
-            preferences.setValue(LAST_CAPTURED_TIMESTAMP_KEY, exitInfo.timestamp)
+            // Advance only after capture returned, one record at a time:
+            // at-least-once. Losing a crash to an unacknowledged queue is worse
+            // than a rare duplicate from dying between the capture and this
+            // synchronous write.
+            watermarkStore.advance(exitInfo.timestamp)
         }
 
         config.logger.log("Captured ${crashes.size} native crash record(s) from previous runs.")
