@@ -171,7 +171,7 @@ public open class PostHogConfig constructor(
      * Identifier attached as `map_id` to exception stack frames so PostHog can symbolicate
      * them against an uploaded ProGuard/R8 mapping. It must match the map-id used when
      * uploading the mapping, e.g. via
-     * `posthog-cli exp proguard upload --path "mapping.txt" --map-id "<releaseIdentifier>"`.
+     * `posthog-cli proguard upload --path "mapping.txt" --map-id "<releaseIdentifier>"`.
      * Defaults to null (no `map_id` attached).
      */
     public var releaseIdentifier: String? = null
