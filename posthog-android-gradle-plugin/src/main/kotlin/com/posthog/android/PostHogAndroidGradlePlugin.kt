@@ -27,6 +27,9 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
             )
         }
 
+        val extension = project.extensions.create("posthog", PostHogPluginExtension::class.java)
+        extension.uploadNativeSymbols.convention(false)
+
         project.pluginManager.withPlugin("com.android.application") {
             val androidComponentsExt =
                 project.extensions.getByType(ApplicationAndroidComponentsExtension::class.java)
@@ -35,7 +38,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 // Native symbol upload is independent of minification: native
                 // crashes need `.so` debug symbols whether or not the JVM side
                 // is obfuscated.
-                registerNativeSymbolsUpload(project, variant)
+                registerNativeSymbolsUpload(project, extension, variant)
 
                 if (!variant.isMinifyEnabled) {
                     return@onVariants
@@ -72,6 +75,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
 
     private fun registerNativeSymbolsUpload(
         project: Project,
+        extension: PostHogPluginExtension,
         variant: ApplicationVariant,
     ) {
         val primaryOutput = variant.outputs.firstOrNull()
@@ -95,10 +99,11 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
             PostHogTasksProvider.getMergeNativeLibsTask(project, variant.name)?.let { merge ->
                 uploadTask.configure { dependsOn(merge) }
             }
-            // Auto-upload alongside assemble/install/bundle only when the app
-            // module builds native code itself. Apps that only bundle prebuilt
-            // `.so` files from dependencies can run the task explicitly.
-            if (variant.externalNativeBuild != null) {
+            // Explicit opt-in rather than any capability heuristic: the merged
+            // output can carry `.so` files from the NDK, jniLibs, or plain
+            // dependencies, and only the app author knows whether their symbols
+            // belong in PostHog. The task stays invocable explicitly either way.
+            if (extension.uploadNativeSymbols.get()) {
                 uploadTask.hookWithAssembleTasks(project, variant)
             }
         }
