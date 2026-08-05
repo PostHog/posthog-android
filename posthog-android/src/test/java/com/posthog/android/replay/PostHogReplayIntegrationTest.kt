@@ -3,13 +3,13 @@ package com.posthog.android.replay
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
 import android.os.Looper
 import android.view.MotionEvent
-import android.view.SurfaceView
 import android.view.View
-import android.view.ViewGroup
 import android.view.Window
+import android.view.animation.Animation
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -23,6 +23,7 @@ import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
+import com.posthog.android.replay.internal.WindowDrawState
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogDateProvider
@@ -1476,176 +1477,238 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
-    // isOnlyAnimationRedraw is private; read it via field reflection (which, unlike
-    // getDeclaredMethod, does not force resolution of the class's Compose-referencing methods).
-    private fun isOnlyAnimationRedraw(sut: PostHogReplayIntegration): Boolean {
-        return PostHogReplayIntegration::class.java
-            .getDeclaredField("isOnlyAnimationRedraw")
-            .apply { isAccessible = true }
-            .getBoolean(sut)
+    private fun maskWalk(vararg rects: Rect): PostHogReplayIntegration.MaskWalk {
+        return PostHogReplayIntegration.MaskWalk().apply { this.rects.addAll(rects) }
     }
 
-    // Simulate a structural layout pass having run since the last capture reset. In production this
-    // flag is set by the decor view's OnGlobalLayoutListener.
-    private fun markDidLayoutSinceReset(sut: PostHogReplayIntegration) {
-        PostHogReplayIntegration::class.java
-            .getDeclaredField("didLayoutSinceReset")
-            .apply { isAccessible = true }
-            .setBoolean(sut, true)
+    private fun poisonedWalk(): PostHogReplayIntegration.MaskWalk {
+        return PostHogReplayIntegration.MaskWalk().apply { poisoned = true }
     }
 
-    // The surface-rendering walk only runs when screenshots can be produced (its result is dead in
-    // the default wireframe mode), so the surface tests must opt into screenshot mode.
-    private fun screenshotSut(): PostHogReplayIntegration {
-        val config = PostHogAndroidConfig(API_KEY).apply { sessionReplayConfig.screenshot = true }
-        return getSut(config)
+    private fun dirtyDrawState(): WindowDrawState {
+        return WindowDrawState().apply { isOnDrawnCalled = true }
     }
 
     @Test
-    fun `redraw is treated as animation-only when a surface-backed view is rendering`() {
-        // Rive and similar libraries render continuously on their own worker thread into a
-        // SurfaceView/TextureView. They never set hasTransientState(), yet their view geometry
-        // stays stable, so the redraw must be treated as animation-only (masks remain aligned)
-        // instead of discarding every frame.
-        val sut = screenshotSut()
-        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val surface = SurfaceView(context)
-        val decorView =
-            FrameLayout(context).apply {
-                addView(TextView(context))
-                addView(surface)
-                layout(0, 0, 100, 120)
-            }
-        // layout() must run after addView; adding the child resets its bounds.
-        surface.layout(0, 20, 100, 120)
-
-        sut.onDrawCallback(decorView)
-
-        assertTrue(isOnlyAnimationRedraw(sut))
-    }
-
-    @Test
-    fun `surface redraw is not treated as animation-only in wireframe mode`() {
-        // In the default (non-screenshot) wireframe mode isOnlyAnimationRedraw is never consumed,
-        // so the per-draw surface-tree walk must be skipped entirely — leaving the flag false and
-        // keeping the hot path free of the tree traversal for the majority of apps.
+    fun `frame is kept when nothing redrew during the capture`() {
         val sut = getSut()
-        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val surface = SurfaceView(context)
-        val decorView =
-            FrameLayout(context).apply {
-                addView(surface)
-                layout(0, 0, 100, 120)
-            }
-        surface.layout(0, 0, 100, 120)
 
-        sut.onDrawCallback(decorView)
-
-        assertFalse(isOnlyAnimationRedraw(sut))
+        assertTrue(sut.shouldKeepFrame(WindowDrawState(), maskWalk(), maskWalk()))
     }
 
     @Test
-    fun `surface redraw is not treated as animation-only after a structural layout`() {
-        // A persistent surface keeps rendering for the whole screen lifetime, but if a structural
-        // layout (e.g. a masked field appearing) happened in the same capture window, mask geometry
-        // may have moved — the strict discard guard must still fire to avoid a PII leak.
-        val sut = screenshotSut()
-        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val surface = SurfaceView(context)
-        val decorView =
-            FrameLayout(context).apply {
-                addView(surface)
-                layout(0, 0, 100, 120)
-            }
-        surface.layout(0, 0, 100, 120)
-        markDidLayoutSinceReset(sut)
+    fun `dirty frame is kept when mask rects are unchanged across the capture`() {
+        // The fix for continuously animating screens (spinners, GIFs, Lottie, Compose loaders):
+        // pixel-only redraws can't move mask geometry, which is proven by the pre-copy and
+        // post-copy mask walks returning identical rects. Discarding these frames forever meant
+        // whole loading screens were missing from replays.
+        val sut = getSut()
 
-        sut.onDrawCallback(decorView)
-
-        assertFalse(isOnlyAnimationRedraw(sut))
+        assertTrue(
+            sut.shouldKeepFrame(
+                dirtyDrawState(),
+                maskWalk(Rect(0, 0, 10, 10), Rect(5, 50, 90, 70)),
+                maskWalk(Rect(0, 0, 10, 10), Rect(5, 50, 90, 70)),
+            ),
+        )
     }
 
     @Test
-    fun `redraw is not treated as animation-only for a plain view tree`() {
-        // Control: without a surface/texture-backed view (and no transient state), a redraw is a
-        // structural change and must keep the strict guard so masks cannot drift and leak PII.
-        val sut = screenshotSut()
-        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val decorView =
-            FrameLayout(context).apply {
-                addView(TextView(context).apply { layout(0, 0, 100, 20) })
-                layout(0, 0, 100, 120)
-            }
+    fun `dirty frame is discarded when mask rects moved across the capture`() {
+        val sut = getSut()
 
-        sut.onDrawCallback(decorView)
-
-        assertFalse(isOnlyAnimationRedraw(sut))
+        assertFalse(
+            sut.shouldKeepFrame(
+                dirtyDrawState(),
+                maskWalk(Rect(0, 0, 10, 10)),
+                maskWalk(Rect(0, 20, 10, 30)),
+            ),
+        )
     }
 
     @Test
-    fun `hidden surface-backed subtree does not relax the guard`() {
-        // A surface view inside a GONE subtree is not being drawn, so it must not relax the guard.
-        val sut = screenshotSut()
-        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val decorView =
-            FrameLayout(context).apply {
-                addView(
-                    FrameLayout(context).apply {
-                        visibility = ViewGroup.GONE
-                        addView(SurfaceView(context).apply { layout(0, 0, 100, 100) })
-                        layout(0, 0, 100, 120)
-                    },
-                )
-                layout(0, 0, 100, 120)
-            }
+    fun `dirty frame is discarded when a mask rect appeared or disappeared mid-capture`() {
+        // A masked widget removed after the pixels were frozen leaves its sensitive content in the
+        // bitmap with no rect to cover it; the pre-copy walk catches exactly this case.
+        val sut = getSut()
 
-        sut.onDrawCallback(decorView)
-
-        assertFalse(isOnlyAnimationRedraw(sut))
+        assertFalse(
+            sut.shouldKeepFrame(
+                dirtyDrawState(),
+                maskWalk(Rect(0, 0, 10, 10)),
+                maskWalk(),
+            ),
+        )
     }
 
     @Test
-    fun `surface-backed view at alpha zero does not relax the guard`() {
-        // A surface mid fade-out (alpha 0) isn't visible to the user, so it must not count as active
-        // rendering — otherwise it relaxes the guard on a screen the user can't even see.
-        val sut = screenshotSut()
-        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val decorView =
-            FrameLayout(context).apply {
-                addView(
-                    SurfaceView(context).apply {
-                        alpha = 0f
-                        layout(0, 0, 100, 100)
-                    },
-                )
-                layout(0, 0, 100, 120)
-            }
+    fun `dirty frame is discarded after a layout pass even with unchanged mask rects`() {
+        // A layout pass may have moved unmasked-but-sensitive structure the rect comparison
+        // can't see, so it always fails closed.
+        val sut = getSut()
+        val drawState = dirtyDrawState().apply { didLayoutSinceReset = true }
 
-        sut.onDrawCallback(decorView)
-
-        assertFalse(isOnlyAnimationRedraw(sut))
+        assertFalse(sut.shouldKeepFrame(drawState, maskWalk(Rect(0, 0, 10, 10)), maskWalk(Rect(0, 0, 10, 10))))
     }
 
     @Test
-    fun `surface-backed view under a faded-out ancestor does not relax the guard`() {
-        // Ancestor alpha 0 hides the surface too; the walk must prune it, mirroring how isVisible()
-        // walks ancestors for alpha.
-        val sut = screenshotSut()
-        val context = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val decorView =
-            FrameLayout(context).apply {
-                addView(
-                    FrameLayout(context).apply {
-                        alpha = 0f
-                        addView(SurfaceView(context).apply { layout(0, 0, 100, 100) })
-                        layout(0, 0, 100, 120)
-                    },
-                )
-                layout(0, 0, 100, 120)
+    fun `dirty frame is discarded when either mask walk is poisoned`() {
+        // A poisoned walk saw a rendered view whose geometry it couldn't trust (mid animation,
+        // transient state) or lost its Compose rects to a timeout; rect equality proves nothing.
+        val sut = getSut()
+
+        assertFalse(sut.shouldKeepFrame(dirtyDrawState(), poisonedWalk(), maskWalk()))
+        assertFalse(sut.shouldKeepFrame(dirtyDrawState(), maskWalk(), poisonedWalk()))
+    }
+
+    // A layout whose children are inspected by the mask walks; runs [onWalkTouch] on every
+    // getChildAt call, so tests can inject draws or geometry changes between the pre-copy and
+    // post-copy walks — deterministically hitting the race the discard guard protects against.
+    private class WalkHookLayout(context: Context) : FrameLayout(context) {
+        var onWalkTouch: (() -> Unit)? = null
+
+        override fun getChildAt(index: Int): View? {
+            onWalkTouch?.invoke()
+            return super.getChildAt(index)
+        }
+    }
+
+    private class ScreenshotCaptureHarness(
+        val fx: RealQueueFixture,
+        val fake: PostHogFake,
+        val hookLayout: WalkHookLayout,
+        val status: ViewTreeSnapshotStatus,
+        val child: TextView,
+        val window: Window,
+    )
+
+    // A capturable window whose view tree reports every mask-walk visit, with a masked child so
+    // the walks produce a rect to compare.
+    private fun screenshotCaptureHarness(): ScreenshotCaptureHarness {
+        val (fx, fake) = screenshotFixture()
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        shadowOf(Looper.getMainLooper()).idle()
+        val child = TextView(activity).apply { tag = "ph-no-capture" }
+        val hookLayout = WalkHookLayout(activity)
+        hookLayout.addView(child)
+        activity.setContentView(hookLayout)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        hookLayout.layout(0, 0, 100, 100)
+        child.layout(0, 0, 100, 20)
+        val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        fx.sut.decorViews[hookLayout] = status
+        return ScreenshotCaptureHarness(fx, fake, hookLayout, status, child, activity.window)
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `screenshot capture keeps the frame when redraws leave mask geometry untouched`() {
+        // End-to-end fix path: the window redraws during the capture (an animation frame), but
+        // the pre- and post-copy mask walks agree, so the frame must be kept instead of being
+        // discarded as a screen change.
+        val h = screenshotCaptureHarness()
+        try {
+            h.hookLayout.onWalkTouch = { h.fx.sut.onDrawCallback(h.status.drawState) }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, h.fake.captures)
+            assertEquals("\$snapshot", h.fake.event)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `screenshot capture discards the frame when a masked widget moved mid-capture`() {
+        val h = screenshotCaptureHarness()
+        try {
+            var touches = 0
+            h.hookLayout.onWalkTouch = {
+                h.fx.sut.onDrawCallback(h.status.drawState)
+                touches++
+                // The walk visits the single child once per pass, so the second touch is the
+                // post-copy walk: move the masked child so its rect no longer matches the
+                // position frozen in the pixels.
+                if (touches == 2) {
+                    h.child.layout(0, 50, 100, 70)
+                }
             }
 
-        sut.onDrawCallback(decorView)
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
-        assertFalse(isOnlyAnimationRedraw(sut))
+            assertEquals(0, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `screenshot capture discards the frame when a layout pass ran mid-capture`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.hookLayout.onWalkTouch = {
+                h.fx.sut.onDrawCallback(h.status.drawState)
+                h.status.drawState.didLayoutSinceReset = true
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `dirty capture fails closed when a masked view is mid legacy animation`() {
+        // The error-shake pattern: a legacy view.animation transforms drawing without a layout
+        // pass, and the animating view is pruned from the mask walks (its geometry is
+        // unknowable), so its mask rect is missing from BOTH walks and rect equality would pass.
+        // The walk must poison the frame instead — otherwise the animated masked view ships
+        // unmasked.
+        val h = screenshotCaptureHarness()
+        try {
+            val animation = mock<Animation>()
+            whenever(animation.hasStarted()).thenReturn(true)
+            whenever(animation.hasEnded()).thenReturn(false)
+            h.child.animation = animation
+            h.hookLayout.onWalkTouch = { h.fx.sut.onDrawCallback(h.status.drawState) }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `a redraw and layout in another window does not discard this window's capture`() {
+        // Draw-dirty state is scoped per window: PixelCopy copies a single window's surface and
+        // masks come from that window's own tree, so a dialog spinner redrawing (and laying out)
+        // must not poison captures of the static activity behind it — it used to, via flags
+        // shared across all tracked windows.
+        val h = screenshotCaptureHarness()
+        try {
+            val otherWindowState = WindowDrawState()
+            h.fx.sut.decorViews[FrameLayout(h.hookLayout.context)] =
+                ViewTreeSnapshotStatus(mock<NextDrawListener>(), drawState = otherWindowState)
+            h.hookLayout.onWalkTouch = {
+                h.fx.sut.onDrawCallback(otherWindowState)
+                otherWindowState.didLayoutSinceReset = true
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+        }
     }
 }
