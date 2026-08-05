@@ -45,6 +45,11 @@ public class PostHogErrorTrackingConfig
          * Defaults to empty.
          */
         public val ignoredExceptionTypes: MutableList<Class<out Throwable>> = mutableListOf(),
+    ) {
+        // A class-body property rather than a constructor parameter: appending a
+        // defaulted constructor parameter changes the synthetic default-arguments
+        // constructor and breaks Kotlin callers compiled against older releases.
+
         /**
          * Capture native (NDK) crashes from previous runs of the app.
          *
@@ -58,5 +63,5 @@ public class PostHogErrorTrackingConfig
          *
          * Disabled by default
          */
-        public var captureNativeCrashes: Boolean = false,
-    )
+        public var captureNativeCrashes: Boolean = false
+    }

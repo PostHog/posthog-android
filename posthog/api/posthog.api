@@ -540,8 +540,7 @@ public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
 	public fun <init> (ZLjava/util/List;)V
 	public fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;)V
 	public fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;)V
-	public fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;Z)V
-	public synthetic fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAutoCapture ()Z
 	public final fun getCaptureNativeCrashes ()Z
 	public final fun getExceptionSteps ()Lcom/posthog/errortracking/PostHogExceptionStepsConfig;
