@@ -5,6 +5,7 @@
 package com.posthog.android
 
 import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import com.android.build.api.variant.ApplicationVariant
 import org.gradle.api.Plugin
@@ -29,6 +30,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
 
         val extension = project.extensions.create("posthog", PostHogPluginExtension::class.java)
         extension.uploadNativeSymbols.convention(false)
+        extension.includeNativeSymbolSources.convention(false)
 
         project.pluginManager.withPlugin("com.android.application") {
             val androidComponentsExt =
@@ -89,6 +91,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 nativeLibsDirectory =
                     project.layout.buildDirectory
                         .dir("intermediates/merged_native_libs/${variant.name}"),
+                includeSource = extension.includeNativeSymbolSources,
                 taskSuffix = variant.name.capitalizeUS(),
                 releaseName = variant.applicationId,
                 releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
@@ -102,12 +105,25 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
             // Explicit opt-in rather than any capability heuristic: the merged
             // output can carry `.so` files from the NDK, jniLibs, or plain
             // dependencies, and only the app author knows whether their symbols
-            // belong in PostHog. The task stays invocable explicitly either way.
-            if (extension.uploadNativeSymbols.get()) {
+            // belong in PostHog. Debuggable variants are excluded from the
+            // automatic hook so day-to-day debug builds don't upload heavy,
+            // unoptimized symbol sets. The task stays invocable explicitly for
+            // any variant either way.
+            if (extension.uploadNativeSymbols.get() && !variant.isDebuggable(project)) {
                 uploadTask.hookWithAssembleTasks(project, variant)
             }
         }
     }
+
+    // ApplicationVariant.debuggable only exists on newer AGP than the 8.0.x
+    // compile baseline, so resolve it from the finalized DSL build type.
+    private fun ApplicationVariant.isDebuggable(project: Project): Boolean =
+        buildType?.let { buildTypeName ->
+            project.extensions.findByType(ApplicationExtension::class.java)
+                ?.buildTypes
+                ?.findByName(buildTypeName)
+                ?.isDebuggable
+        } ?: false
 
     private fun <T : Task> assetsWiredWithDirectories(
         variant: ApplicationVariant,

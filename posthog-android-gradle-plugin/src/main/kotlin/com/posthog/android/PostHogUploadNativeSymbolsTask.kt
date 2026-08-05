@@ -47,6 +47,10 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
 
     @get:Input
     @get:Optional
+    public abstract val includeSource: Property<Boolean>
+
+    @get:Input
+    @get:Optional
     public abstract val releaseName: Property<String>
 
     @get:Input
@@ -62,6 +66,9 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
         args.add("upload")
         args.add("--directory")
         args.add(nativeLibsDirectory.get().asFile.toString())
+        if (includeSource.orNull == true) {
+            args.add("--include-source")
+        }
         releaseName.orNull?.takeIf { it.isNotEmpty() }?.let {
             args.add("--release-name")
             args.add(it)
@@ -80,6 +87,7 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
         fun register(
             project: Project,
             nativeLibsDirectory: Provider<org.gradle.api.file.Directory>,
+            includeSource: Provider<Boolean>,
             taskSuffix: String = "",
             releaseName: Provider<String>? = null,
             releaseVersion: Provider<String>? = null,
@@ -91,6 +99,7 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
             ) {
                 workingDir(project.rootDir)
                 this.nativeLibsDirectory.set(nativeLibsDirectory)
+                this.includeSource.set(includeSource)
                 releaseName?.let { this.releaseName.set(it) }
                 releaseVersion?.let { this.releaseVersion.set(it) }
                 build?.let { this.build.set(it) }

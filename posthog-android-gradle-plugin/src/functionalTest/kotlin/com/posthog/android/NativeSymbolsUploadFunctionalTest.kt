@@ -47,7 +47,10 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
         }
     }
 
-    private fun setUpProject(uploadNativeSymbols: Boolean): File {
+    private fun setUpProject(
+        uploadNativeSymbols: Boolean,
+        includeNativeSymbolSources: Boolean = false,
+    ): File {
         val fakeCliLog = File(projectDir.root, "fake-cli-args.txt")
         val fakeCli = File(projectDir.root, "fake-posthog-cli")
         fakeCli.writeText("#!/bin/sh\necho \"$@\" >> ${fakeCliLog.absolutePath}\n")
@@ -106,6 +109,7 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
 
             posthog {
                 uploadNativeSymbols = $uploadNativeSymbols
+                includeNativeSymbolSources = $includeNativeSymbolSources
             }
 
             tasks.withType(com.posthog.android.PostHogCliExecTask).configureEach {
@@ -123,7 +127,7 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
 
     @Test
     fun `explicit invocation depends on the merge task and uploads the merged libs`() {
-        val fakeCliLog = setUpProject(uploadNativeSymbols = false)
+        val fakeCliLog = setUpProject(uploadNativeSymbols = false, includeNativeSymbolSources = true)
 
         val result = runner(":app:uploadPostHogNativeSymbolsDebug", "--stacktrace").build()
 
@@ -132,6 +136,7 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
 
         val cliArgs = fakeCliLog.readText()
         assertTrue(cliArgs.contains("symbol-sets upload --directory"), "got: $cliArgs")
+        assertTrue(cliArgs.contains("--include-source"), "got: $cliArgs")
         val directory = cliArgs.substringAfter("--directory ").trim().split(" ").first()
         val mergedLibs = File(directory).walkTopDown().filter { it.extension == "so" }.toList()
         assertTrue(mergedLibs.any { it.name == "libfake.so" }, "merged dir $directory had: $mergedLibs")
@@ -140,13 +145,20 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
     @Test
     fun `assemble triggers the upload only when opted in`() {
         setUpProject(uploadNativeSymbols = true)
-        val scheduled = runner(":app:assembleDebug", "--dry-run").build()
-        assertTrue(scheduled.output.contains(":app:uploadPostHogNativeSymbolsDebug"), scheduled.output)
+        val scheduled = runner(":app:assembleRelease", "--dry-run").build()
+        assertTrue(scheduled.output.contains(":app:uploadPostHogNativeSymbolsRelease"), scheduled.output)
     }
 
     @Test
     fun `assemble does not trigger the upload without the opt-in`() {
         setUpProject(uploadNativeSymbols = false)
+        val scheduled = runner(":app:assembleRelease", "--dry-run").build()
+        assertFalse(scheduled.output.contains(":app:uploadPostHogNativeSymbolsRelease"), scheduled.output)
+    }
+
+    @Test
+    fun `debuggable variants are not hooked even when opted in`() {
+        setUpProject(uploadNativeSymbols = true)
         val scheduled = runner(":app:assembleDebug", "--dry-run").build()
         assertFalse(scheduled.output.contains(":app:uploadPostHogNativeSymbolsDebug"), scheduled.output)
     }

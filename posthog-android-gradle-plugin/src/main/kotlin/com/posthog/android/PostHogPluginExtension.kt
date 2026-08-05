@@ -22,4 +22,15 @@ public abstract class PostHogPluginExtension {
      * always be invoked explicitly, regardless of this flag.
      */
     public abstract val uploadNativeSymbols: Property<Boolean>
+
+    /**
+     * Also bundle the project source files referenced by the debug info into
+     * the native symbol upload (`posthog-cli symbol-sets upload
+     * --include-source`), so resolved crash frames show source context.
+     *
+     * Off by default: source bundles grow the upload and ship your source
+     * code to PostHog. Only takes effect together with [uploadNativeSymbols]
+     * or an explicit task invocation.
+     */
+    public abstract val includeNativeSymbolSources: Property<Boolean>
 }

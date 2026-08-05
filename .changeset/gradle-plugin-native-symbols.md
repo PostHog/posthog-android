@@ -10,4 +10,4 @@ posthog {
 }
 ```
 
-When enabled, a new `uploadPostHogNativeSymbols<Variant>` task reads the variant's unstripped merged native libs (NDK builds, `jniLibs`, and libraries packaged by dependencies) and runs automatically after `assemble`/`install`/`bundle`, for minified and non-minified variants alike. The task can also be invoked explicitly without opting in.
+When enabled, a new `uploadPostHogNativeSymbols<Variant>` task reads the variant's unstripped merged native libs (NDK builds, `jniLibs`, and libraries packaged by dependencies) and runs automatically after `assemble`/`install`/`bundle` for non-debuggable variants, minified or not. Set `includeNativeSymbolSources.set(true)` to also bundle the project sources referenced by the debug info (off by default). The task can always be invoked explicitly, for any variant, without opting in.
