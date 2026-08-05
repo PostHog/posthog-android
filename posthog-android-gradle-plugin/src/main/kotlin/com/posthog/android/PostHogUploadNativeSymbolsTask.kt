@@ -9,8 +9,10 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.work.DisableCachingByDefault
 
@@ -34,11 +36,13 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
     }
 
     /**
-     * Root of the variant's merged native libs intermediates. Not tracked as a
-     * task input: uploads are gated by [outputs.upToDateWhen] and snapshotting
-     * every `.so` would only slow the build.
+     * Root of the variant's merged native libs intermediates. Tracked as an
+     * input so a native rebuild (new build ids, same app version) re-runs the
+     * upload; with the directory untracked, `outputs.upToDateWhen` would mark
+     * the task UP-TO-DATE and the new symbols would never upload.
      */
-    @get:Internal
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val nativeLibsDirectory: DirectoryProperty
 
     @get:Input
