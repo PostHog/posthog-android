@@ -180,6 +180,16 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `asCoreConfig propagates releaseIdentifier to core config`() {
+        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        config.releaseIdentifier = "release-123"
+
+        val coreConfig = config.asCoreConfig()
+
+        assertEquals("release-123", coreConfig.releaseIdentifier)
+    }
+
+    @Test
     fun `asCoreConfig applies beforeSend callbacks to core config`() {
         val config = PostHogConfig(apiKey = TEST_API_KEY)
         val beforeSend1 = createMockBeforeSend()
@@ -270,6 +280,16 @@ internal class PostHogConfigTest {
 
         val config = builder.build()
         assertEquals(true, config.debug)
+    }
+
+    @Test
+    fun `builder releaseIdentifier method sets value and returns builder`() {
+        val builder = PostHogConfig.builder(TEST_API_KEY)
+        val result = builder.releaseIdentifier("release-123")
+        assertEquals(builder, result)
+
+        val config = builder.build()
+        assertEquals("release-123", config.releaseIdentifier)
     }
 
     @Test

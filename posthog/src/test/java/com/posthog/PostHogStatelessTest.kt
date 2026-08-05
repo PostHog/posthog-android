@@ -1496,6 +1496,28 @@ internal class PostHogStatelessTest {
     }
 
     @Test
+    fun `captureExceptionStateless stamps frames with map_id when releaseIdentifier is set`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.releaseIdentifier = "release-123"
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(RuntimeException("Test exception"), distinctId = "user123")
+
+        assertEquals(1, mockQueue.events.size)
+        val exceptionList = mockQueue.events.first().properties!!["\$exception_list"] as List<*>
+        val stacktrace = (exceptionList.first() as Map<*, *>)["stacktrace"] as Map<*, *>
+        val frames = stacktrace["frames"] as List<*>
+        assertTrue(frames.isNotEmpty())
+        frames.forEach { frame ->
+            assertEquals("release-123", (frame as Map<*, *>)["map_id"])
+        }
+    }
+
+    @Test
     fun `captureExceptionStateless with distinctId uses provided distinctId`() {
         val mockQueue = MockQueue()
         sut = createStatelessInstance()
