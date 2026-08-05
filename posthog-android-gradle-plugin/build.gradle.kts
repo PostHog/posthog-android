@@ -192,3 +192,29 @@ dependencies {
     compileOnly("com.android.tools.build:gradle:8.0.2")
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
 }
+
+// Functional tests run the plugin through Gradle TestKit against real AGP
+// versions (the oldest supported and a current one), because the merged
+// native libs directory and its producer task are AGP internals that can
+// move between releases.
+val functionalTest: SourceSet by sourceSets.creating
+
+dependencies {
+    "functionalTestImplementation"(gradleTestKit())
+    "functionalTestImplementation"("org.jetbrains.kotlin:kotlin-test-junit:${versions["kotlinVersion"]}")
+}
+
+gradlePlugin.testSourceSets(functionalTest)
+
+val functionalTestTask =
+    tasks.register<Test>("functionalTest") {
+        description = "Runs the functional tests."
+        group = "verification"
+        testClassesDirs = functionalTest.output.classesDirs
+        classpath = functionalTest.runtimeClasspath
+        useJUnit()
+    }
+
+tasks.named("check") {
+    dependsOn(functionalTestTask)
+}
