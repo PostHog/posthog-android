@@ -674,8 +674,8 @@ internal class PostHogFeatureFlagsTest {
                 disableGeoip = false,
             )
 
-        // The undefined key is silently absent (Python/Node/Go parity), so the log is the only
-        // signal a deleted or mistyped key would ever produce.
+        // The undefined key is silently absent, so the log is the only signal a deleted or
+        // mistyped key produces.
         assertEquals(setOf("known-flag"), result.flags.keys)
         assertTrue(logger.containsLog("No local definition for requested flag(s) typo-flag"))
         assertEquals(1, mockServer.requestCount, "only the definitions load, no /flags request")
@@ -686,9 +686,9 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `definitions that fail to load are not re-fetched on every evaluateFlags call`() {
-        // A revoked personal API key never sets `definitionsLoaded`, so nothing but the cached
-        // result stops every call from re-attempting a blocking /local_evaluation load. The poller
-        // is off so the only requests counted are the ones evaluateFlags itself makes.
+        // A personal API key that always fails never sets `definitionsLoaded`, so nothing but the
+        // cached result stops every call re-attempting a blocking /local_evaluation load. The
+        // poller is off so the only requests counted are the ones evaluateFlags itself makes.
         val dispatcher =
             CountingDispatcher(
                 { errorResponse(401, "Unauthorized") },
@@ -725,7 +725,7 @@ internal class PostHogFeatureFlagsTest {
         val definitionRequestsAfterFirstCall = dispatcher.localEvaluationCalls.get()
         assertEquals(1, definitionRequestsAfterFirstCall)
 
-        // Both modes must be shielded: the two-pass workaround interleaves them for one identity.
+        // Both modes must be shielded, since callers interleave them for one identity.
         repeat(4) {
             evaluate(onlyEvaluateLocally = true)
             evaluate(onlyEvaluateLocally = false)
@@ -744,8 +744,8 @@ internal class PostHogFeatureFlagsTest {
 
     @Test
     fun `onlyEvaluateLocally returns empty rather than cached remote flags when definitions are unavailable`() {
-        // Guards the other half of the branch above: skipping the definitions re-load must not turn
-        // into serving the cache entry, or a local-only pass would be answering with remote values.
+        // Skipping the definitions re-load must not turn into serving the cache entry, or a
+        // local-only pass would answer with remote values.
         val dispatcher =
             CountingDispatcher(
                 { errorResponse(401, "Unauthorized") },

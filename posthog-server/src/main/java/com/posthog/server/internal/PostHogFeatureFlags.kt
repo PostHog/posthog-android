@@ -235,9 +235,8 @@ internal class PostHogFeatureFlags(
     }
 
     /**
-     * The result of one local evaluation pass. [needsRemote] is true when at least one evaluated
-     * flag could not be resolved from the definitions in memory; the flags that *did* resolve are
-     * still returned, so callers can fill only the gaps from `/flags`.
+     * The result of one local evaluation pass. [flags] holds every flag that resolved, whether or
+     * not [needsRemote] is set, so callers can fill only the gaps from `/flags`.
      */
     private data class LocalEvaluationOutcome(
         val flags: Map<String, FeatureFlag>,
@@ -245,13 +244,12 @@ internal class PostHogFeatureFlags(
     )
 
     /**
-     * Evaluate flags against the definitions held in memory, recording failures per flag instead
-     * of abandoning the batch on the first inconclusive one.
+     * Evaluate flags against the definitions held in memory, recording failures per flag.
      *
      * @param flagKeys when non-null, only these keys are evaluated. This scopes the loop, never
      *   [flagDefinitions] itself: [computeFlagLocally] resolves flag dependencies through the full
      *   map, so narrowing the field would make every dependent flag inconclusive.
-     * @return null when local evaluation is unavailable — disabled, or definitions never loaded.
+     * @return null when local evaluation is unavailable: disabled, or definitions never loaded.
      */
     private fun evaluateFlagsLocally(
         distinctId: String,
@@ -931,8 +929,7 @@ internal class PostHogFeatureFlags(
      * by the [com.posthog.server.PostHogFeatureFlagEvaluations] snapshot.
      *
      * Local evaluation runs first and wins: whatever the definitions in memory resolve is kept, and
-     * `/flags` is asked only for the keys that stayed unresolved. One inconclusive flag therefore no
-     * longer discards the flags that did resolve, and a `/flags` outage no longer turns them off.
+     * `/flags` is asked only for the keys that stayed unresolved.
      */
     internal fun evaluateFlags(
         distinctId: String,
@@ -957,18 +954,16 @@ internal class PostHogFeatureFlags(
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
             )
-        // Normalized for local scoping only. The cache key and the `/flags` body keep the raw list
-        // so both stay byte-identical to what they were before local scoping existed.
+        // Only local scoping treats an empty list as "no scope"; the cache key and the `/flags` body
+        // take the raw list.
         val requestedKeys = flagKeys?.takeIf { it.isNotEmpty() }
 
-        // Without definitions local evaluation cannot produce a single value, so an existing entry
-        // for this tuple ends the call: it keeps the cached-failure backoff, and it stops a blocking
-        // `/local_evaluation` re-attempt on every call when definitions persistently fail to load —
-        // a revoked personal API key never sets `definitionsLoaded`, so nothing else caps the retry.
+        // Without definitions there is nothing to evaluate locally, so an existing entry ends the
+        // call. This keeps the cached-failure backoff, and caps the blocking `/local_evaluation`
+        // attempt below: a personal API key that always fails never sets `definitionsLoaded`.
         if (flagDefinitions == null) {
             cache.getEntry(cacheKey)?.let { entry ->
-                // Strictly local: only the entry's existence is used here, never its values, so a
-                // cached remote result — success or failure — can no longer disarm a local-only pass.
+                // Local-only mode uses the entry's existence, never its values.
                 if (onlyEvaluateLocally) {
                     return EMPTY_EVALUATE_FLAGS_RESULT
                 }
@@ -993,8 +988,6 @@ internal class PostHogFeatureFlags(
                 requestedKeys,
             )
 
-        // Everything asked for resolved locally, or the caller opted out of the fallback: either
-        // way the snapshot is exactly what local evaluation produced.
         if (local != null && (!local.needsRemote || onlyEvaluateLocally)) {
             return EvaluateFlagsResult(
                 flags = local.flags,
@@ -1010,8 +1003,8 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        // Read the entry rather than the flags: a cached *failure* holds null flags, and honoring it
-        // is what stops a `/flags` outage from being re-requested on every call within the window.
+        // Read the entry, not the flags: a cached failure holds null flags, and honoring it is what
+        // keeps an outage from being re-requested on every call within the window.
         var entry = cache.getEntry(cacheKey)
         val remoteFlags =
             if (entry != null) {

@@ -526,7 +526,7 @@ internal class PostHogEvaluateFlagsTest {
         )
 
     @Test
-    fun `an inconclusive flag no longer discards the flags that resolved locally`() {
+    fun `an inconclusive flag does not discard the flags that resolved locally`() {
         withLocalEvaluation(
             definitions = conclusiveAndGatedDefinitions(),
             // The server disagrees about `conclusive`, and is the only source for `gated`.
@@ -617,7 +617,7 @@ internal class PostHogEvaluateFlagsTest {
             definitions = conclusiveAndGatedDefinitions(),
             flagsResponse = { MockResponse().setResponseCode(503).setBody("unavailable") },
         ) { postHog, dispatcher, _ ->
-            // Any other call site caching a failure for this identity used to disarm the pass below.
+            // Cache a failure for this identity, as any other call site would.
             postHog.evaluateFlags("user-1")
 
             val localOnly = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
@@ -654,7 +654,7 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
-    fun `repeat calls in the cache window keep the merged values instead of flipping to remote ones`() {
+    fun `repeat calls in the cache window keep the merged values`() {
         withLocalEvaluation(
             definitions = conclusiveAndGatedDefinitions(),
             flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "gated" to true)) },
@@ -677,7 +677,7 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
-    fun `the deprecated appendFeatureFlags path still discards local results wholesale`() {
+    fun `the deprecated appendFeatureFlags path discards local results wholesale`() {
         withLocalEvaluation(
             definitions = conclusiveAndGatedDefinitions(),
             flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "gated" to true)) },
@@ -690,8 +690,8 @@ internal class PostHogEvaluateFlagsTest {
             val requests = drainRequests(mockServer)
             val batch = requests.first { it.path?.contains("/batch") == true }.parseBatch()
             val props = batch.eventProperties("page_view")
-            // The local definitions say `conclusive` is 100% on; the legacy path takes the server's
-            // answer for the whole batch regardless. Unchanged on purpose.
+            // The local definitions say `conclusive` is 100% on; the legacy path takes the
+            // server's answer for the whole batch regardless.
             assertEquals(false, props["\$feature/conclusive"])
         }
     }
@@ -777,11 +777,9 @@ internal class PostHogEvaluateFlagsTest {
 
     @Test
     fun `a group flag with no groups supplied resolves locally to false and wins over the server`() {
-        // The one change that can silently turn a flag off: `computeFlagLocally` answers `false`
-        // rather than throwing when a group-aggregated flag's group key is missing, so the flag
-        // counts as locally resolved and the merge keeps that `false` over the server's `true`.
-        // Before the local-wins merge the inconclusive sibling sent this call remote and the
-        // server won. Callers gating on group flags must pass `groups`.
+        // `computeFlagLocally` answers `false` rather than throwing when a group-aggregated
+        // flag's group key is missing, so the flag counts as locally resolved and the merge keeps
+        // that `false` over the server's `true`. Callers gating on group flags must pass `groups`.
         withLocalEvaluation(
             definitions = groupFlagDefinitions(emailGatedFlagDefinition("gated")),
             flagsResponse = { jsonResponse(createMultipleFlagsResponse("group-flag" to true, "gated" to true)) },
