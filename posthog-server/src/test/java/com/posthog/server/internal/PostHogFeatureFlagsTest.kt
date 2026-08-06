@@ -532,6 +532,178 @@ internal class PostHogFeatureFlagsTest {
         mockServer.shutdown()
     }
 
+    /**
+     * Local-evaluation definitions with one flag that resolves locally (no property filters) and one
+     * that is inconclusive locally (a person-property filter with no value supplied).
+     */
+    private fun localEvalResponseWithResolvableAndInconclusiveFlags(): String =
+        """
+        {
+            "flags": [
+                {
+                    "id": 1,
+                    "name": "resolves-locally",
+                    "key": "resolves-locally",
+                    "active": true,
+                    "filters": {
+                        "groups": [
+                            { "properties": [], "rollout_percentage": 100 }
+                        ]
+                    },
+                    "version": 1
+                },
+                {
+                    "id": 2,
+                    "name": "needs-server",
+                    "key": "needs-server",
+                    "active": true,
+                    "filters": {
+                        "groups": [
+                            {
+                                "properties": [
+                                    {
+                                        "key": "email",
+                                        "operator": "exact",
+                                        "value": "match@example.com",
+                                        "type": "person"
+                                    }
+                                ],
+                                "rollout_percentage": 100
+                            }
+                        ]
+                    },
+                    "version": 1
+                }
+            ],
+            "group_type_mapping": {},
+            "cohorts": {}
+        }
+        """.trimIndent()
+
+    private fun localEvalFeatureFlags(
+        mockServer: MockWebServer,
+        loadedLatch: CountDownLatch,
+    ): PostHogFeatureFlags {
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        return PostHogFeatureFlags(
+            config,
+            PostHogApi(config),
+            60000,
+            100,
+            localEvaluation = true,
+            personalApiKey = "test-personal-key",
+            pollIntervalSeconds = 30,
+            onFeatureFlags = { loadedLatch.countDown() },
+        )
+    }
+
+    @Test
+    fun `evaluateFlags keeps locally resolved flags and only fetches unresolved keys remotely`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                jsonResponse(createFlagsResponse("needs-server", enabled = true)),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        // The flag that resolved in-process survives instead of being discarded on the first miss...
+        assertEquals(true, result.flags["resolves-locally"]?.enabled)
+        assertEquals(true, result.locallyEvaluated["resolves-locally"])
+        // ...and only the inconclusive flag is filled in from the /flags response.
+        assertEquals(true, result.flags["needs-server"]?.enabled)
+        assertEquals(false, result.locallyEvaluated["needs-server"])
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags with flagKeys ignores inconclusive flags outside the requested set`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("resolves-locally"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        // Only the requested flag is evaluated; the unrelated inconclusive flag is out of scope,
+        // so it can't force a remote fallback for the whole set.
+        assertEquals(setOf("resolves-locally"), result.flags.keys)
+        assertEquals(true, result.locallyEvaluated["resolves-locally"])
+        // Only the poller's local_evaluation request happened — no /flags round trip.
+        assertEquals(1, mockServer.requestCount, "scoped local evaluation must not hit /flags")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `onlyEvaluateLocally is part of the cache key so passes do not share an entry`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                jsonResponse(createFlagsResponse("needs-server", enabled = true)),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        // Fallback pass caches the merged (local + remote) result under its own cache key.
+        val fallback =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(setOf("resolves-locally", "needs-server"), fallback.flags.keys)
+
+        // A subsequent local-only pass must NOT be served the fallback pass's cached entry.
+        val localOnly =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+        assertEquals(setOf("resolves-locally"), localOnly.flags.keys)
+        assertEquals(true, localOnly.locallyEvaluated["resolves-locally"])
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
     @Test
     fun `poller does not start when pollerEnabled is false`() {
         val logger = TestLogger()
