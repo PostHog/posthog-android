@@ -151,7 +151,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         val parser = TombstoneParser()
         val coercer = NativeCrashEventCoercer()
 
-        for (exitInfo in crashes) {
+        for ((index, exitInfo) in crashes.withIndex()) {
             // uninstall interrupts the scanner; stop before acknowledging more records
             if (Thread.currentThread().isInterrupted) {
                 return
@@ -175,11 +175,18 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 )
             }
 
-            // Advance only after capture returned, one record at a time:
-            // at-least-once. Losing a crash to an unacknowledged queue is worse
-            // than a rare duplicate from dying between the capture and this
-            // synchronous write.
-            watermarkStore.advance(exitInfo.timestamp)
+            // Advance only after capture returned, and only past the last
+            // record of each distinct timestamp: at-least-once. Losing a crash
+            // to an unacknowledged queue is worse than a rare duplicate from
+            // dying between the capture and this synchronous write, and
+            // sibling processes can die in the same millisecond, so advancing
+            // on the first record of a tie would orphan the rest if the scan
+            // dies mid-group.
+            val lastOfItsTimestamp =
+                index == crashes.lastIndex || crashes[index + 1].timestamp != exitInfo.timestamp
+            if (lastOfItsTimestamp) {
+                watermarkStore.advance(exitInfo.timestamp)
+            }
         }
 
         config.logger.log("Captured ${crashes.size} native crash record(s) from previous runs.")
