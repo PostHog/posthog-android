@@ -1,6 +1,7 @@
 package com.posthog.server.internal
 
 import com.posthog.internal.PostHogApi
+import com.posthog.server.CountingDispatcher
 import com.posthog.server.PostHogBlockingFlagDefinitionCacheProvider
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.TestLogger
@@ -640,6 +641,163 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(0, mockServer.requestCount)
         assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
 
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags warns about requested keys with no local definition`() {
+        val logger = TestLogger()
+        val mockServer = createMockHttp(jsonResponse(createLocalEvaluationResponse("known-flag")))
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("known-flag", "typo-flag"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        // The undefined key is silently absent (Python/Node/Go parity), so the log is the only
+        // signal a deleted or mistyped key would ever produce.
+        assertEquals(setOf("known-flag"), result.flags.keys)
+        assertTrue(logger.containsLog("No local definition for requested flag(s) typo-flag"))
+        assertEquals(1, mockServer.requestCount, "only the definitions load, no /flags request")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `definitions that fail to load are not re-fetched on every evaluateFlags call`() {
+        // A revoked personal API key never sets `definitionsLoaded`, so nothing but the cached
+        // result stops every call from re-attempting a blocking /local_evaluation load. The poller
+        // is off so the only requests counted are the ones evaluateFlags itself makes.
+        val dispatcher =
+            CountingDispatcher(
+                { errorResponse(401, "Unauthorized") },
+                { jsonResponse(createFlagsResponse("remote-flag", enabled = true)) },
+            )
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+
+        val config = createTestConfig(TestLogger(), mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        fun evaluate(onlyEvaluateLocally: Boolean) =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = onlyEvaluateLocally,
+                disableGeoip = false,
+            )
+
+        evaluate(onlyEvaluateLocally = false)
+        val definitionRequestsAfterFirstCall = dispatcher.localEvaluationCalls.get()
+        assertEquals(1, definitionRequestsAfterFirstCall)
+
+        // Both modes must be shielded: the two-pass workaround interleaves them for one identity.
+        repeat(4) {
+            evaluate(onlyEvaluateLocally = true)
+            evaluate(onlyEvaluateLocally = false)
+        }
+
+        assertEquals(
+            definitionRequestsAfterFirstCall,
+            dispatcher.localEvaluationCalls.get(),
+            "repeat calls must not each re-attempt a blocking definitions load",
+        )
+        assertEquals(1, dispatcher.flagsCalls.get())
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `onlyEvaluateLocally returns empty rather than cached remote flags when definitions are unavailable`() {
+        // Guards the other half of the branch above: skipping the definitions re-load must not turn
+        // into serving the cache entry, or a local-only pass would be answering with remote values.
+        val dispatcher =
+            CountingDispatcher(
+                { errorResponse(401, "Unauthorized") },
+                { jsonResponse(createFlagsResponse("remote-flag", enabled = true)) },
+            )
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+
+        val config = createTestConfig(TestLogger(), mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        val remote =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(setOf("remote-flag"), remote.flags.keys, "the cache now holds a remote success")
+
+        val localOnly =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertTrue(localOnly.flags.isEmpty(), "a local-only snapshot must never carry remote values")
+        assertEquals(
+            1,
+            dispatcher.localEvaluationCalls.get(),
+            "the cache entry must also stop the local-only call re-attempting a definitions load",
+        )
+
+        featureFlags.shutDown()
         mockServer.shutdown()
     }
 

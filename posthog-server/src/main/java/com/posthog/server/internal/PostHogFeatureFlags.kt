@@ -234,13 +234,32 @@ internal class PostHogFeatureFlags(
         return cache.get(cacheKey)
     }
 
-    private fun getFeatureFlagsFromLocalEvaluation(
+    /**
+     * The result of one local evaluation pass. [needsRemote] is true when at least one evaluated
+     * flag could not be resolved from the definitions in memory; the flags that *did* resolve are
+     * still returned, so callers can fill only the gaps from `/flags`.
+     */
+    private data class LocalEvaluationOutcome(
+        val flags: Map<String, FeatureFlag>,
+        val needsRemote: Boolean,
+    )
+
+    /**
+     * Evaluate flags against the definitions held in memory, recording failures per flag instead
+     * of abandoning the batch on the first inconclusive one.
+     *
+     * @param flagKeys when non-null, only these keys are evaluated. This scopes the loop, never
+     *   [flagDefinitions] itself: [computeFlagLocally] resolves flag dependencies through the full
+     *   map, so narrowing the field would make every dependent flag inconclusive.
+     * @return null when local evaluation is unavailable — disabled, or definitions never loaded.
+     */
+    private fun evaluateFlagsLocally(
         distinctId: String,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-        onlyEvaluateLocally: Boolean = false,
-    ): Map<String, FeatureFlag>? {
+        flagKeys: List<String>?,
+    ): LocalEvaluationOutcome? {
         if (!localEvaluation) {
             return null
         }
@@ -258,9 +277,14 @@ internal class PostHogFeatureFlags(
         config.logger.log("Attempting local evaluation for distinctId: $distinctId")
         val localFlags = mutableMapOf<String, FeatureFlag>()
         val props = localPersonProperties(distinctId, personProperties)
+        val requestedKeys = flagKeys?.toHashSet()
+        var needsRemote = false
 
-        // Evaluate all flags locally
         for ((key, flagDef) in currentFlagDefinitions) {
+            if (requestedKeys != null && key !in requestedKeys) {
+                continue
+            }
+
             try {
                 val result =
                     computeFlagLocally(
@@ -274,15 +298,48 @@ internal class PostHogFeatureFlags(
                 localFlags[key] = buildFeatureFlagFromResult(key, result, flagDef)
             } catch (e: InconclusiveMatchException) {
                 config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
-                if (!onlyEvaluateLocally) {
-                    // Allow fallback to remote evaluation
-                    return null
-                }
+                needsRemote = true
+            } catch (e: Throwable) {
+                config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
+                needsRemote = true
             }
         }
 
-        config.logger.log("Local evaluation successful for ${localFlags.size} flags")
-        return localFlags
+        if (flagKeys != null) {
+            val undefined = flagKeys.filterNot { currentFlagDefinitions.containsKey(it) }
+            if (undefined.isNotEmpty()) {
+                config.logger.log(
+                    "No local definition for requested flag(s) ${undefined.joinToString(", ")} - " +
+                        "they will be absent from locally-evaluated snapshots; " +
+                        "check for deleted flags or typos",
+                )
+            }
+        }
+
+        config.logger.log("Local evaluation resolved ${localFlags.size} flags, needsRemote=$needsRemote")
+        return LocalEvaluationOutcome(localFlags, needsRemote)
+    }
+
+    /**
+     * All-or-nothing local evaluation for the deprecated [getFeatureFlags] path: a single
+     * unresolved flag discards the batch so the caller falls back to `/flags`.
+     */
+    private fun getFeatureFlagsFromLocalEvaluation(
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): Map<String, FeatureFlag>? {
+        val outcome =
+            evaluateFlagsLocally(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+                flagKeys = null,
+            ) ?: return null
+
+        return if (outcome.needsRemote) null else outcome.flags
     }
 
     private fun localPersonProperties(
@@ -871,8 +928,11 @@ internal class PostHogFeatureFlags(
 
     /**
      * Resolve every flag for the given identity in a single pass, returning the rich envelope used
-     * by the [com.posthog.server.PostHogFeatureFlagEvaluations] snapshot. Reuses the existing
-     * cache → local-eval → remote tier and additionally records which keys were resolved locally.
+     * by the [com.posthog.server.PostHogFeatureFlagEvaluations] snapshot.
+     *
+     * Local evaluation runs first and wins: whatever the definitions in memory resolve is kept, and
+     * `/flags` is asked only for the keys that stayed unresolved. One inconclusive flag therefore no
+     * longer discards the flags that did resolve, and a `/flags` outage no longer turns them off.
      */
     internal fun evaluateFlags(
         distinctId: String,
@@ -897,41 +957,48 @@ internal class PostHogFeatureFlags(
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
             )
-        cache.getEntry(cacheKey)?.let { entry ->
-            val flags = entry.flags ?: EMPTY_FLAGS
-            return EvaluateFlagsResult(
-                flags = flags,
-                locallyEvaluated = flags.mapValues { isLocallyEvaluated(it.value) },
-                requestId = entry.requestId,
-                evaluatedAt = entry.evaluatedAt,
-                definitionsLoadedAt = definitionsLoadedAt,
-                responseError = entry.error,
-            )
+        // Normalized for local scoping only. The cache key and the `/flags` body keep the raw list
+        // so both stay byte-identical to what they were before local scoping existed.
+        val requestedKeys = flagKeys?.takeIf { it.isNotEmpty() }
+
+        // Without definitions local evaluation cannot produce a single value, so an existing entry
+        // for this tuple ends the call: it keeps the cached-failure backoff, and it stops a blocking
+        // `/local_evaluation` re-attempt on every call when definitions persistently fail to load —
+        // a revoked personal API key never sets `definitionsLoaded`, so nothing else caps the retry.
+        if (flagDefinitions == null) {
+            cache.getEntry(cacheKey)?.let { entry ->
+                // Strictly local: only the entry's existence is used here, never its values, so a
+                // cached remote result — success or failure — can no longer disarm a local-only pass.
+                if (onlyEvaluateLocally) {
+                    return EMPTY_EVALUATE_FLAGS_RESULT
+                }
+                val flags = entry.flags ?: EMPTY_FLAGS
+                return EvaluateFlagsResult(
+                    flags = flags,
+                    locallyEvaluated = flags.mapValues { isLocallyEvaluated(it.value) },
+                    requestId = entry.requestId,
+                    evaluatedAt = entry.evaluatedAt,
+                    definitionsLoadedAt = definitionsLoadedAt,
+                    responseError = entry.error,
+                )
+            }
         }
 
-        val localFlags =
-            getFeatureFlagsFromLocalEvaluation(
+        val local =
+            evaluateFlagsLocally(
                 distinctId,
                 groups,
                 personProperties,
                 groupProperties,
-                onlyEvaluateLocally,
+                requestedKeys,
             )
-        if (localFlags != null) {
-            // Local evaluation evaluates every defined flag — apply `flagKeys` post-hoc so callers
-            // get the same scoping they'd get from a `/flags` request that honored
-            // `flag_keys_to_evaluate`. Note: we still evaluate everything; the optimization is
-            // network-side only.
-            val scoped =
-                if (flagKeys.isNullOrEmpty()) {
-                    localFlags
-                } else {
-                    val keep = flagKeys.toHashSet()
-                    localFlags.filterKeys { it in keep }
-                }
+
+        // Everything asked for resolved locally, or the caller opted out of the fallback: either
+        // way the snapshot is exactly what local evaluation produced.
+        if (local != null && (!local.needsRemote || onlyEvaluateLocally)) {
             return EvaluateFlagsResult(
-                flags = scoped,
-                locallyEvaluated = scoped.mapValues { true },
+                flags = local.flags,
+                locallyEvaluated = local.flags.mapValues { true },
                 requestId = null,
                 evaluatedAt = null,
                 definitionsLoadedAt = definitionsLoadedAt,
@@ -943,19 +1010,28 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
+        // Read the entry rather than the flags: a cached *failure* holds null flags, and honoring it
+        // is what stops a `/flags` outage from being re-requested on every call within the window.
+        var entry = cache.getEntry(cacheKey)
         val remoteFlags =
-            getFeatureFlagsFromRemote(
-                distinctId,
-                groups,
-                personProperties,
-                groupProperties,
-                flagKeys,
-                disableGeoip,
-            ) ?: EMPTY_FLAGS
-        val entry = cache.getEntry(cacheKey)
+            if (entry != null) {
+                entry.flags
+            } else {
+                getFeatureFlagsFromRemote(
+                    distinctId,
+                    groups,
+                    personProperties,
+                    groupProperties,
+                    flagKeys,
+                    disableGeoip,
+                ).also { entry = cache.getEntry(cacheKey) }
+            }
+
+        val localFlags = local?.flags ?: EMPTY_FLAGS
+        val merged = LinkedHashMap(remoteFlags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
         return EvaluateFlagsResult(
-            flags = remoteFlags,
-            locallyEvaluated = remoteFlags.mapValues { false },
+            flags = merged,
+            locallyEvaluated = merged.mapValues { it.key in localFlags },
             requestId = entry?.requestId,
             evaluatedAt = entry?.evaluatedAt,
             definitionsLoadedAt = definitionsLoadedAt,
