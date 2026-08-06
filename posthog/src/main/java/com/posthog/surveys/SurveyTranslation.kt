@@ -11,4 +11,7 @@ public data class SurveyTranslation(
     val thankYouMessageHeader: String? = null,
     val thankYouMessageDescription: String? = null,
     val thankYouMessageCloseButtonText: String? = null,
+    val introScreenHeader: String? = null,
+    val introScreenDescription: String? = null,
+    val introScreenButtonText: String? = null,
 )

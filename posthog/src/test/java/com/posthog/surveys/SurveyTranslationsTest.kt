@@ -131,6 +131,10 @@ internal class SurveyTranslationsTest {
         assertEquals(listOf("Un", "Deux"), choice.choices)
         // Translated thank you message
         assertEquals("Merci!", display.appearance?.thankYouMessageHeader)
+        // Translated intro screen fields; untranslated description falls back to original
+        assertEquals("Bienvenue!", display.appearance?.introScreenHeader)
+        assertEquals("Commencer", display.appearance?.introScreenButtonText)
+        assertEquals("Two quick questions.", display.appearance?.introScreenDescription)
     }
 
     @Test
@@ -146,6 +150,8 @@ internal class SurveyTranslationsTest {
         val choice = display.questions[1] as PostHogDisplayChoiceQuestion
         assertEquals(listOf("One", "Two"), choice.choices)
         assertEquals("Thanks!", display.appearance?.thankYouMessageHeader)
+        assertEquals(true, display.appearance?.displayIntroScreen)
+        assertEquals("Welcome!", display.appearance?.introScreenHeader)
     }
 
     @Test
@@ -184,12 +190,18 @@ internal class SurveyTranslationsTest {
                 "thankYouMessageHeader": "Thanks!",
                 "thankYouMessageDescription": "We appreciate it",
                 "thankYouMessageCloseButtonText": "Close",
+                "displayIntroScreen": true,
+                "introScreenHeader": "Welcome!",
+                "introScreenDescription": "Two quick questions.",
+                "introScreenButtonText": "Get started",
                 "borderColor": "#000"
               },
               "translations": {
                 "fr": {
                   "name": "Bonjour",
-                  "thankYouMessageHeader": "Merci!"
+                  "thankYouMessageHeader": "Merci!",
+                  "introScreenHeader": "Bienvenue!",
+                  "introScreenButtonText": "Commencer"
                 },
                 "pt": {
                   "thankYouMessageHeader": "Obrigado"
