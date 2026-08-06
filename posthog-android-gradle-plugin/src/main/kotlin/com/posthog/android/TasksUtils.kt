@@ -53,15 +53,25 @@ internal fun TaskProvider<out Task>.hookWithAssembleTasks(
     project.afterEvaluate {
         val bundleTask =
             withLogging(project.logger, "bundleTask") { getBundleTask(project, variant.name) }
-        getAssembleTaskProvider(project, variant)?.configure {
+        val anchors = mutableListOf<TaskProvider<out Task>>()
+        getAssembleTaskProvider(project, variant)?.also { anchors.add(it) }?.configure {
             finalizedBy(this@hookWithAssembleTasks)
         }
-        getInstallTaskProvider(project, variant)?.configure {
+        getInstallTaskProvider(project, variant)?.also { anchors.add(it) }?.configure {
             finalizedBy(this@hookWithAssembleTasks)
         }
         // if its a bundle aab, assemble might not be executed, so we hook into bundle task
-        bundleTask?.configure {
+        bundleTask?.also { anchors.add(it) }?.configure {
             finalizedBy(this@hookWithAssembleTasks)
+        }
+        // Finalizers run even when the build they finalize fails; skip the
+        // upload then, so artifacts of a failed build are not uploaded and the
+        // upload's own errors cannot obscure the original failure. Explicit
+        // invocations are unaffected: an unexecuted anchor carries no failure.
+        this@hookWithAssembleTasks.configure {
+            onlyIf("the finalized build succeeded") {
+                anchors.none { anchor -> anchor.get().state.failure != null }
+            }
         }
     }
 }

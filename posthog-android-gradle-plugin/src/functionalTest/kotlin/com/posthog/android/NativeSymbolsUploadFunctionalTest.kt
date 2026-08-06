@@ -157,6 +157,30 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
     }
 
     @Test
+    fun `a failed build does not upload symbols`() {
+        val fakeCliLog = setUpProject(uploadNativeSymbols = true)
+        File(projectDir.root, "app/build.gradle").appendText(
+            """
+
+            def boom = tasks.register('boom') {
+                dependsOn tasks.named('mergeReleaseNativeLibs')
+                doLast { throw new GradleException('post-merge failure') }
+            }
+            tasks.named('assembleRelease') { dependsOn boom }
+            """.trimIndent(),
+        )
+
+        val result = runner(":app:assembleRelease").buildAndFail()
+
+        val upload = result.task(":app:uploadPostHogNativeSymbolsRelease")
+        assertTrue(
+            upload == null || upload.outcome == TaskOutcome.SKIPPED,
+            "expected no upload after a failed build, got: ${'$'}{upload?.outcome}",
+        )
+        assertFalse(fakeCliLog.exists(), "the CLI must not run for a failed build")
+    }
+
+    @Test
     fun `debuggable variants are not hooked even when opted in`() {
         setUpProject(uploadNativeSymbols = true)
         val scheduled = runner(":app:assembleDebug", "--dry-run").build()
