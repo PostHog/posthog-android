@@ -91,7 +91,7 @@ internal class PostHogAndroidEventSnapshotsTest {
         sut.captureException(fixedThrowable(), mapOf("handled" to true, "component" to "checkout"))
         sut.flush()
 
-        val request = fixture.server.takeRequests("/flags/?v=2", "/batch").last()
+        val request = fixture.server.takeRequests("/flags/?v=2", "/batch").single { it.path == "/batch" }
         val snapshot = requestSnapshot(request, fixture.config)
         normalizeBatchVolatileFields(snapshot)
 
