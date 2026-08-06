@@ -2,60 +2,10 @@ package com.posthog.android.internal.errortracking
 
 import org.junit.Test
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 internal class TombstoneParserTest {
-    // Minimal protobuf wire encoder, so the parser is exercised against real
-    // wire bytes rather than its own inverse.
-    private class ProtoWriter {
-        private val out = ByteArrayOutputStream()
-
-        fun varint(
-            field: Int,
-            value: Long,
-        ): ProtoWriter {
-            writeVarint((field shl 3).toLong())
-            writeVarint(value)
-            return this
-        }
-
-        fun bytes(
-            field: Int,
-            value: ByteArray,
-        ): ProtoWriter {
-            writeVarint(((field shl 3) or 2).toLong())
-            writeVarint(value.size.toLong())
-            out.write(value)
-            return this
-        }
-
-        fun string(
-            field: Int,
-            value: String,
-        ): ProtoWriter = bytes(field, value.toByteArray(Charsets.UTF_8))
-
-        fun message(
-            field: Int,
-            block: ProtoWriter.() -> Unit,
-        ): ProtoWriter = bytes(field, ProtoWriter().apply(block).toByteArray())
-
-        fun toByteArray(): ByteArray = out.toByteArray()
-
-        private fun writeVarint(value: Long) {
-            var v = value
-            while (true) {
-                if (v and 0x7fL.inv() == 0L) {
-                    out.write(v.toInt())
-                    return
-                }
-                out.write(((v and 0x7f) or 0x80).toInt())
-                v = v ushr 7
-            }
-        }
-    }
-
     private fun frame(
         relPc: Long,
         pc: Long,
@@ -63,7 +13,7 @@ internal class TombstoneParserTest {
         functionOffset: Long,
         file: String?,
         buildId: String?,
-    ): ProtoWriter.() -> Unit =
+    ): TestProtoWriter.() -> Unit =
         {
             varint(1, relPc)
             varint(2, pc)
@@ -76,7 +26,7 @@ internal class TombstoneParserTest {
     @Test
     fun `parses signal info, abort message, and the crashing thread's backtrace`() {
         val tombstone =
-            ProtoWriter()
+            TestProtoWriter()
                 .varint(1, 1) // arch = ARM64
                 .varint(5, 4242) // pid
                 .varint(6, 4343) // tid
@@ -132,7 +82,7 @@ internal class TombstoneParserTest {
     @Test
     fun `fault address is null when the signal has none`() {
         val tombstone =
-            ProtoWriter()
+            TestProtoWriter()
                 .varint(6, 1)
                 .message(10) {
                     string(2, "SIGABRT")
@@ -152,7 +102,7 @@ internal class TombstoneParserTest {
     @Test
     fun `unknown fields and wire types are skipped`() {
         val tombstone =
-            ProtoWriter()
+            TestProtoWriter()
                 .string(2, "google/panther/panther:13") // build_fingerprint, unused
                 .varint(6, 7)
                 .varint(22, 4096) // page_size, unused

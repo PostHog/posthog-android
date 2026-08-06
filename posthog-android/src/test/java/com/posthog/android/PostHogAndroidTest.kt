@@ -3,6 +3,7 @@ package com.posthog.android
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.android.errortracking.PostHogNativeCrashIntegration
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
 import com.posthog.android.internal.PostHogAndroidLogger
@@ -204,6 +205,37 @@ internal class PostHogAndroidTest {
         assertNotNull(
             config.integrations.find {
                 it is PostHogLifecycleObserverIntegration
+            },
+        )
+    }
+
+    @Test
+    fun `registers the native crash integration when enabled`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        config.errorTrackingConfig.captureNativeCrashes = true
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertNotNull(
+            config.integrations.find {
+                it is PostHogNativeCrashIntegration
+            },
+        )
+    }
+
+    @Test
+    fun `does not register the native crash integration by default`() {
+        val config = PostHogAndroidConfig(API_KEY)
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        assertNull(
+            config.integrations.find {
+                it is PostHogNativeCrashIntegration
             },
         )
     }
