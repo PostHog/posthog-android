@@ -97,7 +97,7 @@ internal class PostHogNativeCrashIntegrationTest {
     }
 
     private fun install(executor: DirectExecutorService = DirectExecutorService()): PostHogNativeCrashIntegration {
-        val integration = PostHogNativeCrashIntegration(context, config, executor)
+        val integration = PostHogNativeCrashIntegration(context, config, { executor })
         installed.add(integration)
         integration.install(postHog)
         return integration
@@ -243,6 +243,78 @@ internal class PostHogNativeCrashIntegrationTest {
         ownerIntegration.uninstall()
         install(fourth)
         assertEquals(1, fourth.submitted)
+    }
+
+    @Test
+    fun `a transient read failure aborts the scan without acknowledging`() {
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 500, trace = tombstoneBytes())
+        val exitInfo =
+            ShadowActivityManager.ApplicationExitInfoBuilder.newBuilder()
+                .setReason(ApplicationExitInfo.REASON_CRASH_NATIVE)
+                .setTimestamp(600)
+                .setPid(2)
+                .setTraceInputStream(
+                    object : java.io.InputStream() {
+                        override fun read(): Int = throw java.io.IOException("transient")
+                    },
+                )
+                .build()
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        shadowOf(activityManager).addApplicationExitInfo(exitInfo)
+
+        install()
+
+        // the readable record was captured and acknowledged; the unreadable
+        // one aborted the scan so the next launch retries it
+        verify(postHog, times(1)).capture(
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        assertEquals(500, watermark())
+    }
+
+    @Test
+    fun `a tombstone that does not parse is acknowledged and skipped`() {
+        addExitRecord(
+            ApplicationExitInfo.REASON_CRASH_NATIVE,
+            timestamp = 700,
+            trace = byteArrayOf(0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f),
+        )
+
+        install()
+
+        verify(postHog, never()).capture(
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        // a deterministic parse failure must not hold the watermark below the
+        // record forever, or every newer crash behind it would be blocked
+        assertEquals(700, watermark())
+    }
+
+    @Test
+    fun `a remote disable releases the scanner for a later re-enable`() {
+        val first = RecordingExecutorService()
+        val second = RecordingExecutorService()
+        install(first)
+        assertEquals(1, first.submitted)
+
+        whenever(config.remoteConfigHolder!!.isNativeCrashCaptureEnabled()).doReturn(false)
+        installed.first().onRemoteConfig(loaded = true)
+
+        whenever(config.remoteConfigHolder!!.isNativeCrashCaptureEnabled()).doReturn(true)
+        install(second)
+        assertEquals(1, second.submitted)
     }
 
     @Test

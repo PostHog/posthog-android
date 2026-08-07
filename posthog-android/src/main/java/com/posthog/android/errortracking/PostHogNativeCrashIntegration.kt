@@ -1,5 +1,6 @@
 package com.posthog.android.errortracking
 
+import android.app.Application
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
@@ -38,7 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 public class PostHogNativeCrashIntegration : PostHogIntegration {
     private val context: Context
     private val config: PostHogAndroidConfig
-    private val executor: ExecutorService
+    private val executorFactory: () -> ExecutorService
+    private var executor: ExecutorService? = null
     private var postHog: PostHogInterface? = null
 
     // Whether this instance owns the process-wide scanner guard, so only the
@@ -49,13 +51,13 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     public constructor(context: Context, config: PostHogAndroidConfig) : this(
         context,
         config,
-        Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogNativeCrashThread")),
+        { Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogNativeCrashThread")) },
     )
 
-    internal constructor(context: Context, config: PostHogAndroidConfig, executor: ExecutorService) {
+    internal constructor(context: Context, config: PostHogAndroidConfig, executorFactory: () -> ExecutorService) {
         this.context = context
         this.config = config
-        this.executor = executor
+        this.executorFactory = executorFactory
     }
 
     private companion object {
@@ -73,6 +75,13 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         if (config.remoteConfigHolder?.isNativeCrashCaptureEnabled() != true) {
             return
         }
+        // The exit history spans every process of the package, and the scanner
+        // guard and watermark are process-local, so scanning from more than
+        // one process would capture the same records twice. The main process
+        // scans on behalf of all of them.
+        if (Application.getProcessName() != context.packageName) {
+            return
+        }
         // While the device is locked (Direct Boot) the watermark store is
         // unreadable and scanning would re-capture already-reported crashes.
         val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager
@@ -85,6 +94,10 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         installedByThisInstance = true
 
         try {
+            // A fresh executor per acquisition, so a scan cancelled by
+            // uninstall or a remote disable can be scheduled again later.
+            val executor = executorFactory()
+            this.executor = executor
             executor.submit { scanSafely(postHog) }
         } catch (e: Throwable) {
             config.logger.log("Native crash scan could not be scheduled: $e.")
@@ -99,9 +112,9 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         }
         // Stop the scanner before releasing the process-wide guard, so a new
         // install cannot start a second scanner while this one is still running.
-        executor.shutdownNow()
+        executor?.shutdownNow()
         try {
-            executor.awaitTermination(1, TimeUnit.SECONDS)
+            executor?.awaitTermination(1, TimeUnit.SECONDS)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         }
@@ -116,6 +129,10 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         }
         if (config.remoteConfigHolder?.isNativeCrashCaptureEnabled() == true) {
             postHog?.let { install(it) }
+        } else {
+            // A live kill switch also aborts an in-flight scan; a later
+            // re-enable schedules a fresh scanner.
+            uninstall()
         }
     }
 
@@ -167,13 +184,24 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 return
             }
 
+            // Reading the trace can fail transiently (I/O), so abort without
+            // acknowledging and retry on the next launch. A tombstone that
+            // read fully but does not parse is deterministic: acknowledge and
+            // skip it, because retrying forever would hold the watermark below
+            // it and block every newer crash behind it.
+            val tombstoneBytes =
+                try {
+                    exitInfo.traceInputStream?.use { stream -> stream.readBytes() }
+                } catch (e: Throwable) {
+                    config.logger.log("Reading a tombstone failed, retrying on the next launch: $e.")
+                    return
+                }
+
             val properties =
                 try {
-                    exitInfo.traceInputStream?.use { stream ->
-                        coercer.toPostHogProperties(parser.parse(stream))
-                    }
+                    tombstoneBytes?.let { coercer.toPostHogProperties(parser.parse(it)) }
                 } catch (e: Throwable) {
-                    config.logger.log("Tombstone parsing failed: $e.")
+                    config.logger.log("Skipping a tombstone that could not be parsed: $e.")
                     null
                 }
 
