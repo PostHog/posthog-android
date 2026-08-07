@@ -159,6 +159,9 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
     @Test
     fun `a failed build does not upload symbols`() {
         val fakeCliLog = setUpProject(uploadNativeSymbols = true)
+        // AGP registers variant tasks in afterEvaluate, so the wiring must
+        // wait for them; a configuration-time lookup would fail the build
+        // before anything runs and satisfy the assertions vacuously
         File(projectDir.root, "app/build.gradle").appendText(
             """
 
@@ -166,28 +169,52 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
                 dependsOn tasks.named('mergeReleaseNativeLibs')
                 doLast { throw new GradleException('post-merge failure') }
             }
-            tasks.named('assembleRelease') { dependsOn boom }
+            afterEvaluate {
+                tasks.named('assembleRelease') { dependsOn boom }
+            }
             """.trimIndent(),
         )
 
         val result = runner(":app:assembleRelease").buildAndFail()
 
+        // the failure happened after the native libs were merged, so the
+        // upload had everything it needs and skipping it was a decision
+        assertTrue(result.output.contains("post-merge failure"), result.output)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":app:mergeReleaseNativeLibs")?.outcome)
         val upload = result.task(":app:uploadPostHogNativeSymbolsRelease")
         assertTrue(
             upload == null || upload.outcome == TaskOutcome.SKIPPED,
-            "expected no upload after a failed build, got: ${'$'}{upload?.outcome}",
+            "expected no upload after a failed build, got: ${upload?.outcome}",
         )
         assertFalse(fakeCliLog.exists(), "the CLI must not run for a failed build")
     }
 
     @Test
-    fun `supports the configuration cache`() {
-        setUpProject(uploadNativeSymbols = true)
+    fun `supports the configuration cache on the hooked release path`() {
+        val fakeCliLog = setUpProject(uploadNativeSymbols = true)
+        // a non-cache warm-up stabilizes AGP's TestKit android.lock creation,
+        // which can otherwise invalidate the first stored entry
+        runner(":app:tasks").build()
 
-        val first = runner(":app:uploadPostHogNativeSymbolsDebug", "--configuration-cache").build()
+        // assembleRelease is the path that attaches the finalizers and the
+        // failure-tracker predicate, the code the configuration cache
+        // previously could not serialize
+        val first =
+            runner(
+                ":app:assembleRelease",
+                "--configuration-cache",
+                "--configuration-cache-problems=fail",
+            ).build()
         assertTrue(first.output.contains("Configuration cache entry stored"), first.output)
+        assertEquals(TaskOutcome.SUCCESS, first.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
+        assertTrue(fakeCliLog.exists(), "the CLI must run for a successful hooked build")
 
-        val second = runner(":app:uploadPostHogNativeSymbolsDebug", "--configuration-cache").build()
+        val second =
+            runner(
+                ":app:assembleRelease",
+                "--configuration-cache",
+                "--configuration-cache-problems=fail",
+            ).build()
         assertTrue(second.output.contains("Reusing configuration cache"), second.output)
     }
 
