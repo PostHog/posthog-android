@@ -13,10 +13,18 @@ import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.ThrowableCoercer
+import java.util.Collections
 import java.util.Date
+import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
+// Hard cap on how many cause links the ignoredExceptionTypes prefilter inspects. Every walk over a
+// user-provided exception graph has to terminate on its own budget: getCause() is user code and may
+// return a fresh throwable on every call, in which case no amount of cycle detection ever stops the
+// loop. Mirrors ThrowableCoercer's MAX_EXCEPTION_LIST_SIZE, far beyond any realistic cause chain.
+private const val MAX_IGNORED_CHECK_CHAIN_LENGTH = 50
 
 public open class PostHogStateless protected constructor(
     private val queueExecutor: ExecutorService =
@@ -628,14 +636,20 @@ public open class PostHogStateless protected constructor(
         throwable: Throwable,
         ignored: List<Class<out Throwable>>,
     ): Class<out Throwable>? {
-        // same cycle detection as ThrowableCoercer, so both walks cover the same chain
-        val seen = hashSetOf<Throwable>()
+        // Identity, not equality: a throwable that overrides equals/hashCode would otherwise be able
+        // to make the walk stop early (false positive cycle) on a chain of genuinely distinct links.
+        val seen = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
         var current: Throwable? = throwable
-        while (current != null && seen.add(current)) {
+        var depth = 0
+        while (current != null && depth < MAX_IGNORED_CHECK_CHAIN_LENGTH && seen.add(current)) {
             val link = current
             ignored.firstOrNull { it.isInstance(link) }?.let { return it }
             current = link.cause
+            depth++
         }
+        // Reaching the bound without a match reports "not ignored" on purpose, so the capture
+        // proceeds and the coercer serializes what it can. Dropping the event at the limit would
+        // silently lose real errors just for having a long chain.
         return null
     }
 
