@@ -181,6 +181,17 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
     }
 
     @Test
+    fun `supports the configuration cache`() {
+        setUpProject(uploadNativeSymbols = true)
+
+        val first = runner(":app:uploadPostHogNativeSymbolsDebug", "--configuration-cache").build()
+        assertTrue(first.output.contains("Configuration cache entry stored"), first.output)
+
+        val second = runner(":app:uploadPostHogNativeSymbolsDebug", "--configuration-cache").build()
+        assertTrue(second.output.contains("Reusing configuration cache"), second.output)
+    }
+
+    @Test
     fun `debuggable variants are not hooked even when opted in`() {
         setUpProject(uploadNativeSymbols = true)
         val scheduled = runner(":app:assembleDebug", "--dry-run").build()

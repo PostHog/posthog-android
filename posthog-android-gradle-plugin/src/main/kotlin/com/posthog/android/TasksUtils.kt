@@ -47,6 +47,7 @@ internal fun TaskProvider<out Task>.hookWithMinifyTasks(
 internal fun TaskProvider<out Task>.hookWithAssembleTasks(
     project: Project,
     variant: ApplicationVariant,
+    failureTracker: Provider<PostHogTaskFailureTracker>,
 ) {
     // we need to wait for project evaluation to have all tasks available, otherwise the new
     // AndroidComponentsExtension is configured too early to look up for the tasks
@@ -66,15 +67,25 @@ internal fun TaskProvider<out Task>.hookWithAssembleTasks(
         }
         // Finalizers run even when the build they finalize fails; skip the
         // upload then, so artifacts of a failed build are not uploaded and the
-        // upload's own errors cannot obscure the original failure. Explicit
-        // invocations are unaffected: an unexecuted anchor carries no failure.
+        // upload's own errors cannot obscure the original failure. The check
+        // goes through a build service keyed by task path: resolving Task
+        // instances inside an execution-time predicate breaks the
+        // configuration cache. Explicit invocations are unaffected: an
+        // unexecuted anchor never registers a failure.
+        val anchorPaths = anchors.map { anchor -> taskPath(project, anchor.name) }
         this@hookWithAssembleTasks.configure {
+            usesService(failureTracker)
             onlyIf("the finalized build succeeded") {
-                anchors.none { anchor -> anchor.get().state.failure != null }
+                !failureTracker.get().anyFailed(anchorPaths)
             }
         }
     }
 }
+
+private fun taskPath(
+    project: Project,
+    taskName: String,
+): String = if (project.path == ":") ":$taskName" else "${project.path}:$taskName"
 
 internal fun ApplicationVariant.mappingFileProvider(project: Project): Provider<FileCollection> =
     project.provider {

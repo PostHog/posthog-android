@@ -15,8 +15,14 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
+import org.gradle.build.event.BuildEventsListenerRegistry
+import javax.inject.Inject
 
-internal class PostHogAndroidGradlePlugin : Plugin<Project> {
+internal abstract class PostHogAndroidGradlePlugin
+    @Inject
+    constructor(
+        private val buildEventsListenerRegistry: BuildEventsListenerRegistry,
+    ) : Plugin<Project> {
     override fun apply(project: Project) {
         if (!project.plugins.hasPlugin("com.android.application")) {
             project.logger.warn(
@@ -32,6 +38,13 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
         extension.uploadNativeSymbols.convention(false)
         extension.includeNativeSymbolSources.convention(false)
 
+        val failureTracker =
+            project.gradle.sharedServices.registerIfAbsent(
+                PostHogTaskFailureTracker.NAME,
+                PostHogTaskFailureTracker::class.java,
+            ) {}
+        buildEventsListenerRegistry.onTaskCompletion(failureTracker)
+
         project.pluginManager.withPlugin("com.android.application") {
             val androidComponentsExt =
                 project.extensions.getByType(ApplicationAndroidComponentsExtension::class.java)
@@ -40,7 +53,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 // Native symbol upload is independent of minification: native
                 // crashes need `.so` debug symbols whether or not the JVM side
                 // is obfuscated.
-                registerNativeSymbolsUpload(project, extension, variant)
+                registerNativeSymbolsUpload(project, extension, variant, failureTracker)
 
                 if (!variant.isMinifyEnabled) {
                     return@onVariants
@@ -51,7 +64,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 // TODO: skip variants, skip autoUpload, release info, allow failure, debug mode
 
                 val paths = OutputPaths(project, variant.name)
-                val generateMapIdTask = generateMapIdTask(project, variant, paths)
+                val generateMapIdTask = generateMapIdTask(project, variant, paths, failureTracker)
                 tasksGeneratingProperties.add(generateMapIdTask)
 
                 variant.apply {
@@ -79,6 +92,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
         project: Project,
         extension: PostHogPluginExtension,
         variant: ApplicationVariant,
+        failureTracker: Provider<PostHogTaskFailureTracker>,
     ) {
         val primaryOutput = variant.outputs.firstOrNull()
         val uploadTask =
@@ -110,7 +124,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
             // unoptimized symbol sets. The task stays invocable explicitly for
             // any variant either way.
             if (extension.uploadNativeSymbols.get() && !variant.isDebuggable(project)) {
-                uploadTask.hookWithAssembleTasks(project, variant)
+                uploadTask.hookWithAssembleTasks(project, variant, failureTracker)
             }
         }
     }
@@ -141,6 +155,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
         project: Project,
         variant: ApplicationVariant,
         paths: OutputPaths,
+        failureTracker: Provider<PostHogTaskFailureTracker>,
     ): TaskProvider<PostHogGenerateMapIdTask> {
         val generateMapIdTask =
             PostHogGenerateMapIdTask.register(
@@ -160,7 +175,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
 
         generateMapIdTask.hookWithMinifyTasks(project, variant.name, generateMapIdTask)
 
-        uploadMapIdTask.hookWithAssembleTasks(project, variant)
+        uploadMapIdTask.hookWithAssembleTasks(project, variant, failureTracker)
 
         return generateMapIdTask
     }
