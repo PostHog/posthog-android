@@ -1,7 +1,6 @@
 package com.posthog.android.internal.errortracking
 
 import org.junit.Test
-import java.io.ByteArrayInputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -59,7 +58,7 @@ internal class TombstoneParserTest {
                 }
                 .toByteArray()
 
-        val parsed = TombstoneParser().parse(ByteArrayInputStream(tombstone))
+        val parsed = TombstoneParser().parse(tombstone)
 
         assertEquals("arm64", parsed.arch)
         assertEquals(4343L, parsed.tid)
@@ -92,7 +91,7 @@ internal class TombstoneParserTest {
                 .string(14, "assertion failed: x != null")
                 .toByteArray()
 
-        val parsed = TombstoneParser().parse(ByteArrayInputStream(tombstone))
+        val parsed = TombstoneParser().parse(tombstone)
 
         assertEquals("SIGABRT", parsed.signalName)
         assertNull(parsed.faultAddress)
@@ -117,7 +116,7 @@ internal class TombstoneParserTest {
                 }
                 .toByteArray()
 
-        val parsed = TombstoneParser().parse(ByteArrayInputStream(tombstone))
+        val parsed = TombstoneParser().parse(tombstone)
 
         assertEquals(1, parsed.frames.size)
         assertEquals("f", parsed.frames[0].functionName)

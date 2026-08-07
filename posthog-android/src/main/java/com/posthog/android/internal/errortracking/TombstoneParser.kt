@@ -1,7 +1,6 @@
 package com.posthog.android.internal.errortracking
 
 import java.io.IOException
-import java.io.InputStream
 
 /**
  * A native crash extracted from a debuggerd tombstone.
@@ -43,8 +42,8 @@ internal data class NativeCrashFrame(
  */
 internal class TombstoneParser {
     @Throws(IOException::class)
-    fun parse(stream: InputStream): NativeCrashTombstone {
-        val reader = ProtoReader(stream.readBytes())
+    fun parse(tombstone: ByteArray): NativeCrashTombstone {
+        val reader = ProtoReader(tombstone)
 
         // proto3 omits zero-valued enums, and ARM32 is enum value zero, so an
         // absent arch field means a 32-bit ARM tombstone.
