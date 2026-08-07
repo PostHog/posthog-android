@@ -194,6 +194,9 @@ internal class ThrowableCoercerTest {
                 Case("com.app.MainActivity\$\$InternalSyntheticLambda\$1\$abc\$0", "run", true, "d8 internal lambda"),
                 Case("com.app.Repo\$\$ExternalSyntheticOutline0", "m", true, "d8 outlined method"),
                 Case("com.app.-\$\$Lambda\$MainActivity\$abc123", "run", true, "legacy d8 lambda class"),
+                // Kotlin's class lambda backend: `Foo$run$1` with the body in invoke/invokeSuspend
+                Case("com.app.ExampleKt\$run\$1", "invoke", true, "kotlin class-backend lambda"),
+                Case("com.app.ExampleKt\$main\$1\$2", "invokeSuspend", true, "nested kotlin coroutine lambda"),
                 // Spring CGLIB
                 Case("com.app.Bean\$\$FastClassBySpringCGLIB\$\$abc", "invoke", true, "spring fastclass"),
                 Case("com.app.Bean\$\$EnhancerBySpringCGLIB\$\$abc", "doStuff", true, "spring enhancer"),
@@ -209,6 +212,8 @@ internal class ThrowableCoercerTest {
                 Case("jdk.internal.reflect.DirectMethodHandleAccessor", "invoke", false, "plain reflect frame (not an accessor)"),
                 Case("com.app.ProxyHelper", "handle", false, "class merely containing Proxy"),
                 Case("com.app.SyntheticEventBuilder", "build", false, "class merely containing Synthetic"),
+                Case("com.app.MyClass\$1", "run", false, "anonymous class body (not an invoke bridge)"),
+                Case("com.app.MyClass\$1", "handleMessage", false, "anonymous class with a user method"),
             )
 
         cases.forEach { case ->

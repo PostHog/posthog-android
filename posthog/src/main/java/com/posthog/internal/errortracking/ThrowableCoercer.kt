@@ -39,9 +39,10 @@ public class ThrowableCoercer {
     }
 
     /**
-     * Marks JVM-synthesized "noise" frames (lambdas, CGLIB/Spring proxies, reflection accessors,
-     * dynamic proxies) so consumers can de-emphasize them. Frames are kept, never dropped; callers
-     * only add the `method_synthetic` field when this returns true.
+     * Marks JVM-synthesized "noise" frames (lambdas, including Kotlin's class-backend lambda
+     * classes, CGLIB/Spring proxies, reflection accessors, dynamic proxies) so consumers can
+     * de-emphasize them. Frames are kept, never dropped; callers only add the `method_synthetic`
+     * field when this returns true.
      *
      * `method_synthetic` (not the common `synthetic` field) is the java-specific frame flag: on the
      * server, frame-level `synthetic` means "this frame was constructed by the SDK", which is a
@@ -56,6 +57,16 @@ public class ThrowableCoercer {
         if (methodName.startsWith(LAMBDA_METHOD_PREFIX) ||
             methodName.contains(LAMBDA_METHOD_MARKER) ||
             className.contains(LAMBDA_CLASS_MARKER)
+        ) {
+            return true
+        }
+
+        // Kotlin's CLASS lambda backend (older Kotlin/AGP, or `-Xlambdas=class`) compiles a lambda
+        // to a nested class like `ExampleKt$run$1` (or `ExampleKt$main$1$2`) whose body is the
+        // `invoke`/`invokeSuspend` bridge. The method guard is deliberate: a plain anonymous class
+        // (`MyClass$1` with `run`) holds user-written code and must stay unmarked.
+        if (methodName in KOTLIN_LAMBDA_METHOD_NAMES &&
+            KOTLIN_LAMBDA_CLASS_SUFFIX_REGEX.containsMatchIn(className)
         ) {
             return true
         }
@@ -366,6 +377,15 @@ public class ThrowableCoercer {
         private const val LAMBDA_METHOD_PREFIX = "lambda$"
         private const val LAMBDA_METHOD_MARKER = "\$lambda\$"
         private const val LAMBDA_CLASS_MARKER = "\$\$Lambda"
+
+        // Kotlin class-backend lambda: generated class name ending in a `$<digits>` segment, with
+        // the lambda body compiled into `invoke` (or `invokeSuspend` for the coroutine variant).
+        private val KOTLIN_LAMBDA_CLASS_SUFFIX_REGEX = Regex("\\\$\\d+\$")
+        private val KOTLIN_LAMBDA_METHOD_NAMES =
+            setOf(
+                "invoke",
+                "invokeSuspend",
+            )
         private val DESUGARED_CLASS_MARKERS =
             listOf(
                 "\$\$ExternalSynthetic",
