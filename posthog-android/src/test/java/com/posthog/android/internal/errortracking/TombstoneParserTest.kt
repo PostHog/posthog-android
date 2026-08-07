@@ -97,6 +97,8 @@ internal class TombstoneParserTest {
         assertEquals("SIGABRT", parsed.signalName)
         assertNull(parsed.faultAddress)
         assertEquals("assertion failed: x != null", parsed.abortMessage)
+        // proto3 omits the zero-valued ARM32 enum, so no arch field means arm
+        assertEquals("arm", parsed.arch)
     }
 
     @Test

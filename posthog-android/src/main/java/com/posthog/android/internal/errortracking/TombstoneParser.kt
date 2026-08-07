@@ -46,7 +46,9 @@ internal class TombstoneParser {
     fun parse(stream: InputStream): NativeCrashTombstone {
         val reader = ProtoReader(stream.readBytes())
 
-        var arch: String? = null
+        // proto3 omits zero-valued enums, and ARM32 is enum value zero, so an
+        // absent arch field means a 32-bit ARM tombstone.
+        var arch: String? = "arm"
         var tid: Long? = null
         var signalName: String? = null
         var signalCodeName: String? = null
