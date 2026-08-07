@@ -22,6 +22,8 @@ importers:
 
   posthog-server: {}
 
+  posthog-server-logback: {}
+
 packages:
 
   '@babel/runtime@7.29.7':
