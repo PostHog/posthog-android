@@ -183,8 +183,10 @@ public class PostHogSurveysIntegration(
     }
 
     private fun doesSurveyDeviceTypesMatch(survey: Survey): Boolean {
-        val deviceTypes = survey.conditions?.deviceTypes ?: return true
-        if (deviceTypes.isEmpty()) return true
+        val deviceTypes = survey.conditions?.deviceTypes
+        if (deviceTypes.isNullOrEmpty()) {
+            return !config.surveysConfig.requireDeviceTypeTargeting
+        }
 
         val matchType = defaultMatchType(survey.conditions?.deviceTypesMatchType)
         return surveyValidationMap[matchType]?.invoke(deviceTypes, deviceType) ?: true
