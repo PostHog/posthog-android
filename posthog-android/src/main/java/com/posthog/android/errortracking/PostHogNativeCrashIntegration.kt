@@ -77,9 +77,12 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         }
         // The exit history spans every process of the package, and the scanner
         // guard and watermark are process-local, so scanning from more than
-        // one process would capture the same records twice. The main process
-        // scans on behalf of all of them.
-        if (Application.getProcessName() != context.packageName) {
+        // one process would capture the same records twice. The application's
+        // default process scans on behalf of all of them, compared by the
+        // manifest-resolved name: android:process on <application> renames the
+        // default process away from the package name.
+        val mainProcessName = context.applicationInfo.processName ?: context.packageName
+        if (Application.getProcessName() != mainProcessName) {
             return
         }
         // While the device is locked (Direct Boot) the watermark store is

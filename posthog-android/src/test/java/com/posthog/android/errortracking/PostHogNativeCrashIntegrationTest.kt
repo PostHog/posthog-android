@@ -28,6 +28,7 @@ import org.mockito.kotlin.whenever
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowActivityManager
+import org.robolectric.shadows.ShadowApplication
 import java.io.ByteArrayInputStream
 import java.util.Date
 import java.util.concurrent.AbstractExecutorService
@@ -94,6 +95,8 @@ internal class PostHogNativeCrashIntegrationTest {
         // release the process-wide scanner guard between tests
         installed.forEach { it.uninstall() }
         installed.clear()
+        // static process name survives across tests
+        ShadowApplication.setProcessName(context.packageName)
     }
 
     private fun install(executor: DirectExecutorService = DirectExecutorService()): PostHogNativeCrashIntegration {
@@ -315,6 +318,38 @@ internal class PostHogNativeCrashIntegrationTest {
         whenever(config.remoteConfigHolder!!.isNativeCrashCaptureEnabled()).doReturn(true)
         install(second)
         assertEquals(1, second.submitted)
+    }
+
+    @Test
+    fun `scans in a renamed default application process`() {
+        // android:process on <application> renames the default process away
+        // from the package name; the scanner must still run there
+        context.applicationInfo.processName = "${context.packageName}:app"
+        ShadowApplication.setProcessName("${context.packageName}:app")
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 800, trace = tombstoneBytes())
+
+        install()
+
+        verify(postHog, times(1)).capture(
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        assertEquals(800, watermark())
+    }
+
+    @Test
+    fun `does not scan outside the default application process`() {
+        ShadowApplication.setProcessName("${context.packageName}:worker")
+        val executor = RecordingExecutorService()
+
+        install(executor)
+
+        assertEquals(0, executor.submitted)
     }
 
     @Test
