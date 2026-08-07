@@ -77,6 +77,17 @@ private fun surveyTranslationChangesAnything(
     ) {
         return true
     }
+    if (translation.introScreenHeader != null && translation.introScreenHeader != appearance?.introScreenHeader) return true
+    if (translation.introScreenDescription != null &&
+        translation.introScreenDescription != appearance?.introScreenDescription
+    ) {
+        return true
+    }
+    if (translation.introScreenButtonText != null &&
+        translation.introScreenButtonText != appearance?.introScreenButtonText
+    ) {
+        return true
+    }
     return false
 }
 

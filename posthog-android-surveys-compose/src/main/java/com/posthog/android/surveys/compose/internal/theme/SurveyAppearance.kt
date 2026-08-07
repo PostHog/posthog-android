@@ -33,6 +33,11 @@ internal data class ResolvedSurveyAppearance(
     val thankYouMessageDescription: String?,
     val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType,
     val thankYouMessageCloseButtonText: String,
+    val displayIntroScreen: Boolean,
+    val introScreenHeader: String?,
+    val introScreenDescription: String?,
+    val introScreenDescriptionContentType: PostHogDisplaySurveyTextContentType,
+    val introScreenButtonText: String,
 )
 
 internal val LocalSurveyAppearance =
@@ -65,6 +70,7 @@ private val DefaultInputBackgroundOnLight = Color(0xFFF8F8F8)
 private const val DEFAULT_PLACEHOLDER = "Start typing..."
 private const val DEFAULT_THANK_YOU_HEADER = "Thank you for your feedback!"
 private const val DEFAULT_THANK_YOU_CLOSE = "Close"
+private const val DEFAULT_INTRO_BUTTON = "Get started"
 
 internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance {
     val backgroundColor =
@@ -110,6 +116,16 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
     val thankYouMessageCloseButtonText =
         this?.thankYouMessageCloseButtonText?.takeIf { it.isNotBlank() } ?: DEFAULT_THANK_YOU_CLOSE
 
+    val displayIntroScreen = this?.displayIntroScreen ?: false
+    // Unlike the thank-you header there is no default intro header text: a blank header is
+    // simply not rendered, matching the web SDK.
+    val introScreenHeader = this?.introScreenHeader?.takeIf { it.isNotBlank() }
+    val introScreenDescription = this?.introScreenDescription?.takeIf { it.isNotBlank() }
+    val introScreenDescriptionContentType =
+        this?.introScreenDescriptionContentType ?: PostHogDisplaySurveyTextContentType.TEXT
+    val introScreenButtonText =
+        this?.introScreenButtonText?.takeIf { it.isNotBlank() } ?: DEFAULT_INTRO_BUTTON
+
     return ResolvedSurveyAppearance(
         backgroundColor = backgroundColor,
         borderColor = borderColor,
@@ -130,6 +146,11 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
         thankYouMessageDescription = thankYouMessageDescription,
         thankYouMessageDescriptionContentType = thankYouMessageDescriptionContentType,
         thankYouMessageCloseButtonText = thankYouMessageCloseButtonText,
+        displayIntroScreen = displayIntroScreen,
+        introScreenHeader = introScreenHeader,
+        introScreenDescription = introScreenDescription,
+        introScreenDescriptionContentType = introScreenDescriptionContentType,
+        introScreenButtonText = introScreenButtonText,
     )
 }
 

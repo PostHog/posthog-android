@@ -22,6 +22,11 @@ package com.posthog.surveys
  * @property thankYouMessageDescription Optional description text for the thank you message
  * @property thankYouMessageDescriptionContentType Optional content type for the thank you message description
  * @property thankYouMessageCloseButtonText Optional custom text for the thank you message close button
+ * @property displayIntroScreen Whether to show an intro screen before the first question
+ * @property introScreenHeader Optional header text for the intro screen
+ * @property introScreenDescription Optional description text for the intro screen
+ * @property introScreenDescriptionContentType Optional content type for the intro screen description
+ * @property introScreenButtonText Optional custom text for the button that advances past the intro screen
  */
 public data class PostHogDisplaySurveyAppearance(
     val fontFamily: String? = null,
@@ -43,6 +48,11 @@ public data class PostHogDisplaySurveyAppearance(
     val thankYouMessageDescription: String? = null,
     val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType? = null,
     val thankYouMessageCloseButtonText: String? = null,
+    val displayIntroScreen: Boolean = false,
+    val introScreenHeader: String? = null,
+    val introScreenDescription: String? = null,
+    val introScreenDescriptionContentType: PostHogDisplaySurveyTextContentType? = null,
+    val introScreenButtonText: String? = null,
 ) {
     internal companion object {
         /**
@@ -50,7 +60,7 @@ public data class PostHogDisplaySurveyAppearance(
          *
          * @param appearance The SurveyAppearance object to convert.
          * @param translation Optional resolved survey-level translation. When present,
-         *   overrides the `thankYouMessage*` fields; field-level fallback applies.
+         *   overrides the `thankYouMessage*` and `introScreen*` text fields; field-level fallback applies.
          */
         internal fun fromSurveyAppearance(
             appearance: SurveyAppearance,
@@ -58,6 +68,12 @@ public data class PostHogDisplaySurveyAppearance(
         ): PostHogDisplaySurveyAppearance {
             val thankYouContentType =
                 if (appearance.thankYouMessageDescriptionContentType?.value == "html") {
+                    PostHogDisplaySurveyTextContentType.HTML
+                } else {
+                    PostHogDisplaySurveyTextContentType.TEXT
+                }
+            val introContentType =
+                if (appearance.introScreenDescriptionContentType?.value == "html") {
                     PostHogDisplaySurveyTextContentType.HTML
                 } else {
                     PostHogDisplaySurveyTextContentType.TEXT
@@ -83,6 +99,11 @@ public data class PostHogDisplaySurveyAppearance(
                 thankYouMessageDescription = translation?.thankYouMessageDescription ?: appearance.thankYouMessageDescription,
                 thankYouMessageDescriptionContentType = thankYouContentType,
                 thankYouMessageCloseButtonText = translation?.thankYouMessageCloseButtonText ?: appearance.thankYouMessageCloseButtonText,
+                displayIntroScreen = appearance.displayIntroScreen ?: false,
+                introScreenHeader = translation?.introScreenHeader ?: appearance.introScreenHeader,
+                introScreenDescription = translation?.introScreenDescription ?: appearance.introScreenDescription,
+                introScreenDescriptionContentType = introContentType,
+                introScreenButtonText = translation?.introScreenButtonText ?: appearance.introScreenButtonText,
             )
         }
     }
