@@ -17,6 +17,7 @@ import org.mockito.kotlin.verify
 import java.io.File
 import java.util.Date
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -25,6 +26,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+// mirrors MAX_IGNORED_CHECK_CHAIN_LENGTH in PostHogStateless, which is file-private
+private const val IGNORED_CHAIN_BOUND = 50
 
 internal class PostHogStatelessTest {
     @get:Rule
@@ -421,6 +425,123 @@ internal class PostHogStatelessTest {
     }
 
     private class IgnoredExceptionStub(message: String) : RuntimeException(message)
+
+    // A cause chain we can shape freely, cycles included, which initCause refuses to build.
+    private open class LinkedExceptionStub(message: String) : RuntimeException(message) {
+        var next: Throwable? = null
+
+        override val cause: Throwable?
+            get() = next
+    }
+
+    // Claims equality with every sibling, which is exactly what defeats a hash-set cycle detector.
+    private open class EqualityLiarExceptionStub(message: String) : LinkedExceptionStub(message) {
+        override fun equals(other: Any?): Boolean = other is EqualityLiarExceptionStub
+
+        override fun hashCode(): Int = 1
+    }
+
+    private class IgnoredEqualityLiarExceptionStub(message: String) : EqualityLiarExceptionStub(message)
+
+    // getCause() is user code: this stub hands back a brand-new throwable on every read, so no
+    // amount of cycle detection can ever stop the walk. It gives up after [chainLength] reads
+    // across the whole chain purely so the test itself can never hang the gradle worker.
+    private class RegeneratingCauseExceptionStub(
+        private val chainLength: Int,
+        val causeReads: AtomicInteger = AtomicInteger(),
+    ) : RuntimeException("regenerating") {
+        override val cause: Throwable?
+            get() =
+                if (causeReads.incrementAndGet() >= chainLength) {
+                    null
+                } else {
+                    RegeneratingCauseExceptionStub(chainLength, causeReads)
+                }
+    }
+
+    private fun createIgnoreFilteringInstance(): TestablePostHogStateless {
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredExceptionStub::class.java)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(IgnoredEqualityLiarExceptionStub::class.java)
+        sut.setup(config)
+        return sut
+    }
+
+    @Test
+    fun `isIgnoredThrowable bounds a cause chain that regenerates on every read`() {
+        val sut = createIgnoreFilteringInstance()
+
+        // no object ever repeats, so only the hard bound can end this walk
+        val throwable = RegeneratingCauseExceptionStub(chainLength = 5_000)
+
+        assertFalse(sut.isIgnoredThrowable(throwable))
+        val reads = throwable.causeReads.get()
+        assertTrue(reads <= IGNORED_CHAIN_BOUND, "walked $reads cause links, expected at most $IGNORED_CHAIN_BOUND")
+    }
+
+    @Test
+    fun `isIgnoredThrowable terminates on self and mutual cause cycles`() {
+        val sut = createIgnoreFilteringInstance()
+
+        val selfCycle = LinkedExceptionStub("self")
+        selfCycle.next = selfCycle
+        assertFalse(sut.isIgnoredThrowable(selfCycle))
+
+        val first = LinkedExceptionStub("first")
+        val second = LinkedExceptionStub("second")
+        first.next = second
+        second.next = first
+        assertFalse(sut.isIgnoredThrowable(first))
+    }
+
+    @Test
+    fun `isIgnoredThrowable walks distinct links that claim to be equal`() {
+        val sut = createIgnoreFilteringInstance()
+
+        // an equality-based visited set would stop at the root and miss the ignored cause
+        val root = EqualityLiarExceptionStub("root")
+        root.next = IgnoredEqualityLiarExceptionStub("boom")
+
+        assertTrue(sut.isIgnoredThrowable(root))
+    }
+
+    @Test
+    fun `isIgnoredThrowable matches at the root and inside the bound`() {
+        val sut = createIgnoreFilteringInstance()
+
+        assertTrue(sut.isIgnoredThrowable(IgnoredExceptionStub("boom")))
+
+        val root = LinkedExceptionStub("root")
+        val middle = LinkedExceptionStub("middle")
+        root.next = middle
+        middle.next = IgnoredExceptionStub("boom")
+        assertTrue(sut.isIgnoredThrowable(root))
+    }
+
+    @Test
+    fun `captureExceptionStateless captures when the ignored type sits beyond the walk bound`() {
+        val mockQueue = MockQueue()
+        val sut = createIgnoreFilteringInstance()
+        sut.setMockQueue(mockQueue)
+
+        // ignored type parked deeper than the prefilter is allowed to look
+        var chain: Throwable = IgnoredExceptionStub("boom")
+        repeat(IGNORED_CHAIN_BOUND + 10) {
+            chain = LinkedExceptionStub("link").apply { next = chain }
+        }
+
+        assertFalse(sut.isIgnoredThrowable(chain))
+
+        sut.captureExceptionStateless(chain, distinctId = "user123")
+
+        assertEquals(1, mockQueue.events.size)
+        val event = mockQueue.events.first()
+        assertEquals("\$exception", event.event)
+        @Suppress("UNCHECKED_CAST")
+        val exceptions = event.properties!!["\$exception_list"] as List<Map<String, Any>>
+        assertTrue(exceptions.isNotEmpty())
+    }
 
     @Test
     fun `captureExceptionStateless drops throwables matching ignoredExceptionTypes`() {
