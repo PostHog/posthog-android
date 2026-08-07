@@ -149,7 +149,17 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         }
 
         val parser = TombstoneParser()
-        val coercer = NativeCrashEventCoercer()
+        val applicationInfo = context.applicationInfo
+        val coercer =
+            NativeCrashEventCoercer(
+                inAppPathPrefixes =
+                    listOfNotNull(
+                        applicationInfo.nativeLibraryDir,
+                        applicationInfo.sourceDir,
+                        applicationInfo.dataDir,
+                    ) + (applicationInfo.splitSourceDirs?.toList() ?: emptyList()),
+            )
+        var captured = 0
 
         for ((index, exitInfo) in crashes.withIndex()) {
             // uninstall interrupts the scanner; stop before acknowledging more records
@@ -173,6 +183,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                     properties = it,
                     timestamp = Date(exitInfo.timestamp),
                 )
+                captured++
             }
 
             // Advance only after capture returned, and only past the last
@@ -189,6 +200,9 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
             }
         }
 
-        config.logger.log("Captured ${crashes.size} native crash record(s) from previous runs.")
+        config.logger.log(
+            "Captured $captured native crash record(s) from previous runs" +
+                " (${crashes.size - captured} record(s) skipped without a readable tombstone).",
+        )
     }
 }
