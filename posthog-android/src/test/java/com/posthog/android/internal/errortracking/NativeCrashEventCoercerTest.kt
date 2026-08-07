@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 internal class NativeCrashEventCoercerTest {
-    private val coercer = NativeCrashEventCoercer()
+    private val coercer = NativeCrashEventCoercer(inAppPathPrefixes = listOf("/data/app/~~abc"))
 
     private fun tombstone(
         frames: List<NativeCrashFrame>,
@@ -121,6 +121,31 @@ internal class NativeCrashEventCoercerTest {
         assertNull(frame["function"])
         assertNull(frame["client_resolved"])
         assertNull(frame["symbol_addr"])
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    @Test
+    fun `the same library mapped at two bases gets one image per base`() {
+        val buildId = "5c6893c3dc6e76d2cbd637e4c8b4e2aaf90088b3"
+        val properties =
+            coercer.toPostHogProperties(
+                tombstone(
+                    frames =
+                        listOf(
+                            NativeCrashFrame(0x1000, 0x7a0000001000, null, 0, "/data/app/~~abc/libengine.so", buildId),
+                            NativeCrashFrame(0x1000, 0x7b0000001000, null, 0, "/data/app/~~abc/libengine.so", buildId),
+                        ),
+                ),
+            )
+
+        val images = properties["\$debug_images"] as List<Map<String, Any>>
+        // frames from a base without its own image entry would not symbolicate
+        assertEquals(2, images.size)
+        assertEquals(
+            setOf("0x7a0000000000", "0x7b0000000000"),
+            images.map { it["image_addr"] }.toSet(),
+        )
+        assertEquals(setOf("c393685c-6edc-d276-cbd6-37e4c8b4e2aa"), images.map { it["debug_id"] }.toSet())
     }
 
     @Test

@@ -6,11 +6,17 @@ package com.posthog.android.internal.errortracking
  * event carries `$debug_images` entries keyed by debug id, so the server can
  * symbolicate against uploaded `.so` debug symbols.
  */
-internal class NativeCrashEventCoercer {
+internal class NativeCrashEventCoercer(
+    // Filesystem prefixes that hold the app's own code (native library dir,
+    // base and split APKs, data dir), for in_app classification.
+    private val inAppPathPrefixes: List<String>,
+) {
     fun toPostHogProperties(tombstone: NativeCrashTombstone): MutableMap<String, Any> {
         val frames = mutableListOf<Map<String, Any>>()
-        // debug id -> image entry; one image per mapped ELF, shared by its frames
-        val debugImages = LinkedHashMap<String, Map<String, Any>>()
+        // One image entry per (debug id, base address): the same ELF can be
+        // mapped at multiple bases, and frames from a base without its own
+        // entry would not symbolicate.
+        val debugImages = LinkedHashMap<Pair<String, Long>, Map<String, Any>>()
 
         // Tombstones list the crash site first; the wire order is canonical
         // bottom-up (outermost first, crash site last).
@@ -45,7 +51,7 @@ internal class NativeCrashEventCoercer {
 
             val buildId = frame.buildId ?: return@forEach
             val debugId = debugIdFromBuildId(buildId) ?: return@forEach
-            debugImages.getOrPut(debugId) {
+            debugImages.getOrPut(debugId to imageAddr) {
                 val image = mutableMapOf<String, Any>()
                 image["debug_id"] = debugId
                 image["code_id"] = buildId
@@ -95,10 +101,8 @@ internal class NativeCrashEventCoercer {
         }
     }
 
-    // App code lives under /data (installed APKs and extracted libs); anything
-    // else (/system, /apex, /vendor) is OS-owned. Unknown mappings (JIT,
-    // anonymous) stay out-of-app.
-    private fun isInApp(fileName: String?): Boolean = fileName?.startsWith("/data/") == true
+    // Unknown mappings (JIT, anonymous) and OS paths stay out-of-app.
+    private fun isInApp(fileName: String?): Boolean = fileName != null && inAppPathPrefixes.any { fileName.startsWith(it) }
 
     private fun hex(value: Long): String = "0x${java.lang.Long.toUnsignedString(value, 16)}"
 
