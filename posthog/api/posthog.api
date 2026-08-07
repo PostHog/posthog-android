@@ -544,6 +544,7 @@ public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
 	public final fun getAutoCapture ()Z
 	public final fun getExceptionSteps ()Lcom/posthog/errortracking/PostHogExceptionStepsConfig;
 	public final fun getIgnoredExceptionTypes ()Ljava/util/List;
+	public final fun getInAppExcludes ()Ljava/util/List;
 	public final fun getInAppIncludes ()Ljava/util/List;
 	public final fun setAutoCapture (Z)V
 }
@@ -1156,9 +1157,11 @@ public final class com/posthog/internal/VariantDefinition {
 public final class com/posthog/internal/errortracking/ThrowableCoercer {
 	public static final field EXCEPTION_LEVEL_ATTRIBUTE Ljava/lang/String;
 	public static final field EXCEPTION_LEVEL_FATAL Ljava/lang/String;
+	public static final field MAX_EXCEPTION_LIST_SIZE I
+	public static final field MAX_FRAMES_PER_STACKTRACE I
 	public fun <init> ()V
-	public final fun fromThrowableToPostHogProperties (Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;)Ljava/util/Map;
-	public static synthetic fun fromThrowableToPostHogProperties$default (Lcom/posthog/internal/errortracking/ThrowableCoercer;Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/Map;
+	public final fun fromThrowableToPostHogProperties (Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;Ljava/util/List;)Ljava/util/Map;
+	public static synthetic fun fromThrowableToPostHogProperties$default (Lcom/posthog/internal/errortracking/ThrowableCoercer;Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ljava/util/Map;
 }
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
