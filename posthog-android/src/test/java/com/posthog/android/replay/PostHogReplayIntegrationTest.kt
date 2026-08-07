@@ -3,10 +3,13 @@ package com.posthog.android.replay
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
+import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.Window
 import android.view.animation.Animation
@@ -47,6 +50,8 @@ import org.mockito.kotlin.whenever
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowPixelCopy
 import java.lang.ref.WeakReference
 import java.util.Date
@@ -1477,6 +1482,136 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private class VisibleRectHookView(
+        context: Context,
+        private val onGetGlobalVisibleRect: (Rect, Point?) -> Unit,
+    ) : View(context) {
+        override fun getGlobalVisibleRect(
+            rect: Rect,
+            globalOffset: Point?,
+        ): Boolean {
+            onGetGlobalVisibleRect(rect, globalOffset)
+            return true
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `wireframe visibility does not race a delayed screenshot mask walk's shared scratch objects`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = appContext,
+            )
+        val fake = PostHogFake()
+        fx.sut.install(fake)
+        fx.sut.start(resumeCurrent = true)
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val guardedEntered = CountDownLatch(1)
+        val releaseGuardedCall = CountDownLatch(1)
+        val wireframeEntered = CountDownLatch(1)
+        val guardedTimedOut = AtomicBoolean(false)
+        val guardedRectWasCorrupted = AtomicBoolean(false)
+        val guardedPointWasCorrupted = AtomicBoolean(false)
+        val guardedRect = AtomicReference<Rect>()
+        val guardedPoint = AtomicReference<Point>()
+        val guardedVisibilityCalls = AtomicInteger(0)
+        val wireframeReusedGuardedRect = AtomicBoolean(false)
+        val wireframeReusedGuardedPoint = AtomicBoolean(false)
+        val guardedRectValue = Rect(1, 2, 30, 40)
+        val guardedPointValue = Point(5, 6)
+
+        val guardedView =
+            VisibleRectHookView(activity) { rect, point ->
+                // The first call is the pre-copy walk. Delay the callback's post-copy walk.
+                if (guardedVisibilityCalls.incrementAndGet() == 2) {
+                    guardedRect.set(rect)
+                    guardedPoint.set(point)
+                    rect.set(guardedRectValue)
+                    point?.set(guardedPointValue.x, guardedPointValue.y)
+                    guardedEntered.countDown()
+                    if (!releaseGuardedCall.await(5, TimeUnit.SECONDS)) {
+                        guardedTimedOut.set(true)
+                    }
+                    guardedRectWasCorrupted.set(rect != guardedRectValue)
+                    guardedPointWasCorrupted.set(point != guardedPointValue)
+                }
+            }
+        val wireframeView =
+            VisibleRectHookView(activity) { rect, point ->
+                wireframeReusedGuardedRect.set(rect === guardedRect.get())
+                wireframeReusedGuardedPoint.set(point === guardedPoint.get())
+                rect.set(100, 200, 300, 400)
+                point?.set(500, 600)
+                wireframeEntered.countDown()
+            }
+        val guardedRoot = FrameLayout(activity).apply { addView(guardedView) }
+        val outerRoot =
+            FrameLayout(activity).apply {
+                addView(guardedRoot)
+                addView(wireframeView)
+            }
+        activity.setContentView(outerRoot)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        outerRoot.layout(0, 0, 100, 100)
+        guardedRoot.layout(0, 0, 100, 50)
+        guardedView.layout(0, 0, 50, 50)
+        wireframeView.layout(50, 0, 100, 50)
+        fx.sut.decorViews[guardedRoot] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        fx.sut.decorViews[wireframeView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val screenshotFuture =
+                executor.submit {
+                    fx.sut.generateSnapshot(
+                        WeakReference(guardedRoot),
+                        WeakReference(activity.window),
+                        forceScreenshot = true,
+                    )
+                }
+            assertTrue(
+                guardedEntered.await(2, TimeUnit.SECONDS),
+                "The delayed screenshot callback did not reach its guarded post-copy mask walk",
+            )
+
+            val wireframeFuture =
+                executor.submit {
+                    fx.sut.generateSnapshot(
+                        WeakReference(wireframeView),
+                        WeakReference(activity.window),
+                    )
+                }
+            val callsOverlapped = wireframeEntered.await(1, TimeUnit.SECONDS)
+            releaseGuardedCall.countDown()
+            screenshotFuture.get(2, TimeUnit.SECONDS)
+            wireframeFuture.get(2, TimeUnit.SECONDS)
+
+            assertFalse(guardedTimedOut.get(), "The guarded visibility hook timed out")
+            val overlappingCallsWereSafe =
+                !wireframeReusedGuardedRect.get() &&
+                    !wireframeReusedGuardedPoint.get() &&
+                    !guardedRectWasCorrupted.get() &&
+                    !guardedPointWasCorrupted.get()
+            assertTrue(
+                !callsOverlapped || overlappingCallsWereSafe,
+                "An unguarded wireframe visibility call entered during the delayed screenshot mask walk and reused " +
+                    "its Rect=${wireframeReusedGuardedRect.get()} and Point=${wireframeReusedGuardedPoint.get()}; " +
+                    "guarded Rect corrupted=${guardedRectWasCorrupted.get()}, " +
+                    "Point corrupted=${guardedPointWasCorrupted.get()}",
+            )
+        } finally {
+            releaseGuardedCall.countDown()
+            executor.shutdownNow()
+            fx.sut.uninstall()
+        }
+    }
+
     private fun maskWalk(vararg rects: Rect): PostHogReplayIntegration.MaskWalk {
         return PostHogReplayIntegration.MaskWalk().apply { this.rects.addAll(rects) }
     }
@@ -1494,6 +1629,27 @@ internal class PostHogReplayIntegrationTest {
         val sut = getSut()
 
         assertTrue(sut.shouldKeepFrame(WindowDrawState(), maskWalk(), maskWalk()))
+    }
+
+    @Test
+    fun `clean frame is discarded after a layout pass`() {
+        val sut = getSut()
+        val drawState = WindowDrawState().apply { didLayoutSinceReset = true }
+
+        assertFalse(sut.shouldKeepFrame(drawState, maskWalk(), maskWalk()))
+    }
+
+    @Test
+    fun `clean frame is discarded when mask rects changed across the capture`() {
+        val sut = getSut()
+
+        assertFalse(
+            sut.shouldKeepFrame(
+                WindowDrawState(),
+                maskWalk(Rect(0, 0, 10, 10)),
+                maskWalk(Rect(0, 20, 10, 30)),
+            ),
+        )
     }
 
     @Test
@@ -1567,10 +1723,66 @@ internal class PostHogReplayIntegrationTest {
     // Runs [onWalkTouch] per mask-walk visit, so tests can inject changes between the walks.
     private class WalkHookLayout(context: Context) : FrameLayout(context) {
         var onWalkTouch: (() -> Unit)? = null
+        val visitedChildIndexes = mutableListOf<Int>()
 
         override fun getChildAt(index: Int): View? {
+            visitedChildIndexes.add(index)
             onWalkTouch?.invoke()
             return super.getChildAt(index)
+        }
+    }
+
+    @Implements(PixelCopy::class)
+    class CountingShadowPixelCopy {
+        companion object {
+            var requestCount = 0
+
+            @JvmStatic
+            @Implementation
+            fun request(
+                window: Window,
+                bitmap: Bitmap,
+                listener: PixelCopy.OnPixelCopyFinishedListener,
+                handler: Handler,
+            ) {
+                requestCount++
+                listener.onPixelCopyFinished(PixelCopy.SUCCESS)
+            }
+        }
+    }
+
+    @Implements(PixelCopy::class)
+    class ThrowingShadowPixelCopy {
+        companion object {
+            @JvmStatic
+            @Implementation
+            fun request(
+                window: Window,
+                bitmap: Bitmap,
+                listener: PixelCopy.OnPixelCopyFinishedListener,
+                handler: Handler,
+            ) {
+                throw IllegalStateException("Stop after the pre-walk")
+            }
+        }
+    }
+
+    @Implements(PixelCopy::class)
+    class DrawSequenceShadowPixelCopy {
+        companion object {
+            var onRequest: (() -> Unit)? = null
+
+            @JvmStatic
+            @Implementation
+            fun request(
+                window: Window,
+                bitmap: Bitmap,
+                listener: PixelCopy.OnPixelCopyFinishedListener,
+                handler: Handler,
+            ) {
+                onRequest?.invoke()
+                handler.post { listener.onPixelCopyFinished(PixelCopy.SUCCESS) }
+            }
         }
     }
 
@@ -1602,18 +1814,69 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
-    fun `screenshot capture keeps the frame when redraws leave mask geometry untouched`() {
-        // The fix path end to end: redraws with agreeing walks must not discard the frame.
+    @Config(sdk = [26], shadows = [ThrowingShadowPixelCopy::class])
+    fun `poisoned mask walk stops before visiting later sibling subtree`() {
         val h = screenshotCaptureHarness()
         try {
-            h.hookLayout.onWalkTouch = { h.fx.sut.onDrawCallback(h.status.drawState) }
+            val laterSibling = WalkHookLayout(h.hookLayout.context).apply { addView(View(context)) }
+            h.hookLayout.addView(laterSibling)
+            laterSibling.layout(0, 20, 100, 40)
+            laterSibling.getChildAt(0)?.layout(0, 20, 100, 40)
+            val animation = mock<Animation>()
+            whenever(animation.hasStarted()).thenReturn(true)
+            whenever(animation.hasEnded()).thenReturn(false)
+            h.child.animation = animation
+            h.hookLayout.visitedChildIndexes.clear()
+            laterSibling.visitedChildIndexes.clear()
 
             h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
+            assertEquals(emptyList(), laterSibling.visitedChildIndexes)
+            assertEquals(listOf(0), h.hookLayout.visitedChildIndexes)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `screenshot capture discards a redraw during the pre-copy mask walk`() {
+        val h = screenshotCaptureHarness()
+        try {
+            var draws = 0
+            h.hookLayout.onWalkTouch = {
+                h.hookLayout.onWalkTouch = null
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+                draws++
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, draws)
+            assertEquals(0, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `screenshot capture keeps the frame when redraws leave mask geometry untouched`() {
+        val h = screenshotCaptureHarness()
+        try {
+            var copyRequests = 0
+            DrawSequenceShadowPixelCopy.onRequest = {
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+                copyRequests++
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, copyRequests)
             assertEquals(1, h.fake.captures)
             assertEquals("\$snapshot", h.fake.event)
         } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
             h.fx.sut.uninstall()
         }
     }
@@ -1654,6 +1917,104 @@ internal class PostHogReplayIntegrationTest {
             h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(0, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `session reset during screenshot capture preserves an unsafe layout verdict`() {
+        val h = screenshotCaptureHarness()
+        try {
+            var touches = 0
+            var statePreserved = false
+            h.hookLayout.onWalkTouch = {
+                touches++
+                if (touches == 2) {
+                    h.fx.sut.onDrawCallback(h.status.drawState)
+                    h.status.drawState.recordLayout()
+                    h.fx.sut.start(resumeCurrent = false)
+                    statePreserved =
+                        h.status.drawState.isOnDrawnCalled && h.status.drawState.didLayoutSinceReset
+                }
+            }
+
+            val generated = h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(2, touches)
+            assertTrue(statePreserved)
+            assertFalse(generated)
+            assertEquals(0, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `screenshot capture discards mask geometry that returns to its starting position`() {
+        val h = screenshotCaptureHarness()
+        try {
+            var copyRequests = 0
+            DrawSequenceShadowPixelCopy.onRequest = {
+                assertFalse(h.status.drawState.didLayoutSinceReset)
+
+                h.child.translationY = 50f
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+
+                h.child.translationY = 0f
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+                copyRequests++
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, copyRequests)
+            assertEquals(0f, h.child.translationY)
+            assertEquals(0, h.fake.captures)
+        } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
+    fun `poisoned pre-walk skips PixelCopy`() {
+        val h = screenshotCaptureHarness()
+        try {
+            val animation = mock<Animation>()
+            whenever(animation.hasStarted()).thenReturn(true)
+            whenever(animation.hasEnded()).thenReturn(false)
+            h.child.animation = animation
+            CountingShadowPixelCopy.requestCount = 0
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+            assertEquals(0, CountingShadowPixelCopy.requestCount)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
+    fun `poisoned pre-walk skips post-walk`() {
+        val h = screenshotCaptureHarness()
+        try {
+            val animation = mock<Animation>()
+            whenever(animation.hasStarted()).thenReturn(true)
+            whenever(animation.hasEnded()).thenReturn(false)
+            h.child.animation = animation
+            var walkTouches = 0
+            h.hookLayout.onWalkTouch = { walkTouches++ }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+            assertEquals(1, walkTouches)
         } finally {
             h.fx.sut.uninstall()
         }
