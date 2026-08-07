@@ -647,6 +647,13 @@ public class PostHogRemoteConfig(
     public fun isAutocaptureExceptionsEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.autoCapture
 
     /**
+     * Returns whether native (NDK) crash capture is enabled.
+     * Both remote config (errorTracking.autocaptureExceptions) AND local config
+     * (PostHogConfig.errorTrackingConfig.captureNativeCrashes) must be enabled.
+     */
+    public fun isNativeCrashCaptureEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.captureNativeCrashes
+
+    /**
      * Whether a disk-cached error tracking config was present at SDK startup, before any live
      * `/config` fetch. Together with [hasRemoteConfigFetched] this tells the error-tracking
      * integration whether the server's autocapture stance is already known: when neither is true
