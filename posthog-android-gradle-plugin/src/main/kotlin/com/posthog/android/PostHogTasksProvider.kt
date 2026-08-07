@@ -32,6 +32,18 @@ internal object PostHogTasksProvider {
     }
 
     /**
+     * Returns the merge native libs task for the given project and variant —
+     * the producer of the unstripped `.so` intermediates.
+     *
+     * @return the task or null otherwise
+     */
+    @JvmStatic
+    fun getMergeNativeLibsTask(
+        project: Project,
+        variantName: String,
+    ): TaskProvider<Task>? = project.findTask(listOf("merge${variantName.capitalized}NativeLibs"))
+
+    /**
      * Returns the pre bundle task for the given project and variant.
      *
      * @return the task or null otherwise
