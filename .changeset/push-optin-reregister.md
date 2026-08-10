@@ -1,5 +1,5 @@
 ---
-"posthog": patch
+"posthog": minor
 "posthog-android": patch
 ---
 

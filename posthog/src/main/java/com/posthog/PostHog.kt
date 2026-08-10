@@ -1104,7 +1104,7 @@ public class PostHog private constructor(
             try {
                 receiver.onOptIn()
             } catch (e: Throwable) {
-                safeLog("Failed to notify integration of opt-in: $e.")
+                safeLog("Integration ${receiver.javaClass.name} failed to handle opt-in: $e.")
             }
         }
     }
