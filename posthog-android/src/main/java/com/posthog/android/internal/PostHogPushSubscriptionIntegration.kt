@@ -43,6 +43,16 @@ internal class PostHogPushSubscriptionIntegration(
         }
         ownsInstallation = true
         this.postHog = postHog
+        fetchAndRegister()
+    }
+
+    // Opt-in re-arms push: a prior logout unregister cleared the token, so refetch it and re-register
+    // the device instead of leaving it unsubscribed until the next app launch (posthog-android#675).
+    override fun onOptIn() {
+        fetchAndRegister()
+    }
+
+    private fun fetchAndRegister() {
         executor.executeSafely {
             tokenFetcher.fetchToken { token, appId ->
                 this.postHog?.registerPushNotificationToken(token, appId)

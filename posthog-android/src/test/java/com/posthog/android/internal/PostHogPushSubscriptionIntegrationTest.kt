@@ -96,6 +96,31 @@ internal class PostHogPushSubscriptionIntegrationTest {
     }
 
     @Test
+    fun `onOptIn refetches the token and re-registers the device`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        var fetchCount = 0
+        val fetcher =
+            PushTokenFetcher { onToken ->
+                fetchCount++
+                onToken("fcm-token", "firebase-project")
+            }
+        val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        assertEquals(1, fetchCount)
+        assertEquals(1, fake.pushRegistrations)
+
+        // A logout unregister would have cleared the token; opt-in must refetch and re-register.
+        sut.onOptIn()
+
+        assertEquals(2, fetchCount)
+        assertEquals(2, fake.pushRegistrations)
+
+        sut.uninstall()
+    }
+
+    @Test
     fun `install does not register when the fetcher yields no token`() {
         val config = PostHogAndroidConfig(API_KEY)
         val fetcher = PushTokenFetcher { /* no token available */ }

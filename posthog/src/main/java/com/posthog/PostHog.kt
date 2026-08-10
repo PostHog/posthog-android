@@ -1096,6 +1096,16 @@ public class PostHog private constructor(
             // an explicit runtime choice; the deferred read must not override it
             optOutLoaded = true
         }
+
+        // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
+        // re-registers, since a logout unregister cleared it and opt-in alone leaves it unsubscribed).
+        config?.integrations?.forEach { integration ->
+            try {
+                integration.onOptIn()
+            } catch (e: Throwable) {
+                config?.logger?.log("Failed to notify integration of opt-in: $e.")
+            }
+        }
     }
 
     public override fun optOut() {

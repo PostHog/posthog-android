@@ -29,4 +29,13 @@ public interface PostHogIntegration {
      */
     public fun onRemoteConfig(loaded: Boolean = true) {
     }
+
+    /**
+     * Called when the user opts back in via [PostHogInterface.optIn], so an integration that stood
+     * down while opted out can re-arm. The push integration uses this to refetch the device token and
+     * re-register, since a prior logout unregister cleared it and opt-in alone would leave the device
+     * unsubscribed until the next app launch.
+     */
+    public fun onOptIn() {
+    }
 }
