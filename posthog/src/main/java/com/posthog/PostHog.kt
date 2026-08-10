@@ -1099,9 +1099,10 @@ public class PostHog private constructor(
 
         // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
         // re-registers, since a logout unregister cleared it and opt-in alone leaves it unsubscribed).
-        config?.integrations?.forEach { integration ->
+        // Gated on the opt-in capability interface so the public PostHogIntegration contract is unchanged.
+        config?.integrations?.filterIsInstance<PostHogOptInReceiver>()?.forEach { receiver ->
             try {
-                integration.onOptIn()
+                receiver.onOptIn()
             } catch (e: Throwable) {
                 safeLog("Failed to notify integration of opt-in: $e.")
             }

@@ -4,6 +4,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogOptInReceiver
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.executeSafely
@@ -28,7 +29,7 @@ internal class PostHogPushSubscriptionIntegration(
     // thread (typically main, inside Application.onCreate()), and FirebaseMessaging's first-touch
     // init is synchronous, so the fetch is hopped off-thread. Tests inject a synchronous executor.
     private val executor: ExecutorService = Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogPushSub")),
-) : PostHogIntegration {
+) : PostHogIntegration, PostHogOptInReceiver {
     private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
 
