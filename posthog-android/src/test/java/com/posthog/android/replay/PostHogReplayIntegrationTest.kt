@@ -78,7 +78,7 @@ internal class PostHogReplayIntegrationTest {
     private val replayExecutors = mutableListOf<ExecutorService>()
 
     private class FakeQueue : PostHogQueueInterface<PostHogEvent> {
-        override fun add(event: PostHogEvent) {
+        override fun add(record: PostHogEvent) {
         }
 
         override fun flush() {

@@ -90,11 +90,11 @@ tasks.withType<KotlinCompile>().configureEach {
         jvmTarget.set(
             JvmTarget.fromTarget(JavaVersion.toVersion(versions["jdkVersion"] as String).toString()),
         )
-        val compatVersion = KotlinVersion.KOTLIN_2_1
+        val compatVersion = KotlinVersion.fromVersion(versions["kotlinCompatibility"] as String)
         languageVersion.set(compatVersion)
         allWarningsAsErrors.set(true)
         apiVersion.set(compatVersion)
-        freeCompilerArgs.add("-Xexplicit-api=strict")
+        freeCompilerArgs.addAll("-Xexplicit-api=strict", "-Xsuppress-version-warnings")
     }
 }
 

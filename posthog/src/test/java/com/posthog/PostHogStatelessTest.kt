@@ -75,8 +75,8 @@ internal class PostHogStatelessTest {
         var isStopped = false
         var flushed = false
 
-        override fun add(event: PostHogEvent) {
-            events.add(event)
+        override fun add(record: PostHogEvent) {
+            events.add(record)
         }
 
         override fun start() {
