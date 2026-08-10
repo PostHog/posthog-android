@@ -550,6 +550,52 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `an error thrown while evaluating one flag falls back for that flag instead of crashing`() {
+        withLocalEvaluation(
+            definitions =
+                createLocalEvaluationResponseFrom(
+                    conclusiveFlagDefinition("conclusive"),
+                    throwingFlagDefinition("broken"),
+                ),
+            // The server disagrees about `conclusive`, and is the only source for `broken`.
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "broken" to true)) },
+        ) { postHog, dispatcher, mockServer ->
+            // Must not propagate the evaluator's NullPointerException.
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertTrue(snapshot.isEnabled("conclusive"), "the local value must win over the server's")
+            assertTrue(snapshot.isEnabled("broken"), "the throwing key must be filled from /flags")
+            postHog.flush()
+
+            assertEquals(1, dispatcher.flagsCalls.get(), "one request, for the throwing key only")
+
+            val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
+            assertEquals(true, assertNotNull(flagCalled["conclusive"])["locally_evaluated"])
+            assertFalse(
+                assertNotNull(flagCalled["broken"]).containsKey("locally_evaluated"),
+                "a remote-filled key is not locally evaluated",
+            )
+        }
+    }
+
+    @Test
+    fun `a requested undefined key is filled by a request an unresolved flag already forced`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("gated" to true, "brand-new-flag" to true)) },
+        ) { postHog, dispatcher, _ ->
+            val snapshot = postHog.evaluateFlags("user-1", flagKeys = listOf("gated", "brand-new-flag"))
+
+            assertEquals(1, dispatcher.flagsCalls.get(), "the inconclusive key forces the request")
+            assertTrue(snapshot.isEnabled("gated"))
+            assertTrue(
+                snapshot.isEnabled("brand-new-flag"),
+                "the undefined key rides the request the inconclusive key forced",
+            )
+        }
+    }
+
+    @Test
     fun `flagKeys scopes local evaluation so an unrequested inconclusive flag forces no request`() {
         withLocalEvaluation(
             definitions = conclusiveAndGatedDefinitions(),

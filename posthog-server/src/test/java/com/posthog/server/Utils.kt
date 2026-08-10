@@ -542,6 +542,30 @@ public fun emailGatedFlagDefinition(key: String): String {
 }
 
 /**
+ * Flag definition JSON that parses but makes the local evaluator throw a plain
+ * [NullPointerException] (not an `InconclusiveMatchException`): Gson deserializes the `null`
+ * multivariate variant into the non-null `List<VariantDefinition>`, and evaluation trips over it
+ * before any condition is checked.
+ */
+public fun throwingFlagDefinition(key: String): String {
+    return """
+        {
+            "id": 3,
+            "name": "$key",
+            "key": "$key",
+            "active": true,
+            "filters": {
+                "groups": [
+                    { "properties": [], "rollout_percentage": 100 }
+                ],
+                "multivariate": { "variants": [null] }
+            },
+            "version": 1
+        }
+        """.trimIndent()
+}
+
+/**
  * Creates a local evaluation API response from raw flag definition JSON, for the fixtures
  * [createLocalEvaluationResponse] cannot express: several flags, property conditions, dependencies.
  */

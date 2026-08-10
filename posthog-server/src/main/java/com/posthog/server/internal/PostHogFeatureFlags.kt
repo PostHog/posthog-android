@@ -309,7 +309,7 @@ internal class PostHogFeatureFlags(
                 config.logger.log(
                     "No local definition for requested flag(s) ${undefined.joinToString(", ")} - " +
                         "they will be absent from locally-evaluated snapshots; " +
-                        "check for deleted flags or typos",
+                        "check for deleted flags, typos, or a flag created since the last definitions poll",
                 )
             }
         }
