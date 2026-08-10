@@ -1103,7 +1103,7 @@ public class PostHog private constructor(
             try {
                 integration.onOptIn()
             } catch (e: Throwable) {
-                config?.logger?.log("Failed to notify integration of opt-in: $e.")
+                safeLog("Failed to notify integration of opt-in: $e.")
             }
         }
     }
