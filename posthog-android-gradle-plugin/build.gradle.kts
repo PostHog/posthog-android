@@ -90,7 +90,7 @@ tasks.withType<KotlinCompile>().configureEach {
         jvmTarget.set(
             JvmTarget.fromTarget(JavaVersion.toVersion(versions["jdkVersion"] as String).toString()),
         )
-        val compatVersion = KotlinVersion.fromVersion(versions["kotlinCompatibility"] as String)
+        val compatVersion = KotlinVersion.KOTLIN_2_1
         languageVersion.set(compatVersion)
         allWarningsAsErrors.set(true)
         apiVersion.set(compatVersion)
