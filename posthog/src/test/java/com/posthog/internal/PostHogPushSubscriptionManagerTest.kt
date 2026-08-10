@@ -360,7 +360,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertEquals(1, http.requestCount)
     }
 
-    // Reproduction for posthog-android#675: asserts the FIXED behavior, so it fails today.
+    // Regression test for posthog-android#675: opt-out mid-unregister must still send the DELETE.
     @Test
     fun `opt-out during an in-flight unregister strands the DELETE (posthog-android#675)`() {
         val http = mockHttp(total = 2) // register POST, then the unregister DELETE
