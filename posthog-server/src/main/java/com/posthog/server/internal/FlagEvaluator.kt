@@ -165,6 +165,30 @@ internal class FlagEvaluator(
                     ignoreCase = true,
                 )
 
+            PropertyOperator.STARTS_WITH ->
+                stringStartsWith(
+                    overrideValue.toString(),
+                    propertyValue.toString(),
+                )
+
+            PropertyOperator.NOT_STARTS_WITH ->
+                !stringStartsWith(
+                    overrideValue.toString(),
+                    propertyValue.toString(),
+                )
+
+            PropertyOperator.ENDS_WITH ->
+                stringEndsWith(
+                    overrideValue.toString(),
+                    propertyValue.toString(),
+                )
+
+            PropertyOperator.NOT_ENDS_WITH ->
+                !stringEndsWith(
+                    overrideValue.toString(),
+                    propertyValue.toString(),
+                )
+
             PropertyOperator.REGEX ->
                 matchesRegex(
                     propertyValue.toString(),
@@ -244,6 +268,20 @@ internal class FlagEvaluator(
             return casefold(haystack).contains(casefold(needle), ignoreCase = true)
         }
         return haystack.contains(needle)
+    }
+
+    private fun stringStartsWith(
+        value: String,
+        prefix: String,
+    ): Boolean {
+        return casefold(value).startsWith(casefold(prefix))
+    }
+
+    private fun stringEndsWith(
+        value: String,
+        suffix: String,
+    ): Boolean {
+        return casefold(value).endsWith(casefold(suffix))
     }
 
     private fun matchesRegex(

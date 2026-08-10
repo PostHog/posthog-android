@@ -223,6 +223,87 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testMatchPropertyStartsWith() {
+        val property =
+            FlagProperty(
+                key = "email",
+                propertyValue = "TEST",
+                propertyOperator = PropertyOperator.STARTS_WITH,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        // Case-insensitive prefix match
+        assertTrue(evaluator.matchProperty(property, mapOf("email" to "test@example.com")))
+        assertFalse(evaluator.matchProperty(property, mapOf("email" to "example@test.com")))
+    }
+
+    @Test
+    internal fun testMatchPropertyStartsWithMissingPropertyIsInconclusive() {
+        val property =
+            FlagProperty(
+                key = "email",
+                propertyValue = "test",
+                propertyOperator = PropertyOperator.STARTS_WITH,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        try {
+            evaluator.matchProperty(property, mapOf("name" to "Test"))
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            // Expected
+        }
+    }
+
+    @Test
+    internal fun testMatchPropertyNotStartsWith() {
+        val property =
+            FlagProperty(
+                key = "email",
+                propertyValue = "test",
+                propertyOperator = PropertyOperator.NOT_STARTS_WITH,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        assertTrue(evaluator.matchProperty(property, mapOf("email" to "example@test.com")))
+        assertFalse(evaluator.matchProperty(property, mapOf("email" to "TEST@example.com")))
+    }
+
+    @Test
+    internal fun testMatchPropertyEndsWith() {
+        val property =
+            FlagProperty(
+                key = "email",
+                propertyValue = ".COM",
+                propertyOperator = PropertyOperator.ENDS_WITH,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        // Case-insensitive suffix match
+        assertTrue(evaluator.matchProperty(property, mapOf("email" to "test@example.com")))
+        assertFalse(evaluator.matchProperty(property, mapOf("email" to "test@example.org")))
+    }
+
+    @Test
+    internal fun testMatchPropertyNotEndsWith() {
+        val property =
+            FlagProperty(
+                key = "email",
+                propertyValue = ".com",
+                propertyOperator = PropertyOperator.NOT_ENDS_WITH,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        assertTrue(evaluator.matchProperty(property, mapOf("email" to "test@example.org")))
+        assertFalse(evaluator.matchProperty(property, mapOf("email" to "test@example.COM")))
+    }
+
+    @Test
     internal fun testMatchPropertyRegex() {
         val property =
             FlagProperty(
