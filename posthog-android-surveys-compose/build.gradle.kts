@@ -80,7 +80,7 @@ dependencies {
     // Compose and never downgrades a host on a newer one. We deliberately don't go older (e.g. 1.2.x):
     // Material 3 has had binary-breaking API changes (e.g. ModalBottomSheetProperties), so compiling
     // against an older line risks a runtime crash on the 1.3.x hosts that are common today.
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
