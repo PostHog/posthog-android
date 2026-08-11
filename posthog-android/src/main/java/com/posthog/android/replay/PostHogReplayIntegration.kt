@@ -65,6 +65,7 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
+import com.posthog.android.replay.internal.IntHashSet
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.WindowDrawState
@@ -227,21 +228,27 @@ public class PostHogReplayIntegration(
         drawState.recordDraw()
     }
 
+    // Reused across frames; draw-time walks only ever run on the main thread.
+    private val drawSampleWalk = MaskWalk()
+
     internal fun onDrawCallback(
         view: View,
         drawState: WindowDrawState,
     ) {
         onDrawCallback(drawState)
-        val captureToken = drawState.beginDrawSample() ?: return
+        val capture = drawState.beginDrawSample() ?: return
 
-        val walk = MaskWalk()
+        val walk = drawSampleWalk
+        walk.resetForCompareAgainst(capture.baselineRects)
+        var misaligned: Boolean
         try {
             findMaskableWidgets(view, walk)
+            misaligned = walk.isMisaligned() || walk.poisoned
         } catch (e: Throwable) {
             config.logger.log("Session Replay draw-time mask walk failed: $e.")
-            walk.poisoned = true
+            misaligned = true
         }
-        drawState.recordMaskWalk(captureToken, walk.rects, walk.poisoned)
+        drawState.recordMaskWalk(capture.token, misaligned)
     }
 
     private fun addView(
@@ -776,7 +783,7 @@ public class PostHogReplayIntegration(
     /**
      * Adapted from https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/view/View.java;l=11620;bpv=0;bpt=1
      */
-    private fun View.isVisible(): Boolean {
+    private fun View.isVisible(walk: MaskWalk? = null): Boolean {
         try {
             if (width <= 0 || height <= 0) return false
 
@@ -800,7 +807,7 @@ public class PostHogReplayIntegration(
                 }
 
                 // Check if view is in a stable state before accessing matrix-dependent operations
-                return hasGlobalVisibleRect()
+                return hasGlobalVisibleRect(walk)
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
 //            if (boundInView != null) {
@@ -825,64 +832,27 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.globalVisibleRect(offset: Point? = null): Rect? {
-        return if (isViewStateStableForMatrixOperations()) {
-            val rect = Rect()
-            getGlobalVisibleRect(rect, offset)
-            rect
-        } else {
-            null
-        }
-    }
-
     /**
-     * Checks whether the view has a non-empty visible rect.
+     * Checks whether the view has a non-empty visible rect. Walk callers pass their walk so
+     * its scratch objects are reused; other callers allocate per call (see the wireframe
+     * vs delayed-screenshot-walk race test).
      */
-    private fun View.hasGlobalVisibleRect(): Boolean {
+    private fun View.hasGlobalVisibleRect(walk: MaskWalk? = null): Boolean {
         return if (isViewStateStableForMatrixOperations()) {
-            getGlobalVisibleRect(Rect(), Point())
+            if (walk != null) {
+                getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+            } else {
+                getGlobalVisibleRect(Rect(), Point())
+            }
         } else {
             false
         }
     }
 
-    /**
-     * Returns the global visible rect of just the text content area within a TextView.
-     * For EditText, Button, and CompoundButton subclasses (CheckBox, RadioButton, Switch),
-     * this excludes the padding and compound drawables, masking only the text area.
-     * For regular TextView, this falls back to the full view rect.
-     */
-    private fun TextView.getTextAreaGlobalVisibleRect(): Rect? {
-        // Only adjust bounds for views that typically have significant padding or compound drawables
-        // EditText: has border/underline padding
-        // Button: has background padding
-        // CompoundButton (CheckBox, RadioButton, Switch): has checkbox/radio/switch drawable
-        val shouldAdjustBounds = this is EditText || this is Button
-
-        if (!shouldAdjustBounds) {
-            return globalVisibleRect()
-        }
-
-        return globalVisibleRect()?.let { fullRect ->
-            // Calculate the text area bounds by accounting for compound padding
-            // Compound padding includes both regular padding and drawable padding
-            val textAreaLeft = fullRect.left + compoundPaddingLeft
-            val textAreaTop = fullRect.top + compoundPaddingTop
-            val textAreaRight = fullRect.right - compoundPaddingRight
-            val textAreaBottom = fullRect.bottom - compoundPaddingBottom
-
-            // Ensure we have valid bounds
-            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
-                Rect(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
-            } else {
-                // Fall back to full rect if text area is too small
-                fullRect
-            }
-        }
-    }
-
     private fun View.isViewStateStableForMatrixOperations(): Boolean {
         return try {
+            // isAttachedToWindow implies an attached root: attach info propagates down from
+            // the ViewRootImpl, so a separate rootView check would be redundant.
             isAttachedToWindow &&
                 (isLaidOut || PostHogSessionManager.isReactNative) &&
                 // Check if view has valid dimensions
@@ -894,9 +864,7 @@ public class PostHogReplayIntegration(
                 // Check if view is not currently being animated
                 !isAnimationRunning() &&
                 // Check if view tree is not currently computing layout
-                !isComputingLayout() &&
-                // Check if view hierarchy is stable
-                rootView?.isAttachedToWindow == true
+                !isComputingLayout()
         } catch (e: Throwable) {
             // If any check fails, assume unstable state
             config.logger.log("Session Replay view state check failed: $e.")
@@ -933,32 +901,70 @@ public class PostHogReplayIntegration(
     internal class MaskWalk {
         val rects: MutableList<Rect> = mutableListOf()
         var poisoned: Boolean = false
+
+        // Compare mode: rects stream against the capture baseline instead of being stored, so
+        // the per-frame draw-time walk allocates nothing and can stop on the first mismatch.
+        private var baseline: List<Rect>? = null
+        private var baselineCursor = 0
+        private var misaligned = false
+
+        // Scratch objects; a walk is confined to a single thread.
+        val scratchRect = Rect()
+        val scratchPoint = Point()
+        val visitedViews = IntHashSet()
+
+        fun resetForCompareAgainst(baselineRects: List<Rect>) {
+            rects.clear()
+            poisoned = false
+            baseline = baselineRects
+            baselineCursor = 0
+            misaligned = false
+            visitedViews.clear()
+        }
+
+        fun addRect(rect: Rect) {
+            val baseline = baseline
+            if (baseline == null) {
+                // Deep copy: rect is usually this walk's shared scratch.
+                rects.add(Rect(rect))
+            } else if (baselineCursor >= baseline.size || baseline[baselineCursor++] != rect) {
+                misaligned = true
+            }
+        }
+
+        // True when the streamed rects did not exactly match the baseline (order-sensitive,
+        // same as List.equals on the stored rects would be).
+        fun isMisaligned(): Boolean {
+            val baseline = baseline ?: return misaligned
+            return misaligned || baselineCursor != baseline.size
+        }
+
+        // Stopping early is monotone-safe: neither poisoned nor misaligned can be unset, and
+        // both verdicts already seal the walk's outcome as "discard".
+        val shouldStop: Boolean
+            get() = poisoned || misaligned
     }
 
-    private fun findMaskableWidgets(
+    // internal (not private) so tests and benchmarks can drive walks directly.
+    internal fun findMaskableWidgets(
         view: View,
         walk: MaskWalk,
-        visitedViews: MutableSet<Int> = mutableSetOf(),
     ) {
-        if (walk.poisoned) {
+        if (walk.shouldStop) {
             return
         }
 
-        val maskableWidgets = walk.rects
-        val viewId = System.identityHashCode(view)
-
-        // Check for cycles to prevent stack overflow
-        if (viewId in visitedViews) {
+        // Guards against a pathological hierarchy (broken custom getChildAt) recursing forever.
+        if (!walk.visitedViews.add(System.identityHashCode(view))) {
             return
         }
-        visitedViews.add(viewId)
 
         var walkChildren = false
 
         when {
             view.isComposeView() -> {
                 findMaskableComposeWidgets(view, walk)
-                if (walk.poisoned) {
+                if (walk.shouldStop) {
                     return
                 }
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
@@ -970,55 +976,32 @@ public class PostHogReplayIntegration(
             }
 
             view.isNoCapture() -> {
-                view.globalVisibleRect()?.let {
-                    maskableWidgets.add(it)
-                }
+                view.addGlobalVisibleRect(walk)
             }
 
             view is TextView -> {
-                val viewText = view.text?.toString()
-                var maskIt = false
-                if (!viewText.isNullOrEmpty()) {
-                    maskIt =
-                        view.shouldMaskTextView()
-                }
-
-                val hint = view.hint?.toString()
-                if (!maskIt && !hint.isNullOrEmpty()) {
-                    maskIt =
-                        view.shouldMaskTextView()
-                }
-
-                if (maskIt) {
-                    // For EditText, mask only the text area (excluding padding and compound drawables)
-                    // For regular TextView, mask the full view
-                    view.getTextAreaGlobalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                // Only emptiness matters here; toString() would copy the text on every walk.
+                val hasContent = view.text?.isNotEmpty() == true || view.hint?.isNotEmpty() == true
+                if (hasContent && view.shouldMaskTextView()) {
+                    view.addTextAreaGlobalVisibleRect(walk)
                 }
             }
 
             view is Spinner -> {
                 if (view.shouldMaskSpinner()) {
-                    view.globalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                    view.addGlobalVisibleRect(walk)
                 }
             }
 
             view is ImageView -> {
                 if (view.shouldMaskImage()) {
-                    view.globalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                    view.addGlobalVisibleRect(walk)
                 }
             }
 
             view is WebView -> {
                 if (view.isAnyInputSensitive()) {
-                    view.globalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                    view.addGlobalVisibleRect(walk)
                 }
             }
 
@@ -1029,13 +1012,13 @@ public class PostHogReplayIntegration(
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
-                if (walk.poisoned) {
+                if (walk.shouldStop) {
                     return
                 }
 
                 val viewChild = view.getChildAt(i) ?: continue
 
-                if (!viewChild.isVisible()) {
+                if (!viewChild.isVisible(walk)) {
                     // A skipped-but-rendered view could be a masked widget we cannot place.
                     if (viewChild.isRenderedButUnplaceable()) {
                         walk.poisoned = true
@@ -1044,9 +1027,42 @@ public class PostHogReplayIntegration(
                     continue
                 }
 
-                findMaskableWidgets(viewChild, walk, visitedViews)
+                findMaskableWidgets(viewChild, walk)
             }
         }
+    }
+
+    private fun View.addGlobalVisibleRect(walk: MaskWalk) {
+        if (isViewStateStableForMatrixOperations()) {
+            getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+            walk.addRect(walk.scratchRect)
+        }
+    }
+
+    /**
+     * Adds the global visible rect of just the text content area within a TextView.
+     * For EditText and Button subclasses this excludes the padding and compound drawables,
+     * masking only the text area. For regular TextView, the full view rect is used.
+     */
+    private fun TextView.addTextAreaGlobalVisibleRect(walk: MaskWalk) {
+        if (!isViewStateStableForMatrixOperations()) {
+            return
+        }
+        getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+        val rect = walk.scratchRect
+        // Only adjust bounds for views that typically have significant padding or compound
+        // drawables (EditText border/underline, Button background padding).
+        if (this is EditText || this is Button) {
+            val textAreaLeft = rect.left + compoundPaddingLeft
+            val textAreaTop = rect.top + compoundPaddingTop
+            val textAreaRight = rect.right - compoundPaddingRight
+            val textAreaBottom = rect.bottom - compoundPaddingBottom
+            // Fall back to the full rect if the text area is too small
+            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
+                rect.set(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
+            }
+        }
+        walk.addRect(rect)
     }
 
     // Rendered per its flags, but its geometry is momentarily unknowable (mid animation,
@@ -1061,8 +1077,6 @@ public class PostHogReplayIntegration(
         view: View,
         walk: MaskWalk,
     ) {
-        val latch = CountDownLatch(1)
-
         // Local list so a timed-out runnable that fires late cannot mutate the walk.
         val maskableWidgets = mutableListOf<Rect>()
         var traversalSucceeded = false
@@ -1118,8 +1132,6 @@ public class PostHogReplayIntegration(
                 } catch (e: Throwable) {
                     // Compose APIs vary by version. Missing masks must fail closed.
                     config.logger.log("Session Replay findMaskableComposeWidgets (main thread) failed: $e")
-                } finally {
-                    latch.countDown()
                 }
             }
 
@@ -1130,7 +1142,14 @@ public class PostHogReplayIntegration(
                 traversal.run()
                 true
             } else {
-                mainHandler.handler.post(traversal)
+                val latch = CountDownLatch(1)
+                mainHandler.handler.post {
+                    try {
+                        traversal.run()
+                    } finally {
+                        latch.countDown()
+                    }
+                }
                 try {
                     latch.await(1000, TimeUnit.MILLISECONDS)
                 } catch (e: Throwable) {
@@ -1140,7 +1159,11 @@ public class PostHogReplayIntegration(
             }
 
         if (completed && traversalSucceeded) {
-            walk.rects.addAll(maskableWidgets)
+            // Feed through addRect on the walk's owner thread so compare mode also covers
+            // Compose rects.
+            for (rect in maskableWidgets) {
+                walk.addRect(rect)
+            }
         } else {
             // Compose mask rects are missing or incomplete, so fail closed.
             walk.poisoned = true
@@ -1240,11 +1263,17 @@ public class PostHogReplayIntegration(
             return null
         }
 
+        // A draw or layout during the pre-walk means the baseline may be torn; such a capture
+        // could never be kept, so skip the bitmap and PixelCopy cost instead of discarding late.
         val captureToken =
             drawState.beginMaskCapture(
                 preWalk.rects,
                 drawGenerationBeforePreWalk,
             )
+        if (captureToken == null) {
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return null
+        }
         val bitmap: Bitmap
         val handler: Handler
         try {
@@ -1273,7 +1302,9 @@ public class PostHogReplayIntegration(
                         success = false
                     } else {
                         val postWalk = MaskWalk()
-                        val alreadyDoomed = drawState.didLayoutSinceReset
+                        // A layout pass or an invalidating draw sample already sealed the
+                        // verdict as discard, so the post-copy walk would be wasted work.
+                        val alreadyDoomed = drawState.isCaptureInvalid(captureToken)
                         if (!alreadyDoomed) {
                             findMaskableWidgets(view, postWalk)
                         }
@@ -1300,8 +1331,10 @@ public class PostHogReplayIntegration(
                                     return@request
                                 }
 
+                            val maskRect = RectF()
                             postWalk.rects.forEach {
-                                canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
+                                maskRect.set(it)
+                                canvas.drawRoundRect(maskRect, 10f, 10f, paint)
                             }
                         } else {
                             // Masks may be out of sync with the pixels, discard to avoid a PII leak.

@@ -1882,22 +1882,45 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
+    fun `a redraw during the pre-copy mask walk skips PixelCopy entirely`() {
+        // Such a capture could never be kept, so the bitmap + PixelCopy cost must be skipped.
+        val h = screenshotCaptureHarness()
+        try {
+            h.hookLayout.onWalkTouch = {
+                h.hookLayout.onWalkTouch = null
+                h.fx.sut.onDrawCallback(h.status.drawState)
+            }
+            CountingShadowPixelCopy.requestCount = 0
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+            assertEquals(0, CountingShadowPixelCopy.requestCount)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
     fun `screenshot capture discards the frame when a masked widget moved mid-capture`() {
         val h = screenshotCaptureHarness()
         try {
             var touches = 0
             h.hookLayout.onWalkTouch = {
-                h.fx.sut.onDrawCallback(h.status.drawState)
                 touches++
-                // The second touch is the post-copy walk: move the masked child mid-capture.
+                // The second touch is the post-copy walk: redraw and move the masked child
+                // mid-capture. (A draw during the pre-walk would already fail fast.)
                 if (touches == 2) {
+                    h.fx.sut.onDrawCallback(h.status.drawState)
                     h.child.layout(0, 50, 100, 70)
                 }
             }
 
             h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
+            assertEquals(2, touches)
             assertEquals(0, h.fake.captures)
         } finally {
             h.fx.sut.uninstall()
@@ -1909,13 +1932,20 @@ internal class PostHogReplayIntegrationTest {
     fun `screenshot capture discards the frame when a layout pass ran mid-capture`() {
         val h = screenshotCaptureHarness()
         try {
+            var touches = 0
             h.hookLayout.onWalkTouch = {
-                h.fx.sut.onDrawCallback(h.status.drawState)
-                h.status.drawState.didLayoutSinceReset = true
+                touches++
+                // The second touch is the post-copy walk: a layout pass lands mid-capture.
+                // (A draw or layout during the pre-walk would already fail fast.)
+                if (touches == 2) {
+                    h.fx.sut.onDrawCallback(h.status.drawState)
+                    h.status.drawState.didLayoutSinceReset = true
+                }
             }
 
             h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
+            assertEquals(2, touches)
             assertEquals(0, h.fake.captures)
         } finally {
             h.fx.sut.uninstall()

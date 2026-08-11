@@ -19,7 +19,8 @@ internal data class MaskCaptureToken(
     val id: Long,
 )
 
-private class ActiveMaskCapture(
+// internal (not private) so beginDrawSample can hand the baseline out together with the token.
+internal class ActiveMaskCapture(
     val token: MaskCaptureToken,
     val baselineRects: List<Rect>,
     var invalid: Boolean = false,
@@ -58,34 +59,39 @@ internal class WindowDrawState {
         }
     }
 
+    // Null when a draw or layout already landed during the pre-walk: such a capture could
+    // never be kept, so the caller can skip the bitmap and PixelCopy work entirely.
     fun beginMaskCapture(
         rects: List<Rect>,
         expectedDrawGeneration: Long,
-    ): MaskCaptureToken {
+    ): MaskCaptureToken? {
         synchronized(captureLock) {
+            if (drawGeneration != expectedDrawGeneration || didLayoutSinceReset) {
+                activeCapture = null
+                return null
+            }
             val token = MaskCaptureToken(++nextCaptureId)
-            activeCapture =
-                ActiveMaskCapture(
-                    token,
-                    rects.map(::Rect),
-                    invalid = drawGeneration != expectedDrawGeneration,
-                )
+            activeCapture = ActiveMaskCapture(token, rects.map(::Rect))
             return token
         }
     }
 
-    fun beginDrawSample(): MaskCaptureToken? {
+    // Null when there is no capture to sample, or its verdict is already sealed as discard —
+    // then the per-frame mask walk would be wasted work.
+    fun beginDrawSample(): ActiveMaskCapture? {
         synchronized(captureLock) {
             val capture = activeCapture ?: return null
+            if (capture.invalid || didLayoutSinceReset) {
+                return null
+            }
             capture.drawSamplesInProgress++
-            return capture.token
+            return capture
         }
     }
 
     fun recordMaskWalk(
         token: MaskCaptureToken,
-        rects: List<Rect>,
-        poisoned: Boolean,
+        misaligned: Boolean,
     ) {
         synchronized(captureLock) {
             val capture = activeCapture
@@ -93,7 +99,7 @@ internal class WindowDrawState {
                 return
             }
             capture.drawSamplesInProgress--
-            if (poisoned || capture.baselineRects != rects) {
+            if (misaligned) {
                 capture.invalid = true
             }
         }
@@ -103,6 +109,18 @@ internal class WindowDrawState {
         didLayoutSinceReset = true
         synchronized(captureLock) {
             activeCapture?.invalid = true
+        }
+    }
+
+    // True when the capture can no longer be kept, letting the PixelCopy callback skip its
+    // post-copy walk. Monotone: nothing ever clears invalid, so a true here is final.
+    fun isCaptureInvalid(token: MaskCaptureToken): Boolean {
+        synchronized(captureLock) {
+            val capture = activeCapture
+            if (capture?.token != token) {
+                return true
+            }
+            return capture.invalid || didLayoutSinceReset
         }
     }
 

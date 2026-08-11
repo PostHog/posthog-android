@@ -114,15 +114,7 @@ internal class PostHogReplayComposeMaskTraversalTest {
         val sut = PostHogReplayIntegration(context, config, MainHandler())
         return executor.submit<PostHogReplayIntegration.MaskWalk> {
             val walk = PostHogReplayIntegration.MaskWalk()
-            val method =
-                PostHogReplayIntegration::class.java.getDeclaredMethod(
-                    "findMaskableWidgets",
-                    View::class.java,
-                    PostHogReplayIntegration.MaskWalk::class.java,
-                    MutableSet::class.java,
-                )
-            method.isAccessible = true
-            method.invoke(sut, view, walk, mutableSetOf<Int>())
+            sut.findMaskableWidgets(view, walk)
             walk
         }
     }
