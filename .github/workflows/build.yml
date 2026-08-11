@@ -49,7 +49,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Build and regenerate dependency locks
+      - name: Make compile
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        run: make compile
+
+      - name: Regenerate dependency locks
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make updateLocks
 
