@@ -23,7 +23,7 @@ kotlin {
 dependencies {
     implementation("com.android.tools.build:gradle:${versions["agpVersion"]}")
     // Spring Boot 4 requires a newer Commons Compress than AGP's transitive 1.21.
-    implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
     // Compose compiler plugin for Kotlin 2.0+ (used by sample app)
     implementation("org.jetbrains.kotlin:compose-compiler-gradle-plugin:${versions["kotlinVersion"]}")
