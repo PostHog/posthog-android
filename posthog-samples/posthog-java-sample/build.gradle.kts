@@ -23,5 +23,5 @@ dependencies {
     implementation("com.google.code.gson:gson:${PosthogBuildConfig.Dependencies.GSON}")
 
     // Example logging
-    implementation("org.slf4j:slf4j-simple:1.7.36")
+    implementation("org.slf4j:slf4j-simple:2.0.18")
 }
