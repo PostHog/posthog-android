@@ -85,6 +85,10 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
     archiveClassifier.set("html-doc")
 }
 
+tasks.named("assemble") {
+    dependsOn(dokkaJavadocJar, dokkaHtmlJar)
+}
+
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions {
         jvmTarget.set(
