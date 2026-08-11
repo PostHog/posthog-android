@@ -49,9 +49,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Make compile
+      - name: Build and regenerate dependency locks
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
-        run: make compile
+        run: make updateLocks
+
+      - name: Check dependency locks
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        run: git diff --exit-code -- ':(glob)**/gradle.lockfile'
 
       - name: Make stop
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'

@@ -73,4 +73,4 @@ generateLintBaseLine:
 
 # Regenerate gradle.lockfile for all projects after dependency changes
 updateLocks:
-	./gradlew build --write-locks
+	./gradlew build :posthog:dokkaJavadoc :posthog-server:dokkaJavadoc --write-locks
