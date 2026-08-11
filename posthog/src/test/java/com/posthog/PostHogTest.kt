@@ -1183,6 +1183,21 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `optIn notifies PostHogOptInReceiver integrations`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), optOut = true, integration = integration, preloadFeatureFlags = false)
+
+        sut.optIn()
+
+        assertEquals(1, integration.onOptInCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `captures an event`() {
         val http = mockHttp()
         val url = http.url("/")

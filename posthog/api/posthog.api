@@ -431,6 +431,10 @@ public abstract interface class com/posthog/PostHogOnFeatureFlags {
 	public abstract fun loaded ()V
 }
 
+public abstract interface class com/posthog/PostHogOptInReceiver {
+	public abstract fun onOptIn ()V
+}
+
 public abstract interface class com/posthog/PostHogPropertiesSanitizer {
 	public abstract fun sanitize (Ljava/util/Map;)Ljava/util/Map;
 }
