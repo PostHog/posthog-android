@@ -44,6 +44,13 @@ internal class FlagEvaluator(
             val normalized = Normalizer.normalize(input, Normalizer.Form.NFD)
             return REGEX_COMBINING_MARKS.replace(normalized, "").uppercase().lowercase()
         }
+
+        private fun asciiCasefold(input: String): String =
+            buildString(input.length) {
+                input.forEach { character ->
+                    append(if (character in 'A'..'Z') character.lowercaseChar() else character)
+                }
+            }
     }
 
     private data class VariantLookupEntry(
@@ -274,14 +281,14 @@ internal class FlagEvaluator(
         value: String,
         prefix: String,
     ): Boolean {
-        return casefold(value).startsWith(casefold(prefix))
+        return asciiCasefold(value).startsWith(asciiCasefold(prefix))
     }
 
     private fun stringEndsWith(
         value: String,
         suffix: String,
     ): Boolean {
-        return casefold(value).endsWith(casefold(suffix))
+        return asciiCasefold(value).endsWith(asciiCasefold(suffix))
     }
 
     private fun matchesRegex(

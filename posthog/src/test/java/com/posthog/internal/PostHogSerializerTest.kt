@@ -115,6 +115,26 @@ internal class PostHogSerializerTest {
     }
 
     @Test
+    fun `round trips prefix and suffix property operators`() {
+        val sut = getSut()
+        val operators =
+            mapOf(
+                PropertyOperator.STARTS_WITH to "starts_with",
+                PropertyOperator.NOT_STARTS_WITH to "not_starts_with",
+                PropertyOperator.ENDS_WITH to "ends_with",
+                PropertyOperator.NOT_ENDS_WITH to "not_ends_with",
+            )
+
+        operators.forEach { (operator, wireValue) ->
+            val serialized = StringWriter()
+            sut.serialize(operator, serialized)
+
+            assertEquals("\"$wireValue\"", serialized.toString())
+            assertEquals(operator, sut.deserialize<PropertyOperator>(serialized.toString().reader()))
+        }
+    }
+
+    @Test
     fun `serializes legacy file`() {
         val sut = getSut()
 

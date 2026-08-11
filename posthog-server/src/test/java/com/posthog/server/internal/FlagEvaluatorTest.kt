@@ -289,6 +289,31 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testMatchPropertyPrefixAndSuffixUseAsciiCasefolding() {
+        val startsWithProperty =
+            FlagProperty(
+                key = "city",
+                propertyValue = "istan",
+                propertyOperator = PropertyOperator.STARTS_WITH,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        val endsWithProperty =
+            FlagProperty(
+                key = "street",
+                propertyValue = "sse",
+                propertyOperator = PropertyOperator.ENDS_WITH,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+
+        assertFalse(evaluator.matchProperty(startsWithProperty, mapOf("city" to "İstanbul")))
+        assertFalse(evaluator.matchProperty(endsWithProperty, mapOf("street" to "Straße")))
+    }
+
+    @Test
     internal fun testMatchPropertyNotEndsWith() {
         val property =
             FlagProperty(
