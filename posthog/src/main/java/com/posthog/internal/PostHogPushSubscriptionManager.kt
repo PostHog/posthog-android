@@ -235,7 +235,10 @@ internal class PostHogPushSubscriptionManager(
         pending: PendingUnregister,
         isRetry: Boolean = false,
     ) {
-        if (closed || config.optOut) {
+        // A DELETE removes data rather than collecting it, so opt-out must not block it: gating cleanup
+        // on config.optOut would leave the server-side subscription live for the whole opted-out period.
+        // Opt-out still blocks registration and sends (their own guards keep config.optOut).
+        if (closed) {
             return
         }
         if (pending.distinctId.isBlank() || pending.deviceToken.isBlank() || pending.appId.isBlank()) {
@@ -247,7 +250,7 @@ internal class PostHogPushSubscriptionManager(
             return
         }
         resolveIdentityToken(pending.distinctId, pending.appId) { identityToken ->
-            if (closed || config.optOut) {
+            if (closed) {
                 return@resolveIdentityToken
             }
             // A same-identity same-app registration can queue and even complete while this DELETE's
