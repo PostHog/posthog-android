@@ -1,5 +1,11 @@
 ## Next
 
+## 2.11.0
+
+### Minor Changes
+
+- 0aeab4e: Support the `starts_with`, `not_starts_with`, `ends_with`, and `not_ends_with` property-filter operators in local feature flag evaluation. Both the property value and filter value are stringified and ASCII case-folded before the prefix/suffix comparison; the `not_*` variants negate the result. Flags targeting on these operators previously could not be evaluated locally and always fell back to remote evaluation.
+
 ## 2.10.0
 
 ### Minor Changes
