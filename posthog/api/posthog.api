@@ -1066,6 +1066,7 @@ public final class com/posthog/internal/PropertyGroupDeserializer : com/google/g
 
 public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field Companion Lcom/posthog/internal/PropertyOperator$Companion;
+	public static final field ENDS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field EXACT Lcom/posthog/internal/PropertyOperator;
 	public static final field FLAG_EVALUATES_TO Lcom/posthog/internal/PropertyOperator;
 	public static final field GT Lcom/posthog/internal/PropertyOperator;
@@ -1079,8 +1080,10 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field IS_SET Lcom/posthog/internal/PropertyOperator;
 	public static final field LT Lcom/posthog/internal/PropertyOperator;
 	public static final field LTE Lcom/posthog/internal/PropertyOperator;
+	public static final field NOT_ENDS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field NOT_ICONTAINS Lcom/posthog/internal/PropertyOperator;
 	public static final field NOT_REGEX Lcom/posthog/internal/PropertyOperator;
+	public static final field NOT_STARTS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field REGEX Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_CARET Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_EQ Lcom/posthog/internal/PropertyOperator;
@@ -1091,6 +1094,7 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field SEMVER_NEQ Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_TILDE Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_WILDCARD Lcom/posthog/internal/PropertyOperator;
+	public static final field STARTS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field UNKNOWN Lcom/posthog/internal/PropertyOperator;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PropertyOperator;

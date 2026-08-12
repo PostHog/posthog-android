@@ -125,6 +125,10 @@ public enum class PropertyOperator {
     IS_NOT_SET,
     ICONTAINS,
     NOT_ICONTAINS,
+    STARTS_WITH,
+    NOT_STARTS_WITH,
+    ENDS_WITH,
+    NOT_ENDS_WITH,
     REGEX,
     NOT_REGEX,
     IN,
@@ -155,6 +159,10 @@ public enum class PropertyOperator {
                 "is_not_set" -> IS_NOT_SET
                 "icontains" -> ICONTAINS
                 "not_icontains" -> NOT_ICONTAINS
+                "starts_with" -> STARTS_WITH
+                "not_starts_with" -> NOT_STARTS_WITH
+                "ends_with" -> ENDS_WITH
+                "not_ends_with" -> NOT_ENDS_WITH
                 "regex" -> REGEX
                 "not_regex" -> NOT_REGEX
                 "in" -> IN
