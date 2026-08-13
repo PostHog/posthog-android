@@ -65,7 +65,9 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
+import com.posthog.android.replay.internal.BaselineResult
 import com.posthog.android.replay.internal.IntHashSet
+import com.posthog.android.replay.internal.MaskCaptureToken
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.WindowDrawState
@@ -1218,6 +1220,47 @@ public class PostHogReplayIntegration(
             preWalk.rects == postWalk.rects
     }
 
+    // A screenshot capture armed for draw verification: the token draws are checked
+    // against, plus the pre-walk whose rects became the baseline.
+    private class ArmedMaskCapture(
+        val token: MaskCaptureToken,
+        val preWalk: MaskWalk,
+    )
+
+    // Arms the capture before the pre-walk so no draw can slip between the walk and the
+    // arming. A draw overlapping the pre-walk may leave the walked baseline torn, so that
+    // attempt is thrown away and re-walked from scratch under a fresh capture, bounded so
+    // a screen that redraws during every attempt discards instead of looping. Layout,
+    // poison, and external invalidation discard immediately.
+    private fun armMaskCapture(
+        view: View,
+        drawState: WindowDrawState,
+    ): ArmedMaskCapture? {
+        repeat(MAX_BASELINE_ARM_ATTEMPTS) {
+            val token = drawState.beginMaskCapture()
+            val preWalk = MaskWalk()
+            try {
+                findMaskableWidgets(view, preWalk)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay mask walk failed: $e.")
+                preWalk.poisoned = true
+            }
+            if (preWalk.poisoned) {
+                drawState.cancelMaskCapture(token)
+                return null
+            }
+            when (drawState.setBaseline(token, preWalk.rects)) {
+                BaselineResult.ARMED -> return ArmedMaskCapture(token, preWalk)
+                BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
+                BaselineResult.UNKEEPABLE -> {
+                    drawState.cancelMaskCapture(token)
+                    return null
+                }
+            }
+        }
+        return null
+    }
+
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
     private fun View.toScreenshotWireframe(
@@ -1247,34 +1290,16 @@ public class PostHogReplayIntegration(
 
         drawState.reset()
 
-        // Armed before the pre-walk so no draw can slip between the walk and the arming.
-        // A draw during the pre-walk invalidates the capture; once the baseline is fixed,
-        // draws are verified against it, so pixel-only redraws (spinners, Lottie) survive
-        // while geometry changes (even ones that change back) invalidate.
-        val captureToken = drawState.beginMaskCapture()
-
-        // Sampled before the pixels freeze.
-        val preWalk = MaskWalk()
-        try {
-            findMaskableWidgets(view, preWalk)
-        } catch (e: Throwable) {
-            config.logger.log("Session Replay mask walk failed: $e.")
-            preWalk.poisoned = true
-        }
-
-        if (preWalk.poisoned) {
-            drawState.cancelMaskCapture(captureToken)
+        // The pre-walk samples the baseline before the pixels freeze. Once armed, draws are
+        // verified against it, so pixel-only redraws (spinners, Lottie) survive while
+        // geometry changes (even ones that change back) invalidate.
+        val armedCapture = armMaskCapture(view, drawState)
+        if (armedCapture == null) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return null
         }
-
-        // An unkeepable capture (layout, or a disagreeing pre-walk draw sample) is discarded
-        // here, before paying for the bitmap and PixelCopy.
-        if (!drawState.setBaseline(captureToken, preWalk.rects)) {
-            drawState.cancelMaskCapture(captureToken)
-            config.logger.log("Session Replay screenshot discarded due to screen changes.")
-            return null
-        }
+        val captureToken = armedCapture.token
+        val preWalk = armedCapture.preWalk
         val bitmap: Bitmap
         val handler: Handler
         try {
@@ -2398,6 +2423,10 @@ public class PostHogReplayIntegration(
         const val PH_NO_MASK_LABEL: String = "ph-no-mask"
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
+
+        // Pre-walk re-arm attempts per capture: a screen that redraws during every attempt
+        // discards this tick and retries at the next scheduled snapshot.
+        private const val MAX_BASELINE_ARM_ATTEMPTS: Int = 3
 
         private val integrationInstalled = AtomicBoolean(false)
     }

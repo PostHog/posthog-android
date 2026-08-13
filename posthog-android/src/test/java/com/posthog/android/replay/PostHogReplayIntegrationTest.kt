@@ -1839,27 +1839,31 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
-    fun `a redraw during the pre-copy mask walk discards without paying for PixelCopy`() {
-        // The pre-walk may already reflect this draw's tree while PixelCopy can still freeze
-        // the frame before it, so baseline agreement proves nothing: fail closed, and skip
-        // the bitmap + PixelCopy cost for the unkeepable capture.
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `a redraw during the pre-copy mask walk re-arms and keeps the frame`() {
+        // The overlapped pre-walk may already reflect the draw's tree while PixelCopy can
+        // still freeze the frame before it, so its rects are thrown away; a fresh pre-walk
+        // arms a clean baseline and the pixel-only redraw is kept.
         val h = screenshotCaptureHarness()
         try {
-            var draws = 0
+            var copyRequests = 0
+            DrawSequenceShadowPixelCopy.onRequest = { copyRequests++ }
+            var walkTouches = 0
             h.hookLayout.onWalkTouch = {
-                h.hookLayout.onWalkTouch = null
-                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
-                draws++
+                walkTouches++
+                if (walkTouches == 1) {
+                    h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+                }
             }
-            CountingShadowPixelCopy.requestCount = 0
 
             h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
-            assertEquals(1, draws)
-            assertEquals(0, h.fake.captures)
-            assertEquals(0, CountingShadowPixelCopy.requestCount)
+            // Torn pre-walk, fresh pre-walk, then the post-copy walk.
+            assertEquals(3, walkTouches)
+            assertEquals(1, copyRequests)
+            assertEquals(1, h.fake.captures)
         } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
             h.fx.sut.uninstall()
         }
     }
@@ -1887,21 +1891,79 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
-    fun `a draw whose sample loses the race to setBaseline still discards the capture`() {
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `a draw whose sample loses the race to setBaseline still forces a fresh pre-walk`() {
         // recordDraw fires mid-pre-walk but the sample never lands before the baseline is
-        // fixed (the beginDrawSample lock race). The draw counter must still catch it: the
-        // pre-walk may reflect this draw's tree while PixelCopy freezes the frame before it.
+        // fixed (the beginDrawSample lock race). The draw counter must still catch it, so
+        // the overlapped walk is re-armed instead of trusted as the baseline.
         val h = screenshotCaptureHarness()
         try {
+            var copyRequests = 0
+            DrawSequenceShadowPixelCopy.onRequest = { copyRequests++ }
+            var walkTouches = 0
             h.hookLayout.onWalkTouch = {
-                h.hookLayout.onWalkTouch = null
-                h.fx.sut.onDrawCallback(h.status.drawState)
+                walkTouches++
+                if (walkTouches == 1) {
+                    h.fx.sut.onDrawCallback(h.status.drawState)
+                }
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(3, walkTouches)
+            assertEquals(1, copyRequests)
+            assertEquals(1, h.fake.captures)
+        } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
+    fun `a geometry-changing redraw during the pre-walk discards without re-arming`() {
+        // The layout flag holds for the whole capture window, so a fresh pre-walk could
+        // never arm: discard immediately, before paying for the bitmap and PixelCopy.
+        val h = screenshotCaptureHarness()
+        try {
+            var walkTouches = 0
+            h.hookLayout.onWalkTouch = {
+                walkTouches++
+                if (walkTouches == 1) {
+                    h.fx.sut.onDrawCallback(h.status.drawState)
+                    h.child.layout(0, 50, 100, 70)
+                    h.status.drawState.recordLayout()
+                }
             }
             CountingShadowPixelCopy.requestCount = 0
 
             h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
+            assertEquals(1, walkTouches)
+            assertEquals(0, h.fake.captures)
+            assertEquals(0, CountingShadowPixelCopy.requestCount)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
+    fun `re-arming after pre-walk redraws stops at the attempt cap`() {
+        // A screen that redraws during every pre-walk attempt must discard after the cap,
+        // not loop or ship an unverified frame.
+        val h = screenshotCaptureHarness()
+        try {
+            var walkTouches = 0
+            h.hookLayout.onWalkTouch = {
+                walkTouches++
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+            }
+            CountingShadowPixelCopy.requestCount = 0
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(3, walkTouches)
             assertEquals(0, h.fake.captures)
             assertEquals(0, CountingShadowPixelCopy.requestCount)
         } finally {
@@ -1918,7 +1980,7 @@ internal class PostHogReplayIntegrationTest {
             h.hookLayout.onWalkTouch = {
                 touches++
                 // The second touch is the post-copy walk: redraw and move the masked child
-                // mid-capture. (A draw during the pre-walk would already fail fast.)
+                // mid-capture. (A draw during the pre-walk would re-arm the baseline instead.)
                 if (touches == 2) {
                     h.fx.sut.onDrawCallback(h.status.drawState)
                     h.child.layout(0, 50, 100, 70)
@@ -1943,7 +2005,7 @@ internal class PostHogReplayIntegrationTest {
             h.hookLayout.onWalkTouch = {
                 touches++
                 // The second touch is the post-copy walk: a layout pass lands mid-capture.
-                // (A draw or layout during the pre-walk would already fail fast.)
+                // (During the pre-walk, a layout would fail fast and a draw would re-arm.)
                 if (touches == 2) {
                     h.fx.sut.onDrawCallback(h.status.drawState)
                     h.status.drawState.didLayoutSinceReset = true

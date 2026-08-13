@@ -33,6 +33,20 @@ internal class DrawSampleSession(
     val compareBaseline: List<Rect>,
 )
 
+// Outcome of fixing a capture baseline via setBaseline.
+internal enum class BaselineResult {
+    // The baseline is fixed; draws from here on are verified against it.
+    ARMED,
+
+    // A draw overlapped the pre-walk, so the walked rects may be torn. Only this walk is
+    // lost: a fresh pre-walk under a new capture can still arm cleanly.
+    TORN_BY_DRAW,
+
+    // A layout (which holds until the next capture reset) or an external invalidation
+    // (stop or session reset) landed; re-arming must not resurrect either.
+    UNKEEPABLE,
+}
+
 // Per-window because a draw in one window says nothing about another window's mask alignment.
 // Written on the main thread and capture threads, with capture state guarded by captureLock.
 internal class WindowDrawState {
@@ -74,23 +88,28 @@ internal class WindowDrawState {
         }
     }
 
-    // Fixes the pre-walk's rects as the capture baseline. Returns false when the capture is
-    // already unkeepable (layout, or a draw since arming), so the caller can skip the bitmap
-    // and PixelCopy work entirely.
+    // Fixes the pre-walk's rects as the capture baseline, reporting an unkeepable capture
+    // before the caller pays for the bitmap and PixelCopy work.
     fun setBaseline(
         token: MaskCaptureToken,
         rects: List<Rect>,
-    ): Boolean {
+    ): BaselineResult {
         synchronized(captureLock) {
             val capture = activeCapture
             if (capture?.token != token) {
-                return false
+                return BaselineResult.UNKEEPABLE
             }
-            if (drawCount != capture.armedDrawCount) {
+            val drawLandedSinceArming = drawCount != capture.armedDrawCount
+            if (drawLandedSinceArming) {
                 capture.invalid = true
             }
             capture.baselineRects = rects.map(::Rect)
-            return !capture.invalid && !didLayoutSinceReset
+            return when {
+                didLayoutSinceReset -> BaselineResult.UNKEEPABLE
+                capture.invalid && !drawLandedSinceArming -> BaselineResult.UNKEEPABLE
+                capture.invalid -> BaselineResult.TORN_BY_DRAW
+                else -> BaselineResult.ARMED
+            }
         }
     }
 
