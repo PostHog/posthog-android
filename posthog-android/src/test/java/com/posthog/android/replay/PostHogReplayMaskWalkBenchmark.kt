@@ -88,7 +88,8 @@ internal class PostHogReplayMaskWalkBenchmark {
 
         // 2. Draw-time walk while a capture is in flight (per frame during capture windows).
         val drawState = WindowDrawState()
-        drawState.beginMaskCapture(baseline, drawState.currentDrawGeneration())
+        val token = drawState.beginMaskCapture()
+        drawState.setBaseline(token, baseline)
         measure("draw-walk-during-capture[$label]", warmup = 200, iterations = 1000) {
             sut.onDrawCallback(root, drawState)
         }
