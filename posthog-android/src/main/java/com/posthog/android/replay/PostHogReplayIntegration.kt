@@ -236,19 +236,19 @@ public class PostHogReplayIntegration(
         drawState: WindowDrawState,
     ) {
         onDrawCallback(drawState)
-        val capture = drawState.beginDrawSample() ?: return
+        val session = drawState.beginDrawSample() ?: return
 
         val walk = drawSampleWalk
-        walk.resetForCompareAgainst(capture.baselineRects)
+        walk.resetForCompareAgainst(session.compareBaseline)
         var misaligned: Boolean
         try {
             findMaskableWidgets(view, walk)
-            misaligned = walk.isMisaligned() || walk.poisoned
+            misaligned = walk.poisoned || walk.isMisaligned()
         } catch (e: Throwable) {
             config.logger.log("Session Replay draw-time mask walk failed: $e.")
             misaligned = true
         }
-        drawState.recordMaskWalk(capture.token, misaligned)
+        drawState.recordMaskWalk(session.token, misaligned)
     }
 
     private fun addView(
@@ -1246,10 +1246,14 @@ public class PostHogReplayIntegration(
         var base64: String? = null
 
         drawState.reset()
-        val drawGenerationBeforePreWalk = drawState.currentDrawGeneration()
 
-        // Sampled before the pixels freeze. Draw-time walks remain active until the post-copy
-        // walk, so geometry that changes and returns between these endpoints also invalidates it.
+        // Armed before the pre-walk so no draw can slip between the walk and the arming.
+        // A draw during the pre-walk invalidates the capture; once the baseline is fixed,
+        // draws are verified against it, so pixel-only redraws (spinners, Lottie) survive
+        // while geometry changes (even ones that change back) invalidate.
+        val captureToken = drawState.beginMaskCapture()
+
+        // Sampled before the pixels freeze.
         val preWalk = MaskWalk()
         try {
             findMaskableWidgets(view, preWalk)
@@ -1259,18 +1263,15 @@ public class PostHogReplayIntegration(
         }
 
         if (preWalk.poisoned) {
+            drawState.cancelMaskCapture(captureToken)
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return null
         }
 
-        // A draw or layout during the pre-walk means the baseline may be torn; such a capture
-        // could never be kept, so skip the bitmap and PixelCopy cost instead of discarding late.
-        val captureToken =
-            drawState.beginMaskCapture(
-                preWalk.rects,
-                drawGenerationBeforePreWalk,
-            )
-        if (captureToken == null) {
+        // An unkeepable capture (layout, or a disagreeing pre-walk draw sample) is discarded
+        // here, before paying for the bitmap and PixelCopy.
+        if (!drawState.setBaseline(captureToken, preWalk.rects)) {
+            drawState.cancelMaskCapture(captureToken)
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return null
         }

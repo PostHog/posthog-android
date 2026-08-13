@@ -19,12 +19,18 @@ internal data class MaskCaptureToken(
     val id: Long,
 )
 
-// internal (not private) so beginDrawSample can hand the baseline out together with the token.
-internal class ActiveMaskCapture(
+private class ActiveMaskCapture(
     val token: MaskCaptureToken,
-    val baselineRects: List<Rect>,
+    val armedDrawCount: Long,
+    // Null until the pre-walk fixes it via setBaseline.
+    var baselineRects: List<Rect>? = null,
     var invalid: Boolean = false,
     var drawSamplesInProgress: Int = 0,
+)
+
+internal class DrawSampleSession(
+    val token: MaskCaptureToken,
+    val compareBaseline: List<Rect>,
 )
 
 // Per-window because a draw in one window says nothing about another window's mask alignment.
@@ -38,7 +44,6 @@ internal class WindowDrawState {
 
     private val captureLock = Any()
     private var nextCaptureId: Long = 0
-    private var drawGeneration: Long = 0
     private var activeCapture: ActiveMaskCapture? = null
 
     fun reset() {
@@ -46,46 +51,66 @@ internal class WindowDrawState {
         didLayoutSinceReset = false
     }
 
+    // Written only on the main thread (single writer), so the lock-free increment is safe.
+    // Monotone and never reset: captures compare snapshots of it, not absolute values.
+    @Volatile
+    private var drawCount: Long = 0
+
+    // recordDraw is a draw's very first instruction, so this counter (checked in setBaseline)
+    // classifies the draw deterministically as during-pre-walk or post-baseline. Relying on
+    // beginDrawSample alone would be racy: a during-pre-walk draw could lose the lock race to
+    // setBaseline and be misclassified as post-baseline.
     fun recordDraw() {
         isOnDrawnCalled = true
-        synchronized(captureLock) {
-            drawGeneration++
-        }
+        drawCount++
     }
 
-    fun currentDrawGeneration(): Long {
+    // Arms detection BEFORE the pre-walk, so a draw overlapping it cannot go unnoticed.
+    fun beginMaskCapture(): MaskCaptureToken {
         synchronized(captureLock) {
-            return drawGeneration
-        }
-    }
-
-    // Null when a draw or layout already landed during the pre-walk: such a capture could
-    // never be kept, so the caller can skip the bitmap and PixelCopy work entirely.
-    fun beginMaskCapture(
-        rects: List<Rect>,
-        expectedDrawGeneration: Long,
-    ): MaskCaptureToken? {
-        synchronized(captureLock) {
-            if (drawGeneration != expectedDrawGeneration || didLayoutSinceReset) {
-                activeCapture = null
-                return null
-            }
             val token = MaskCaptureToken(++nextCaptureId)
-            activeCapture = ActiveMaskCapture(token, rects.map(::Rect))
+            activeCapture = ActiveMaskCapture(token, armedDrawCount = drawCount)
             return token
         }
     }
 
+    // Fixes the pre-walk's rects as the capture baseline. Returns false when the capture is
+    // already unkeepable (layout, or a draw since arming), so the caller can skip the bitmap
+    // and PixelCopy work entirely.
+    fun setBaseline(
+        token: MaskCaptureToken,
+        rects: List<Rect>,
+    ): Boolean {
+        synchronized(captureLock) {
+            val capture = activeCapture
+            if (capture?.token != token) {
+                return false
+            }
+            if (drawCount != capture.armedDrawCount) {
+                capture.invalid = true
+            }
+            capture.baselineRects = rects.map(::Rect)
+            return !capture.invalid && !didLayoutSinceReset
+        }
+    }
+
     // Null when there is no capture to sample, or its verdict is already sealed as discard —
-    // then the per-frame mask walk would be wasted work.
-    fun beginDrawSample(): ActiveMaskCapture? {
+    // then the per-frame mask walk would be wasted work. A draw before the baseline is fixed
+    // invalidates outright: the pre-walk may already have read this draw's tree state while
+    // PixelCopy can still freeze the frame before it, so agreement would prove nothing.
+    fun beginDrawSample(): DrawSampleSession? {
         synchronized(captureLock) {
             val capture = activeCapture ?: return null
             if (capture.invalid || didLayoutSinceReset) {
                 return null
             }
+            val baseline = capture.baselineRects
+            if (baseline == null) {
+                capture.invalid = true
+                return null
+            }
             capture.drawSamplesInProgress++
-            return capture
+            return DrawSampleSession(capture.token, baseline)
         }
     }
 
@@ -135,6 +160,7 @@ internal class WindowDrawState {
                 return false
             }
             activeCapture = null
+            // baselineRects is null only when setBaseline never ran; fail closed then.
             return !capture.invalid &&
                 capture.drawSamplesInProgress == 0 &&
                 !didLayoutSinceReset &&

@@ -1839,8 +1839,11 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
-    fun `screenshot capture discards a redraw during the pre-copy mask walk`() {
+    @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
+    fun `a redraw during the pre-copy mask walk discards without paying for PixelCopy`() {
+        // The pre-walk may already reflect this draw's tree while PixelCopy can still freeze
+        // the frame before it, so baseline agreement proves nothing: fail closed, and skip
+        // the bitmap + PixelCopy cost for the unkeepable capture.
         val h = screenshotCaptureHarness()
         try {
             var draws = 0
@@ -1849,11 +1852,13 @@ internal class PostHogReplayIntegrationTest {
                 h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
                 draws++
             }
+            CountingShadowPixelCopy.requestCount = 0
 
             h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, draws)
             assertEquals(0, h.fake.captures)
+            assertEquals(0, CountingShadowPixelCopy.requestCount)
         } finally {
             h.fx.sut.uninstall()
         }
@@ -1883,8 +1888,10 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @Config(sdk = [26], shadows = [CountingShadowPixelCopy::class])
-    fun `a redraw during the pre-copy mask walk skips PixelCopy entirely`() {
-        // Such a capture could never be kept, so the bitmap + PixelCopy cost must be skipped.
+    fun `a draw whose sample loses the race to setBaseline still discards the capture`() {
+        // recordDraw fires mid-pre-walk but the sample never lands before the baseline is
+        // fixed (the beginDrawSample lock race). The draw counter must still catch it: the
+        // pre-walk may reflect this draw's tree while PixelCopy freezes the frame before it.
         val h = screenshotCaptureHarness()
         try {
             h.hookLayout.onWalkTouch = {
