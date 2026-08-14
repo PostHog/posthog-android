@@ -81,7 +81,7 @@ public sealed interface PostHogInterface {
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
-     * @param timestamp the timestamp for the event
+     * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC
      * @param appendFeatureFlags when true, enriches the event with feature flag properties
      * @param flags optional pre-resolved snapshot from [evaluateFlags]; when supplied, attaches
      *   `$feature/<key>` and `$active_feature_flags` from the snapshot without making another
@@ -109,7 +109,7 @@ public sealed interface PostHogInterface {
      * @param userProperties the user properties, set as a "$set" property
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property
      * @param groups the groups, set as a "$groups" property
-     * @param timestamp the timestamp for the event
+     * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC
      * @param appendFeatureFlags when true, enriches the event with feature flag properties
      * @param flags optional pre-resolved snapshot from [evaluateFlags]
      */
