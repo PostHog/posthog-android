@@ -45,6 +45,7 @@ internal class PostHogReplayMaskWalkBenchmark {
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 sessionReplayConfig.screenshot = true
+                sessionReplayConfig.enableScreenshotMaskAlignmentVerification = true
             }
         sut = PostHogReplayIntegration(ApplicationProvider.getApplicationContext(), config, MainHandler())
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()

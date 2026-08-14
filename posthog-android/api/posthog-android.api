@@ -102,6 +102,7 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun getCaptureLogcat ()Z
 	public final fun getDebouncerDelayMs ()J
 	public final fun getDrawableConverter ()Lcom/posthog/android/replay/PostHogDrawableConverter;
+	public final fun getEnableScreenshotMaskAlignmentVerification ()Z
 	public final fun getMaskAllImages ()Z
 	public final fun getMaskAllTextInputs ()Z
 	public final fun getSampleRate ()Ljava/lang/Double;
@@ -110,6 +111,7 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun setCaptureLogcat (Z)V
 	public final fun setDebouncerDelayMs (J)V
 	public final fun setDrawableConverter (Lcom/posthog/android/replay/PostHogDrawableConverter;)V
+	public final fun setEnableScreenshotMaskAlignmentVerification (Z)V
 	public final fun setMaskAllImages (Z)V
 	public final fun setMaskAllTextInputs (Z)V
 	public final fun setSampleRate (Ljava/lang/Double;)V

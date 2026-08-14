@@ -54,7 +54,14 @@ internal class WindowDrawState {
     var isOnDrawnCalled: Boolean = false
 
     @Volatile
+    var isOnlyAnimationRedraw: Boolean = false
+
+    @Volatile
     var didLayoutSinceReset: Boolean = false
+
+    @Volatile
+    var isLegacyCaptureActive: Boolean = false
+        private set
 
     private val captureLock = Any()
     private var nextCaptureId: Long = 0
@@ -62,7 +69,18 @@ internal class WindowDrawState {
 
     fun reset() {
         isOnDrawnCalled = false
+        isOnlyAnimationRedraw = false
         didLayoutSinceReset = false
+    }
+
+    fun beginLegacyCapture() {
+        reset()
+        isLegacyCaptureActive = true
+    }
+
+    fun finishLegacyCapture() {
+        isLegacyCaptureActive = false
+        reset()
     }
 
     // Written only on the main thread (single writer), so the lock-free increment is safe.
@@ -77,6 +95,11 @@ internal class WindowDrawState {
     fun recordDraw() {
         isOnDrawnCalled = true
         drawCount++
+        isOnlyAnimationRedraw = false
+    }
+
+    fun recordLegacyAnimationRedraw(isOnlyAnimationRedraw: Boolean) {
+        this.isOnlyAnimationRedraw = isOnlyAnimationRedraw
     }
 
     // Arms detection BEFORE the pre-walk, so a draw overlapping it cannot go unnoticed.

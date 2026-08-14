@@ -29,6 +29,8 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.PixelCopy
+import android.view.SurfaceView
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
@@ -237,9 +239,23 @@ public class PostHogReplayIntegration(
         view: View,
         drawState: WindowDrawState,
     ) {
-        onDrawCallback(drawState)
-        val session = drawState.beginDrawSample() ?: return
+        // Keep this first so a draw that overlaps the verified pre-walk cannot go unnoticed.
+        drawState.recordDraw()
 
+        val classifyLegacyDraw =
+            !config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification ||
+                drawState.isLegacyCaptureActive
+        if (classifyLegacyDraw) {
+            val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
+            val isOnlyAnimationRedraw =
+                screenshotCapable &&
+                    !drawState.didLayoutSinceReset &&
+                    (view.hasTransientState() || view.hasActiveSurfaceRendering()) &&
+                    !view.isAnimationRunning()
+            drawState.recordLegacyAnimationRedraw(isOnlyAnimationRedraw)
+        }
+
+        val session = drawState.beginDrawSample() ?: return
         val walk = drawSampleWalk
         walk.resetForCompareAgainst(session.compareBaseline)
         var misaligned: Boolean
@@ -251,6 +267,34 @@ public class PostHogReplayIntegration(
             misaligned = true
         }
         drawState.recordMaskWalk(session.token, misaligned)
+    }
+
+    /**
+     * Looks for a visible surface-backed view whose pixels can change without moving its masks.
+     * This keeps the legacy screenshot redraw guard compatible when direct mask verification is off.
+     */
+    private fun View.hasActiveSurfaceRendering(): Boolean {
+        return try {
+            when {
+                visibility != View.VISIBLE ||
+                    alpha <= 0f ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && transitionAlpha <= 0f) -> false
+                this is TextureView -> isAvailable && width > 0 && height > 0
+                this is SurfaceView -> width > 0 && height > 0
+                this is ViewGroup -> {
+                    for (i in 0 until childCount) {
+                        if (getChildAt(i).hasActiveSurfaceRendering()) {
+                            return true
+                        }
+                    }
+                    false
+                }
+                else -> false
+            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay surface rendering check failed: $e.")
+            false
+        }
     }
 
     private fun addView(
@@ -900,9 +944,14 @@ public class PostHogReplayIntegration(
 
     // poisoned = the rect list may be incomplete (a rendered view had unknowable geometry, or
     // the Compose pass timed out), so this walk cannot prove mask alignment.
-    internal class MaskWalk {
+    internal class MaskWalk(
+        val failClosed: Boolean = true,
+        private val shouldAbort: (() -> Boolean)? = null,
+    ) {
         val rects: MutableList<Rect> = mutableListOf()
         var poisoned: Boolean = false
+        var aborted: Boolean = false
+            private set
 
         // Compare mode: rects stream against the capture baseline instead of being stored, so
         // the per-frame draw-time walk allocates nothing and can stop on the first mismatch.
@@ -918,6 +967,7 @@ public class PostHogReplayIntegration(
         fun resetForCompareAgainst(baselineRects: List<Rect>) {
             rects.clear()
             poisoned = false
+            aborted = false
             baseline = baselineRects
             baselineCursor = 0
             misaligned = false
@@ -944,7 +994,12 @@ public class PostHogReplayIntegration(
         // Stopping early is monotone-safe: neither poisoned nor misaligned can be unset, and
         // both verdicts already seal the walk's outcome as "discard".
         val shouldStop: Boolean
-            get() = poisoned || misaligned
+            get() {
+                if (shouldAbort?.invoke() == true) {
+                    aborted = true
+                }
+                return poisoned || misaligned || aborted
+            }
     }
 
     // internal (not private) so tests and benchmarks can drive walks directly.
@@ -1022,7 +1077,7 @@ public class PostHogReplayIntegration(
 
                 if (!viewChild.isVisible(walk)) {
                     // A skipped-but-rendered view could be a masked widget we cannot place.
-                    if (viewChild.isRenderedButUnplaceable()) {
+                    if (walk.failClosed && viewChild.isRenderedButUnplaceable()) {
                         walk.poisoned = true
                         return
                     }
@@ -1166,7 +1221,7 @@ public class PostHogReplayIntegration(
             for (rect in maskableWidgets) {
                 walk.addRect(rect)
             }
-        } else {
+        } else if (walk.failClosed) {
             // Compose mask rects are missing or incomplete, so fail closed.
             walk.poisoned = true
         }
@@ -1261,6 +1316,95 @@ public class PostHogReplayIntegration(
         return null
     }
 
+    private fun Bitmap.paintScreenshotMasks(rects: List<Rect>): Boolean {
+        if (!isValid()) {
+            this@PostHogReplayIntegration.config.logger.log("Session Replay Bitmap is invalid.")
+            return false
+        }
+
+        val canvas =
+            try {
+                Canvas(this)
+            } catch (e: Throwable) {
+                this@PostHogReplayIntegration.config.logger.log("Session Replay Canvas creation failed: $e.")
+                return false
+            }
+
+        val maskRect = RectF()
+        rects.forEach {
+            maskRect.set(it)
+            canvas.drawRoundRect(maskRect, 10f, 10f, paint)
+        }
+        return true
+    }
+
+    private fun View.maskVerifiedScreenshot(
+        bitmap: Bitmap,
+        drawState: WindowDrawState,
+        armedCapture: ArmedMaskCapture,
+    ): Boolean {
+        val postWalk = MaskWalk()
+        // A layout pass or an invalidating draw sample already sealed the verdict as discard,
+        // so the post-copy walk would be wasted work.
+        val alreadyDoomed = drawState.isCaptureInvalid(armedCapture.token)
+        if (!alreadyDoomed) {
+            findMaskableWidgets(this, postWalk)
+        }
+
+        val captureAligned =
+            drawState.finishMaskCapture(
+                armedCapture.token,
+                postWalk.rects,
+                postWalk.poisoned,
+            )
+        if (!captureAligned || !shouldKeepFrame(drawState, armedCapture.preWalk, postWalk)) {
+            // Masks may be out of sync with the pixels, discard to avoid a PII leak.
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return false
+        }
+        return bitmap.paintScreenshotMasks(postWalk.rects)
+    }
+
+    private fun View.maskLegacyScreenshot(
+        bitmap: Bitmap,
+        drawState: WindowDrawState,
+    ): Boolean {
+        val unsafeRedraw = { drawState.isOnDrawnCalled && !drawState.isOnlyAnimationRedraw }
+        if (unsafeRedraw()) {
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return false
+        }
+
+        val walk = MaskWalk(failClosed = false, shouldAbort = unsafeRedraw)
+        findMaskableWidgets(this, walk)
+        if (walk.aborted || unsafeRedraw()) {
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return false
+        }
+
+        if (!bitmap.isValid()) {
+            config.logger.log("Session Replay Bitmap is invalid.")
+            return false
+        }
+        val canvas =
+            try {
+                Canvas(bitmap)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay Canvas creation failed: $e.")
+                return false
+            }
+        val maskRect = RectF()
+        walk.rects.forEach {
+            if (unsafeRedraw()) {
+                config.logger.log("Session Replay screenshot discarded due to screen changes.")
+                return false
+            }
+            maskRect.set(it)
+            canvas.drawRoundRect(maskRect, 10f, 10f, paint)
+        }
+        return true
+    }
+
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
     private fun View.toScreenshotWireframe(
@@ -1288,26 +1432,33 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
-        drawState.reset()
-
-        // The pre-walk samples the baseline before the pixels freeze. Once armed, draws are
-        // verified against it, so pixel-only redraws (spinners, Lottie) survive while
-        // geometry changes (even ones that change back) invalidate.
-        val armedCapture = armMaskCapture(view, drawState)
-        if (armedCapture == null) {
+        val verifyMaskAlignment = config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification
+        val armedCapture =
+            if (verifyMaskAlignment) {
+                drawState.reset()
+                // The pre-walk samples the baseline before the pixels freeze. Once armed, draws are
+                // verified against it, so pixel-only redraws survive while geometry changes discard.
+                armMaskCapture(view, drawState)
+            } else {
+                drawState.beginLegacyCapture()
+                null
+            }
+        if (verifyMaskAlignment && armedCapture == null) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return null
         }
-        val captureToken = armedCapture.token
-        val preWalk = armedCapture.preWalk
         val bitmap: Bitmap
         val handler: Handler
         try {
             bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
             handler = ensurePixelCopyHandler()
         } catch (e: Throwable) {
-            drawState.cancelMaskCapture(captureToken)
-            drawState.reset()
+            armedCapture?.let { drawState.cancelMaskCapture(it.token) }
+            if (verifyMaskAlignment) {
+                drawState.reset()
+            } else {
+                drawState.finishLegacyCapture()
+            }
             config.logger.log("Session Replay screenshot setup failed: $e.")
             return null
         }
@@ -1327,46 +1478,12 @@ public class PostHogReplayIntegration(
                         config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                         success = false
                     } else {
-                        val postWalk = MaskWalk()
-                        // A layout pass or an invalidating draw sample already sealed the
-                        // verdict as discard, so the post-copy walk would be wasted work.
-                        val alreadyDoomed = drawState.isCaptureInvalid(captureToken)
-                        if (!alreadyDoomed) {
-                            findMaskableWidgets(view, postWalk)
-                        }
-
-                        val captureAligned =
-                            drawState.finishMaskCapture(
-                                captureToken,
-                                postWalk.rects,
-                                postWalk.poisoned,
-                            )
-                        if (captureAligned && shouldKeepFrame(drawState, preWalk, postWalk)) {
-                            if (!bitmap.isValid()) {
-                                config.logger.log("Session Replay Bitmap is invalid.")
-                                success = false
-                                return@request
+                        success =
+                            if (armedCapture != null) {
+                                view.maskVerifiedScreenshot(bitmap, drawState, armedCapture)
+                            } else {
+                                view.maskLegacyScreenshot(bitmap, drawState)
                             }
-
-                            val canvas =
-                                try {
-                                    Canvas(bitmap)
-                                } catch (e: Throwable) {
-                                    config.logger.log("Session Replay Canvas creation failed: $e.")
-                                    success = false
-                                    return@request
-                                }
-
-                            val maskRect = RectF()
-                            postWalk.rects.forEach {
-                                maskRect.set(it)
-                                canvas.drawRoundRect(maskRect, 10f, 10f, paint)
-                            }
-                        } else {
-                            // Masks may be out of sync with the pixels, discard to avoid a PII leak.
-                            config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                            success = false
-                        }
                     }
                 } catch (e: Throwable) {
                     config.logger.log("Session Replay PixelCopy failed: $e.")
@@ -1391,8 +1508,12 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
-            drawState.cancelMaskCapture(captureToken)
-            drawState.reset()
+            armedCapture?.let { drawState.cancelMaskCapture(it.token) }
+            if (verifyMaskAlignment) {
+                drawState.reset()
+            } else {
+                drawState.finishLegacyCapture()
+            }
             // Only recycle the bitmap if the callback has completed.
             // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
             // on another thread; recycling it now would cause a native SIGSEGV.

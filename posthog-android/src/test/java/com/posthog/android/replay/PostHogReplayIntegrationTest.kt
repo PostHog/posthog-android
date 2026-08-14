@@ -1412,7 +1412,7 @@ internal class PostHogReplayIntegrationTest {
             .setInt(attachInfo, View.VISIBLE)
     }
 
-    private fun screenshotFixture(): Pair<RealQueueFixture, PostHogFake> {
+    private fun screenshotFixture(enableMaskAlignmentVerification: Boolean = true): Pair<RealQueueFixture, PostHogFake> {
         val fx =
             createIntegrationWithRealQueue(
                 flagActive = true,
@@ -1420,6 +1420,7 @@ internal class PostHogReplayIntegrationTest {
                 integrationContext = ApplicationProvider.getApplicationContext(),
             )
         fx.config.sessionReplayConfig.screenshot = true
+        fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = enableMaskAlignmentVerification
         val fake = PostHogFake()
         fx.sut.install(fake)
         fx.sut.start(resumeCurrent = true)
@@ -1496,6 +1497,32 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `disabled verification does not run a draw-time mask walk during capture`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        shadowOf(Looper.getMainLooper()).idle()
+        var visibleRectCalls = 0
+        val child = VisibleRectHookView(activity) { _, _ -> visibleRectCalls++ }
+        val root = FrameLayout(activity).apply { addView(child) }
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        root.layout(0, 0, 100, 100)
+        child.layout(0, 0, 100, 20)
+        visibleRectCalls = 0
+        val drawState = WindowDrawState()
+        drawState.beginLegacyCapture()
+
+        try {
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertEquals(0, visibleRectCalls)
+        } finally {
+            drawState.finishLegacyCapture()
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
     fun `wireframe visibility does not race a delayed screenshot mask walk's shared scratch objects`() {
         val appContext = ApplicationProvider.getApplicationContext<Context>()
@@ -1505,6 +1532,7 @@ internal class PostHogReplayIntegrationTest {
                 hasFetched = true,
                 integrationContext = appContext,
             )
+        fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = true
         val fake = PostHogFake()
         fx.sut.install(fake)
         fx.sut.start(resumeCurrent = true)
@@ -1796,8 +1824,8 @@ internal class PostHogReplayIntegrationTest {
     )
 
     // A capturable window with a masked child, so the walks produce a rect to compare.
-    private fun screenshotCaptureHarness(): ScreenshotCaptureHarness {
-        val (fx, fake) = screenshotFixture()
+    private fun screenshotCaptureHarness(enableMaskAlignmentVerification: Boolean = true): ScreenshotCaptureHarness {
+        val (fx, fake) = screenshotFixture(enableMaskAlignmentVerification)
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         shadowOf(Looper.getMainLooper()).idle()
         val child = TextView(activity).apply { tag = "ph-no-capture" }
@@ -1884,6 +1912,84 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(1, copyRequests)
             assertEquals(1, h.fake.captures)
             assertEquals("\$snapshot", h.fake.event)
+        } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `stable redraw is discarded by default when mask alignment verification is disabled`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        try {
+            DrawSequenceShadowPixelCopy.onRequest = {
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+        } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `legacy animation redraw heuristic remains active when verification is disabled`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        try {
+            DrawSequenceShadowPixelCopy.onRequest = {
+                h.hookLayout.setHasTransientState(true)
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, h.fake.captures)
+        } finally {
+            h.hookLayout.setHasTransientState(false)
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `legacy capture stays pinned when verification is enabled mid-capture`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        try {
+            DrawSequenceShadowPixelCopy.onRequest = {
+                h.fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = true
+                h.hookLayout.setHasTransientState(true)
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, h.fake.captures)
+        } finally {
+            h.hookLayout.setHasTransientState(false)
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `verified capture stays pinned when verification is disabled mid-capture`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = true)
+        try {
+            DrawSequenceShadowPixelCopy.onRequest = {
+                h.fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = false
+                h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(1, h.fake.captures)
         } finally {
             DrawSequenceShadowPixelCopy.onRequest = null
             h.fx.sut.uninstall()
