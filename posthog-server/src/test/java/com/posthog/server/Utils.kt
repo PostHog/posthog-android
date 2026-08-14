@@ -7,6 +7,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.parseISO8601Date
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
@@ -16,6 +17,7 @@ import okio.buffer
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Test utilities for posthog-server tests
@@ -111,6 +113,55 @@ public class BatchRequest(private val json: JsonObject) {
     public fun eventProperties(eventName: String): Map<String, Any?> {
         val props = findEvent(eventName)?.getAsJsonObject("properties") ?: return emptyMap()
         return gson.fromJson(props, object : TypeToken<Map<String, Any?>>() {}.type)
+    }
+}
+
+/**
+ * Every `$feature_flag_called` event across all `/batch` requests, as (flag key, properties) pairs.
+ * Spans requests because `flushAt(1)` splits accesses over several batches.
+ *
+ * Consumes each request body, so call this once per drained list.
+ */
+public fun List<RecordedRequest>.featureFlagCalledEvents(): List<Pair<String, Map<String, Any?>>> {
+    return filter { it.path?.contains("/batch") == true }
+        .flatMap { it.parseBatch().batch }
+        .filter { it.get("event")?.asString == "\$feature_flag_called" }
+        .mapNotNull { event ->
+            val props: Map<String, Any?> =
+                gson.fromJson(
+                    event.getAsJsonObject("properties"),
+                    object : TypeToken<Map<String, Any?>>() {}.type,
+                )
+            val key = props["\$feature_flag"] as? String ?: return@mapNotNull null
+            key to props
+        }
+}
+
+/**
+ * Routes `/local_evaluation` and `/flags` to the given responses and counts how many times each was
+ * asked for. Routes by path rather than by enqueue order, because the local evaluation poller fires
+ * asynchronously and would otherwise race the request under test for the head of the queue.
+ */
+public class CountingDispatcher(
+    private val localEvaluationResponse: () -> MockResponse,
+    private val flagsResponse: () -> MockResponse,
+) : Dispatcher() {
+    public val flagsCalls: AtomicInteger = AtomicInteger(0)
+    public val localEvaluationCalls: AtomicInteger = AtomicInteger(0)
+
+    override fun dispatch(request: RecordedRequest): MockResponse {
+        val path = request.path ?: ""
+        return when {
+            path.contains("local_evaluation") -> {
+                localEvaluationCalls.incrementAndGet()
+                localEvaluationResponse()
+            }
+            path.contains("/flags") -> {
+                flagsCalls.incrementAndGet()
+                flagsResponse()
+            }
+            else -> MockResponse().setResponseCode(200)
+        }
     }
 }
 
@@ -436,6 +487,96 @@ public fun createMockIntegration(): com.posthog.PostHogIntegration {
     return object : com.posthog.PostHogIntegration {
         // Using default implementations from interface
     }
+}
+
+/**
+ * Flag definition JSON for a flag local evaluation can always resolve: active, 100% rollout, no
+ * property conditions.
+ */
+public fun conclusiveFlagDefinition(key: String): String {
+    return """
+        {
+            "id": 1,
+            "name": "$key",
+            "key": "$key",
+            "active": true,
+            "filters": {
+                "groups": [
+                    { "properties": [], "rollout_percentage": 100 }
+                ]
+            },
+            "version": 1
+        }
+        """.trimIndent()
+}
+
+/**
+ * Flag definition JSON gated on `email icontains @acme.com`. Local evaluation is inconclusive for
+ * this flag unless the caller supplies an `email` person property.
+ */
+public fun emailGatedFlagDefinition(key: String): String {
+    return """
+        {
+            "id": 2,
+            "name": "$key",
+            "key": "$key",
+            "active": true,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "email",
+                                "type": "person",
+                                "value": "@acme.com",
+                                "operator": "icontains"
+                            }
+                        ],
+                        "rollout_percentage": 100
+                    }
+                ]
+            },
+            "version": 1
+        }
+        """.trimIndent()
+}
+
+/**
+ * Flag definition JSON that parses but makes the local evaluator throw a plain
+ * [NullPointerException] (not an `InconclusiveMatchException`): Gson deserializes the `null`
+ * multivariate variant into the non-null `List<VariantDefinition>`, and evaluation trips over it
+ * before any condition is checked.
+ */
+public fun throwingFlagDefinition(key: String): String {
+    return """
+        {
+            "id": 3,
+            "name": "$key",
+            "key": "$key",
+            "active": true,
+            "filters": {
+                "groups": [
+                    { "properties": [], "rollout_percentage": 100 }
+                ],
+                "multivariate": { "variants": [null] }
+            },
+            "version": 1
+        }
+        """.trimIndent()
+}
+
+/**
+ * Creates a local evaluation API response from raw flag definition JSON, for the fixtures
+ * [createLocalEvaluationResponse] cannot express: several flags, property conditions, dependencies.
+ */
+public fun createLocalEvaluationResponseFrom(vararg flagDefinitions: String): String {
+    return """
+        {
+            "flags": [ ${flagDefinitions.joinToString(",")} ],
+            "group_type_mapping": {},
+            "cohorts": {}
+        }
+        """.trimIndent()
 }
 
 /**
