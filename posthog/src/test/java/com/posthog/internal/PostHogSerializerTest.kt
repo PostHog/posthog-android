@@ -11,7 +11,6 @@ import java.io.File
 import java.io.StringWriter
 import java.math.BigDecimal
 import java.math.BigInteger
-import java.time.OffsetDateTime
 import java.util.Date
 import java.util.TimeZone
 import java.util.UUID
@@ -122,9 +121,9 @@ internal class PostHogSerializerTest {
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
             val sut = getSut()
-            val instant = OffsetDateTime.parse("2024-03-10T01:30:00.123-05:00").toInstant()
-            val event = generateEvent().copy(timestamp = Date.from(instant))
-            val batch = PostHogBatchEvent(API_KEY, listOf(event), sentAt = Date.from(instant))
+            val instant = parseISO8601Date("2024-03-10T01:30:00.123-05:00")!!
+            val event = generateEvent().copy(timestamp = instant)
+            val batch = PostHogBatchEvent(API_KEY, listOf(event), sentAt = instant)
             val serialized = StringWriter()
 
             sut.serialize(batch, serialized)
@@ -132,7 +131,7 @@ internal class PostHogSerializerTest {
             val json = serialized.toString()
             assertTrue(json.contains("\"timestamp\":\"2024-03-10T06:30:00.123Z\""))
             assertTrue(json.contains("\"sent_at\":\"2024-03-10T06:30:00.123Z\""))
-            assertEquals(instant.toEpochMilli(), event.timestamp.time)
+            assertEquals(1710052200123L, event.timestamp.time)
         } finally {
             TimeZone.setDefault(originalTimeZone)
         }

@@ -6,7 +6,6 @@ import com.google.gson.reflect.TypeToken
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import java.io.File
-import java.time.OffsetDateTime
 import java.util.Date
 import java.util.TimeZone
 import kotlin.test.Test
@@ -68,13 +67,12 @@ internal class GsonDateTypeAdapterTest {
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"))
             val sut = getSut()
-            val instant = OffsetDateTime.parse("2023-07-15T08:30:45.123-07:00").toInstant()
-            val date = Date.from(instant)
+            val date = parseISO8601Date("2023-07-15T08:30:45.123-07:00")!!
 
             val json = sut.toJson(FakeDate(date))
 
             assertEquals("""{"date":"2023-07-15T15:30:45.123Z"}""", json)
-            assertEquals(instant.toEpochMilli(), date.time)
+            assertEquals(1689435045123L, date.time)
         } finally {
             TimeZone.setDefault(originalTimeZone)
         }
