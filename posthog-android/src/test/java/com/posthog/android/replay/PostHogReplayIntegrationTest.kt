@@ -1420,7 +1420,7 @@ internal class PostHogReplayIntegrationTest {
                 integrationContext = ApplicationProvider.getApplicationContext(),
             )
         fx.config.sessionReplayConfig.screenshot = true
-        fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = enableMaskAlignmentVerification
+        fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = enableMaskAlignmentVerification
         val fake = PostHogFake()
         fx.sut.install(fake)
         fx.sut.start(resumeCurrent = true)
@@ -1532,7 +1532,7 @@ internal class PostHogReplayIntegrationTest {
                 hasFetched = true,
                 integrationContext = appContext,
             )
-        fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = true
+        fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = true
         val fake = PostHogFake()
         fx.sut.install(fake)
         fx.sut.start(resumeCurrent = true)
@@ -1962,7 +1962,7 @@ internal class PostHogReplayIntegrationTest {
         val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
         try {
             DrawSequenceShadowPixelCopy.onRequest = {
-                h.fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = true
+                h.fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = true
                 h.hookLayout.setHasTransientState(true)
                 h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
             }
@@ -1983,7 +1983,7 @@ internal class PostHogReplayIntegrationTest {
         val h = screenshotCaptureHarness(enableMaskAlignmentVerification = true)
         try {
             DrawSequenceShadowPixelCopy.onRequest = {
-                h.fx.config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification = false
+                h.fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = false
                 h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
             }
 

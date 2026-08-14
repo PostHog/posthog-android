@@ -63,13 +63,13 @@ public class PostHogSessionReplayConfig
         public var sampleRate: Double? = null,
     ) {
         /**
-         * Enables direct mask-alignment verification for session replay screenshots.
+         * Verifies mask alignment for session replay screenshots.
          * This can preserve screenshots during pixel-only redraws, including continuously animated
          * content, but performs additional view hierarchy walks while a screenshot is captured.
          * Defaults to false.
          */
         @PostHogExperimental
-        public var enableScreenshotMaskAlignmentVerification: Boolean = false
+        public var verifyScreenshotMaskAlignment: Boolean = false
 
         init {
             // for keeping back compatibility

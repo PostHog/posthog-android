@@ -37,6 +37,6 @@ internal class PostHogAndroidConfigTest {
 
     @Test
     fun `screenshot mask alignment verification should be disabled by default`() {
-        assertFalse(config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification)
+        assertFalse(config.sessionReplayConfig.verifyScreenshotMaskAlignment)
     }
 }

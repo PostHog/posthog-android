@@ -243,7 +243,7 @@ public class PostHogReplayIntegration(
         drawState.recordDraw()
 
         val classifyLegacyDraw =
-            !config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification ||
+            !config.sessionReplayConfig.verifyScreenshotMaskAlignment ||
                 drawState.isLegacyCaptureActive
         if (classifyLegacyDraw) {
             val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
@@ -1432,7 +1432,7 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
-        val verifyMaskAlignment = config.sessionReplayConfig.enableScreenshotMaskAlignmentVerification
+        val verifyMaskAlignment = config.sessionReplayConfig.verifyScreenshotMaskAlignment
         val armedCapture =
             if (verifyMaskAlignment) {
                 drawState.reset()
