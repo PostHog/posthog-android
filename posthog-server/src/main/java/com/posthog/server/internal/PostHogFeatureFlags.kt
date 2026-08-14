@@ -297,12 +297,15 @@ internal class PostHogFeatureFlags(
             } catch (e: InconclusiveMatchException) {
                 config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
                 needsRemote = true
-            } catch (e: Throwable) {
+            } catch (e: Exception) {
                 config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
                 needsRemote = true
             }
         }
 
+        // A requested key with no local definition is absent rather than fetched: posthog-python
+        // filters the definitions by `flag_keys_to_evaluate` before its evaluation loop, so an
+        // undefined key never sets `fallback_to_flags` there either. Log it, don't buy a request.
         if (flagKeys != null) {
             val undefined = flagKeys.filterNot { currentFlagDefinitions.containsKey(it) }
             if (undefined.isNotEmpty()) {
@@ -1021,6 +1024,10 @@ internal class PostHogFeatureFlags(
             }
 
         val localFlags = local?.flags ?: EMPTY_FLAGS
+        // Local wins: `/flags` fills the gaps, it never overwrites a key local evaluation resolved.
+        // Same precedence as posthog-python, which skips remote keys already in
+        // `locally_evaluated_keys`. Note a group flag evaluated without `groups` resolves locally to
+        // `false`, and that now beats the server's answer — pass `groups` when gating on one.
         val merged = LinkedHashMap(remoteFlags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
         return EvaluateFlagsResult(
             flags = merged,
