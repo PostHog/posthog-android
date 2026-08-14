@@ -26,7 +26,8 @@ public class LogcatParser {
 
     private static final Pattern LOG_LINE_RE =
             Pattern.compile(
-                    EPOCH_TIME_PATTERN
+                    "\\s*"
+                            + EPOCH_TIME_PATTERN
                             + "\\s+(\\d+)\\s+(\\d+)\\s+(.)\\s+(.*?):\\s(.*)");
 
     private final Matcher mBufferBeginRe = BUFFER_BEGIN_RE.matcher("");

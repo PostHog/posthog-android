@@ -9,10 +9,10 @@ import kotlin.test.assertNull
 
 internal class LogcatParserTest {
     @Test
-    fun `parses realistic epoch logcat line as an exact UTC instant`() {
+    fun `parses padded epoch logcat line as an exact UTC instant`() {
         val parser = LogcatParser()
 
-        val log = parser.parse("1721057445.123  123  456 E MyTag  : message")
+        val log = parser.parse("         1721057445.123  123  456 E MyTag  : message")
 
         assertNotNull(log)
         assertEquals(Instant.parse("2024-07-15T15:30:45.123Z").toEpochMilli(), log.time.timeInMillis)
