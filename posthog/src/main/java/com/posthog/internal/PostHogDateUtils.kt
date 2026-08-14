@@ -4,7 +4,6 @@ import com.google.gson.internal.bind.util.ISO8601Utils
 import com.posthog.PostHogInternal
 import java.text.ParsePosition
 import java.util.Date
-import java.util.TimeZone
 
 @PostHogInternal
 public fun parseISO8601Date(dateString: String): Date? {
@@ -13,5 +12,5 @@ public fun parseISO8601Date(dateString: String): Date? {
 
 @PostHogInternal
 public fun formatISO8601Date(date: Date): String {
-    return ISO8601Utils.format(date, true, TimeZone.getTimeZone("UTC"))
+    return ISO8601Utils.format(date, true)
 }
