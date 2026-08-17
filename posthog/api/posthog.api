@@ -637,9 +637,9 @@ public final class com/posthog/internal/FeatureFlagMetadata {
 }
 
 public final class com/posthog/internal/FlagConditionGroup {
-	public fun <init> (Ljava/util/List;Ljava/lang/Integer;Ljava/lang/String;)V
+	public fun <init> (Ljava/util/List;Ljava/lang/Double;Ljava/lang/String;)V
 	public final fun getProperties ()Ljava/util/List;
-	public final fun getRolloutPercentage ()Ljava/lang/Integer;
+	public final fun getRolloutPercentage ()Ljava/lang/Double;
 	public final fun getVariant ()Ljava/lang/String;
 }
 

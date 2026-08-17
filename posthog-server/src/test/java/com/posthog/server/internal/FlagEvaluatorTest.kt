@@ -658,6 +658,45 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testMatchFeatureFlagPropertiesWithFractionalRollout() {
+        val testCases =
+            listOf(
+                Triple(0.1, "user-2912", true),
+                Triple(0.1, "user-212", false),
+                Triple(0.5, "user-212", true),
+                Triple(100.0, "user-2912", true),
+                Triple(0.0, "user-2912", false),
+                Triple(null, "user-2912", true),
+            )
+
+        for ((rolloutPercentage, distinctId, expected) in testCases) {
+            val json =
+                """
+                {
+                  "id": 1,
+                  "name": "Fractional Rollout Flag",
+                  "key": "fractional-rollout",
+                  "active": true,
+                  "filters": {
+                    "groups": [
+                      {
+                        "properties": [],
+                        "rollout_percentage": $rolloutPercentage
+                      }
+                    ]
+                  },
+                  "version": 1
+                }
+                """.trimIndent()
+
+            val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
+            val result = evaluator.matchFeatureFlagProperties(flag, distinctId, emptyMap())
+
+            assertEquals("rollout $rolloutPercentage for $distinctId", expected, result)
+        }
+    }
+
+    @Test
     internal fun testMatchFeatureFlagPropertiesWithVariant() {
         val flag = createMultiVariateFlag()
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", emptyMap())
