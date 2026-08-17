@@ -86,6 +86,17 @@ tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.postHogConfig(false)
 }
 
+animalsniffer {
+    // Android lint handles API compatibility checks; the previous plugin did not register Android targets.
+    defaultTargets = emptySet()
+}
+
+configurations.configureEach {
+    // empty artifact since Kotlin 1.9 (merged into kotlin-stdlib); its alignment
+    // constraint resolves unstably under dependency locking
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-common")
+}
+
 dependencies {
     // runtime
     api(project(mapOf("path" to ":posthog")))
@@ -97,6 +108,7 @@ dependencies {
 
     // compile only
     compileOnly("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}")
+    compileOnly("com.google.firebase:firebase-messaging:${PosthogBuildConfig.Dependencies.FIREBASE_MESSAGING}")
 
     // compatibility
     signature("org.codehaus.mojo.signature:java18:${PosthogBuildConfig.Plugins.SIGNATURE_JAVA18}@signature")
@@ -109,8 +121,12 @@ dependencies {
 
     // tests
     testImplementation(testFixtures(project(":posthog")))
+    // exercises the Firebase-present token fetch path via mockStatic
+    testImplementation("com.google.firebase:firebase-messaging:${PosthogBuildConfig.Dependencies.FIREBASE_MESSAGING}")
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")
     testImplementation("org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}")
+    testImplementation("com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}")
+    testImplementation("com.google.code.gson:gson:${PosthogBuildConfig.Dependencies.GSON}")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
     testImplementation("androidx.test:runner:${PosthogBuildConfig.Dependencies.ANDROIDX_RUNNER}")
     testImplementation("androidx.test.ext:junit:${PosthogBuildConfig.Dependencies.ANDROIDX_JUNIT}")
@@ -118,6 +134,9 @@ dependencies {
     testImplementation("androidx.test:core-ktx:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     testImplementation("androidx.test:rules:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     testImplementation("org.robolectric:robolectric:${PosthogBuildConfig.Dependencies.ROBOLECTRIC}")
+    testRuntimeOnly("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}") {
+        exclude(group = "androidx.savedstate", module = "savedstate")
+    }
 }
 
 project.publishingAndroidConfig()

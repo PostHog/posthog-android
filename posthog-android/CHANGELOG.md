@@ -1,5 +1,71 @@
 ## Next
 
+## 3.58.3
+
+### Patch Changes
+
+- b4e79ff: Add opt-in mask-alignment verification for session replay screenshots. Set `sessionReplayConfig.verifyScreenshotMaskAlignment` to `true` to capture continuously animated screens that the default redraw guard may discard, including screens with indeterminate spinners, animated GIFs, Lottie, Material progress indicators, and Compose infinite animations.
+
+  - Draw-dirty tracking is scoped per window, so a redraw in one window does not affect another window's capture.
+  - When enabled, mask rects are sampled before and after the pixel copy. A redrawn frame is kept only when the rects remain identical, no layout pass ran, and both walks completed with trustworthy geometry.
+  - Mask verification fails closed when a rendered view cannot be placed, the Compose semantics pass times out, or PixelCopy times out before masks are painted.
+
+## 3.58.2
+
+### Patch Changes
+
+- 71b632d: Fix: opting back in now re-arms push notifications without an app restart. After a logout unregister clears the device token, `optIn()` refetches the FCM token and re-registers the device (when `capturePushNotificationSubscriptions` is enabled) instead of only restoring consent (#675).
+
+  Adds a public `PostHogOptInReceiver` interface that integrations can implement to be notified when the user opts back in via `optIn()`.
+
+## 3.58.1
+
+### Patch Changes
+
+- 7825f07: Fix: opting out no longer strands an in-flight push unregister. The unregister `DELETE` is data removal, so it now completes even after `setOptOut(true)` instead of leaving the server-side subscription active for the whole opted-out period (#675).
+
+## 3.58.0
+
+### Minor Changes
+
+- 08d7a83: Add push notification support for PostHog Workflows. Register device push tokens with `registerPushNotificationToken(...)` (auto-registered from Firebase Cloud Messaging when `firebase-messaging` is on the classpath), and capture opens with `capturePushNotificationOpened(...)` (cold-start tray taps are auto-detected). Both are on by default and can be turned off with the new `capturePushNotificationSubscriptions` and `capturePushNotificationOpened` config flags. On `reset()` the token is unregistered for the logged-out user and re-registered under the new anonymous id, and `unregisterPushNotificationToken()` lets you unregister manually.
+
+## 3.57.0
+
+### Minor Changes
+
+- 3b4c23e: Send minimal `$feature_flag_called` events when the server opts the team in. When the v2 `/flags` response carries a top-level `minimalFlagCalledEvents: true` AND the evaluated flag's `has_experiment` metadata is `false`, the event's properties are reduced to a strict allowlist (`$feature_flag`, `$feature_flag_response`, `$feature_flag_has_experiment`, the `$feature_flag_*` evaluation-debug properties, `$groups`, `$process_person_profile`, `$session_id`, `$window_id`, `$lib`, `$lib_version`), stripping registered super properties, the static/dynamic context envelope, the `$feature/<key>` enumeration, and `$active_feature_flags`. Any missing signal (field absent from the response or cache, legacy response shape, `has_experiment` unknown) keeps the full legacy event shape, and experiment-linked flags always send the full envelope. The gate is cached alongside the flags so it survives restarts.
+
+## 3.56.8
+
+### Patch Changes
+
+- cf1cea2: Fix `identify()` leaving a user anonymous when the supplied ID already matches the persisted distinct ID (for example after a non-identified bootstrap seeded the same ID). The SDK now marks the user identified and captures a person-processed `$set` event.
+
+## 3.56.7
+
+### Patch Changes
+
+- fdf921d: Error tracking autocapture now installs the uncaught-exception handler on the very first app launch, before the remote config (`/flags`) response arrives, so an uncaught exception in that startup window is no longer missed. Local `errorTrackingConfig.autoCapture` stays the primary gate; remote config acts only as a kill-switch, uninstalling the handler if the resolved config reports `autocaptureExceptions: false`.
+
+## 3.56.6
+
+### Patch Changes
+
+- 932118f: Prevent duplicate integration installation during concurrent SDK setup.
+
+## 3.56.5
+
+### Patch Changes
+
+- d23697e: Fix a manually configured `releaseIdentifier` being overwritten by the auto-generated fallback (`applicationId@versionName+versionCode`), which broke proguard symbolication due to the map-id mismatch. A pre-set `releaseIdentifier` is now preserved; the value from `posthog-meta.properties` is used when nothing was set, and the fallback only when neither exists.
+
+## 3.56.4
+
+### Patch Changes
+
+- 5433f29: Stop querying Android connectivity services synchronously while capturing events.
+
 ## 3.56.3
 
 ### Patch Changes

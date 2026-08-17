@@ -49,6 +49,10 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
     archiveClassifier.set("html-doc")
 }
 
+tasks.named("assemble") {
+    dependsOn(dokkaJavadocJar, dokkaHtmlJar)
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
@@ -81,6 +85,7 @@ configure<SourceSetContainer> {
 }
 
 animalsniffer {
+    checkTestSources = true
     ignore("java.util.HashMap")
 }
 
@@ -88,7 +93,7 @@ dependencies {
     // Depend on posthog-core module (not posthog-android)
     api(project(":posthog"))
 
-    implementation(kotlin("stdlib-jdk8", PosthogBuildConfig.Kotlin.KOTLIN))
+    api(kotlin("stdlib-jdk8", PosthogBuildConfig.Kotlin.KOTLIN))
 
     implementation("com.google.code.gson:gson:${PosthogBuildConfig.Dependencies.GSON}")
 

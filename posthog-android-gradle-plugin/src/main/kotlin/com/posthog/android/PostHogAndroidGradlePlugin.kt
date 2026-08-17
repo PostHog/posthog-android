@@ -109,7 +109,7 @@ internal abstract class PostHogAndroidGradlePlugin
                     taskSuffix = variant.name.capitalizeUS(),
                     releaseName = variant.applicationId,
                     releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
-                    build = primaryOutput?.versionCode,
+                    build = primaryOutput?.versionCode?.map { it ?: 0 },
                 )
 
             project.afterEvaluate {
@@ -195,7 +195,7 @@ internal abstract class PostHogAndroidGradlePlugin
                     taskSuffix = variant.name.capitalizeUS(),
                     releaseName = variant.applicationId,
                     releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
-                    build = primaryOutput?.versionCode,
+                    build = primaryOutput?.versionCode?.map { it ?: 0 },
                 )
             return uploadMapIdTask
         }

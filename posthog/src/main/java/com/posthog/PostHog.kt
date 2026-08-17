@@ -23,6 +23,7 @@ import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogPushSubscriptionManager
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
@@ -43,6 +44,8 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
+private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 
 public class PostHog private constructor(
     private val queueExecutor: ExecutorService =
@@ -65,6 +68,10 @@ public class PostHog private constructor(
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("PostHogSendCachedEventsThread"),
         ),
+    private val pushExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogPushSubscriptionThread"),
+        ),
     private val reloadFeatureFlags: Boolean = true,
 ) : PostHogInterface, PostHogStateless() {
     private val anonymousLock = Any()
@@ -79,6 +86,8 @@ public class PostHog private constructor(
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
     private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
+
+    private var pushSubscriptionManager: PostHogPushSubscriptionManager? = null
 
     /**
      * Captures application log records into PostHog's logs product
@@ -233,6 +242,7 @@ public class PostHog private constructor(
                 this.queue = queue
                 this.replayQueue = replayQueue
                 this.logsQueue = logsQueue
+                this.pushSubscriptionManager = PostHogPushSubscriptionManager(config, api, pushExecutor) { distinctId }
 
                 if (config.errorTrackingConfig.exceptionSteps.enabled) {
                     val maxBytes = config.errorTrackingConfig.exceptionSteps.maxBytes
@@ -268,6 +278,12 @@ public class PostHog private constructor(
 
                 queue.start()
                 logsQueue.start()
+
+                // Force the persisted OPT_OUT to hydrate before this passive push trigger: the
+                // manager reads config.optOut directly, and it is otherwise resolved lazily on
+                // first isOptedOut() call, which retryPending() here would race ahead of.
+                isOptedOut()
+                pushSubscriptionManager?.retryPending()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
                     try {
@@ -491,6 +507,8 @@ public class PostHog private constructor(
                 queue?.stop()
                 replayQueue?.stop()
                 logsQueue?.stop()
+                pushSubscriptionManager?.close()
+                pushSubscriptionManager = null
 
                 featureFlagsCalled.clear()
                 lastScreenName = null
@@ -1078,6 +1096,17 @@ public class PostHog private constructor(
             // an explicit runtime choice; the deferred read must not override it
             optOutLoaded = true
         }
+
+        // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
+        // re-registers, since a logout unregister cleared it and opt-in alone leaves it unsubscribed).
+        // Gated on the opt-in capability interface so the public PostHogIntegration contract is unchanged.
+        config?.integrations?.filterIsInstance<PostHogOptInReceiver>()?.forEach { receiver ->
+            try {
+                receiver.onOptIn()
+            } catch (e: Throwable) {
+                safeLog("Integration ${receiver.javaClass.name} failed to handle opt-in: $e.")
+            }
+        }
     }
 
     public override fun optOut() {
@@ -1091,6 +1120,9 @@ public class PostHog private constructor(
             optOutLoaded = true
             exceptionStepsBuffer?.clear()
         }
+        // Clear cached identity-token state so a stale token/401 flag isn't reused after
+        // re-opting-in; the send guard in the manager already blocks sends while opted out.
+        pushSubscriptionManager?.onOptOut()
     }
 
     /**
@@ -1274,13 +1306,23 @@ public class PostHog private constructor(
         }
 
         val hasDifferentDistinctId = previousDistinctId != distinctId
-        if (hasDifferentDistinctId && !isIdentified) {
-            // this has to be set before capture since this flag will be read during the event
-            // capture
-            synchronized(identifiedLock) {
+
+        // Read isIdentified, decide the transition, and persist it atomically so two concurrent
+        // identify() calls on an anonymous user can't both observe isIdentified == false and each
+        // emit a person-processed event for the same identity transition. isIdentified must also be
+        // set before capture() below, which reads it during event enrichment.
+        val shouldIdentify: Boolean
+        val shouldTransitionToIdentified: Boolean
+        synchronized(identifiedLock) {
+            val alreadyIdentified = isIdentified
+            shouldIdentify = hasDifferentDistinctId && !alreadyIdentified
+            shouldTransitionToIdentified = !hasDifferentDistinctId && !alreadyIdentified
+            if (shouldIdentify || shouldTransitionToIdentified) {
                 isIdentified = true
             }
+        }
 
+        if (shouldIdentify) {
             capture(
                 PostHogEventName.IDENTIFY.event,
                 distinctId = distinctId,
@@ -1302,12 +1344,43 @@ public class PostHog private constructor(
             // Automatically set person properties for feature flags during identify() call
             setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
 
+            // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+            isOptedOut()
+            pushSubscriptionManager?.resendIfDistinctIdChanged()
+
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
                 reloadFeatureFlags(config?.onFeatureFlags)
             }
             // we need to make sure the user props update is for the same user
             // otherwise they have to reset and identify again
+        } else if (shouldTransitionToIdentified) {
+            // Matching id while still anonymous (e.g. a non-identified bootstrap seeded the same
+            // id): upgrade to identified and emit one person-processed $set — there is no
+            // anonymous id to merge, so no $identify (matches posthog-js).
+            // isIdentified was already set above under identifiedLock.
+            this.distinctId = distinctId
+
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
+
+            capture(
+                PostHogEventName.SET.event,
+                distinctId = distinctId,
+                userProperties = userProperties ?: emptyMap(),
+                userPropertiesSetOnce = userPropertiesSetOnce ?: emptyMap(),
+            )
+
+            // The transition event must fire even when an identical property call was cached
+            // earlier; cache only after capture so deduplication cannot suppress it.
+            synchronized(cachedPersonPropertiesLock) {
+                cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
+            }
+
+            // The identified state itself is not part of the flags request; reload only when the
+            // caller supplied properties that can affect flag evaluation.
+            if ((userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true) && reloadFeatureFlags) {
+                reloadFeatureFlags(config?.onFeatureFlags)
+            }
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
             if (shouldCapturePersonPropertiesEvent(
                     distinctId,
@@ -1692,6 +1765,10 @@ public class PostHog private constructor(
         }
     }
 
+    override fun isMinimalFlagCalledEventsEnabled(): Boolean {
+        return remoteConfig?.isMinimalFlagCalledEventsEnabled() == true
+    }
+
     public override fun getFeatureFlag(
         key: String,
         defaultValue: Any?,
@@ -1747,6 +1824,9 @@ public class PostHog private constructor(
         super.flush()
         replayQueue?.flush()
         logsQueue?.flush()
+        // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+        isOptedOut()
+        pushSubscriptionManager?.retryPending()
     }
 
     public override fun setPersonPropertiesForFlags(
@@ -1807,6 +1887,10 @@ public class PostHog private constructor(
             return
         }
 
+        // Capture the logging-out identity before preferences are cleared, so the push token can be
+        // unregistered for it and re-registered under the new anonymous id (decision 5/6).
+        val previousDistinctId = distinctId
+
         // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
         // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
         // stable feature flag bucketing across identity changes.
@@ -1837,6 +1921,10 @@ public class PostHog private constructor(
 
         endSession()
         startSession()
+
+        // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+        isOptedOut()
+        pushSubscriptionManager?.handleReset(previousDistinctId)
 
         // reload flags as anon user
         // only because of testing in isolation, this flag is always enabled
@@ -1925,6 +2013,92 @@ public class PostHog private constructor(
         }
 
         return PostHogSessionManager.isSessionActive()
+    }
+
+    override fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        if (isOptedOut()) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+        if (deviceToken.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, deviceToken is blank.")
+            return
+        }
+        if (appId.isBlank()) {
+            config?.logger?.log("registerPushNotificationToken call not allowed, appId is blank.")
+            return
+        }
+
+        pushSubscriptionManager?.register(
+            deviceToken = deviceToken,
+            appId = appId,
+            platform = "android",
+        )
+    }
+
+    override fun unregisterPushNotificationToken() {
+        if (!isEnabled()) {
+            return
+        }
+        if (isOptedOut()) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        pushSubscriptionManager?.unregisterCurrent()
+    }
+
+    override fun capturePushNotificationOpened(
+        title: String?,
+        body: String?,
+        payload: Map<String, Any?>?,
+        action: String?,
+    ) {
+        if (!isEnabled()) {
+            return
+        }
+        if (isOptedOut()) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return
+        }
+
+        val props = mutableMapOf<String, Any>()
+        title?.takeIf { it.isNotEmpty() }?.let { props["\$notification_title"] = it }
+        body?.takeIf { it.isNotEmpty() }?.let { props["\$notification_body"] = it }
+        action?.takeIf { it.isNotEmpty() }?.let { props["\$notification_action"] = it }
+
+        payload?.get("posthog")?.let { raw ->
+            posthogPayloadMap(raw)?.forEach { (key, value) ->
+                value?.let { props["\$notification_$key"] = it }
+            }
+        }
+
+        capture(PUSH_NOTIFICATION_OPENED_EVENT, properties = props)
+    }
+
+    /**
+     * Coerces the `posthog` entry of a push payload into a map. FCM data maps are string→string,
+     * so the value is accepted either as a nested [Map] or as a JSON string. Parse failures are
+     * logged and swallowed so a malformed payload never drops the open event.
+     */
+    private fun posthogPayloadMap(raw: Any?): Map<String, Any?>? {
+        return when (raw) {
+            is Map<*, *> -> raw.entries.associate { (key, value) -> key.toString() to value }
+            is String ->
+                try {
+                    config?.serializer?.deserialize<Map<String, Any?>?>(raw.reader())
+                } catch (e: Throwable) {
+                    config?.logger?.log("Failed to parse push notification posthog payload: $e.")
+                    null
+                }
+            else -> null
+        }
     }
 
     override fun <T : PostHogConfig> getConfig(): T? {
@@ -2331,6 +2505,26 @@ public class PostHog private constructor(
 
         override fun getSessionId(): UUID? {
             return shared.getSessionId()
+        }
+
+        override fun registerPushNotificationToken(
+            deviceToken: String,
+            appId: String,
+        ) {
+            shared.registerPushNotificationToken(deviceToken, appId)
+        }
+
+        override fun unregisterPushNotificationToken() {
+            shared.unregisterPushNotificationToken()
+        }
+
+        override fun capturePushNotificationOpened(
+            title: String?,
+            body: String?,
+            payload: Map<String, Any?>?,
+            action: String?,
+        ) {
+            shared.capturePushNotificationOpened(title, body, payload, action)
         }
     }
 }

@@ -1,5 +1,23 @@
 ## Next
 
+## 2.12.0
+
+### Minor Changes
+
+- dfd0a9c: `evaluateFlags` now keeps whatever local evaluation resolved and asks `/flags` only for the keys it could not resolve. Previously a single inconclusive flag definition discarded the whole locally-computed batch, so one flag gated on a property the caller does not pass forced a request per identity, and a `/flags` outage turned locally-resolvable flags off. `flagKeys` now scopes local evaluation as well as the request, and a requested key with no local definition never forces a request on its own: it is absent from the snapshot, unless an unresolved flag already required the `/flags` call, which then also fills it. `onlyEvaluateLocally = true` is now strictly local: it never serves cached remote values, so flags it cannot resolve are omitted. A group-aggregated flag evaluated without its group key still resolves locally to `false`, and that value now takes precedence over the server's, so pass `groups` when gating on group flags.
+
+## 2.11.0
+
+### Minor Changes
+
+- 0aeab4e: Support the `starts_with`, `not_starts_with`, `ends_with`, and `not_ends_with` property-filter operators in local feature flag evaluation. Both the property value and filter value are stringified and ASCII case-folded before the prefix/suffix comparison; the `not_*` variants negate the result. Flags targeting on these operators previously could not be evaluated locally and always fell back to remote evaluation.
+
+## 2.10.0
+
+### Minor Changes
+
+- a890a02: Attach `map_id` (from `releaseIdentifier`) to stack frames of exceptions captured via `captureExceptionStateless`, matching the stateful `captureException` path. Previously exceptions captured through the stateless API (including `posthog-server`'s `captureException`) were missing `map_id` and could not be symbolicated against uploaded ProGuard mappings. `posthog-server`'s `PostHogConfig` now exposes `releaseIdentifier` (property and builder method) so server captures can opt into symbolication.
+
 ## 2.9.0
 
 ### Minor Changes

@@ -59,7 +59,7 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
 
     @get:Input
     @get:Optional
-    public abstract val build: Property<Int?>
+    public abstract val build: Property<Int>
 
     override fun getArguments(args: MutableList<String>) {
         args.add("symbol-sets")
@@ -91,7 +91,7 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
             taskSuffix: String = "",
             releaseName: Provider<String>? = null,
             releaseVersion: Provider<String>? = null,
-            build: Provider<Int?>? = null,
+            build: Provider<Int>? = null,
         ): TaskProvider<PostHogUploadNativeSymbolsTask> {
             return project.tasks.register(
                 "uploadPostHogNativeSymbols$taskSuffix",

@@ -1,0 +1,273 @@
+{
+  "method": "POST",
+  "path": "/batch",
+  "headers": {
+    "Content-Encoding": "gzip",
+    "Content-Type": "application/json; charset=utf-8",
+    "User-Agent": "posthog-android/<sdk-version>",
+    "X-PostHog-Snapshot": "android-events-v1"
+  },
+  "body": {
+    "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
+    "batch": [
+      {
+        "event": "checkout completed",
+        "distinct_id": "anonymous-user",
+        "properties": {
+          "$app_name": "Snapshot App",
+          "$app_namespace": "com.example.snapshot",
+          "$app_version": "1.2.3",
+          "$app_build": 42,
+          "$device_manufacturer": "PostHog",
+          "$device_model": "Snapshot Phone",
+          "$device_name": "snapshot-device",
+          "$device_type": "Mobile",
+          "$os_name": "Android",
+          "$os_version": "14",
+          "$screen_density": 2.0,
+          "$screen_height": 800,
+          "$screen_width": 400,
+          "$is_emulator": false,
+          "$locale": "en-US",
+          "$timezone": "UTC",
+          "$network_type": "wifi",
+          "$network_carrier": "Snapshot Telecom",
+          "$set": {
+            "plan": "pro"
+          },
+          "$set_once": {
+            "first_seen_source": "snapshot-test"
+          },
+          "$groups": {
+            "company": "posthog"
+          },
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
+          "$is_identified": false,
+          "$process_person_profile": true,
+          "$session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+          "amount": 42.5,
+          "currency": "USD",
+          "items": [
+            {
+              "sku": "sku-1",
+              "quantity": 2
+            }
+          ]
+        },
+        "timestamp": "2023-11-14T22:13:20.123Z",
+        "uuid": "<uuid>"
+      },
+      {
+        "event": "$identify",
+        "distinct_id": "identified-user",
+        "properties": {
+          "$app_name": "Snapshot App",
+          "$app_namespace": "com.example.snapshot",
+          "$app_version": "1.2.3",
+          "$app_build": 42,
+          "$device_manufacturer": "PostHog",
+          "$device_model": "Snapshot Phone",
+          "$device_name": "snapshot-device",
+          "$device_type": "Mobile",
+          "$os_name": "Android",
+          "$os_version": "14",
+          "$screen_density": 2.0,
+          "$screen_height": 800,
+          "$screen_width": 400,
+          "$is_emulator": false,
+          "$locale": "en-US",
+          "$timezone": "UTC",
+          "$network_type": "wifi",
+          "$network_carrier": "Snapshot Telecom",
+          "$set": {
+            "email": "person@example.com"
+          },
+          "$set_once": {
+            "signed_up_at": "2020-01-01"
+          },
+          "$groups": {
+            "company": "posthog"
+          },
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
+          "$is_identified": true,
+          "$process_person_profile": true,
+          "$session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+          "$anon_distinct_id": "anonymous-user"
+        },
+        "timestamp": "2023-11-14T22:13:20.123Z",
+        "uuid": "<uuid>"
+      },
+      {
+        "event": "$groupidentify",
+        "distinct_id": "identified-user",
+        "properties": {
+          "$app_name": "Snapshot App",
+          "$app_namespace": "com.example.snapshot",
+          "$app_version": "1.2.3",
+          "$app_build": 42,
+          "$device_manufacturer": "PostHog",
+          "$device_model": "Snapshot Phone",
+          "$device_name": "snapshot-device",
+          "$device_type": "Mobile",
+          "$os_name": "Android",
+          "$os_version": "14",
+          "$screen_density": 2.0,
+          "$screen_height": 800,
+          "$screen_width": 400,
+          "$is_emulator": false,
+          "$locale": "en-US",
+          "$timezone": "UTC",
+          "$network_type": "wifi",
+          "$network_carrier": "Snapshot Telecom",
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
+          "$group_type": "company",
+          "$group_key": "posthog",
+          "$group_set": {
+            "industry": "analytics",
+            "employees": 100
+          }
+        },
+        "timestamp": "2023-11-14T22:13:20.123Z",
+        "uuid": "<uuid>"
+      },
+      {
+        "event": "$feature_flag_called",
+        "distinct_id": "identified-user",
+        "properties": {
+          "$app_name": "Snapshot App",
+          "$app_namespace": "com.example.snapshot",
+          "$app_version": "1.2.3",
+          "$app_build": 42,
+          "$device_manufacturer": "PostHog",
+          "$device_model": "Snapshot Phone",
+          "$device_name": "snapshot-device",
+          "$device_type": "Mobile",
+          "$os_name": "Android",
+          "$os_version": "14",
+          "$screen_density": 2.0,
+          "$screen_height": 800,
+          "$screen_width": 400,
+          "$is_emulator": false,
+          "$locale": "en-US",
+          "$timezone": "UTC",
+          "$network_type": "wifi",
+          "$network_carrier": "Snapshot Telecom",
+          "$groups": {
+            "company": "posthog"
+          },
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
+          "$feature/snapshot-flag": "snapshot-variant",
+          "$active_feature_flags": [
+            "snapshot-flag"
+          ],
+          "$is_identified": true,
+          "$process_person_profile": true,
+          "$session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+          "$feature_flag": "snapshot-flag",
+          "$feature_flag_response": "snapshot-variant",
+          "$feature_flag_request_id": "flag-request-123"
+        },
+        "timestamp": "2023-11-14T22:13:20.123Z",
+        "uuid": "<uuid>"
+      },
+      {
+        "event": "$exception",
+        "distinct_id": "identified-user",
+        "properties": {
+          "$app_name": "Snapshot App",
+          "$app_namespace": "com.example.snapshot",
+          "$app_version": "1.2.3",
+          "$app_build": 42,
+          "$device_manufacturer": "PostHog",
+          "$device_model": "Snapshot Phone",
+          "$device_name": "snapshot-device",
+          "$device_type": "Mobile",
+          "$os_name": "Android",
+          "$os_version": "14",
+          "$screen_density": 2.0,
+          "$screen_height": 800,
+          "$screen_width": 400,
+          "$is_emulator": false,
+          "$locale": "en-US",
+          "$timezone": "UTC",
+          "$network_type": "wifi",
+          "$network_carrier": "Snapshot Telecom",
+          "$groups": {
+            "company": "posthog"
+          },
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
+          "$feature/snapshot-flag": "snapshot-variant",
+          "$active_feature_flags": [
+            "snapshot-flag"
+          ],
+          "$is_identified": true,
+          "$process_person_profile": true,
+          "$session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+          "$exception_level": "error",
+          "$exception_list": [
+            {
+              "type": "IllegalStateException",
+              "mechanism": {
+                "handled": true,
+                "synthetic": false,
+                "type": "generic"
+              },
+              "thread_id": "<thread_id>",
+              "value": "Checkout failed",
+              "module": "java.lang",
+              "stacktrace": {
+                "frames": [
+                  {
+                    "module": "com.example.CheckoutViewModel",
+                    "function": "submit",
+                    "platform": "java",
+                    "map_id": "com.example.snapshot@1.2.3+42",
+                    "lineno": 41,
+                    "filename": "CheckoutViewModel.kt",
+                    "in_app": true
+                  }
+                ],
+                "type": "raw"
+              }
+            },
+            {
+              "type": "IllegalArgumentException",
+              "mechanism": {
+                "handled": true,
+                "synthetic": false,
+                "type": "generic"
+              },
+              "thread_id": "<thread_id>",
+              "value": "Card token is invalid",
+              "module": "java.lang",
+              "stacktrace": {
+                "frames": [
+                  {
+                    "module": "com.example.PaymentApi",
+                    "function": "charge",
+                    "platform": "java",
+                    "map_id": "com.example.snapshot@1.2.3+42",
+                    "lineno": 73,
+                    "filename": "PaymentApi.kt",
+                    "in_app": true
+                  }
+                ],
+                "type": "raw"
+              }
+            }
+          ],
+          "handled": true,
+          "component": "checkout"
+        },
+        "timestamp": "2023-11-14T22:13:20.123Z",
+        "uuid": "<uuid>"
+      }
+    ],
+    "sent_at": "2023-11-14T22:13:20.123Z"
+  }
+}

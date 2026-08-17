@@ -49,6 +49,10 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
     archiveClassifier.set("html-doc")
 }
 
+tasks.named("assemble") {
+    dependsOn(dokkaJavadocJar, dokkaHtmlJar)
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
@@ -82,6 +86,8 @@ configure<SourceSetContainer> {
 }
 
 animalsniffer {
+    checkTestSources = true
+
 //    com.posthog.internal.PostHogFlagsRequest  Undefined reference (android-api-level-21-5.0.1_r2): boolean java.util.HashMap.remove(Object, Object)
 //    com.posthog.internal.PostHogFlagsRequest  Undefined reference (android-api-level-21-5.0.1_r2): Object java.util.HashMap.getOrDefault(Object, Object)
 //    we don't use these methods, so ignore them, they are only available on Android >= 24

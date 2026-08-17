@@ -45,6 +45,9 @@ android {
         buildConfig = true
     }
     packaging {
+        jniLibs {
+            keepDebugSymbols += "**/libandroidx.graphics.path.so"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -76,8 +79,8 @@ dependencies {
     // Optional Compose survey UI — auto-discovered by the core SDK when present.
     implementation(project(mapOf("path" to ":posthog-android-surveys-compose")))
 
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -86,5 +89,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.12")
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 }

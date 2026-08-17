@@ -25,14 +25,24 @@ import kotlin.test.assertTrue
  * buildscript classpath instead of TestKit's `withPluginClasspath`.
  */
 @RunWith(Parameterized::class)
-internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String) {
+internal class NativeSymbolsUploadFunctionalTest(
+    private val agpVersion: String,
+    private val gradleVersion: String?,
+) {
     @get:Rule
     val projectDir = TemporaryFolder()
 
     companion object {
+        // AGP 8.0.x cannot run on Gradle 9 (it calls the removed
+        // DependencyHandler.module), so that leg pins the last Gradle 8
+        // this repo built with; null runs the current TestKit Gradle.
         @JvmStatic
-        @Parameterized.Parameters(name = "AGP {0}")
-        fun agpVersions(): Collection<String> = listOf("8.0.2", "8.9.1")
+        @Parameterized.Parameters(name = "AGP {0} on Gradle {1}")
+        fun agpVersions(): Collection<Array<String?>> =
+            listOf(
+                arrayOf("8.0.2", "8.12"),
+                arrayOf("8.9.1", null),
+            )
 
         private val pluginClasspath: String by lazy {
             val metadata =
@@ -123,6 +133,7 @@ internal class NativeSymbolsUploadFunctionalTest(private val agpVersion: String)
     private fun runner(vararg arguments: String): GradleRunner =
         GradleRunner.create()
             .withProjectDir(projectDir.root)
+            .apply { gradleVersion?.let { withGradleVersion(it) } }
             .withArguments(*arguments)
 
     @Test

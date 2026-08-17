@@ -2,15 +2,22 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
+import com.posthog.PostHogInterface
 import com.posthog.shutdownAndAwaitTermination
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.mockito.Mockito.mock
 import java.io.File
+import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 internal class PostHogSendCachedEventsIntegrationTest {
@@ -36,8 +43,14 @@ internal class PostHogSendCachedEventsIntegrationTest {
         return PostHogSendCachedEventsIntegration(config, api, executor = executor)
     }
 
+    @BeforeTest
+    fun `set up`() {
+        PostHogSendCachedEventsIntegration.resetInstallationForTesting()
+    }
+
     @AfterTest
     fun `set down`() {
+        PostHogSendCachedEventsIntegration.resetInstallationForTesting()
         tmpDir.root.deleteRecursively()
     }
 
@@ -53,6 +66,61 @@ internal class PostHogSendCachedEventsIntegrationTest {
         }
 
         return storagePrefix
+    }
+
+    @Test
+    fun `concurrent installs only schedule one legacy flush`() {
+        val threadCount = 32
+        val scheduledFlushes = AtomicInteger()
+        val shutdownExecutors = AtomicInteger()
+        val start = CountDownLatch(1)
+        val ready = CountDownLatch(threadCount)
+        val integrations =
+            List(threadCount) {
+                val config = PostHogConfig(API_KEY, host = "host")
+                val countingExecutor =
+                    object : AbstractExecutorService() {
+                        override fun execute(command: Runnable) {
+                            scheduledFlushes.incrementAndGet()
+                        }
+
+                        override fun shutdown() {
+                            shutdownExecutors.incrementAndGet()
+                        }
+
+                        override fun shutdownNow(): List<Runnable> = emptyList()
+
+                        override fun isShutdown(): Boolean = false
+
+                        override fun isTerminated(): Boolean = false
+
+                        override fun awaitTermination(
+                            timeout: Long,
+                            unit: TimeUnit,
+                        ): Boolean = true
+                    }
+                PostHogSendCachedEventsIntegration(config, PostHogApi(config), countingExecutor)
+            }
+        val postHog = mock<PostHogInterface>()
+        val threads =
+            integrations.map { integration ->
+                Thread {
+                    ready.countDown()
+                    start.await()
+                    integration.install(postHog)
+                }.apply { start() }
+            }
+
+        ready.await()
+        start.countDown()
+        threads.forEach { it.join() }
+
+        try {
+            assertEquals(1, scheduledFlushes.get())
+            assertEquals(threadCount, shutdownExecutors.get())
+        } finally {
+            integrations.forEach { it.uninstall() }
+        }
     }
 
     @Test

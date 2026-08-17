@@ -1,5 +1,61 @@
 ## Next
 
+## 6.31.0
+
+### Minor Changes
+
+- 0aeab4e: Support the `starts_with`, `not_starts_with`, `ends_with`, and `not_ends_with` property-filter operators in local feature flag evaluation. Both the property value and filter value are stringified and ASCII case-folded before the prefix/suffix comparison; the `not_*` variants negate the result. Flags targeting on these operators previously could not be evaluated locally and always fell back to remote evaluation.
+
+## 6.30.0
+
+### Minor Changes
+
+- 71b632d: Fix: opting back in now re-arms push notifications without an app restart. After a logout unregister clears the device token, `optIn()` refetches the FCM token and re-registers the device (when `capturePushNotificationSubscriptions` is enabled) instead of only restoring consent (#675).
+
+  Adds a public `PostHogOptInReceiver` interface that integrations can implement to be notified when the user opts back in via `optIn()`.
+
+## 6.29.2
+
+### Patch Changes
+
+- 7825f07: Fix: opting out no longer strands an in-flight push unregister. The unregister `DELETE` is data removal, so it now completes even after `setOptOut(true)` instead of leaving the server-side subscription active for the whole opted-out period (#675).
+
+## 6.29.1
+
+### Patch Changes
+
+- a890a02: Attach `map_id` (from `releaseIdentifier`) to stack frames of exceptions captured via `captureExceptionStateless`, matching the stateful `captureException` path. Previously exceptions captured through the stateless API (including `posthog-server`'s `captureException`) were missing `map_id` and could not be symbolicated against uploaded ProGuard mappings. `posthog-server`'s `PostHogConfig` now exposes `releaseIdentifier` (property and builder method) so server captures can opt into symbolication.
+
+## 6.29.0
+
+### Minor Changes
+
+- 08d7a83: Add push notification support for PostHog Workflows. Register device push tokens with `registerPushNotificationToken(...)` (auto-registered from Firebase Cloud Messaging when `firebase-messaging` is on the classpath), and capture opens with `capturePushNotificationOpened(...)` (cold-start tray taps are auto-detected). Both are on by default and can be turned off with the new `capturePushNotificationSubscriptions` and `capturePushNotificationOpened` config flags. On `reset()` the token is unregistered for the logged-out user and re-registered under the new anonymous id, and `unregisterPushNotificationToken()` lets you unregister manually.
+
+## 6.28.0
+
+### Minor Changes
+
+- 3b4c23e: Send minimal `$feature_flag_called` events when the server opts the team in. When the v2 `/flags` response carries a top-level `minimalFlagCalledEvents: true` AND the evaluated flag's `has_experiment` metadata is `false`, the event's properties are reduced to a strict allowlist (`$feature_flag`, `$feature_flag_response`, `$feature_flag_has_experiment`, the `$feature_flag_*` evaluation-debug properties, `$groups`, `$process_person_profile`, `$session_id`, `$window_id`, `$lib`, `$lib_version`), stripping registered super properties, the static/dynamic context envelope, the `$feature/<key>` enumeration, and `$active_feature_flags`. Any missing signal (field absent from the response or cache, legacy response shape, `has_experiment` unknown) keeps the full legacy event shape, and experiment-linked flags always send the full envelope. The gate is cached alongside the flags so it survives restarts.
+
+## 6.27.3
+
+### Patch Changes
+
+- cf1cea2: Fix `identify()` leaving a user anonymous when the supplied ID already matches the persisted distinct ID (for example after a non-identified bootstrap seeded the same ID). The SDK now marks the user identified and captures a person-processed `$set` event.
+
+## 6.27.2
+
+### Patch Changes
+
+- fdf921d: Error tracking autocapture now installs the uncaught-exception handler on the very first app launch, before the remote config (`/flags`) response arrives, so an uncaught exception in that startup window is no longer missed. Local `errorTrackingConfig.autoCapture` stays the primary gate; remote config acts only as a kill-switch, uninstalling the handler if the resolved config reports `autocaptureExceptions: false`.
+
+## 6.27.1
+
+### Patch Changes
+
+- 932118f: Prevent duplicate integration installation during concurrent SDK setup.
+
 ## 6.27.0
 
 ### Minor Changes

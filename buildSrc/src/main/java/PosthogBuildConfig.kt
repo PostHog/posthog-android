@@ -48,7 +48,7 @@ object PosthogBuildConfig {
     }
 
     object Plugins {
-        val ANIMAL_SNIFFER = "1.7.2"
+        val ANIMAL_SNIFFER = "2.0.1"
         val ANIMAL_SNIFFER_SDK_VERSION = "6.0_r3" // API 23
         val ANIMAL_SNIFFER_SDK_ANNOTATION = "1.23"
         val SPOTLESS = "6.25.0"
@@ -68,6 +68,9 @@ object PosthogBuildConfig {
         val CURTAINS = "1.2.5"
         val ANDROIDX_CORE = "1.5.0"
         val ANDROIDX_COMPOSE = "1.0.0"
+
+        // matches firebase-bom 34.16.0
+        val FIREBASE_MESSAGING = "25.1.1"
 
         // Provides ComponentDialog (LifecycleOwner + OnBackPressedDispatcher) for the surveys-compose UI.
         val ANDROIDX_ACTIVITY = "1.8.2"

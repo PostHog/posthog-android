@@ -1,11 +1,6 @@
 package com.posthog.android.internal
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
-import android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
-import android.net.NetworkCapabilities.TRANSPORT_CELLULAR
-import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.os.Build
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogContext
@@ -21,6 +16,7 @@ import java.util.TimeZone
 internal class PostHogAndroidContext(
     private val context: Context,
     private val config: PostHogAndroidConfig,
+    private val networkPropertiesProvider: () -> Map<String, Any>,
 ) : PostHogContext {
     private val cacheSdkInfo by lazy {
         val sdkInfo = mutableMapOf<String, Any>()
@@ -67,8 +63,6 @@ internal class PostHogAndroidContext(
         return cacheStaticContext
     }
 
-    @Suppress("DEPRECATION")
-    @SuppressLint("MissingPermission")
     override fun getDynamicContext(): Map<String, Any> {
         val dynamicContext = mutableMapOf<String, Any>()
         dynamicContext["\$locale"] = "${Locale.getDefault().language}-${Locale.getDefault().country}"
@@ -80,20 +74,7 @@ internal class PostHogAndroidContext(
         }
         dynamicContext["\$timezone"] = TimeZone.getDefault().id
 
-        // TODO: use ConnectivityManager.NetworkCallback instead
-        context.connectivityManager()?.let { connectivityManager ->
-            if (context.hasPermission(Manifest.permission.ACCESS_NETWORK_STATE)) {
-                connectivityManager.activeNetwork?.let {
-                    val networkCapabilities = connectivityManager.getNetworkCapabilities(it)
-
-                    networkCapabilities?.let { capabilities ->
-                        dynamicContext["\$network_wifi"] = capabilities.hasTransport(TRANSPORT_WIFI)
-                        dynamicContext["\$network_bluetooth"] = capabilities.hasTransport(TRANSPORT_BLUETOOTH)
-                        dynamicContext["\$network_cellular"] = capabilities.hasTransport(TRANSPORT_CELLULAR)
-                    }
-                }
-            }
-        }
+        dynamicContext.putAll(networkPropertiesProvider())
 
         context.telephonyManager()?.let {
             // TelephonyCallback requires location permission to expose the operator name. Keep this

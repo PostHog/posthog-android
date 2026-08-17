@@ -2,6 +2,7 @@ package com.posthog.android
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 internal class PostHogAndroidConfigTest {
@@ -32,5 +33,10 @@ internal class PostHogAndroidConfigTest {
     @Test
     fun `captureScreenViews should be enabled by default`() {
         assertTrue(config.captureScreenViews)
+    }
+
+    @Test
+    fun `screenshot mask alignment verification should be disabled by default`() {
+        assertFalse(config.sessionReplayConfig.verifyScreenshotMaskAlignment)
     }
 }

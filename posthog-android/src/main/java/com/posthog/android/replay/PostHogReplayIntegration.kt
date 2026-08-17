@@ -23,6 +23,7 @@ import android.graphics.drawable.VectorDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
@@ -66,8 +67,12 @@ import com.posthog.android.internal.screenSize
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
+import com.posthog.android.replay.internal.BaselineResult
+import com.posthog.android.replay.internal.IntHashSet
+import com.posthog.android.replay.internal.MaskCaptureToken
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
+import com.posthog.android.replay.internal.WindowDrawState
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
 import com.posthog.internal.PostHogSessionManager
@@ -101,6 +106,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -171,11 +177,6 @@ public class PostHogReplayIntegration(
             color = Color.BLACK
         }
 
-    // Reusable objects to avoid per-view allocations during screenshot masking.
-    // Only accessed from the PixelCopy callback thread (or executor), so no synchronization needed.
-    private val reusableRect = Rect()
-    private val reusablePoint = Point()
-
     @Volatile
     private var isSessionReplayActive: Boolean = false
 
@@ -191,6 +192,7 @@ public class PostHogReplayIntegration(
 
     private var postHog: PostHogInterface? = null
     private var replayQueue: PostHogReplayQueue? = null
+    private var ownsInstallation = false
 
     @Volatile
     private var replaySessionId: String? = null
@@ -226,66 +228,54 @@ public class PostHogReplayIntegration(
             }
         }
 
-    @Volatile
-    private var isOnDrawnCalled: Boolean = false
-
-    // True when the draw was triggered purely by an in-progress animation (e.g. Lottie) rather
-    // than a structural layout change. When set, the isOnDrawnCalled guard is relaxed so that
-    // continuously-animating screens can still be captured (mask geometry remains valid).
-    @Volatile
-    private var isOnlyAnimationRedraw: Boolean = false
-
-    // True if a layout pass ran during the current capture window (set by the decor view's
-    // OnGlobalLayoutListener, cleared per capture). A persistent surface keeps isOnlyAnimationRedraw
-    // true for the whole screen, so this is what actually proves mask geometry didn't shift — without
-    // it a structural layout could drift masks and leak PII.
-    @Volatile
-    private var didLayoutSinceReset: Boolean = false
-
-    internal fun onDrawCallback(decorView: View) {
-        isOnDrawnCalled = true
-        // isOnlyAnimationRedraw is read only on the screenshot-capture path, so its whole computation
-        // (including the surface-tree walk) is dead in wireframe mode — skip it. Flutter always
-        // captures via the forced-screenshot bridge, so it stays capable. Re-read per draw (not
-        // cached) so a runtime screenshot toggle re-arms the redraw guard.
-        val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
-        if (!screenshotCapable) {
-            isOnlyAnimationRedraw = false
-            return
-        }
-        // Animation-only = pixels change but view geometry (and mask positions) stay put: Lottie sets
-        // hasTransientState; a surface view (e.g. Rive) doesn't but redraws every frame. Safe to keep
-        // only if no structural layout ran since the capture reset (else masks may have drifted →
-        // PII leak). Legacy view.animation is excluded — it mutates the draw transform and shifts masks.
-        isOnlyAnimationRedraw =
-            !didLayoutSinceReset &&
-            (decorView.hasTransientState() || decorView.hasActiveSurfaceRendering()) &&
-            !decorView.isAnimationRunning()
+    internal fun onDrawCallback(drawState: WindowDrawState) {
+        drawState.recordDraw()
     }
 
-    // isOnDrawnCalled, isOnlyAnimationRedraw and didLayoutSinceReset gate the same capture guard and
-    // must always be reset together — keep this the single place that does it.
-    private fun resetDrawStateTracking() {
-        isOnDrawnCalled = false
-        isOnlyAnimationRedraw = false
-        didLayoutSinceReset = false
+    // Reused across frames; draw-time walks only ever run on the main thread.
+    private val drawSampleWalk = MaskWalk()
+
+    internal fun onDrawCallback(
+        view: View,
+        drawState: WindowDrawState,
+    ) {
+        // Keep this first so a draw that overlaps the verified pre-walk cannot go unnoticed.
+        drawState.recordDraw()
+
+        val classifyLegacyDraw =
+            !config.sessionReplayConfig.verifyScreenshotMaskAlignment ||
+                drawState.isLegacyCaptureActive
+        if (classifyLegacyDraw) {
+            val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
+            val isOnlyAnimationRedraw =
+                screenshotCapable &&
+                    !drawState.didLayoutSinceReset &&
+                    (view.hasTransientState() || view.hasActiveSurfaceRendering()) &&
+                    !view.isAnimationRunning()
+            drawState.recordLegacyAnimationRedraw(isOnlyAnimationRedraw)
+        }
+
+        val session = drawState.beginDrawSample() ?: return
+        val walk = drawSampleWalk
+        walk.resetForCompareAgainst(session.compareBaseline)
+        var misaligned: Boolean
+        try {
+            findMaskableWidgets(view, walk)
+            misaligned = walk.poisoned || walk.isMisaligned()
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay draw-time mask walk failed: $e.")
+            misaligned = true
+        }
+        drawState.recordMaskWalk(session.token, misaligned)
     }
 
     /**
-     * Walks the view tree looking for a visible surface/texture-backed view (e.g. Rive, ExoPlayer)
-     * that is actively rendering. Unlike ValueAnimator-driven libraries, these render on their own
-     * worker thread and never set [View.hasTransientState], but their view geometry stays stable
-     * while they animate, so — like the Lottie case — masks remain aligned and the frame is safe
-     * to keep. Returns on the first match, and prunes hidden subtrees, to stay cheap on the hot
-     * per-draw path.
+     * Looks for a visible surface-backed view whose pixels can change without moving its masks.
+     * This keeps the legacy screenshot redraw guard compatible when direct mask verification is off.
      */
     private fun View.hasActiveSurfaceRendering(): Boolean {
         return try {
             when {
-                // Descends from the being-drawn decor view, so per-node visibility + alpha pruning
-                // skips hidden/transparent subtrees (mirroring isVisible()): a surface mid
-                // fade-transition, or under a faded-out ancestor, isn't rendering to the user and
-                // must not relax the discard guard.
                 visibility != View.VISIBLE ||
                     alpha <= 0f ||
                     (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && transitionAlpha <= 0f) -> false
@@ -324,12 +314,15 @@ public class PostHogReplayIntegration(
                     if (view.windowAttachCount == 0 || !hasDecorView) {
                         window.onDecorViewReady { decorView ->
                             try {
+                                // Captured by the listeners directly so no draw can be missed
+                                // before the decorViews map insertion.
+                                val drawState = WindowDrawState()
                                 val listener =
                                     decorView.onNextDraw(
                                         mainHandler,
                                         config.dateProvider,
                                         config.sessionReplayConfig.throttleDelayMs,
-                                        { onDrawCallback(decorView) },
+                                        { onDrawCallback(decorView, drawState) },
                                     ) {
                                         if (!isActive() || !isNativeSdk) {
                                             return@onNextDraw
@@ -344,14 +337,11 @@ public class PostHogReplayIntegration(
                                         }
                                     }
 
-                                // A structural layout pass (view added/removed/resized/moved)
-                                // means mask geometry may have shifted; record it so onDrawCallback
-                                // won't treat a concurrent surface/animation redraw as safe-to-keep.
                                 val layoutListener =
-                                    ViewTreeObserver.OnGlobalLayoutListener { didLayoutSinceReset = true }
+                                    ViewTreeObserver.OnGlobalLayoutListener { drawState.recordLayout() }
                                 decorView.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
 
-                                val status = ViewTreeSnapshotStatus(listener, layoutListener)
+                                val status = ViewTreeSnapshotStatus(listener, layoutListener, drawState = drawState)
                                 decorViews[decorView] = status
                             } catch (e: Throwable) {
                                 config.logger.log("Session Replay onDecorViewReady failed: $e.")
@@ -494,6 +484,7 @@ public class PostHogReplayIntegration(
         status.sentMetaEvent = false
         status.keyboardVisible = false
         status.lastSnapshot = null
+        status.drawState.invalidateMaskCapture()
     }
 
     private fun clearViewListeners(
@@ -524,11 +515,12 @@ public class PostHogReplayIntegration(
         decorViews.remove(view)
     }
 
+    @Synchronized
     override fun install(postHog: PostHogInterface) {
-        if (integrationInstalled || !isSupported()) {
+        if (!isSupported() || !integrationInstalled.compareAndSet(false, true)) {
             return
         }
-        integrationInstalled = true
+        ownsInstallation = true
         this.postHog = postHog
 
         // Wire up as buffer delegate for the replay queue
@@ -558,9 +550,12 @@ public class PostHogReplayIntegration(
         }
     }
 
+    @Synchronized
     override fun uninstall() {
+        if (!ownsInstallation) {
+            return
+        }
         try {
-            integrationInstalled = false
             this.postHog = null
 
             // Clear buffer delegate
@@ -575,10 +570,10 @@ public class PostHogReplayIntegration(
             val decorViewsSnapshot = synchronized(decorViews) { decorViews.entries.map { it.toPair() } }
             decorViewsSnapshot.forEach { (view, status) ->
                 clearViewListeners(view, status)
+                status.drawState.invalidateMaskCapture()
             }
 
             isSessionReplayActive = false
-            resetDrawStateTracking()
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -589,6 +584,9 @@ public class PostHogReplayIntegration(
             decorViews.clear()
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
+        } finally {
+            ownsInstallation = false
+            integrationInstalled.set(false)
         }
     }
 
@@ -726,6 +724,7 @@ public class PostHogReplayIntegration(
             if (useScreenshot) {
                 view.toScreenshotWireframe(
                     window,
+                    status.drawState,
                 ) ?: return false
             } else {
                 view.toWireframe() ?: return false
@@ -830,7 +829,7 @@ public class PostHogReplayIntegration(
     /**
      * Adapted from https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/view/View.java;l=11620;bpv=0;bpt=1
      */
-    private fun View.isVisible(): Boolean {
+    private fun View.isVisible(walk: MaskWalk? = null): Boolean {
         try {
             if (width <= 0 || height <= 0) return false
 
@@ -854,7 +853,7 @@ public class PostHogReplayIntegration(
                 }
 
                 // Check if view is in a stable state before accessing matrix-dependent operations
-                return hasGlobalVisibleRect()
+                return hasGlobalVisibleRect(walk)
 
                 // TODO: also check for getGlobalVisibleRect intersects the display
 //            if (boundInView != null) {
@@ -879,65 +878,27 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.globalVisibleRect(offset: Point? = null): Rect? {
-        return if (isViewStateStableForMatrixOperations()) {
-            val rect = Rect()
-            getGlobalVisibleRect(rect, offset)
-            rect
-        } else {
-            null
-        }
-    }
-
     /**
-     * Fast visibility check that reuses a scratch Rect instead of allocating.
-     * Only checks whether the view has a non-empty visible rect, does not return the rect.
+     * Checks whether the view has a non-empty visible rect. Walk callers pass their walk so
+     * its scratch objects are reused; other callers allocate per call (see the wireframe
+     * vs delayed-screenshot-walk race test).
      */
-    private fun View.hasGlobalVisibleRect(): Boolean {
+    private fun View.hasGlobalVisibleRect(walk: MaskWalk? = null): Boolean {
         return if (isViewStateStableForMatrixOperations()) {
-            getGlobalVisibleRect(reusableRect, reusablePoint)
+            if (walk != null) {
+                getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+            } else {
+                getGlobalVisibleRect(Rect(), Point())
+            }
         } else {
             false
         }
     }
 
-    /**
-     * Returns the global visible rect of just the text content area within a TextView.
-     * For EditText, Button, and CompoundButton subclasses (CheckBox, RadioButton, Switch),
-     * this excludes the padding and compound drawables, masking only the text area.
-     * For regular TextView, this falls back to the full view rect.
-     */
-    private fun TextView.getTextAreaGlobalVisibleRect(): Rect? {
-        // Only adjust bounds for views that typically have significant padding or compound drawables
-        // EditText: has border/underline padding
-        // Button: has background padding
-        // CompoundButton (CheckBox, RadioButton, Switch): has checkbox/radio/switch drawable
-        val shouldAdjustBounds = this is EditText || this is Button
-
-        if (!shouldAdjustBounds) {
-            return globalVisibleRect()
-        }
-
-        return globalVisibleRect()?.let { fullRect ->
-            // Calculate the text area bounds by accounting for compound padding
-            // Compound padding includes both regular padding and drawable padding
-            val textAreaLeft = fullRect.left + compoundPaddingLeft
-            val textAreaTop = fullRect.top + compoundPaddingTop
-            val textAreaRight = fullRect.right - compoundPaddingRight
-            val textAreaBottom = fullRect.bottom - compoundPaddingBottom
-
-            // Ensure we have valid bounds
-            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
-                Rect(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
-            } else {
-                // Fall back to full rect if text area is too small
-                fullRect
-            }
-        }
-    }
-
     private fun View.isViewStateStableForMatrixOperations(): Boolean {
         return try {
+            // isAttachedToWindow implies an attached root: attach info propagates down from
+            // the ViewRootImpl, so a separate rootView check would be redundant.
             isAttachedToWindow &&
                 (isLaidOut || PostHogSessionManager.isReactNative) &&
                 // Check if view has valid dimensions
@@ -949,9 +910,7 @@ public class PostHogReplayIntegration(
                 // Check if view is not currently being animated
                 !isAnimationRunning() &&
                 // Check if view tree is not currently computing layout
-                !isComputingLayout() &&
-                // Check if view hierarchy is stable
-                rootView?.isAttachedToWindow == true
+                !isComputingLayout()
         } catch (e: Throwable) {
             // If any check fails, assume unstable state
             config.logger.log("Session Replay view state check failed: $e.")
@@ -983,24 +942,88 @@ public class PostHogReplayIntegration(
         return this.isTextInputSensitive(ancestorUnmasked) || passwordInputTypes.contains(inputType - 1)
     }
 
-    private fun findMaskableWidgets(
-        view: View,
-        maskableWidgets: MutableList<Rect>,
-        visitedViews: MutableSet<Int> = mutableSetOf(),
-    ): Boolean {
-        val viewId = System.identityHashCode(view)
+    // poisoned = the rect list may be incomplete (a rendered view had unknowable geometry, or
+    // the Compose pass timed out), so this walk cannot prove mask alignment.
+    internal class MaskWalk(
+        val failClosed: Boolean = true,
+        private val shouldAbort: (() -> Boolean)? = null,
+    ) {
+        val rects: MutableList<Rect> = mutableListOf()
+        var poisoned: Boolean = false
+        var aborted: Boolean = false
+            private set
 
-        // Check for cycles to prevent stack overflow
-        if (viewId in visitedViews) {
-            return true
+        // Compare mode: rects stream against the capture baseline instead of being stored, so
+        // the per-frame draw-time walk allocates nothing and can stop on the first mismatch.
+        private var baseline: List<Rect>? = null
+        private var baselineCursor = 0
+        private var misaligned = false
+
+        // Scratch objects; a walk is confined to a single thread.
+        val scratchRect = Rect()
+        val scratchPoint = Point()
+        val visitedViews = IntHashSet()
+
+        fun resetForCompareAgainst(baselineRects: List<Rect>) {
+            rects.clear()
+            poisoned = false
+            aborted = false
+            baseline = baselineRects
+            baselineCursor = 0
+            misaligned = false
+            visitedViews.clear()
         }
-        visitedViews.add(viewId)
+
+        fun addRect(rect: Rect) {
+            val baseline = baseline
+            if (baseline == null) {
+                // Deep copy: rect is usually this walk's shared scratch.
+                rects.add(Rect(rect))
+            } else if (baselineCursor >= baseline.size || baseline[baselineCursor++] != rect) {
+                misaligned = true
+            }
+        }
+
+        // True when the streamed rects did not exactly match the baseline (order-sensitive,
+        // same as List.equals on the stored rects would be).
+        fun isMisaligned(): Boolean {
+            val baseline = baseline ?: return misaligned
+            return misaligned || baselineCursor != baseline.size
+        }
+
+        // Stopping early is monotone-safe: neither poisoned nor misaligned can be unset, and
+        // both verdicts already seal the walk's outcome as "discard".
+        val shouldStop: Boolean
+            get() {
+                if (shouldAbort?.invoke() == true) {
+                    aborted = true
+                }
+                return poisoned || misaligned || aborted
+            }
+    }
+
+    // internal (not private) so tests and benchmarks can drive walks directly.
+    internal fun findMaskableWidgets(
+        view: View,
+        walk: MaskWalk,
+    ) {
+        if (walk.shouldStop) {
+            return
+        }
+
+        // Guards against a pathological hierarchy (broken custom getChildAt) recursing forever.
+        if (!walk.visitedViews.add(System.identityHashCode(view))) {
+            return
+        }
 
         var walkChildren = false
 
         when {
             view.isComposeView() -> {
-                findMaskableComposeWidgets(view, maskableWidgets)
+                findMaskableComposeWidgets(view, walk)
+                if (walk.shouldStop) {
+                    return
+                }
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
             }
@@ -1010,55 +1033,32 @@ public class PostHogReplayIntegration(
             }
 
             view.isNoCapture() -> {
-                view.globalVisibleRect()?.let {
-                    maskableWidgets.add(it)
-                }
+                view.addGlobalVisibleRect(walk)
             }
 
             view is TextView -> {
-                val viewText = view.text?.toString()
-                var maskIt = false
-                if (!viewText.isNullOrEmpty()) {
-                    maskIt =
-                        view.shouldMaskTextView()
-                }
-
-                val hint = view.hint?.toString()
-                if (!maskIt && !hint.isNullOrEmpty()) {
-                    maskIt =
-                        view.shouldMaskTextView()
-                }
-
-                if (maskIt) {
-                    // For EditText, mask only the text area (excluding padding and compound drawables)
-                    // For regular TextView, mask the full view
-                    view.getTextAreaGlobalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                // Only emptiness matters here; toString() would copy the text on every walk.
+                val hasContent = view.text?.isNotEmpty() == true || view.hint?.isNotEmpty() == true
+                if (hasContent && view.shouldMaskTextView()) {
+                    view.addTextAreaGlobalVisibleRect(walk)
                 }
             }
 
             view is Spinner -> {
                 if (view.shouldMaskSpinner()) {
-                    view.globalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                    view.addGlobalVisibleRect(walk)
                 }
             }
 
             view is ImageView -> {
                 if (view.shouldMaskImage()) {
-                    view.globalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                    view.addGlobalVisibleRect(walk)
                 }
             }
 
             view is WebView -> {
                 if (view.isAnyInputSensitive()) {
-                    view.globalVisibleRect()?.let {
-                        maskableWidgets.add(it)
-                    }
+                    view.addGlobalVisibleRect(walk)
                 }
             }
 
@@ -1069,93 +1069,161 @@ public class PostHogReplayIntegration(
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
-                if (isOnDrawnCalled && !isOnlyAnimationRedraw) {
-                    config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                    return false
+                if (walk.shouldStop) {
+                    return
                 }
 
                 val viewChild = view.getChildAt(i) ?: continue
 
-                if (!viewChild.isVisible()) {
+                if (!viewChild.isVisible(walk)) {
+                    // A skipped-but-rendered view could be a masked widget we cannot place.
+                    if (walk.failClosed && viewChild.isRenderedButUnplaceable()) {
+                        walk.poisoned = true
+                        return
+                    }
                     continue
                 }
 
-                if (!findMaskableWidgets(viewChild, maskableWidgets, visitedViews)) {
-                    // do not continue if the screen has changed
-                    return false
-                }
+                findMaskableWidgets(viewChild, walk)
             }
         }
+    }
 
-        return true
+    private fun View.addGlobalVisibleRect(walk: MaskWalk) {
+        if (isViewStateStableForMatrixOperations()) {
+            getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+            walk.addRect(walk.scratchRect)
+        }
+    }
+
+    /**
+     * Adds the global visible rect of just the text content area within a TextView.
+     * For EditText and Button subclasses this excludes the padding and compound drawables,
+     * masking only the text area. For regular TextView, the full view rect is used.
+     */
+    private fun TextView.addTextAreaGlobalVisibleRect(walk: MaskWalk) {
+        if (!isViewStateStableForMatrixOperations()) {
+            return
+        }
+        getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+        val rect = walk.scratchRect
+        // Only adjust bounds for views that typically have significant padding or compound
+        // drawables (EditText border/underline, Button background padding).
+        if (this is EditText || this is Button) {
+            val textAreaLeft = rect.left + compoundPaddingLeft
+            val textAreaTop = rect.top + compoundPaddingTop
+            val textAreaRight = rect.right - compoundPaddingRight
+            val textAreaBottom = rect.bottom - compoundPaddingBottom
+            // Fall back to the full rect if the text area is too small
+            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
+                rect.set(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
+            }
+        }
+        walk.addRect(rect)
+    }
+
+    // Rendered per its flags, but its geometry is momentarily unknowable (mid animation,
+    // transient state, mid-layout), so no trustworthy mask rect can be produced for it.
+    private fun View.isRenderedButUnplaceable(): Boolean {
+        return visibility == View.VISIBLE &&
+            width > 0 && height > 0 &&
+            !isViewStateStableForMatrixOperations()
     }
 
     private fun findMaskableComposeWidgets(
         view: View,
-        maskableWidgets: MutableList<Rect>,
+        walk: MaskWalk,
     ) {
-        val latch = CountDownLatch(1)
+        // Local list so a timed-out runnable that fires late cannot mutate the walk.
+        val maskableWidgets = mutableListOf<Rect>()
+        var traversalSucceeded = false
 
-        // compose requires the handler to be on the main thread
-        // see https://github.com/PostHog/posthog-android/issues/203
-        mainHandler.handler.post {
-            try {
-                val semanticsOwner =
-                    (view as? RootForTest)?.semanticsOwner ?: run {
-                        config.logger.log("View is not a RootForTest: $view")
-                        return@post
-                    }
-                val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
-
-                semanticsNodes.forEach { node ->
-                    val hasText = node.config.contains(SemanticsProperties.Text)
-                    val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
-                    val hasPassword = node.config.contains(SemanticsProperties.Password)
-                    val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
-
-                    // isEnabled=false means the modifier has no effect, as if it was never applied
-                    // Check the node itself and its ancestors for mask/unmask modifiers
-                    val isMaskEnabled = node.hasActiveModifier(PostHogReplayMask)
-                    val isUnmaskEnabled = node.hasActiveModifier(PostHogReplayUnmask)
-
-                    when {
-                        // postHogUnmask has precedence over everything, skip masking
-                        isUnmaskEnabled -> {
-                            // do not mask this node
+        val traversal =
+            Runnable {
+                try {
+                    val semanticsOwner =
+                        (view as? RootForTest)?.semanticsOwner ?: run {
+                            config.logger.log("View is not a RootForTest: $view")
+                            return@Runnable
                         }
+                    val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
 
-                        // postHogMask forces masking
-                        isMaskEnabled -> {
-                            maskableWidgets.add(node.boundsInWindow.toRect())
-                        }
+                    semanticsNodes.forEach { node ->
+                        val hasText = node.config.contains(SemanticsProperties.Text)
+                        val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
+                        val hasPassword = node.config.contains(SemanticsProperties.Password)
+                        val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
-                        // no active modifier, apply default config rules
-                        else -> {
-                            when {
-                                (hasText || hasEditableText) && (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
-                                    maskableWidgets.add(node.boundsInWindow.toRect())
-                                }
+                        // isEnabled=false means the modifier has no effect, as if it was never applied
+                        // Check the node itself and its ancestors for mask/unmask modifiers
+                        val isMaskEnabled = node.hasActiveModifier(PostHogReplayMask)
+                        val isUnmaskEnabled = node.hasActiveModifier(PostHogReplayUnmask)
 
-                                hasImage && config.sessionReplayConfig.maskAllImages -> {
-                                    maskableWidgets.add(node.boundsInWindow.toRect())
+                        when {
+                            // postHogUnmask has precedence over everything, skip masking
+                            isUnmaskEnabled -> {
+                                // do not mask this node
+                            }
+
+                            // postHogMask forces masking
+                            isMaskEnabled -> {
+                                maskableWidgets.add(node.boundsInWindow.toRect())
+                            }
+
+                            // no active modifier, apply default config rules
+                            else -> {
+                                when {
+                                    (hasText || hasEditableText) &&
+                                        (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
+                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                    }
+
+                                    hasImage && config.sessionReplayConfig.maskAllImages -> {
+                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                    }
                                 }
                             }
                         }
                     }
+                    traversalSucceeded = true
+                } catch (e: Throwable) {
+                    // Compose APIs vary by version. Missing masks must fail closed.
+                    config.logger.log("Session Replay findMaskableComposeWidgets (main thread) failed: $e")
                 }
-            } catch (e: Throwable) {
-                // swallow possible errors due to compose versioning, etc
-                config.logger.log("Session Replay findMaskableComposeWidgets (main thread) failed: $e")
-            } finally {
-                latch.countDown()
             }
-        }
 
-        try {
-            // await for 1s max
-            latch.await(1000, TimeUnit.MILLISECONDS)
-        } catch (e: Throwable) {
-            config.logger.log("Session Replay findMaskableComposeWidgets failed: $e")
+        // Compose requires main-thread access. Draw-time verification already runs on main, where
+        // posting and waiting would deadlock, so execute inline in that case.
+        val completed =
+            if (Looper.myLooper() == mainHandler.handler.looper) {
+                traversal.run()
+                true
+            } else {
+                val latch = CountDownLatch(1)
+                mainHandler.handler.post {
+                    try {
+                        traversal.run()
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+                try {
+                    latch.await(1000, TimeUnit.MILLISECONDS)
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay findMaskableComposeWidgets failed: $e")
+                    false
+                }
+            }
+
+        if (completed && traversalSucceeded) {
+            // Feed through addRect on the walk's owner thread so compare mode also covers
+            // Compose rects.
+            for (rect in maskableWidgets) {
+                walk.addRect(rect)
+            }
+        } else if (walk.failClosed) {
+            // Compose mask rects are missing or incomplete, so fail closed.
+            walk.poisoned = true
         }
     }
 
@@ -1193,9 +1261,156 @@ public class PostHogReplayIntegration(
         }
     }
 
+    // A frame is safe to ship only when every available signal agrees that the mask geometry
+    // remained aligned. Draw-time walks additionally invalidate the active capture if geometry
+    // changes and returns to its starting position between these endpoint walks.
+    internal fun shouldKeepFrame(
+        drawState: WindowDrawState,
+        preWalk: MaskWalk,
+        postWalk: MaskWalk,
+    ): Boolean {
+        return !preWalk.poisoned &&
+            !postWalk.poisoned &&
+            !drawState.didLayoutSinceReset &&
+            preWalk.rects == postWalk.rects
+    }
+
+    // A screenshot capture armed for draw verification: the token draws are checked
+    // against, plus the pre-walk whose rects became the baseline.
+    private class ArmedMaskCapture(
+        val token: MaskCaptureToken,
+        val preWalk: MaskWalk,
+    )
+
+    // Arms the capture before the pre-walk so no draw can slip between the walk and the
+    // arming. A draw overlapping the pre-walk may leave the walked baseline torn, so that
+    // attempt is thrown away and re-walked from scratch under a fresh capture, bounded so
+    // a screen that redraws during every attempt discards instead of looping. Layout,
+    // poison, and external invalidation discard immediately.
+    private fun armMaskCapture(
+        view: View,
+        drawState: WindowDrawState,
+    ): ArmedMaskCapture? {
+        repeat(MAX_BASELINE_ARM_ATTEMPTS) {
+            val token = drawState.beginMaskCapture()
+            val preWalk = MaskWalk()
+            try {
+                findMaskableWidgets(view, preWalk)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay mask walk failed: $e.")
+                preWalk.poisoned = true
+            }
+            if (preWalk.poisoned) {
+                drawState.cancelMaskCapture(token)
+                return null
+            }
+            when (drawState.setBaseline(token, preWalk.rects)) {
+                BaselineResult.ARMED -> return ArmedMaskCapture(token, preWalk)
+                BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
+                BaselineResult.UNKEEPABLE -> {
+                    drawState.cancelMaskCapture(token)
+                    return null
+                }
+            }
+        }
+        return null
+    }
+
+    private fun Bitmap.paintScreenshotMasks(rects: List<Rect>): Boolean {
+        if (!isValid()) {
+            this@PostHogReplayIntegration.config.logger.log("Session Replay Bitmap is invalid.")
+            return false
+        }
+
+        val canvas =
+            try {
+                Canvas(this)
+            } catch (e: Throwable) {
+                this@PostHogReplayIntegration.config.logger.log("Session Replay Canvas creation failed: $e.")
+                return false
+            }
+
+        val maskRect = RectF()
+        rects.forEach {
+            maskRect.set(it)
+            canvas.drawRoundRect(maskRect, 10f, 10f, paint)
+        }
+        return true
+    }
+
+    private fun View.maskVerifiedScreenshot(
+        bitmap: Bitmap,
+        drawState: WindowDrawState,
+        armedCapture: ArmedMaskCapture,
+    ): Boolean {
+        val postWalk = MaskWalk()
+        // A layout pass or an invalidating draw sample already sealed the verdict as discard,
+        // so the post-copy walk would be wasted work.
+        val alreadyDoomed = drawState.isCaptureInvalid(armedCapture.token)
+        if (!alreadyDoomed) {
+            findMaskableWidgets(this, postWalk)
+        }
+
+        val captureAligned =
+            drawState.finishMaskCapture(
+                armedCapture.token,
+                postWalk.rects,
+                postWalk.poisoned,
+            )
+        if (!captureAligned || !shouldKeepFrame(drawState, armedCapture.preWalk, postWalk)) {
+            // Masks may be out of sync with the pixels, discard to avoid a PII leak.
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return false
+        }
+        return bitmap.paintScreenshotMasks(postWalk.rects)
+    }
+
+    private fun View.maskLegacyScreenshot(
+        bitmap: Bitmap,
+        drawState: WindowDrawState,
+    ): Boolean {
+        val unsafeRedraw = { drawState.isOnDrawnCalled && !drawState.isOnlyAnimationRedraw }
+        if (unsafeRedraw()) {
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return false
+        }
+
+        val walk = MaskWalk(failClosed = false, shouldAbort = unsafeRedraw)
+        findMaskableWidgets(this, walk)
+        if (walk.aborted || unsafeRedraw()) {
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return false
+        }
+
+        if (!bitmap.isValid()) {
+            config.logger.log("Session Replay Bitmap is invalid.")
+            return false
+        }
+        val canvas =
+            try {
+                Canvas(bitmap)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay Canvas creation failed: $e.")
+                return false
+            }
+        val maskRect = RectF()
+        walk.rects.forEach {
+            if (unsafeRedraw()) {
+                config.logger.log("Session Replay screenshot discarded due to screen changes.")
+                return false
+            }
+            maskRect.set(it)
+            canvas.drawRoundRect(maskRect, 10f, 10f, paint)
+        }
+        return true
+    }
+
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
-    private fun View.toScreenshotWireframe(window: Window): RRWireframe? {
+    private fun View.toScreenshotWireframe(
+        window: Window,
+        drawState: WindowDrawState,
+    ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
             return null
@@ -1217,10 +1432,39 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
-        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        val verifyMaskAlignment = config.sessionReplayConfig.verifyScreenshotMaskAlignment
+        val armedCapture =
+            if (verifyMaskAlignment) {
+                drawState.reset()
+                // The pre-walk samples the baseline before the pixels freeze. Once armed, draws are
+                // verified against it, so pixel-only redraws survive while geometry changes discard.
+                armMaskCapture(view, drawState)
+            } else {
+                drawState.beginLegacyCapture()
+                null
+            }
+        if (verifyMaskAlignment && armedCapture == null) {
+            config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return null
+        }
+        val bitmap: Bitmap
+        val handler: Handler
+        try {
+            bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            handler = ensurePixelCopyHandler()
+        } catch (e: Throwable) {
+            armedCapture?.let { drawState.cancelMaskCapture(it.token) }
+            if (verifyMaskAlignment) {
+                drawState.reset()
+            } else {
+                drawState.finishLegacyCapture()
+            }
+            config.logger.log("Session Replay screenshot setup failed: $e.")
+            return null
+        }
+
         val latch = CountDownLatch(1)
         var success = true
-        val handler = ensurePixelCopyHandler()
 
         // Track whether the PixelCopy callback has finished to avoid recycling the bitmap
         // while the callback is still using it (e.g. if latch.await times out).
@@ -1228,62 +1472,23 @@ public class PostHogReplayIntegration(
         var callbackCompleted = false
 
         try {
-            // reset the draw-dirty flags since we are about to take a screenshot
-            resetDrawStateTracking()
-
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
                     if (copyResult != PixelCopy.SUCCESS) {
                         config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                         success = false
                     } else {
-                        // Allow capture if the screen hasn't redrawn, or if the only redraws
-                        // since PixelCopy started were animation frames (e.g. Lottie). In the
-                        // animation case, view geometry is stable so mask positions are still valid.
-                        if (!isOnDrawnCalled || isOnlyAnimationRedraw) {
-                            val maskableWidgets = mutableListOf<Rect>()
-
-                            if (findMaskableWidgets(view, maskableWidgets)) {
-                                if (!bitmap.isValid()) {
-                                    config.logger.log("Session Replay Bitmap is invalid.")
-                                    success = false
-                                    return@request
-                                }
-
-                                val canvas =
-                                    try {
-                                        Canvas(bitmap)
-                                    } catch (e: Throwable) {
-                                        config.logger.log("Session Replay Canvas creation failed: $e.")
-                                        success = false
-                                        return@request
-                                    }
-
-                                maskableWidgets.forEach {
-                                    if (isOnDrawnCalled && !isOnlyAnimationRedraw) {
-                                        config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                                        success = false
-                                        return@forEach
-                                    }
-                                    canvas.drawRoundRect(RectF(it), 10f, 10f, paint)
-                                }
+                        success =
+                            if (armedCapture != null) {
+                                view.maskVerifiedScreenshot(bitmap, drawState, armedCapture)
                             } else {
-                                config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                                success = false
+                                view.maskLegacyScreenshot(bitmap, drawState)
                             }
-                        } else {
-                            config.logger.log("Session Replay screenshot discarded due to screen changes.")
-                            // isOnDrawnCalled is true and it was a structural change (not just an
-                            // animation frame), so masks may be out of sync — discard to avoid PII leak.
-                            success = false
-                        }
                     }
                 } catch (e: Throwable) {
                     config.logger.log("Session Replay PixelCopy failed: $e.")
                     success = false
                 } finally {
-                    // reset the draw-dirty flags since we've taken the screenshot
-                    resetDrawStateTracking()
                     callbackCompleted = true
                     latch.countDown()
                 }
@@ -1296,16 +1501,19 @@ public class PostHogReplayIntegration(
         }
 
         try {
-            // await for 1s max
-            latch.await(1000, TimeUnit.MILLISECONDS)
-
-            if (success) {
+            // On timeout the masks aren't painted yet, so the bitmap must not be shipped.
+            if (latch.await(1000, TimeUnit.MILLISECONDS) && success) {
                 base64 = bitmap.webpBase64()
             }
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
-            resetDrawStateTracking()
+            armedCapture?.let { drawState.cancelMaskCapture(it.token) }
+            if (verifyMaskAlignment) {
+                drawState.reset()
+            } else {
+                drawState.finishLegacyCapture()
+            }
             // Only recycle the bitmap if the callback has completed.
             // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
             // on another thread; recycling it now would cause a native SIGSEGV.
@@ -1907,7 +2115,9 @@ public class PostHogReplayIntegration(
 
     override fun stop() {
         isSessionReplayActive = false
-        resetDrawStateTracking()
+        synchronized(decorViews) {
+            decorViews.values.forEach { it.drawState.invalidateMaskCapture() }
+        }
     }
 
     override fun isActive(): Boolean {
@@ -2335,7 +2545,10 @@ public class PostHogReplayIntegration(
         const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
 
-        @Volatile
-        private var integrationInstalled = false
+        // Pre-walk re-arm attempts per capture: a screen that redraws during every attempt
+        // discards this tick and retries at the next scheduled snapshot.
+        private const val MAX_BASELINE_ARM_ATTEMPTS: Int = 3
+
+        private val integrationInstalled = AtomicBoolean(false)
     }
 }
