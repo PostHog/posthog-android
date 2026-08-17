@@ -899,7 +899,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
     ): Boolean {
-        val rolloutPercentage = condition.rolloutPercentage
+        val rolloutPercentage = condition.rolloutPercentageDecimal
         val conditionProperties = condition.properties ?: emptyList()
 
         // Check all properties match
