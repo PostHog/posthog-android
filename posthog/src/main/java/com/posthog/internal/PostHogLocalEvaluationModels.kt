@@ -49,15 +49,10 @@ public class FlagFilters(
 @PostHogInternal
 public class FlagConditionGroup(
     public val properties: List<FlagProperty>?,
-    rolloutPercentage: Int?,
-    public val variant: String?,
-) {
     @SerializedName("rollout_percentage")
-    public val rolloutPercentageDecimal: Double? = rolloutPercentage?.toDouble()
-
-    public val rolloutPercentage: Int?
-        get() = rolloutPercentageDecimal?.toInt()
-}
+    public val rolloutPercentage: Double?,
+    public val variant: String?,
+)
 
 /**
  * A property condition for flag evaluation
