@@ -7,7 +7,6 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.posthog.PostHogBeforeSend
 import com.posthog.internal.PostHogDateProvider
-import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import java.io.File
@@ -180,7 +179,6 @@ internal class PostHogServerWireSnapshotTest {
         evaluationContexts: List<String>? = null,
     ): PostHog {
         server.enqueue(jsonResponse("{\"flags\":{}}"))
-        server.enqueue(MockResponse().setResponseCode(200))
 
         val config =
             PostHogConfig.builder(TEST_API_KEY)
