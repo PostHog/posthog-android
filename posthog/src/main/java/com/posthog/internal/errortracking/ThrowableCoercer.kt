@@ -252,8 +252,8 @@ public class ThrowableCoercer {
         releaseIdentifier: String? = null,
         inAppExcludes: List<String> = listOf(),
     ): MutableMap<String, Any> {
-        // Identity-based: a Throwable subclass with value equality (e.g. a Kotlin data class) must
-        // not make two distinct instances collide and drop one from the list.
+        // shared with the suppressed-exception pass below, so a throwable that appears both in the
+        // chain and as someone's suppressed exception is only serialized once
         val circularDetector: MutableSet<Throwable> = Collections.newSetFromMap(IdentityHashMap())
 
         var handled = true
@@ -279,28 +279,20 @@ public class ThrowableCoercer {
         //      after the chain (one level only — suppressed-of-suppressed is NOT recursed).
         // exception_id is the 0-based index in this final list; parent_id points at the throwable a
         // cause/suppressed item hangs off.
-        //
-        // MAX_EXCEPTION_LIST_SIZE bounds the WALK, not just the output: we stop following `cause` as
-        // soon as the list is full and never build an unbounded intermediate collection, so a
-        // pathological chain (very deep, or one whose `cause` mints a fresh throwable on every read
-        // and therefore slips past the identity guard) costs at most the cap.
         val items = mutableListOf<ExceptionRef>()
 
-        // primary cause chain: first item keeps the primary mechanism type; the rest are "chained"
-        // with parent_id = the id of the item they are the cause OF (the previous item).
-        while (currentThrowable != null &&
-            items.size < MAX_EXCEPTION_LIST_SIZE &&
-            circularDetector.add(currentThrowable)
-        ) {
+        // primary cause chain (bounded and deduplicated by walkCauseChain): first item keeps the
+        // primary mechanism type; the rest are "chained" with parent_id = the id of the item they
+        // are the cause OF (the previous item).
+        walkCauseChain(currentThrowable, circularDetector).forEach { link ->
             val index = items.size
             items.add(
                 ExceptionRef(
-                    throwable = currentThrowable,
+                    throwable = link,
                     parentId = if (index == 0) null else index - 1,
                     mechanismType = if (index == 0) mechanismType else "chained",
                 ),
             )
-            currentThrowable = currentThrowable.cause
         }
 
         // suppressed exceptions fill whatever capacity the chain left over, in chain order, each
@@ -364,6 +356,34 @@ public class ThrowableCoercer {
     internal companion object {
         const val EXCEPTION_LEVEL_FATAL = "fatal"
         const val EXCEPTION_LEVEL_ATTRIBUTE = "\$exception_level"
+
+        /**
+         * The cause chain starting at [root], identity-deduplicated and capped at
+         * [MAX_EXCEPTION_LIST_SIZE] items.
+         *
+         * The cap bounds the walk itself, so a pathological chain (very deep, or a `cause` getter
+         * that mints a fresh throwable on every read and therefore slips past the identity guard)
+         * costs at most the cap. Identity-based because a Throwable subclass with value equality
+         * (e.g. a Kotlin data class) must not make two distinct instances collide and cut the walk
+         * short. Every consumer of a cause chain must go through this walk, so what gets serialized
+         * and what gets matched against `ignoredExceptionTypes` is the same chain.
+         *
+         * [seen] lets a caller share the dedup set with a follow-up traversal (the coercer reuses
+         * it when collecting suppressed exceptions).
+         */
+        fun walkCauseChain(
+            root: Throwable?,
+            seen: MutableSet<Throwable> = Collections.newSetFromMap(IdentityHashMap()),
+        ): Sequence<Throwable> =
+            sequence {
+                var current = root
+                var walked = 0
+                while (current != null && walked < MAX_EXCEPTION_LIST_SIZE && seen.add(current)) {
+                    yield(current)
+                    walked++
+                    current = current.cause
+                }
+            }
 
         // Max number of items serialized into `$exception_list`. Bounds the traversal itself: the
         // cause walk stops here, keeping the earliest (primary + nearest-cause) items, and only then

@@ -2933,6 +2933,20 @@ internal class PostHogTest {
     // stays off the test classpath
     private class JavascriptExceptionStub(message: String) : RuntimeException(message)
 
+    // a fresh throwable on every `cause` read defeats any identity- or equality-based
+    // cycle guard, so only a bounded walk terminates on this chain
+    private class SelfRegeneratingCauseException : RuntimeException("regenerating") {
+        override val cause: Throwable
+            get() = SelfRegeneratingCauseException()
+    }
+
+    private class ValueEqualException(message: String, cause: Throwable? = null) :
+        RuntimeException(message, cause) {
+        override fun equals(other: Any?): Boolean = other is ValueEqualException && other.message == message
+
+        override fun hashCode(): Int = message?.hashCode() ?: 0
+    }
+
     @Test
     fun `captureException drops events whose throwable matches ignoredExceptionTypes`() {
         val http = mockHttp()
@@ -3013,6 +3027,47 @@ internal class PostHogTest {
 
         // the uncaught-exception handler wraps throwables in PostHogThrowable before capture
         sut.captureException(PostHogThrowable(JavascriptExceptionStub("Unhandled JS Exception")))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    // the deadline turns a regression (an unbounded cause walk never returns) into a
+    // prompt failure instead of a stalled test worker
+    @Test(timeout = 10_000)
+    fun `captureException with ignored types terminates on a self-regenerating cause chain`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        sut.captureException(SelfRegeneratingCauseException())
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException drops an ignored type behind value-equal duplicate causes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        // an equality-based cycle guard would stop at the second value-equal wrapper
+        // and never reach the ignored cause behind it
+        val chain =
+            ValueEqualException(
+                "same",
+                ValueEqualException("same", JavascriptExceptionStub("Unhandled JS Exception")),
+            )
+        sut.captureException(chain)
 
         queueExecutor.shutdownAndAwaitTermination()
         assertEquals(0, http.requestCount)
