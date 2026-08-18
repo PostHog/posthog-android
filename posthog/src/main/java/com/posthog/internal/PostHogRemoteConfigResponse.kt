@@ -16,4 +16,9 @@ public open class PostHogRemoteConfigResponse(
     public val errorTracking: Any? = false,
     // its either a boolean (false = disabled) or a map with "network_timing" key
     public val capturePerformance: Any? = false,
+    // a map with an "appIds" list: the app_ids this project can accept push registrations for.
+    // Defaults to null, not false: absent means the server predates the key, which is not the
+    // same as a project with none configured. See docs/internal/push-subscription-registration.md
+    // in PostHog/posthog.
+    public val push: Any? = null,
 )

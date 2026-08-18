@@ -40,6 +40,9 @@ internal class PostHogPushSubscriptionManager(
     private val api: PostHogApi,
     private val executor: ExecutorService,
     private val distinctIdProvider: () -> String,
+    // The app_ids the project accepts registrations for, or null when no server has said.
+    // Null means attempt: a server older than the key must not stop a device registering.
+    private val pushAppIdsProvider: () -> List<String>? = { null },
 ) {
     private val isSending = AtomicBoolean(false)
 
@@ -156,7 +159,47 @@ internal class PostHogPushSubscriptionManager(
             halted = false
             didAuthRetry = false
         }
+        // The record is persisted above whether or not the send is gated, so when the project does
+        // configure push, [onPushAppIdsChanged] has a token to register and does not have to wait for
+        // the app to hand us one again.
         attempt(resetStateOnFold = !isIdenticalUndelivered)
+    }
+
+    // Null means no server has published the list, so we cannot rule the app_id out and must try.
+    private fun isRegisterable(appId: String): Boolean {
+        val appIds = pushAppIdsProvider() ?: return true
+        return appIds.contains(appId)
+    }
+
+    /**
+     * Called when remote config resolves. [newlyRegisterable] are the app_ids that were not
+     * registerable the last time we looked and are now.
+     *
+     * A device that registered while its project had no push integration was answered 200 and had its
+     * token discarded, but still recorded the send as delivered and stopped asking. Clearing that
+     * marker for an app_id that just became registerable is the only thing that reaches it.
+     */
+    fun onPushAppIdsChanged(newlyRegisterable: Set<String>) {
+        executor.executeSafely {
+            val record = currentRecord() ?: return@executeSafely
+            if (record.appId !in newlyRegisterable) {
+                // Either nothing changed for this device, or the app_id was already registerable and
+                // the existing delivered marker is honest. Re-sending here would put the request back
+                // on every launch, which is what the marker exists to prevent.
+                return@executeSafely
+            }
+            if (record.deliveredForDistinctId != null) {
+                val cleared = record.copy(deliveredForDistinctId = null)
+                pendingRecord = cleared
+                pendingFile?.let { writePending(it, cleared, "Failed to persist push subscription") }
+            }
+            retryCount = 0
+            nextAttemptAtMs = 0L
+            halted = false
+            didAuthRetry = false
+            config.logger.log("Push app_id ${record.appId} became registerable; re-registering.")
+            attempt(resetStateOnFold = true)
+        }
     }
 
     fun retryPending() {
@@ -393,6 +436,14 @@ internal class PostHogPushSubscriptionManager(
         // Read the record here, not from the caller: an already-queued executor task can run after
         // unregisterCurrent() cleared it, so a null means "don't send".
         val record = currentRecord() ?: return
+        if (!isRegisterable(record.appId)) {
+            // The project publishes no push integration for this app_id, so the server would accept
+            // the request and throw the token away. Skipping it here is the whole point of the gate.
+            config.logger.log(
+                "Push subscription skipped: app_id ${record.appId} is not configured for this project.",
+            )
+            return
+        }
         if (config.networkStatus?.isConnected() == false) {
             config.logger.log("Push subscription deferred: no network.")
             // Deferral burns no retry attempt and schedules no timer; recovery is driven by

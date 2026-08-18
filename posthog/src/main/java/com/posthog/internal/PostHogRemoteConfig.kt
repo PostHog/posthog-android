@@ -13,6 +13,7 @@ import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.MINIMAL_FLAG_CALLED_EVENTS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
@@ -130,6 +131,14 @@ public class PostHogRemoteConfig(
     @Volatile
     private var autoCaptureExceptions = false
 
+    // The app_ids this project accepts push registrations for, or null when we have never heard
+    // from a server that sends the key. Null means "attempt the registration" — an SDK cannot tell an
+    // unconfigured project from a server older than the key, so absent has to stay permissive.
+    @Volatile private var pushAppIds: List<String>? = null
+
+    // app_ids that became registerable on the last /config read, drained by the push manager.
+    @Volatile private var newlyRegisterablePushAppIds: Set<String> = emptySet()
+
     // Set by preloadErrorTrackingConfig when a disk-cached error-tracking config exists at startup.
     // Survives clear()/reset(): it's project-level config, not user data, like the cached config.
     @Volatile
@@ -170,6 +179,7 @@ public class PostHogRemoteConfig(
         preloadSurveys()
         preloadErrorTrackingConfig()
         preloadCapturePerformanceConfig()
+        preloadPushConfig()
         loadCachedPropertiesForFlags()
         // Apply the bootstrap snapshot before any network load so reads serve it immediately.
         synchronized(featureFlagsLock) {
@@ -293,6 +303,7 @@ public class PostHogRemoteConfig(
                         processSurveys(it.surveys)
                         processErrorTrackingConfig(it.errorTracking)
                         processCapturePerformanceConfig(it.capturePerformance)
+                        newlyRegisterablePushAppIds = processPushConfig(it.push)
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
@@ -631,6 +642,70 @@ public class PostHogRemoteConfig(
     // Restores capture performance config from cache (survives reset); re-armed on a /flags reload.
     // capturePerformance is read from the cache by the caller (off featureFlagsLock, since that read
     // can hit disk); this only re-evaluates it in memory.
+    /**
+     * Parses the `push` slice and returns the app_ids that became registerable since the last time
+     * we looked, so the push manager can re-register a device that was stuck.
+     *
+     * A missing key clears the cache rather than keeping it: a server that stops sending the key is
+     * treated as one that never sent it, which means "attempt the registration" and never silently
+     * withholds a device from a project that has push.
+     */
+    private fun processPushConfig(
+        push: Any?,
+        persist: Boolean = true,
+    ): Set<String> {
+        // Absent for the comparison means the empty set, not unknown. The first launch that ever sees
+        // the key therefore treats every configured app_id as new, which re-registers a device that
+        // recorded a success while its project had no integration. That costs one request per device,
+        // once, and it is the only way to reach a device whose project was configured before it
+        // updated to an SDK that reads this key.
+        val previous = pushAppIds?.toSet() ?: emptySet()
+
+        val appIds =
+            when (push) {
+                is Map<*, *> -> (push["appIds"] as? List<*>)?.mapNotNull { it as? String }
+                else -> null
+            }
+
+        pushAppIds = appIds
+        if (persist) {
+            if (appIds != null) {
+                config.cachePreferences?.setValue(PUSH, mapOf("appIds" to appIds))
+            } else {
+                config.cachePreferences?.remove(PUSH)
+            }
+        }
+
+        return appIds?.toSet().orEmpty() - previous
+    }
+
+    private fun preloadPushConfig() {
+        synchronized(remoteConfigLock) {
+            config.cachePreferences?.let { preferences ->
+                val push = preferences.getValue(PUSH) as? Map<*, *>
+                if (push != null) {
+                    pushAppIds = (push["appIds"] as? List<*>)?.mapNotNull { it as? String }
+                }
+            }
+        }
+    }
+
+    /**
+     * The app_ids this project accepts push registrations for, or null when no server has told us.
+     * Null is not the empty list: it means attempt the registration.
+     */
+    public fun getPushAppIds(): List<String>? = pushAppIds
+
+    /**
+     * app_ids that became registerable on the most recent /config read, cleared by reading them.
+     * Draining rather than peeking keeps a device from re-registering on every subsequent load.
+     */
+    public fun consumeNewlyRegisterablePushAppIds(): Set<String> {
+        val newlyRegisterable = newlyRegisterablePushAppIds
+        newlyRegisterablePushAppIds = emptySet()
+        return newlyRegisterable
+    }
+
     private fun reevaluateCapturePerformanceFromCachedConfig(capturePerformance: Any?) {
         if (capturePerformance == null) {
             config.logger.log("No cached capture performance config to re-evaluate; network timing stays disabled.")
