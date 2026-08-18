@@ -1038,8 +1038,7 @@ internal class PostHogStatelessTest {
 
         sut.captureStateless("test", "user123")
 
-        // a throwing hook falls back to the last good event instead of dropping it
-        assertEquals(1, mockQueue.events.size)
+        assertEquals(0, mockQueue.events.size)
         assertTrue(mockLogger.messages.any { it.contains("Error in beforeSend function") })
     }
 

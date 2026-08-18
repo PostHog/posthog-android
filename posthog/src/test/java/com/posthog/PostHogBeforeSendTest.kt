@@ -250,7 +250,7 @@ internal class PostHogBeforeSendTest {
     }
 
     @Test
-    fun `falls back to the last good event when a hook throws instead of dropping it`() {
+    fun `drops the event when a hook throws`() {
         val http = mockHttp()
         val url = http.url("/")
         val postHogInterface: PostHogInterface =
@@ -272,13 +272,7 @@ internal class PostHogBeforeSendTest {
         queueExecutor.shutdownAndAwaitTermination()
         replayQueueExecutor.shutdownAndAwaitTermination()
 
-        val request = http.takeRequest()
-        assertEquals(1, http.requestCount)
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-        val theEvent = batch.batch.first()
-
-        assertEquals("value", theEvent.properties?.get("key"))
+        assertEquals(0, http.requestCount)
 
         postHogInterface.close()
     }

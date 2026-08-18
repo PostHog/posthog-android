@@ -315,6 +315,7 @@ public open class PostHogStateless protected constructor(
                 eventChecked = result
             } catch (e: Throwable) {
                 config?.logger?.log("Error in beforeSend function: $e")
+                return null
             }
         }
 
