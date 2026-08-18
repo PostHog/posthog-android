@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.JsonPrimitive
 import com.posthog.PostHogBeforeSend
 import com.posthog.internal.PostHogDateProvider
 import okhttp3.mockwebserver.MockWebServer
@@ -235,6 +236,7 @@ internal class PostHogServerWireSnapshotTest {
         val resource = javaClass.classLoader.getResource("json/$fixtureName")
         assertNotNull(resource, "Missing snapshot fixture json/$fixtureName")
         val expected = JsonParser.parseString(resource.readText())
+        normalizeLibVersion(actual)
         val canonicalExpected = canonicalize(expected)
         val canonicalActual = canonicalize(actual)
         assertEquals(
@@ -258,6 +260,24 @@ internal class PostHogServerWireSnapshotTest {
                 }
             else -> element.deepCopy()
         }
+
+    private fun normalizeLibVersion(element: JsonElement) {
+        when {
+            element.isJsonObject ->
+                element.asJsonObject.entrySet().forEach { entry ->
+                    if (entry.key == "\$lib_version") {
+                        assertTrue(
+                            entry.value.isJsonPrimitive && entry.value.asJsonPrimitive.isString,
+                            "Expected string \$lib_version",
+                        )
+                        entry.setValue(JsonPrimitive(LIB_VERSION_PLACEHOLDER))
+                    } else {
+                        normalizeLibVersion(entry.value)
+                    }
+                }
+            element.isJsonArray -> element.asJsonArray.forEach(::normalizeLibVersion)
+        }
+    }
 
     private fun normalizeExceptionVolatiles(body: JsonElement) {
         val events = body.asJsonObject.getAsJsonArray("batch") ?: return
@@ -318,6 +338,7 @@ internal class PostHogServerWireSnapshotTest {
     }
 
     private companion object {
+        const val LIB_VERSION_PLACEHOLDER = "<lib-version>"
         val PRETTY_GSON = GsonBuilder().setPrettyPrinting().create()
     }
 }

@@ -9,6 +9,7 @@
         "$exception_list": [
           {
             "mechanism": {
+              "exception_id": 0,
               "handled": true,
               "synthetic": false,
               "type": "generic"
@@ -43,9 +44,11 @@
           },
           {
             "mechanism": {
+              "exception_id": 1,
               "handled": true,
+              "parent_id": 0,
               "synthetic": false,
-              "type": "generic"
+              "type": "chained"
             },
             "module": "java.lang",
             "stacktrace": {
@@ -68,7 +71,7 @@
           }
         ],
         "$lib": "posthog-server",
-        "$lib_version": "2.12.0",
+        "$lib_version": "<lib-version>",
         "request_id": "request-456",
         "tags": [
           "checkout",
