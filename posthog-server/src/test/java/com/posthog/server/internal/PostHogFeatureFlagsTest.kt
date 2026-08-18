@@ -748,6 +748,44 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `evaluateFlags partial fallback does not populate the legacy cache`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                errorResponse(500, "Internal Server Error"),
+                jsonResponse(createFlagsResponse("needs-server", enabled = true)),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val evaluation =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(setOf("resolves-locally"), evaluation.flags.keys)
+
+        val legacyFlags =
+            featureFlags.getFeatureFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+            )
+        assertEquals(setOf("needs-server"), legacyFlags?.keys)
+        assertEquals(3, mockServer.requestCount, "legacy evaluation must retry the failed fallback")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `poller does not start when pollerEnabled is false`() {
         val logger = TestLogger()
         val localEvalResponse =

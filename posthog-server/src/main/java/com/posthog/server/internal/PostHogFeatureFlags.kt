@@ -920,6 +920,7 @@ internal class PostHogFeatureFlags(
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
                 onlyEvaluateLocally = onlyEvaluateLocally,
+                isEvaluationSnapshot = true,
             )
         cache.getEntry(cacheKey)?.let { entry ->
             val flags = entry.flags ?: EMPTY_FLAGS
@@ -985,7 +986,12 @@ internal class PostHogFeatureFlags(
                 remoteFlagKeys,
                 disableGeoip,
             ) ?: EMPTY_FLAGS
-        val remoteCacheKey = cacheKey.copy(flagKeys = remoteFlagKeys, onlyEvaluateLocally = false)
+        val remoteCacheKey =
+            cacheKey.copy(
+                flagKeys = remoteFlagKeys,
+                onlyEvaluateLocally = false,
+                isEvaluationSnapshot = false,
+            )
         val entry = cache.getEntry(remoteCacheKey)
 
         val mergedFlags = LinkedHashMap<String, FeatureFlag>(remoteFlags)

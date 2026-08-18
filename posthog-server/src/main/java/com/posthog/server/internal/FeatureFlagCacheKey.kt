@@ -13,4 +13,6 @@ internal data class FeatureFlagCacheKey(
     // Part of the key so a local-only pass (onlyEvaluateLocally = true) and a fallback pass
     // (onlyEvaluateLocally = false) don't share the same cached entry.
     val onlyEvaluateLocally: Boolean = false,
+    // Merged evaluateFlags snapshots must not be exposed through legacy cache readers.
+    val isEvaluationSnapshot: Boolean = false,
 )
