@@ -10,9 +10,4 @@ internal data class FeatureFlagCacheKey(
     val groupProperties: Map<String, Map<String, Any?>>?,
     val flagKeys: List<String>? = null,
     val disableGeoip: Boolean = false,
-    // Part of the key so a local-only pass (onlyEvaluateLocally = true) and a fallback pass
-    // (onlyEvaluateLocally = false) don't share the same cached entry.
-    val onlyEvaluateLocally: Boolean = false,
-    // Merged evaluateFlags snapshots must not be exposed through legacy cache readers.
-    val isEvaluationSnapshot: Boolean = false,
 )

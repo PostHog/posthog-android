@@ -627,6 +627,21 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(true, result.flags["needs-server"]?.enabled)
         assertEquals(false, result.locallyEvaluated["needs-server"])
 
+        // A cached raw remote response is merged with a fresh local pass in the same way.
+        val cached =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("resolves-locally", "needs-server"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(true, cached.locallyEvaluated["resolves-locally"])
+        assertEquals(false, cached.locallyEvaluated["needs-server"])
+        assertEquals(2, mockServer.requestCount)
+
         mockServer.takeRequest() // local_evaluation request
         val flagsRequestBody = mockServer.takeRequest().body.unGzip()
         assertTrue(flagsRequestBody.contains("\"needs-server\""))
@@ -706,7 +721,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `onlyEvaluateLocally is part of the cache key so passes do not share an entry`() {
+    fun `onlyEvaluateLocally does not reuse remote fallback cache entries`() {
         val mockServer =
             createMockHttp(
                 jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
@@ -716,7 +731,7 @@ internal class PostHogFeatureFlagsTest {
         val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
         assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
 
-        // Fallback pass caches the merged (local + remote) result under its own cache key.
+        // Fallback pass caches the raw remote response.
         val fallback =
             featureFlags.evaluateFlags(
                 distinctId = "user-1",
@@ -729,7 +744,7 @@ internal class PostHogFeatureFlagsTest {
             )
         assertEquals(setOf("resolves-locally", "needs-server"), fallback.flags.keys)
 
-        // A subsequent local-only pass must NOT be served the fallback pass's cached entry.
+        // A subsequent local-only pass must not read the cached remote values.
         val localOnly =
             featureFlags.evaluateFlags(
                 distinctId = "user-1",

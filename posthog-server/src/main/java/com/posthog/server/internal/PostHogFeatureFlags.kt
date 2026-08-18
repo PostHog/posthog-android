@@ -919,20 +919,7 @@ internal class PostHogFeatureFlags(
                 groupProperties = groupProperties,
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
-                onlyEvaluateLocally = onlyEvaluateLocally,
-                isEvaluationSnapshot = true,
             )
-        cache.getEntry(cacheKey)?.let { entry ->
-            val flags = entry.flags ?: EMPTY_FLAGS
-            return EvaluateFlagsResult(
-                flags = flags,
-                locallyEvaluated = flags.mapValues { isLocallyEvaluated(it.value) },
-                requestId = entry.requestId,
-                evaluatedAt = entry.evaluatedAt,
-                definitionsLoadedAt = definitionsLoadedAt,
-                responseError = entry.error,
-            )
-        }
 
         val localResult =
             getFeatureFlagsFromLocalEvaluation(
@@ -977,29 +964,26 @@ internal class PostHogFeatureFlags(
             } else {
                 flagKeys
             }
+        val remoteCacheKey = cacheKey.copy(flagKeys = remoteFlagKeys)
+        var entry = cache.getEntry(remoteCacheKey)
         val remoteFlags =
-            getFeatureFlagsFromRemote(
-                distinctId,
-                groups,
-                personProperties,
-                groupProperties,
-                remoteFlagKeys,
-                disableGeoip,
-            ) ?: EMPTY_FLAGS
-        val remoteCacheKey =
-            cacheKey.copy(
-                flagKeys = remoteFlagKeys,
-                onlyEvaluateLocally = false,
-                isEvaluationSnapshot = false,
-            )
-        val entry = cache.getEntry(remoteCacheKey)
+            if (entry != null) {
+                entry.flags ?: EMPTY_FLAGS
+            } else {
+                getFeatureFlagsFromRemote(
+                    distinctId,
+                    groups,
+                    personProperties,
+                    groupProperties,
+                    remoteFlagKeys,
+                    disableGeoip,
+                ).also { entry = cache.getEntry(remoteCacheKey) } ?: EMPTY_FLAGS
+            }
 
+        // Keep the raw remote response in the shared cache and merge locally on every call. This
+        // prevents partial evaluation snapshots from leaking into legacy all-or-nothing readers.
         val mergedFlags = LinkedHashMap<String, FeatureFlag>(remoteFlags)
         mergedFlags.putAll(localFlags)
-
-        // Overwrite the raw-remote cache entry with the merged view so later cache hits stay
-        // consistent with this response (the hit path recomputes `locallyEvaluated` per flag).
-        cache.put(cacheKey, mergedFlags, entry?.requestId, entry?.evaluatedAt, entry?.error)
 
         return EvaluateFlagsResult(
             flags = mergedFlags,
@@ -1009,10 +993,6 @@ internal class PostHogFeatureFlags(
             definitionsLoadedAt = definitionsLoadedAt,
             responseError = entry?.error,
         )
-    }
-
-    private fun isLocallyEvaluated(flag: FeatureFlag): Boolean {
-        return flag.reason?.code == LOCAL_EVALUATION_REASON_CODE
     }
 
     override fun getFeatureFlagError(
