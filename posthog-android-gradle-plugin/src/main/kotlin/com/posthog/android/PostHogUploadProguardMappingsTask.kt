@@ -62,6 +62,12 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
             error("[PostHog] Mapping files are missing!")
         }
+        // posthog-cli reads POSTHOG_RELEASE_MODE itself when --release-mode is absent, and the
+        // Gradle daemon's environment may carry one that contradicts the mode resolved here —
+        // where the gradle property is supposed to win. Pin the resolved mode in the child's
+        // environment so it cannot be overridden by inheritance. A posthog-cli predating the flag
+        // has no such argument and ignores the variable, so this stays safe for old CLIs.
+        releaseMode.orNull?.let { environment(POSTHOG_RELEASE_MODE_ENV, it) }
         super.exec()
     }
 
