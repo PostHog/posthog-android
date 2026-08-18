@@ -499,6 +499,15 @@ internal class PostHogPushSubscriptionManager(
                 config.logger.log("Push subscription send skipped: distinctId changed during identity token mint.")
                 return
             }
+            // Eligibility can also flip during the async mint: remote config may resolve and drop this
+            // app_id. Re-check here so a config that arrived mid-mint isn't ignored, which would POST a
+            // token the server discards and then record it as delivered, suppressing retries.
+            if (!isRegisterable(record.appId)) {
+                config.logger.log(
+                    "Push subscription send skipped: app_id ${record.appId} is not configured for this project.",
+                )
+                return
+            }
             api.pushSubscription(
                 distinctId = distinctId,
                 deviceToken = record.deviceToken,
