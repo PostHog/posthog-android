@@ -34,48 +34,60 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     private var uncaughtExceptionIntegration: PostHogErrorTrackingAutoCaptureIntegration? = null
 
     override fun <T : PostHogConfig> setup(config: T) {
-        // The base keeps its original state when it rejects a setup (already set up, or an invalid
-        // config), so only wire anything on top when THIS call is the one that enabled the client —
-        // otherwise a second setup() could install a handler bound to a config the base discarded.
-        val alreadySetUp = isEnabled()
-        super.setup(config.asCoreConfig())
-        if (alreadySetUp || !isEnabled()) {
-            return
-        }
+        // Hold setupLock across the whole lifecycle so the enabled-transition check and the handler
+        // install stay atomic with the base's own setup. The monitor is reentrant, so super.setup
+        // re-acquires it harmlessly. Without this, two concurrent setup() calls could both observe
+        // alreadySetUp as false and the rejected one would install a handler bound to a config the
+        // base discarded; and a concurrent close() could read uncaughtExceptionIntegration before it
+        // was assigned and leak the process-wide handler after the client closed.
+        synchronized(setupLock) {
+            // The base keeps its original state when it rejects a setup (already set up, or an invalid
+            // config), so only wire anything on top when THIS call is the one that enabled the client —
+            // otherwise a second setup() could install a handler bound to a config the base discarded.
+            val alreadySetUp = isEnabled()
+            super.setup(config.asCoreConfig())
+            if (alreadySetUp || !isEnabled()) {
+                return
+            }
 
-        // Core setup never installs integrations for the stateless base, so wire the uncaught
-        // handler explicitly. Gate purely on the local server flag — the server SDK never fetches
-        // remote config, so the remote-config gate the Android SDK uses can never fire here.
-        // Single-owner by design: the handler is process-wide, so only the first client that opts in
-        // installs it. With several live clients all opting in, closing the owner restores the
-        // previous handler and the remaining clients do not take over — capture stops until a client
-        // is set up again. Server apps use one client per process, so we don't ref-count here.
-        if (config.captureUncaughtExceptions) {
-            getConfig<com.posthog.PostHogConfig>()?.let { coreConfig ->
-                val integration = PostHogErrorTrackingAutoCaptureIntegration(coreConfig) { true }
-                // The uncaught Throwable is a PostHogThrowable carrying fatal/handled=false/mechanism;
-                // routing it through captureException preserves those via the shared coercer, and the
-                // queue sends fatal exception events synchronously on the crashing thread.
-                integration.installWith(
-                    object : PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget {
-                        override fun capture(throwable: Throwable) {
-                            captureException(throwable)
-                        }
+            // Core setup never installs integrations for the stateless base, so wire the uncaught
+            // handler explicitly. Gate purely on the local server flag — the server SDK never fetches
+            // remote config, so the remote-config gate the Android SDK uses can never fire here.
+            // Single-owner by design: the handler is process-wide, so only the first client that opts in
+            // installs it. With several live clients all opting in, closing the owner restores the
+            // previous handler and the remaining clients do not take over — capture stops until a client
+            // is set up again. Server apps use one client per process, so we don't ref-count here.
+            if (config.captureUncaughtExceptions) {
+                getConfig<com.posthog.PostHogConfig>()?.let { coreConfig ->
+                    val integration = PostHogErrorTrackingAutoCaptureIntegration(coreConfig) { true }
+                    // The uncaught Throwable is a PostHogThrowable carrying fatal/handled=false/mechanism;
+                    // routing it through captureException preserves those via the shared coercer, and the
+                    // queue sends fatal exception events synchronously on the crashing thread.
+                    integration.installWith(
+                        object : PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget {
+                            override fun capture(throwable: Throwable) {
+                                captureException(throwable)
+                            }
 
-                        override fun flush() {
-                            this@PostHog.flush()
-                        }
-                    },
-                )
-                uncaughtExceptionIntegration = integration
+                            override fun flush() {
+                                this@PostHog.flush()
+                            }
+                        },
+                    )
+                    uncaughtExceptionIntegration = integration
+                }
             }
         }
     }
 
     override fun close() {
-        uncaughtExceptionIntegration?.uninstall()
-        uncaughtExceptionIntegration = null
-        super.close()
+        // Same lock as setup so the uninstall + field clear cannot race a concurrent setup() that is
+        // still assigning uncaughtExceptionIntegration; super.close re-acquires the reentrant lock.
+        synchronized(setupLock) {
+            uncaughtExceptionIntegration?.uninstall()
+            uncaughtExceptionIntegration = null
+            super.close()
+        }
     }
 
     override fun identify(
