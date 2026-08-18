@@ -13,6 +13,7 @@ import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
 import com.posthog.server.jsonResponseWithEtag
 import com.posthog.server.notModifiedResponse
+import com.posthog.server.unGzip
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -614,7 +615,7 @@ internal class PostHogFeatureFlagsTest {
                 groups = null,
                 personProperties = null,
                 groupProperties = null,
-                flagKeys = null,
+                flagKeys = listOf("resolves-locally", "needs-server"),
                 onlyEvaluateLocally = false,
                 disableGeoip = false,
             )
@@ -625,6 +626,48 @@ internal class PostHogFeatureFlagsTest {
         // ...and only the inconclusive flag is filled in from the /flags response.
         assertEquals(true, result.flags["needs-server"]?.enabled)
         assertEquals(false, result.locallyEvaluated["needs-server"])
+
+        mockServer.takeRequest() // local_evaluation request
+        val flagsRequestBody = mockServer.takeRequest().body.unGzip()
+        assertTrue(flagsRequestBody.contains("\"needs-server\""))
+        assertFalse(flagsRequestBody.contains("\"resolves-locally\""))
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags fetches requested keys missing from local definitions`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                jsonResponse(createFlagsResponse("remote-only", enabled = true)),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("resolves-locally", "remote-only"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(true, result.flags["resolves-locally"]?.enabled)
+        assertEquals(true, result.locallyEvaluated["resolves-locally"])
+        assertEquals(true, result.flags["remote-only"]?.enabled)
+        assertEquals(false, result.locallyEvaluated["remote-only"])
+
+        mockServer.takeRequest() // local_evaluation request
+        val flagsRequestBody = mockServer.takeRequest().body.unGzip()
+        assertTrue(flagsRequestBody.contains("\"remote-only\""))
+        assertFalse(flagsRequestBody.contains("\"resolves-locally\""))
+        assertFalse(flagsRequestBody.contains("\"needs-server\""))
 
         featureFlags.shutDown()
         mockServer.shutdown()
