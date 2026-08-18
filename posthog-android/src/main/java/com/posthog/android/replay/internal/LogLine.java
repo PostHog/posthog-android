@@ -12,7 +12,7 @@ import java.util.GregorianCalendar;
 @PostHogInternal
 public class LogLine {
     /**
-     * The timestamp of the event. In UTC even though the device might not have been.
+     * The timestamp of the event, parsed directly from Unix epoch time and represented in UTC.
      */
     public GregorianCalendar time;
 

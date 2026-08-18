@@ -12,6 +12,7 @@ import java.io.StringWriter
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.util.Date
+import java.util.TimeZone
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -112,6 +113,28 @@ internal class PostHogSerializerTest {
             """.replace(" ", "").replace("\n", "")
 
         assertEquals(expectedJson, file.readText())
+    }
+
+    @Test
+    fun `serializes canonical and SDK batch timestamps in UTC`() {
+        val originalTimeZone = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
+            val sut = getSut()
+            val instant = parseISO8601Date("2024-03-10T01:30:00.123-05:00")!!
+            val event = generateEvent().copy(timestamp = instant)
+            val batch = PostHogBatchEvent(API_KEY, listOf(event), sentAt = instant)
+            val serialized = StringWriter()
+
+            sut.serialize(batch, serialized)
+
+            val json = serialized.toString()
+            assertTrue(json.contains("\"timestamp\":\"2024-03-10T06:30:00.123Z\""))
+            assertTrue(json.contains("\"sent_at\":\"2024-03-10T06:30:00.123Z\""))
+            assertEquals(1710052200123L, event.timestamp.time)
+        } finally {
+            TimeZone.setDefault(originalTimeZone)
+        }
     }
 
     @Test
