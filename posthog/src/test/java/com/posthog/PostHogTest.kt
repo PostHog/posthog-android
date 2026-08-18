@@ -2796,17 +2796,21 @@ internal class PostHogTest {
         assertEquals("Exception", causeExceptionData["type"])
         assertEquals(threadId, (causeExceptionData["thread_id"] as Number).toLong())
 
-        // Verify mechanism structure for main exception
+        // Verify mechanism structure for main exception: item 0, generic, no parent
         val mechanism = mainException["mechanism"] as Map<*, *>
         assertEquals(true, mechanism["handled"])
         assertEquals(false, mechanism["synthetic"])
         assertEquals("generic", mechanism["type"])
+        assertEquals(0, (mechanism["exception_id"] as Number).toInt())
+        assertFalse(mechanism.containsKey("parent_id"))
 
-        // Verify mechanism structure for cause exception
+        // Verify mechanism structure for cause exception: item 1, chained, parent is item 0
         val causeMechanism = causeExceptionData["mechanism"] as Map<*, *>
         assertEquals(true, causeMechanism["handled"])
         assertEquals(false, causeMechanism["synthetic"])
-        assertEquals("generic", causeMechanism["type"])
+        assertEquals("chained", causeMechanism["type"])
+        assertEquals(1, (causeMechanism["exception_id"] as Number).toInt())
+        assertEquals(0, (causeMechanism["parent_id"] as Number).toInt())
 
         // Verify stack trace structure for main exception
         val stackTraceMainException = mainException["stacktrace"] as Map<*, *>
@@ -2909,6 +2913,9 @@ internal class PostHogTest {
         assertEquals(false, mechanism["handled"])
         assertEquals(false, mechanism["synthetic"])
         assertEquals("UncaughtExceptionHandler", mechanism["type"])
+        // A single-item list carries no chain ids at all.
+        assertFalse(mechanism.containsKey("exception_id"))
+        assertFalse(mechanism.containsKey("parent_id"))
 
         // Verify stack trace structure for main exception
         val stackTraceMainException = mainException["stacktrace"] as Map<*, *>
@@ -2940,6 +2947,20 @@ internal class PostHogTest {
     // stand-in for com.facebook.react.common.JavascriptException, so React Native
     // stays off the test classpath
     private class JavascriptExceptionStub(message: String) : RuntimeException(message)
+
+    // a fresh throwable on every `cause` read defeats any identity- or equality-based
+    // cycle guard, so only a bounded walk terminates on this chain
+    private class SelfRegeneratingCauseException : RuntimeException("regenerating") {
+        override val cause: Throwable
+            get() = SelfRegeneratingCauseException()
+    }
+
+    private class ValueEqualException(message: String, cause: Throwable? = null) :
+        RuntimeException(message, cause) {
+        override fun equals(other: Any?): Boolean = other is ValueEqualException && other.message == message
+
+        override fun hashCode(): Int = message?.hashCode() ?: 0
+    }
 
     @Test
     fun `captureException drops events whose throwable matches ignoredExceptionTypes`() {
@@ -3021,6 +3042,47 @@ internal class PostHogTest {
 
         // the uncaught-exception handler wraps throwables in PostHogThrowable before capture
         sut.captureException(PostHogThrowable(JavascriptExceptionStub("Unhandled JS Exception")))
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    // the deadline turns a regression (an unbounded cause walk never returns) into a
+    // prompt failure instead of a stalled test worker
+    @Test(timeout = 10_000)
+    fun `captureException with ignored types terminates on a self-regenerating cause chain`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        sut.captureException(SelfRegeneratingCauseException())
+
+        queueExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `captureException drops an ignored type behind value-equal duplicate causes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        config.errorTrackingConfig.ignoredExceptionTypes.add(JavascriptExceptionStub::class.java)
+
+        // an equality-based cycle guard would stop at the second value-equal wrapper
+        // and never reach the ignored cause behind it
+        val chain =
+            ValueEqualException(
+                "same",
+                ValueEqualException("same", JavascriptExceptionStub("Unhandled JS Exception")),
+            )
+        sut.captureException(chain)
 
         queueExecutor.shutdownAndAwaitTermination()
         assertEquals(0, http.requestCount)
