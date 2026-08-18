@@ -282,6 +282,53 @@ internal class PostHogNativeCrashIntegrationTest {
     }
 
     @Test
+    fun `an oversized tombstone is acknowledged and skipped`() {
+        // streams 16MB + 1 byte without materializing it, so the test pins the
+        // cap without a matching allocation of its own
+        val oversized =
+            object : java.io.InputStream() {
+                private var remaining = 16L * 1024 * 1024 + 1
+
+                override fun read(): Int = if (remaining-- > 0) 0 else -1
+
+                override fun read(
+                    b: ByteArray,
+                    off: Int,
+                    len: Int,
+                ): Int {
+                    if (remaining <= 0) return -1
+                    val count = minOf(len.toLong(), remaining).toInt()
+                    remaining -= count
+                    return count
+                }
+            }
+        val exitInfo =
+            ShadowActivityManager.ApplicationExitInfoBuilder.newBuilder()
+                .setReason(ApplicationExitInfo.REASON_CRASH_NATIVE)
+                .setTimestamp(650)
+                .setPid(1)
+                .setTraceInputStream(oversized)
+                .build()
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        shadowOf(activityManager).addApplicationExitInfo(exitInfo)
+
+        install()
+
+        verify(postHog, never()).capture(
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        // oversized is deterministic, so the record must not wedge the scanner
+        // by holding the watermark below it forever
+        assertEquals(650, watermark())
+    }
+
+    @Test
     fun `a tombstone that does not parse is acknowledged and skipped`() {
         addExitRecord(
             ApplicationExitInfo.REASON_CRASH_NATIVE,

@@ -15,6 +15,8 @@ import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TombstoneParser
 import com.posthog.android.internal.getActivityManager
 import com.posthog.internal.PostHogThreadFactory
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.Date
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -64,6 +66,31 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         // One scanner per process: concurrent scanners would race the watermark
         // and capture the same crash records twice.
         private val integrationInstalled = AtomicBoolean(false)
+
+        // Far above any tombstone the OS actually writes (KBs to low MBs), but
+        // low enough that a single record cannot exhaust the heap.
+        private const val MAX_TOMBSTONE_BYTES = 16 * 1024 * 1024
+    }
+
+    // Returns null for a stream larger than [MAX_TOMBSTONE_BYTES]: oversized is
+    // a deterministic property of the record, so it must take the
+    // acknowledge-and-skip path rather than the abort-and-retry path.
+    private fun readTombstone(stream: InputStream): ByteArray? {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(16 * 1024)
+        var total = 0
+        while (true) {
+            val read = stream.read(buffer)
+            if (read == -1) {
+                return output.toByteArray()
+            }
+            total += read
+            if (total > MAX_TOMBSTONE_BYTES) {
+                config.logger.log("Skipping a tombstone larger than $MAX_TOMBSTONE_BYTES bytes.")
+                return null
+            }
+            output.write(buffer, 0, read)
+        }
     }
 
     override fun install(postHog: PostHogInterface) {
@@ -189,12 +216,13 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
 
             // Reading the trace can fail transiently (I/O), so abort without
             // acknowledging and retry on the next launch. A tombstone that
-            // read fully but does not parse is deterministic: acknowledge and
-            // skip it, because retrying forever would hold the watermark below
-            // it and block every newer crash behind it.
+            // read fully but does not parse, or that exceeds the size cap, is
+            // deterministic: acknowledge and skip it, because retrying forever
+            // would hold the watermark below it and block every newer crash
+            // behind it.
             val tombstoneBytes =
                 try {
-                    exitInfo.traceInputStream?.use { stream -> stream.readBytes() }
+                    exitInfo.traceInputStream?.use { stream -> readTombstone(stream) }
                 } catch (e: Throwable) {
                     config.logger.log("Reading a tombstone failed, retrying on the next launch: $e.")
                     return
