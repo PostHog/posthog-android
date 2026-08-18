@@ -1,0 +1,33 @@
+{
+  "api_key": "test-api-key",
+  "batch": [
+    {
+      "distinct_id": "safe-user",
+      "event": "safe properties",
+      "properties": {
+        "$lib": "posthog-server",
+        "$lib_version": "2.12.0",
+        "empty_array": [],
+        "empty_object": {},
+        "empty_string": "",
+        "nested": {
+          "deeper": {
+            "count": 2
+          },
+          "kept": "value"
+        },
+        "ordered_array": [
+          "alpha",
+          "omega"
+        ],
+        "ordered_list": [
+          "first",
+          "third"
+        ]
+      },
+      "timestamp": "2023-09-20T11:58:49.000Z",
+      "uuid": "c78a65ef-479b-3ec1-adbe-9766c4fe348a"
+    }
+  ],
+  "sent_at": "2023-09-20T11:58:49.000Z"
+}

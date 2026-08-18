@@ -14,7 +14,7 @@ public interface PostHogStatelessInterface : PostHogCoreInterface {
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
-     * @param timestamp the timestamp for the event, if not provided the current time will be used, Docs https://posthog.com/docs/data/timestamps
+     * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used. Docs https://posthog.com/docs/data/timestamps
      */
     public fun captureStateless(
         event: String,

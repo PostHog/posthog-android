@@ -1,0 +1,30 @@
+{
+  "method": "POST",
+  "path": "/flags/?v=2",
+  "headers": {
+    "Content-Encoding": "gzip",
+    "Content-Type": "application/json; charset=utf-8",
+    "User-Agent": "posthog-android/<sdk-version>",
+    "X-PostHog-Snapshot": "android-events-v1"
+  },
+  "body": {
+    "$anon_distinct_id": "anonymous-user",
+    "$device_id": "device-123",
+    "geoip_disable": false,
+    "api_key": "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI",
+    "group_properties": {
+      "company": {
+        "industry": "analytics"
+      }
+    },
+    "distinct_id": "anonymous-user",
+    "timezone": "UTC",
+    "person_properties": {
+      "plan": "enterprise",
+      "age": 37
+    },
+    "groups": {
+      "company": "posthog"
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "api_key": "test-api-key",
+  "batch": [
+    {
+      "distinct_id": "user-123",
+      "event": "$exception",
+      "properties": {
+        "$exception_level": "error",
+        "$exception_list": [
+          {
+            "mechanism": {
+              "handled": true,
+              "synthetic": false,
+              "type": "generic"
+            },
+            "module": "java.lang",
+            "stacktrace": {
+              "frames": [
+                {
+                  "filename": "ApiHandler.kt",
+                  "function": "handle",
+                  "in_app": true,
+                  "lineno": 18,
+                  "map_id": "release-2025.01",
+                  "module": "com.example.ApiHandler",
+                  "platform": "java"
+                },
+                {
+                  "filename": "<project>/posthog-server/src/test/fixtures/CheckoutService.kt",
+                  "function": "submit",
+                  "in_app": true,
+                  "lineno": 42,
+                  "map_id": "release-2025.01",
+                  "module": "com.example.CheckoutService",
+                  "platform": "java"
+                }
+              ],
+              "type": "raw"
+            },
+            "thread_id": 0,
+            "type": "RuntimeException",
+            "value": "checkout failed"
+          },
+          {
+            "mechanism": {
+              "handled": true,
+              "synthetic": false,
+              "type": "generic"
+            },
+            "module": "java.lang",
+            "stacktrace": {
+              "frames": [
+                {
+                  "filename": "<project>/posthog-server/src/test/fixtures/Database.kt",
+                  "function": "execute",
+                  "in_app": true,
+                  "lineno": 73,
+                  "map_id": "release-2025.01",
+                  "module": "com.example.Database",
+                  "platform": "java"
+                }
+              ],
+              "type": "raw"
+            },
+            "thread_id": 0,
+            "type": "IllegalStateException",
+            "value": "database offline"
+          }
+        ],
+        "$lib": "posthog-server",
+        "$lib_version": "2.12.0",
+        "request_id": "request-456",
+        "tags": [
+          "checkout",
+          "backend"
+        ]
+      },
+      "timestamp": "2023-09-20T11:58:49.000Z",
+      "uuid": "db78f9e6-3ed4-30b7-9138-89124187e9a5"
+    }
+  ],
+  "sent_at": "2023-09-20T11:58:49.000Z"
+}

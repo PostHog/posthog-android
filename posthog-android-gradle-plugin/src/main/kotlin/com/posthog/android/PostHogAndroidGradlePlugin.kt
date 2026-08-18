@@ -120,7 +120,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 taskSuffix = variant.name.capitalizeUS(),
                 releaseName = variant.applicationId,
                 releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
-                build = primaryOutput?.versionCode,
+                build = primaryOutput?.versionCode?.map { it ?: 0 },
             )
         return uploadMapIdTask
     }

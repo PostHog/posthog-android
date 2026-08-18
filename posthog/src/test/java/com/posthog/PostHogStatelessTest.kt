@@ -75,8 +75,8 @@ internal class PostHogStatelessTest {
         var isStopped = false
         var flushed = false
 
-        override fun add(event: PostHogEvent) {
-            events.add(event)
+        override fun add(record: PostHogEvent) {
+            events.add(record)
         }
 
         override fun start() {
@@ -1493,6 +1493,28 @@ internal class PostHogStatelessTest {
         assertNotNull(event.properties!!["\$exception_list"])
         assertNotNull(event.properties!!["\$exception_level"])
         assertNull(event.properties!!["\$process_person_profile"])
+    }
+
+    @Test
+    fun `captureExceptionStateless stamps frames with map_id when releaseIdentifier is set`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+        config.releaseIdentifier = "release-123"
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureExceptionStateless(RuntimeException("Test exception"), distinctId = "user123")
+
+        assertEquals(1, mockQueue.events.size)
+        val exceptionList = mockQueue.events.first().properties!!["\$exception_list"] as List<*>
+        val stacktrace = (exceptionList.first() as Map<*, *>)["stacktrace"] as Map<*, *>
+        val frames = stacktrace["frames"] as List<*>
+        assertTrue(frames.isNotEmpty())
+        frames.forEach { frame ->
+            assertEquals("release-123", (frame as Map<*, *>)["map_id"])
+        }
     }
 
     @Test

@@ -54,21 +54,21 @@ internal class PostHogReplayQueue internal constructor(
     internal val depth: Int
         get() = replayDir?.listFiles()?.size ?: 0
 
-    override fun add(event: PostHogEvent) {
+    override fun add(record: PostHogEvent) {
         if (bufferDelegate?.isBuffering != true) {
             if (shouldPersist()) {
-                innerQueue.add(event)
+                innerQueue.add(record)
             }
             return
         }
 
         executor.executeSafely {
             if (bufferDelegate?.isBuffering == true) {
-                bufferQueue.add(event)
-                config.logger.log("Buffered replay event '${event.event}'. Buffer depth: ${bufferQueue.depth}")
+                bufferQueue.add(record)
+                config.logger.log("Buffered replay event '${record.event}'. Buffer depth: ${bufferQueue.depth}")
                 bufferDelegate?.onReplayBufferSnapshot(this)
             } else if (shouldPersist()) {
-                innerQueue.add(event)
+                innerQueue.add(record)
             }
         }
     }
