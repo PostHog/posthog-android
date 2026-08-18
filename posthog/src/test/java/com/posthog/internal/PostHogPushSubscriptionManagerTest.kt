@@ -1471,5 +1471,4 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertEquals(1, http.requestCount)
     }
-
 }

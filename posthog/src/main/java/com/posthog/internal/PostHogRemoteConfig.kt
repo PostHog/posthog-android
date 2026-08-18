@@ -642,6 +642,14 @@ public class PostHogRemoteConfig(
     // Restores capture performance config from cache (survives reset); re-armed on a /flags reload.
     // capturePerformance is read from the cache by the caller (off featureFlagsLock, since that read
     // can hit disk); this only re-evaluates it in memory.
+    private fun reevaluateCapturePerformanceFromCachedConfig(capturePerformance: Any?) {
+        if (capturePerformance == null) {
+            config.logger.log("No cached capture performance config to re-evaluate; network timing stays disabled.")
+            return
+        }
+        processCapturePerformanceConfig(capturePerformance, persist = false)
+    }
+
     /**
      * Parses the `push` slice and returns the app_ids that became registerable since the last time
      * we looked, so the push manager can re-register a device that was stuck.
@@ -704,14 +712,6 @@ public class PostHogRemoteConfig(
         val newlyRegisterable = newlyRegisterablePushAppIds
         newlyRegisterablePushAppIds = emptySet()
         return newlyRegisterable
-    }
-
-    private fun reevaluateCapturePerformanceFromCachedConfig(capturePerformance: Any?) {
-        if (capturePerformance == null) {
-            config.logger.log("No cached capture performance config to re-evaluate; network timing stays disabled.")
-            return
-        }
-        processCapturePerformanceConfig(capturePerformance, persist = false)
     }
 
     /**
