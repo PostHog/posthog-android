@@ -6,7 +6,7 @@
       "event": "safe properties",
       "properties": {
         "$lib": "posthog-server",
-        "$lib_version": "2.12.0",
+        "$lib_version": "2.13.0",
         "empty_array": [],
         "empty_object": {},
         "empty_string": "",
