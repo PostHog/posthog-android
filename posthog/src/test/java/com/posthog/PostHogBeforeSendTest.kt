@@ -219,8 +219,12 @@ internal class PostHogBeforeSendTest {
                 listBeforeSend =
                     listOf(
                         PostHogBeforeSend { event ->
-                            event.properties?.set("first", "1")
-                            event
+                            event.copy(
+                                properties =
+                                    event.properties?.toMutableMap()?.apply {
+                                        set("first", "1")
+                                    },
+                            )
                         },
                         PostHogBeforeSend { event ->
                             event.properties?.set("sawFirst", event.properties?.get("first").toString())
