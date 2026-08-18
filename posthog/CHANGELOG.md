@@ -1,5 +1,12 @@
 ## Next
 
+## 6.31.1
+
+### Patch Changes
+
+- 7efc609: Clarify that event timestamps are serialized in UTC, and make session replay log timestamp handling more robust by parsing timezone-independent logcat epoch timestamps instead of local wall-clock timestamps.
+- b1c2130: Support fractional rollout percentages when evaluating feature flags locally.
+
 ## 6.31.0
 
 ### Minor Changes

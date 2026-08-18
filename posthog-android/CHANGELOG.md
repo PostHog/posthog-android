@@ -1,5 +1,11 @@
 ## Next
 
+## 3.58.4
+
+### Patch Changes
+
+- 7efc609: Clarify that event timestamps are serialized in UTC, and make session replay log timestamp handling more robust by parsing timezone-independent logcat epoch timestamps instead of local wall-clock timestamps.
+
 ## 3.58.3
 
 ### Patch Changes

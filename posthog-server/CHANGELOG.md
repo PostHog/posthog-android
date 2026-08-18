@@ -1,5 +1,11 @@
 ## Next
 
+## 2.12.1
+
+### Patch Changes
+
+- b1c2130: Support fractional rollout percentages when evaluating feature flags locally.
+
 ## 2.12.0
 
 ### Minor Changes
