@@ -35,6 +35,9 @@ dryReleaseSurveysCompose:
 dryReleaseServer:
 	./gradlew :posthog-server:publishToMavenLocal
 
+dryReleaseServerLogback:
+	./gradlew :posthog-server-logback:publishToMavenLocal
+
 dryReleaseAndroidPlugin:
 	./gradlew :posthog-android-gradle-plugin:publishToMavenLocal
 
@@ -52,6 +55,9 @@ releaseSurveysCompose:
 
 releaseServer:
 	./gradlew :posthog-server:publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+releaseServerLogback:
+	./gradlew :posthog-server-logback:publishToSonatype closeAndReleaseSonatypeStagingRepository
 
 releaseAndroidPlugin:
 	./gradlew :posthog-android-gradle-plugin:publishToSonatype :posthog-android-gradle-plugin:closeAndReleaseSonatypeStagingRepository

@@ -1,0 +1,5 @@
+{
+    "name": "posthog-server-logback",
+    "version": "0.1.0",
+    "private": true
+}

@@ -19,6 +19,7 @@ include(":posthog")
 include(":posthog-android")
 include(":posthog-android-surveys-compose")
 include(":posthog-server")
+include(":posthog-server-logback")
 
 // samples
 include(":posthog-samples:posthog-android-sample")
