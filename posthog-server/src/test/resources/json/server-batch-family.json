@@ -1,0 +1,75 @@
+{
+  "api_key": "test-api-key",
+  "batch": [
+    {
+      "distinct_id": "user-123",
+      "event": "invoice paid",
+      "properties": {
+        "$groups": {
+          "company": "posthog"
+        },
+        "$lib": "posthog-server",
+        "$lib_version": "2.12.0",
+        "$set": {
+          "name": "Ada",
+          "plan": "pro"
+        },
+        "$set_once": {
+          "initial_referrer": "docs"
+        },
+        "amount": 12.5,
+        "currency": "USD"
+      },
+      "timestamp": "2023-09-20T11:58:49.000Z",
+      "uuid": "a78e1020-4905-3f45-9f97-f07a30281d43"
+    },
+    {
+      "distinct_id": "user-123",
+      "event": "$identify",
+      "properties": {
+        "$lib": "posthog-server",
+        "$lib_version": "2.12.0",
+        "$set": {
+          "email": "ada@example.com",
+          "roles": [
+            "admin",
+            "author"
+          ]
+        },
+        "$set_once": {
+          "created_by": "snapshot"
+        }
+      },
+      "timestamp": "2023-09-20T11:58:49.000Z",
+      "uuid": "ad32857a-3f5b-33cc-9dc7-4900dfb8169c"
+    },
+    {
+      "distinct_id": "user-123",
+      "event": "$create_alias",
+      "properties": {
+        "$lib": "posthog-server",
+        "$lib_version": "2.12.0",
+        "alias": "legacy-user-456"
+      },
+      "timestamp": "2023-09-20T11:58:49.000Z",
+      "uuid": "2569f6b6-dcb1-3888-8ca2-8771a92b02ca"
+    },
+    {
+      "distinct_id": "user-123",
+      "event": "$groupidentify",
+      "properties": {
+        "$group_key": "posthog",
+        "$group_set": {
+          "employees": 100,
+          "name": "PostHog"
+        },
+        "$group_type": "company",
+        "$lib": "posthog-server",
+        "$lib_version": "2.12.0"
+      },
+      "timestamp": "2023-09-20T11:58:49.000Z",
+      "uuid": "ae93f1af-26bc-3a3e-b65d-7ac98c63034e"
+    }
+  ],
+  "sent_at": "2023-09-20T11:58:49.000Z"
+}
