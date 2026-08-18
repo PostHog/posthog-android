@@ -9,7 +9,7 @@
           "company": "posthog"
         },
         "$lib": "posthog-server",
-        "$lib_version": "2.13.0",
+        "$lib_version": "<lib-version>",
         "$set": {
           "name": "Ada",
           "plan": "pro"
@@ -28,7 +28,7 @@
       "event": "$identify",
       "properties": {
         "$lib": "posthog-server",
-        "$lib_version": "2.13.0",
+        "$lib_version": "<lib-version>",
         "$set": {
           "email": "ada@example.com",
           "roles": [
@@ -48,7 +48,7 @@
       "event": "$create_alias",
       "properties": {
         "$lib": "posthog-server",
-        "$lib_version": "2.13.0",
+        "$lib_version": "<lib-version>",
         "alias": "legacy-user-456"
       },
       "timestamp": "2023-09-20T11:58:49.000Z",
@@ -65,7 +65,7 @@
         },
         "$group_type": "company",
         "$lib": "posthog-server",
-        "$lib_version": "2.13.0"
+        "$lib_version": "<lib-version>"
       },
       "timestamp": "2023-09-20T11:58:49.000Z",
       "uuid": "ae93f1af-26bc-3a3e-b65d-7ac98c63034e"

@@ -71,7 +71,7 @@
           }
         ],
         "$lib": "posthog-server",
-        "$lib_version": "2.13.0",
+        "$lib_version": "<lib-version>",
         "request_id": "request-456",
         "tags": [
           "checkout",
