@@ -647,6 +647,39 @@ public open class PostHogStateless protected constructor(
         distinctId: String?,
         properties: Map<String, Any>?,
     ) {
+        captureExceptionEvent(
+            throwable,
+            distinctId = distinctId,
+            properties = properties,
+            userProperties = null,
+            userPropertiesSetOnce = null,
+            groups = null,
+            timestamp = null,
+        )
+    }
+
+    /**
+     * The single pre-capture route for `$exception` events built from a [Throwable].
+     *
+     * Subclasses that need event fields [captureExceptionStateless] cannot carry (groups, user
+     * properties, an explicit timestamp) must go through here rather than coercing the throwable
+     * and calling [captureStateless] themselves, so the `ignoredExceptionTypes` prefilter, the
+     * caller-properties-win merge order and the personless fallback stay in one place instead of
+     * being re-implemented (and drifting) per capture path.
+     *
+     * [properties] are merged AFTER the coerced exception properties, so callers can override
+     * reserved keys such as `$exception_level`.
+     */
+    @PostHogInternal
+    protected fun captureExceptionEvent(
+        throwable: Throwable,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -674,7 +707,15 @@ public open class PostHogStateless protected constructor(
                 id = UUID.randomUUID().toString()
             }
 
-            captureStateless(PostHogEventName.EXCEPTION.event, distinctId = id, properties = exceptionProperties)
+            captureStateless(
+                PostHogEventName.EXCEPTION.event,
+                distinctId = id,
+                properties = exceptionProperties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groups = groups,
+                timestamp = timestamp,
+            )
         } catch (e: Throwable) {
             // we swallow all exceptions that the SDK has thrown by trying to convert
             // a captured exception to a PostHog exception event

@@ -683,6 +683,24 @@ internal class PostHogTest {
         mockServer.shutdown()
     }
 
+    /**
+     * `ignoredExceptionTypes` has no server-config builder yet, so configure it on the core config
+     * the server config produces — the same object the capture path reads at runtime.
+     */
+    private fun postHogWithIgnoredTypes(
+        url: String,
+        vararg ignored: Class<out Throwable>,
+    ): PostHog {
+        val coreConfig =
+            PostHogConfig.builder(TEST_API_KEY)
+                .host(url)
+                .flushAt(1)
+                .build()
+                .asCoreConfig()
+        coreConfig.errorTrackingConfig.ignoredExceptionTypes.addAll(ignored)
+        return PostHog().apply { setup(coreConfig) }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun framesOf(props: Map<String, Any?>): List<Map<String, Any?>> {
         val exceptionList = props["\$exception_list"] as List<Map<String, Any?>>
@@ -924,5 +942,101 @@ internal class PostHogTest {
         postHog.captureException(exception, options)
 
         verify(postHog).captureException(exception, null, options)
+    }
+
+    @Test
+    fun `captureException with options drops throwables matching ignoredExceptionTypes`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            IllegalStateException("suppressed"),
+            "user123",
+            PostHogCaptureOptions.builder().property("marker", "suppressed").build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An ignored exception must not reach /batch through the options overload",
+        )
+
+        // control: the same overload still ships a type that is not ignored
+        postHog.captureException(
+            RuntimeException("kept"),
+            "user123",
+            PostHogCaptureOptions.builder().property("marker", "kept").build(),
+        )
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+        assertEquals("kept", batchRequest.parseBatch().eventProperties("\$exception")["marker"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options drops a throwable whose cause matches ignoredExceptionTypes`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            RuntimeException("outer", IllegalStateException("ignored cause")),
+            "user123",
+            PostHogCaptureOptions.builder().property("marker", "suppressed").build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An ignored type anywhere in the cause chain must not reach /batch",
+        )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options merges options for types outside ignoredExceptionTypes`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            "user123",
+            PostHogCaptureOptions.builder()
+                .property("custom", "value")
+                .property("\$exception_level", "warning")
+                .group("company", "acme")
+                .userProperty("plan", "enterprise")
+                .build(),
+        )
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val props = batchRequest.parseBatch().eventProperties("\$exception")
+        assertEquals("value", props["custom"])
+        assertEquals("warning", props["\$exception_level"])
+        assertNotNull(props["\$exception_list"], "The coerced exception properties should still be present")
+
+        @Suppress("UNCHECKED_CAST")
+        val groups = props["\$groups"] as Map<String, Any?>
+        assertEquals("acme", groups["company"])
+
+        @Suppress("UNCHECKED_CAST")
+        val set = props["\$set"] as Map<String, Any?>
+        assertEquals("enterprise", set["plan"])
+
+        postHog.close()
+        mockServer.shutdown()
     }
 }

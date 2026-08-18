@@ -1,7 +1,6 @@
 package com.posthog.server
 
 import com.posthog.FeatureFlagResult
-import com.posthog.PostHogEventName
 import com.posthog.PostHogStateless
 import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
@@ -291,28 +290,18 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                     flags = options.flags,
                 )
 
-            val config = getConfig<com.posthog.PostHogConfig>()
-            val exceptionProperties =
-                throwableCoercer.fromThrowableToPostHogProperties(
-                    exception,
-                    inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
-                    releaseIdentifier = config?.releaseIdentifier,
-                    inAppExcludes = config?.errorTrackingConfig?.inAppExcludes ?: listOf(),
-                )
-            // Caller properties merge AFTER the coerced exception properties (same order as core
-            // captureExceptionStateless) so options can override reserved keys like $exception_level.
-            callerProperties?.let { exceptionProperties.putAll(it) }
-
-            // captureExceptionStateless cannot carry groups/user properties/timestamp, so the
-            // options overload coerces above and goes through captureStateless directly.
-            super.captureStateless(
-                PostHogEventName.EXCEPTION.event,
-                captureContext.distinctId,
-                exceptionProperties,
-                options.userProperties,
-                options.userPropertiesSetOnce,
-                options.groups,
-                options.timestamp,
+            // captureExceptionStateless cannot carry groups/user properties/timestamp, so this
+            // overload takes the shared core route instead: it runs the same ignoredExceptionTypes
+            // prefilter and merges callerProperties AFTER the coerced exception properties (so
+            // options can still override reserved keys like $exception_level).
+            super.captureExceptionEvent(
+                exception,
+                distinctId = captureContext.distinctId,
+                properties = callerProperties,
+                userProperties = options.userProperties,
+                userPropertiesSetOnce = options.userPropertiesSetOnce,
+                groups = options.groups,
+                timestamp = options.timestamp,
             )
         } catch (e: Throwable) {
             // error capture must never throw into user code (parity with captureExceptionStateless)
