@@ -50,7 +50,7 @@ public class FlagFilters(
 public class FlagConditionGroup(
     public val properties: List<FlagProperty>?,
     @SerializedName("rollout_percentage")
-    public val rolloutPercentage: Int?,
+    public val rolloutPercentage: Double?,
     public val variant: String?,
 )
 
