@@ -81,7 +81,7 @@ public sealed interface PostHogInterface {
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
-     * @param timestamp the timestamp for the event
+     * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC
      * @param appendFeatureFlags when true, enriches the event with feature flag properties
      * @param flags optional pre-resolved snapshot from [evaluateFlags]; when supplied, attaches
      *   `$feature/<key>` and `$active_feature_flags` from the snapshot without making another
@@ -109,7 +109,7 @@ public sealed interface PostHogInterface {
      * @param userProperties the user properties, set as a "$set" property
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property
      * @param groups the groups, set as a "$groups" property
-     * @param timestamp the timestamp for the event
+     * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC
      * @param appendFeatureFlags when true, enriches the event with feature flag properties
      * @param flags optional pre-resolved snapshot from [evaluateFlags]
      */
@@ -647,8 +647,10 @@ public sealed interface PostHogInterface {
     )
 
     /**
-     * Evaluate every feature flag for [distinctId] in a single `/flags` round-trip and return a
-     * snapshot. Repeat lookups against the snapshot do not make additional network requests, and
+     * Evaluate every feature flag for [distinctId] and return a snapshot. With local evaluation
+     * configured, flags resolvable from the definitions in memory are answered locally and keep
+     * those values; a single `/flags` request fills in only the keys that stayed unresolved.
+     * Repeat lookups against the snapshot do not make additional network requests, and
      * `is_enabled` / `getFlag` accesses still emit deduped `$feature_flag_called` events.
      *
      * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
@@ -656,10 +658,16 @@ public sealed interface PostHogInterface {
      * @param groups groups for group-based flags
      * @param personProperties person properties for flag evaluation
      * @param groupProperties group properties for flag evaluation
-     * @param flagKeys when non-empty, restricts the underlying request to the given keys; this is
-     *   distinct from [PostHogFeatureFlagEvaluations.only] which filters in memory after the call
-     * @param onlyEvaluateLocally when true, do not fall back to a `/flags` request if local
-     *   evaluation cannot resolve every flag
+     * @param flagKeys when non-empty, restricts both local evaluation and the underlying request to
+     *   the given keys, so a flag you did not ask for cannot force a request. Requested keys with no
+     *   local definition never force a request on their own: they are warn-logged and absent from
+     *   the snapshot, unless an unresolved flag already requires the `/flags` call, which then also
+     *   fills them. A flag created since the last definitions poll may therefore not be visible
+     *   until the next one. This is distinct from [PostHogFeatureFlagEvaluations.only] which
+     *   filters in memory after the call
+     * @param onlyEvaluateLocally when true, the snapshot holds exactly what local evaluation
+     *   resolved: no `/flags` request is made, no cached remote values are served, and flags that
+     *   could not be resolved locally are absent
      * @param disableGeoip when true, send `geoip_disable=true` to the server
      * @return A feature flag evaluation snapshot for the resolved distinct ID.
      */

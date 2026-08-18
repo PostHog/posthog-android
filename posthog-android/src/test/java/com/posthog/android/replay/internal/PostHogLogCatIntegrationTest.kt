@@ -11,6 +11,7 @@ import org.mockito.kotlin.whenever
 import org.robolectric.annotation.Config
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -36,6 +37,15 @@ internal class PostHogLogCatIntegrationTest {
         val config = createConfig()
         val dummy = PostHogLogCatIntegration(config)
         dummy.uninstall()
+    }
+
+    @Test
+    fun `logcat command requests epoch output and an epoch start time`() {
+        val sut = getSut(createConfig())
+
+        val command = sut.logcatCommand(1721057445123L)
+
+        assertEquals(listOf("logcat", "-v", "epoch", "-T", "1721057445.123", "*:E"), command)
     }
 
     @Test

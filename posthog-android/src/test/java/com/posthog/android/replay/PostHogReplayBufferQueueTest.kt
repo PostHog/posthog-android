@@ -36,8 +36,8 @@ internal class PostHogReplayBufferQueueTest {
     private class FakeQueue : PostHogQueueInterface<PostHogEvent> {
         val events = mutableListOf<PostHogEvent>()
 
-        override fun add(event: PostHogEvent) {
-            events.add(event)
+        override fun add(record: PostHogEvent) {
+            events.add(record)
         }
 
         override fun flush() {

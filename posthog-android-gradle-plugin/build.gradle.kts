@@ -85,6 +85,10 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
     archiveClassifier.set("html-doc")
 }
 
+tasks.named("assemble") {
+    dependsOn(dokkaJavadocJar, dokkaHtmlJar)
+}
+
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions {
         jvmTarget.set(
@@ -94,7 +98,7 @@ tasks.withType<KotlinCompile>().configureEach {
         languageVersion.set(compatVersion)
         allWarningsAsErrors.set(true)
         apiVersion.set(compatVersion)
-        freeCompilerArgs.add("-Xexplicit-api=strict")
+        freeCompilerArgs.addAll("-Xexplicit-api=strict", "-Xsuppress-version-warnings")
     }
 }
 

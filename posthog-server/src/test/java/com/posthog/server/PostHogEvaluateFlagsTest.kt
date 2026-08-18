@@ -486,6 +486,382 @@ internal class PostHogEvaluateFlagsTest {
         mockServer.shutdown()
     }
 
+    /**
+     * Serves flag definitions and `/flags` from one path-routed dispatcher, so the asynchronous
+     * local evaluation poller cannot race the request under test for an enqueued response.
+     */
+    private fun withLocalEvaluation(
+        definitions: String,
+        flagsResponse: () -> MockResponse = { jsonResponse(createEmptyFlagsResponse()) },
+        localEvaluationResponse: () -> MockResponse = { jsonResponse(definitions) },
+        block: (PostHogInterface, CountingDispatcher, MockWebServer) -> Unit,
+    ) {
+        val dispatcher = CountingDispatcher(localEvaluationResponse, flagsResponse)
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .personalApiKey("phx_test_personal_api_key")
+                    .flushAt(1)
+                    .build(),
+            )
+
+        try {
+            block(postHog, dispatcher, mockServer)
+        } finally {
+            postHog.close()
+            mockServer.shutdown()
+        }
+    }
+
+    /** One flag local evaluation always resolves, one it can never resolve without an `email`. */
+    private fun conclusiveAndGatedDefinitions(): String =
+        createLocalEvaluationResponseFrom(
+            conclusiveFlagDefinition("conclusive"),
+            emailGatedFlagDefinition("gated"),
+        )
+
+    @Test
+    fun `an inconclusive flag does not discard the flags that resolved locally`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            // The server disagrees about `conclusive`, and is the only source for `gated`.
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "gated" to true)) },
+        ) { postHog, dispatcher, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertTrue(snapshot.isEnabled("conclusive"), "the local value must win over the server's")
+            assertTrue(snapshot.isEnabled("gated"), "the unresolvable key must be filled from /flags")
+            postHog.flush()
+
+            assertEquals(1, dispatcher.flagsCalls.get(), "one request, for the unresolved key only")
+
+            val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
+            val conclusive = assertNotNull(flagCalled["conclusive"])
+            assertEquals(true, conclusive["locally_evaluated"])
+            assertEquals("Evaluated locally", conclusive["\$feature_flag_reason"])
+            val gated = assertNotNull(flagCalled["gated"])
+            assertFalse(gated.containsKey("locally_evaluated"), "a remote-filled key is not locally evaluated")
+        }
+    }
+
+    @Test
+    fun `an error thrown while evaluating one flag falls back for that flag instead of crashing`() {
+        withLocalEvaluation(
+            definitions =
+                createLocalEvaluationResponseFrom(
+                    conclusiveFlagDefinition("conclusive"),
+                    throwingFlagDefinition("broken"),
+                ),
+            // The server disagrees about `conclusive`, and is the only source for `broken`.
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "broken" to true)) },
+        ) { postHog, dispatcher, mockServer ->
+            // Must not propagate the evaluator's NullPointerException.
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertTrue(snapshot.isEnabled("conclusive"), "the local value must win over the server's")
+            assertTrue(snapshot.isEnabled("broken"), "the throwing key must be filled from /flags")
+            postHog.flush()
+
+            assertEquals(1, dispatcher.flagsCalls.get(), "one request, for the throwing key only")
+
+            val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
+            assertEquals(true, assertNotNull(flagCalled["conclusive"])["locally_evaluated"])
+            assertFalse(
+                assertNotNull(flagCalled["broken"]).containsKey("locally_evaluated"),
+                "a remote-filled key is not locally evaluated",
+            )
+        }
+    }
+
+    @Test
+    fun `a requested undefined key is filled by a request an unresolved flag already forced`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("gated" to true, "brand-new-flag" to true)) },
+        ) { postHog, dispatcher, _ ->
+            val snapshot = postHog.evaluateFlags("user-1", flagKeys = listOf("gated", "brand-new-flag"))
+
+            assertEquals(1, dispatcher.flagsCalls.get(), "the inconclusive key forces the request")
+            assertTrue(snapshot.isEnabled("gated"))
+            assertTrue(
+                snapshot.isEnabled("brand-new-flag"),
+                "the undefined key rides the request the inconclusive key forced",
+            )
+        }
+    }
+
+    @Test
+    fun `flagKeys scopes local evaluation so an unrequested inconclusive flag forces no request`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "gated" to true)) },
+        ) { postHog, dispatcher, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-1", flagKeys = listOf("conclusive"))
+
+            assertEquals(setOf("conclusive"), snapshot.keys.toSet())
+            assertTrue(snapshot.isEnabled("conclusive"))
+            postHog.flush()
+
+            assertEquals(0, dispatcher.flagsCalls.get(), "every requested key resolved locally")
+
+            val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
+            assertEquals(true, assertNotNull(flagCalled["conclusive"])["locally_evaluated"])
+        }
+    }
+
+    @Test
+    fun `a flags outage leaves locally-resolved flags on and is not retried within the cache window`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = { MockResponse().setResponseCode(503).setBody("unavailable") },
+        ) { postHog, dispatcher, mockServer ->
+            val first = postHog.evaluateFlags("user-1")
+            assertTrue(first.isEnabled("conclusive"), "definitions in memory still say this flag is on")
+
+            val second = postHog.evaluateFlags("user-1")
+            assertTrue(second.isEnabled("conclusive"))
+            postHog.flush()
+
+            assertEquals(1, dispatcher.flagsCalls.get(), "the cached failure must not be re-requested")
+
+            val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
+            assertEquals("api_error_503", assertNotNull(flagCalled["conclusive"])["\$feature_flag_error"])
+        }
+    }
+
+    @Test
+    fun `a requested key with no local definition falls back to the server`() {
+        val fixtures =
+            listOf(
+                "all definitions conclusive" to createLocalEvaluationResponseFrom(conclusiveFlagDefinition("conclusive")),
+                "one definition inconclusive" to conclusiveAndGatedDefinitions(),
+            )
+
+        for ((caseName, definitions) in fixtures) {
+            withLocalEvaluation(
+                definitions = definitions,
+                flagsResponse = { jsonResponse(createMultipleFlagsResponse("brand-new-flag" to true)) },
+            ) { postHog, dispatcher, _ ->
+                val snapshot = postHog.evaluateFlags("user-1", flagKeys = listOf("brand-new-flag"))
+
+                assertTrue(snapshot.isEnabled("brand-new-flag"), "case: $caseName")
+                assertEquals(1, dispatcher.flagsCalls.get(), "case: $caseName")
+            }
+        }
+    }
+
+    @Test
+    fun `onlyEvaluateLocally ignores a cached remote failure and still evaluates locally`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = { MockResponse().setResponseCode(503).setBody("unavailable") },
+        ) { postHog, dispatcher, _ ->
+            // Cache a failure for this identity, as any other call site would.
+            postHog.evaluateFlags("user-1")
+
+            val localOnly = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
+
+            assertTrue(localOnly.keys.contains("conclusive"))
+            assertTrue(localOnly.isEnabled("conclusive"))
+            assertEquals(1, dispatcher.flagsCalls.get())
+        }
+    }
+
+    @Test
+    fun `onlyEvaluateLocally never serves cached remote values`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = {
+                jsonResponse(
+                    createMultipleFlagsResponse("conclusive" to false, "gated" to true, "remote-only" to true),
+                )
+            },
+        ) { postHog, dispatcher, _ ->
+            val remote = postHog.evaluateFlags("user-1")
+            assertTrue(remote.keys.contains("remote-only"), "the cache now holds keys local evaluation cannot produce")
+
+            val localOnly = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
+
+            assertEquals(
+                setOf("conclusive"),
+                localOnly.keys.toSet(),
+                "a local-only snapshot holds exactly what local evaluation resolved",
+            )
+            assertTrue(localOnly.isEnabled("conclusive"))
+            assertEquals(1, dispatcher.flagsCalls.get())
+        }
+    }
+
+    @Test
+    fun `repeat calls in the cache window keep the merged values`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "gated" to true)) },
+        ) { postHog, dispatcher, mockServer ->
+            val first = postHog.evaluateFlags("user-1")
+            first.isEnabled("conclusive")
+            first.isEnabled("gated")
+
+            val second = postHog.evaluateFlags("user-1")
+            assertTrue(second.isEnabled("conclusive"), "call #2 must not fall back to the server's value")
+            assertTrue(second.isEnabled("gated"))
+            postHog.flush()
+
+            assertEquals(1, dispatcher.flagsCalls.get())
+
+            val events = drainRequests(mockServer).featureFlagCalledEvents()
+            assertEquals(1, events.count { it.first == "conclusive" }, "a value flip would emit a second event")
+            assertEquals(1, events.count { it.first == "gated" })
+        }
+    }
+
+    @Test
+    fun `the deprecated appendFeatureFlags path discards local results wholesale`() {
+        withLocalEvaluation(
+            definitions = conclusiveAndGatedDefinitions(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("conclusive" to false, "gated" to true)) },
+        ) { postHog, dispatcher, mockServer ->
+            postHog.capture(distinctId = "user-1", event = "page_view", appendFeatureFlags = true)
+            postHog.flush()
+
+            assertEquals(1, dispatcher.flagsCalls.get())
+
+            val requests = drainRequests(mockServer)
+            val batch = requests.first { it.path?.contains("/batch") == true }.parseBatch()
+            val props = batch.eventProperties("page_view")
+            // The local definitions say `conclusive` is 100% on; the legacy path takes the
+            // server's answer for the whole batch regardless.
+            assertEquals(false, props["\$feature/conclusive"])
+        }
+    }
+
+    @Test
+    fun `flagKeys scoping leaves flag dependencies resolvable`() {
+        val dependentFlag =
+            """
+            {
+                "id": 3,
+                "name": "dependent-flag",
+                "key": "dependent-flag",
+                "active": true,
+                "filters": {
+                    "groups": [
+                        {
+                            "properties": [
+                                {
+                                    "key": "base-flag",
+                                    "type": "flag",
+                                    "value": true,
+                                    "operator": "flag_evaluates_to",
+                                    "dependency_chain": ["base-flag"]
+                                }
+                            ],
+                            "rollout_percentage": 100
+                        }
+                    ]
+                },
+                "version": 1
+            }
+            """.trimIndent()
+
+        withLocalEvaluation(
+            definitions =
+                createLocalEvaluationResponseFrom(
+                    conclusiveFlagDefinition("base-flag"),
+                    dependentFlag,
+                ),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("dependent-flag" to false)) },
+        ) { postHog, dispatcher, _ ->
+            val snapshot = postHog.evaluateFlags("user-1", flagKeys = listOf("dependent-flag"))
+
+            // Scoping filters the evaluation loop, not the definition map, so `base-flag` is still
+            // reachable as a dependency even though it was not requested.
+            assertEquals(setOf("dependent-flag"), snapshot.keys.toSet())
+            assertTrue(snapshot.isEnabled("dependent-flag"))
+            assertEquals(0, dispatcher.flagsCalls.get())
+        }
+    }
+
+    /**
+     * A 100%-rollout flag aggregated on group type 0, mapped to `organization`, alongside any extra
+     * definitions. Needs its own `group_type_mapping`: with an unmapped index the flag is
+     * inconclusive rather than group-resolved.
+     */
+    private fun groupFlagDefinitions(vararg extraFlagDefinitions: String): String {
+        val groupFlag =
+            """
+            {
+                "id": 4,
+                "name": "group-flag",
+                "key": "group-flag",
+                "active": true,
+                "filters": {
+                    "aggregation_group_type_index": 0,
+                    "groups": [
+                        { "properties": [], "rollout_percentage": 100 }
+                    ]
+                },
+                "version": 1
+            }
+            """.trimIndent()
+
+        return """
+            {
+                "flags": [ ${(listOf(groupFlag) + extraFlagDefinitions).joinToString(",")} ],
+                "group_type_mapping": { "0": "organization" },
+                "cohorts": {}
+            }
+            """.trimIndent()
+    }
+
+    @Test
+    fun `a group flag with no groups supplied resolves locally to false and wins over the server`() {
+        // `computeFlagLocally` answers `false` rather than throwing when a group-aggregated
+        // flag's group key is missing, so the flag counts as locally resolved and the merge keeps
+        // that `false` over the server's `true`. Callers gating on group flags must pass `groups`.
+        withLocalEvaluation(
+            definitions = groupFlagDefinitions(emailGatedFlagDefinition("gated")),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("group-flag" to true, "gated" to true)) },
+        ) { postHog, dispatcher, _ ->
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertFalse(snapshot.isEnabled("group-flag"), "the local false wins over the server's true")
+            assertTrue(snapshot.isEnabled("gated"), "the inconclusive sibling still comes from /flags")
+            assertEquals(1, dispatcher.flagsCalls.get())
+        }
+    }
+
+    @Test
+    fun `a group flag resolves locally from the supplied groups`() {
+        withLocalEvaluation(
+            definitions = groupFlagDefinitions(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("group-flag" to false)) },
+        ) { postHog, dispatcher, _ ->
+            val snapshot = postHog.evaluateFlags("user-1", groups = mapOf("organization" to "org-1"))
+
+            assertTrue(snapshot.isEnabled("group-flag"))
+            assertEquals(0, dispatcher.flagsCalls.get())
+        }
+    }
+
+    @Test
+    fun `loaded but empty definitions return an empty snapshot without a request`() {
+        withLocalEvaluation(
+            definitions = createLocalEvaluationResponseFrom(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("remote-only" to true)) },
+        ) { postHog, dispatcher, _ ->
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertTrue(snapshot.keys.isEmpty())
+            assertEquals(0, dispatcher.flagsCalls.get(), "a project with no flags must not be billed for a request")
+        }
+    }
+
     @Test
     fun `capture with appendFeatureFlags=true still attaches feature properties (deprecated path keeps working)`() {
         val mockServer = MockWebServer()

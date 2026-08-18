@@ -1,6 +1,7 @@
 package com.posthog.server.internal
 
 import com.posthog.internal.PostHogApi
+import com.posthog.server.CountingDispatcher
 import com.posthog.server.PostHogBlockingFlagDefinitionCacheProvider
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.TestLogger
@@ -689,80 +690,6 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `evaluateFlags with flagKeys ignores inconclusive flags outside the requested set`() {
-        val mockServer =
-            createMockHttp(
-                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
-            )
-        val loadedLatch = CountDownLatch(1)
-        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
-        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
-
-        val result =
-            featureFlags.evaluateFlags(
-                distinctId = "user-1",
-                groups = null,
-                personProperties = null,
-                groupProperties = null,
-                flagKeys = listOf("resolves-locally"),
-                onlyEvaluateLocally = false,
-                disableGeoip = false,
-            )
-
-        // Only the requested flag is evaluated; the unrelated inconclusive flag is out of scope,
-        // so it can't force a remote fallback for the whole set.
-        assertEquals(setOf("resolves-locally"), result.flags.keys)
-        assertEquals(true, result.locallyEvaluated["resolves-locally"])
-        // Only the poller's local_evaluation request happened — no /flags round trip.
-        assertEquals(1, mockServer.requestCount, "scoped local evaluation must not hit /flags")
-
-        featureFlags.shutDown()
-        mockServer.shutdown()
-    }
-
-    @Test
-    fun `onlyEvaluateLocally does not reuse remote fallback cache entries`() {
-        val mockServer =
-            createMockHttp(
-                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
-                jsonResponse(createFlagsResponse("needs-server", enabled = true)),
-            )
-        val loadedLatch = CountDownLatch(1)
-        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
-        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
-
-        // Fallback pass caches the raw remote response.
-        val fallback =
-            featureFlags.evaluateFlags(
-                distinctId = "user-1",
-                groups = null,
-                personProperties = null,
-                groupProperties = null,
-                flagKeys = null,
-                onlyEvaluateLocally = false,
-                disableGeoip = false,
-            )
-        assertEquals(setOf("resolves-locally", "needs-server"), fallback.flags.keys)
-
-        // A subsequent local-only pass must not read the cached remote values.
-        val localOnly =
-            featureFlags.evaluateFlags(
-                distinctId = "user-1",
-                groups = null,
-                personProperties = null,
-                groupProperties = null,
-                flagKeys = null,
-                onlyEvaluateLocally = true,
-                disableGeoip = false,
-            )
-        assertEquals(setOf("resolves-locally"), localOnly.flags.keys)
-        assertEquals(true, localOnly.locallyEvaluated["resolves-locally"])
-
-        featureFlags.shutDown()
-        mockServer.shutdown()
-    }
-
-    @Test
     fun `evaluateFlags partial fallback does not populate the legacy cache`() {
         val mockServer =
             createMockHttp(
@@ -908,6 +835,165 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(0, mockServer.requestCount)
         assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
 
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags falls back for requested keys with no local definition`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createFlagsResponse("typo-flag", enabled = true)),
+            )
+        val url = mockServer.url("/")
+
+        val config = createTestConfig(logger, url.toString())
+        val api = PostHogApi(config)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("known-flag", "typo-flag"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("known-flag", "typo-flag"), result.flags.keys)
+        assertTrue(logger.containsLog("No local definition for requested flag(s) typo-flag"))
+        assertEquals(2, mockServer.requestCount, "the undefined key falls back to /flags")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `definitions that fail to load are not re-fetched on every evaluateFlags call`() {
+        // A personal API key that always fails never sets `definitionsLoaded`, so nothing but the
+        // cached result stops every call re-attempting a blocking /local_evaluation load. The
+        // poller is off so the only requests counted are the ones evaluateFlags itself makes.
+        val dispatcher =
+            CountingDispatcher(
+                { errorResponse(401, "Unauthorized") },
+                { jsonResponse(createFlagsResponse("remote-flag", enabled = true)) },
+            )
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+
+        val config = createTestConfig(TestLogger(), mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        fun evaluate(onlyEvaluateLocally: Boolean) =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = onlyEvaluateLocally,
+                disableGeoip = false,
+            )
+
+        evaluate(onlyEvaluateLocally = false)
+        val definitionRequestsAfterFirstCall = dispatcher.localEvaluationCalls.get()
+        assertEquals(1, definitionRequestsAfterFirstCall)
+
+        // Both modes must be shielded, since callers interleave them for one identity.
+        repeat(4) {
+            evaluate(onlyEvaluateLocally = true)
+            evaluate(onlyEvaluateLocally = false)
+        }
+
+        assertEquals(
+            definitionRequestsAfterFirstCall,
+            dispatcher.localEvaluationCalls.get(),
+            "repeat calls must not each re-attempt a blocking definitions load",
+        )
+        assertEquals(1, dispatcher.flagsCalls.get())
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `onlyEvaluateLocally returns empty rather than cached remote flags when definitions are unavailable`() {
+        // Skipping the definitions re-load must not turn into serving the cache entry, or a
+        // local-only pass would answer with remote values.
+        val dispatcher =
+            CountingDispatcher(
+                { errorResponse(401, "Unauthorized") },
+                { jsonResponse(createFlagsResponse("remote-flag", enabled = true)) },
+            )
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+
+        val config = createTestConfig(TestLogger(), mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        val remote =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(setOf("remote-flag"), remote.flags.keys, "the cache now holds a remote success")
+
+        val localOnly =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertTrue(localOnly.flags.isEmpty(), "a local-only snapshot must never carry remote values")
+        assertEquals(
+            1,
+            dispatcher.localEvaluationCalls.get(),
+            "the cache entry must also stop the local-only call re-attempting a definitions load",
+        )
+
+        featureFlags.shutDown()
         mockServer.shutdown()
     }
 

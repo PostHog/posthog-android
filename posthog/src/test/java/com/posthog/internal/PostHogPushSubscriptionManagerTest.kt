@@ -12,6 +12,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -359,6 +360,34 @@ internal class PostHogPushSubscriptionManagerTest {
         assertEquals(1, http.requestCount)
     }
 
+    // Regression test for posthog-android#675: opt-out mid-unregister must still send the DELETE.
+    @Test
+    fun `opt-out during an in-flight unregister strands the DELETE (posthog-android#675)`() {
+        val http = mockHttp(total = 2) // register POST, then the unregister DELETE
+        val (sut, config, _) = getSut(http)
+
+        // 1) Register and deliver a token.
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals("POST", http.takeRequest().method)
+
+        // 2) The wrapper's opt-out flow: unregister, then opt out. Block the single executor thread so
+        //    opt-out flips config.optOut before the queued unregister task runs (the reported race).
+        val gate = CountDownLatch(1)
+        executor.execute { gate.await() }
+        sut.unregisterCurrent() // queues performUnregister behind the gate
+        config.optOut = true // opt-out lands first
+        gate.countDown() // release: the unregister now runs while opted out
+        flush()
+
+        // A DELETE removes data, so opt-out must not block it. Fails today: the
+        // `if (closed || config.optOut) return` guard strands the DELETE and the server-side
+        // subscription stays active for the whole opted-out period.
+        val delete = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(delete, "posthog-android#675: opt-out stranded the unregister DELETE; subscription stays active")
+        assertEquals("DELETE", delete.method)
+    }
+
     @Test
     fun `a mint completing after optOut is not cached and opt-in re-mints`() {
         val http = mockHttp(total = 2, response = MockResponse().setBody(""))
@@ -650,7 +679,9 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `unregister does not send after optOut`() {
+    fun `unregister still sends the DELETE while opted out`() {
+        // Opt-out blocks registration and sends, but a DELETE is data removal, so it must still go out
+        // (posthog-android#675) — otherwise the server-side subscription outlives the opt-out.
         val http = mockHttp()
         val (sut, config, _) = getSut(http)
         config.optOut = true
@@ -658,7 +689,9 @@ internal class PostHogPushSubscriptionManagerTest {
         sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
         flush()
 
-        assertEquals(0, http.requestCount)
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        assertEquals("DELETE", request.method)
     }
 
     @Test

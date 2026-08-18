@@ -1,5 +1,7 @@
 package com.posthog.android.replay
 
+import com.posthog.PostHogExperimental
+
 /**
  * Android session replay capture options.
  *
@@ -60,6 +62,15 @@ public class PostHogSessionReplayConfig
          */
         public var sampleRate: Double? = null,
     ) {
+        /**
+         * Verifies mask alignment for session replay screenshots.
+         * This can preserve screenshots during pixel-only redraws, including continuously animated
+         * content, but performs additional view hierarchy walks while a screenshot is captured.
+         * Defaults to false.
+         */
+        @PostHogExperimental
+        public var verifyScreenshotMaskAlignment: Boolean = false
+
         init {
             // for keeping back compatibility
             @Suppress("DEPRECATION")

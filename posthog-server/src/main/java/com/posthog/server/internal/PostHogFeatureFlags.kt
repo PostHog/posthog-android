@@ -235,21 +235,32 @@ internal class PostHogFeatureFlags(
     }
 
     /**
-     * Evaluate flag definitions locally, keeping every flag that resolves and reporting the keys
-     * that need server evaluation. Callers merge the successes with a `/flags` fallback rather than
-     * discarding the whole local result on the first miss.
-     *
-     * When non-empty [flagKeys] are provided the definition map is filtered up front, so a flag the
-     * caller never asked about can neither be evaluated nor trigger a remote fallback. Requested
-     * keys missing from the local definitions are treated as unresolved.
+     * The result of one local evaluation pass. [flags] holds every flag that resolved and
+     * [unresolvedFlagKeys] identifies the gaps callers can fill from `/flags`.
      */
-    private fun getFeatureFlagsFromLocalEvaluation(
+    private data class LocalEvaluationOutcome(
+        val flags: Map<String, FeatureFlag>,
+        val unresolvedFlagKeys: List<String>,
+    ) {
+        val needsRemote: Boolean
+            get() = unresolvedFlagKeys.isNotEmpty()
+    }
+
+    /**
+     * Evaluate flags against the definitions held in memory, recording failures per flag.
+     *
+     * @param flagKeys when non-null, only these keys are evaluated. This scopes the loop, never
+     *   [flagDefinitions] itself: [computeFlagLocally] resolves flag dependencies through the full
+     *   map, so narrowing the field would make every dependent flag inconclusive.
+     * @return null when local evaluation is unavailable: disabled, or definitions never loaded.
+     */
+    private fun evaluateFlagsLocally(
         distinctId: String,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-        flagKeys: List<String>? = null,
-    ): LocalEvaluationResult? {
+        flagKeys: List<String>?,
+    ): LocalEvaluationOutcome? {
         if (!localEvaluation) {
             return null
         }
@@ -259,26 +270,22 @@ internal class PostHogFeatureFlags(
             loadFeatureFlagDefinitions()
         }
 
-        val currentFlagDefinitions = flagDefinitions ?: return null
-
-        // Scope the evaluation to the requested keys before the loop so an inconclusive flag the
-        // caller never asked about can't force a remote fallback for the whole set.
-        val requestedFlagKeys = flagKeys?.takeIf { it.isNotEmpty() }?.toHashSet()
-        val definitionsToEvaluate =
-            if (requestedFlagKeys == null) {
-                currentFlagDefinitions
-            } else {
-                currentFlagDefinitions.filterKeys { it in requestedFlagKeys }
-            }
+        val currentFlagDefinitions = flagDefinitions
+        if (currentFlagDefinitions == null) {
+            return null
+        }
 
         config.logger.log("Attempting local evaluation for distinctId: $distinctId")
         val localFlags = mutableMapOf<String, FeatureFlag>()
-        val inconclusiveFlagKeys = linkedSetOf<String>()
         val props = localPersonProperties(distinctId, personProperties)
+        val requestedKeys = flagKeys?.toHashSet()
+        val unresolvedFlagKeys = linkedSetOf<String>()
 
-        // Evaluate each flag independently: keep the ones that resolve and track the rest for
-        // remote evaluation instead of throwing away everything on the first miss.
-        for ((key, flagDef) in definitionsToEvaluate) {
+        for ((key, flagDef) in currentFlagDefinitions) {
+            if (requestedKeys != null && key !in requestedKeys) {
+                continue
+            }
+
             try {
                 val result =
                     computeFlagLocally(
@@ -292,19 +299,51 @@ internal class PostHogFeatureFlags(
                 localFlags[key] = buildFeatureFlagFromResult(key, result, flagDef)
             } catch (e: InconclusiveMatchException) {
                 config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
-                inconclusiveFlagKeys.add(key)
+                unresolvedFlagKeys.add(key)
+            } catch (e: Exception) {
+                config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
+                unresolvedFlagKeys.add(key)
             }
         }
 
-        val unresolvedFlagKeys =
-            if (requestedFlagKeys == null) {
-                inconclusiveFlagKeys.toList()
-            } else {
-                flagKeys.orEmpty().distinct().filterNot { localFlags.containsKey(it) }
+        if (flagKeys != null) {
+            val undefined = flagKeys.distinct().filterNot { currentFlagDefinitions.containsKey(it) }
+            if (undefined.isNotEmpty()) {
+                unresolvedFlagKeys.addAll(undefined)
+                config.logger.log(
+                    "No local definition for requested flag(s) ${undefined.joinToString(", ")} - " +
+                        "falling back to remote evaluation",
+                )
             }
+        }
 
-        config.logger.log("Local evaluation successful for ${localFlags.size} flags")
-        return LocalEvaluationResult(localFlags, unresolvedFlagKeys)
+        config.logger.log(
+            "Local evaluation resolved ${localFlags.size} flags, " +
+                "unresolved=${unresolvedFlagKeys.size}",
+        )
+        return LocalEvaluationOutcome(localFlags, unresolvedFlagKeys.toList())
+    }
+
+    /**
+     * All-or-nothing local evaluation for the deprecated [getFeatureFlags] path: a single
+     * unresolved flag discards the batch so the caller falls back to `/flags`.
+     */
+    private fun getFeatureFlagsFromLocalEvaluation(
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+    ): Map<String, FeatureFlag>? {
+        val outcome =
+            evaluateFlagsLocally(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+                flagKeys = null,
+            ) ?: return null
+
+        return if (outcome.needsRemote) null else outcome.flags
     }
 
     private fun localPersonProperties(
@@ -414,17 +453,16 @@ internal class PostHogFeatureFlags(
             return cached
         }
 
-        // If no cached flags, try local evaluation. This legacy accessor keeps its all-or-nothing
-        // contract: if any flag is inconclusive it evaluates the whole set remotely.
-        val localResult =
+        // If no cached flags, try local evaluation
+        val localFlags =
             getFeatureFlagsFromLocalEvaluation(
                 distinctId,
                 groups,
                 personProperties,
                 groupProperties,
             )
-        if (localResult != null && !localResult.fallbackToFlags) {
-            return localResult.flags
+        if (localFlags != null) {
+            return localFlags
         }
 
         // Finally, fall back to remote fetch
@@ -894,8 +932,10 @@ internal class PostHogFeatureFlags(
 
     /**
      * Resolve every flag for the given identity in a single pass, returning the rich envelope used
-     * by the [com.posthog.server.PostHogFeatureFlagEvaluations] snapshot. Reuses the existing
-     * cache → local-eval → remote tier and additionally records which keys were resolved locally.
+     * by the [com.posthog.server.PostHogFeatureFlagEvaluations] snapshot.
+     *
+     * Local evaluation runs first and wins: whatever the definitions in memory resolve is kept, and
+     * `/flags` is asked only for the keys that stayed unresolved.
      */
     internal fun evaluateFlags(
         distinctId: String,
@@ -920,22 +960,44 @@ internal class PostHogFeatureFlags(
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
             )
+        // Only local scoping treats an empty list as "no scope"; the cache key and the `/flags` body
+        // take the raw list.
+        val requestedKeys = flagKeys?.takeIf { it.isNotEmpty() }
 
-        val localResult =
-            getFeatureFlagsFromLocalEvaluation(
+        // Without definitions there is nothing to evaluate locally, so an existing entry ends the
+        // call. This keeps the cached-failure backoff, and caps the blocking `/local_evaluation`
+        // attempt below: a personal API key that always fails never sets `definitionsLoaded`.
+        if (flagDefinitions == null) {
+            cache.getEntry(cacheKey)?.let { entry ->
+                // Local-only mode uses the entry's existence, never its values.
+                if (onlyEvaluateLocally) {
+                    return EMPTY_EVALUATE_FLAGS_RESULT
+                }
+                val flags = entry.flags ?: EMPTY_FLAGS
+                return EvaluateFlagsResult(
+                    flags = flags,
+                    locallyEvaluated = flags.mapValues { isLocallyEvaluated(it.value) },
+                    requestId = entry.requestId,
+                    evaluatedAt = entry.evaluatedAt,
+                    definitionsLoadedAt = definitionsLoadedAt,
+                    responseError = entry.error,
+                )
+            }
+        }
+
+        val local =
+            evaluateFlagsLocally(
                 distinctId,
                 groups,
                 personProperties,
                 groupProperties,
-                flagKeys,
+                requestedKeys,
             )
-        val localFlags = localResult?.flags ?: EMPTY_FLAGS
 
-        // Everything the caller asked for resolved in-process — no remote round trip needed.
-        if (localResult != null && !localResult.fallbackToFlags) {
+        if (local != null && (!local.needsRemote || onlyEvaluateLocally)) {
             return EvaluateFlagsResult(
-                flags = localFlags,
-                locallyEvaluated = localFlags.mapValues { true },
+                flags = local.flags,
+                locallyEvaluated = local.flags.mapValues { true },
                 requestId = null,
                 evaluatedAt = null,
                 definitionsLoadedAt = definitionsLoadedAt,
@@ -943,32 +1005,26 @@ internal class PostHogFeatureFlags(
             )
         }
 
-        // No remote fallback allowed: return whatever resolved locally instead of discarding it.
         if (onlyEvaluateLocally) {
-            return EvaluateFlagsResult(
-                flags = localFlags,
-                locallyEvaluated = localFlags.mapValues { true },
-                requestId = null,
-                evaluatedAt = null,
-                definitionsLoadedAt = definitionsLoadedAt,
-                responseError = null,
-            )
+            return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        // Some flags need server evaluation. For an explicitly scoped request, only fetch the keys
-        // that did not resolve locally. Unscoped requests retain their original API scope so flags
-        // missing from a stale local definition set can still be returned by the server.
+        // For scoped calls, ask only for keys that did not resolve locally. Unscoped calls retain
+        // their original API scope so flags absent from stale local definitions can still be returned.
         val remoteFlagKeys =
-            if (localResult != null && !flagKeys.isNullOrEmpty()) {
-                localResult.unresolvedFlagKeys
+            if (local != null && requestedKeys != null) {
+                local.unresolvedFlagKeys
             } else {
                 flagKeys
             }
         val remoteCacheKey = cacheKey.copy(flagKeys = remoteFlagKeys)
+
+        // Read the entry, not the flags: a cached failure holds null flags, and honoring it is what
+        // keeps an outage from being re-requested on every call within the window.
         var entry = cache.getEntry(remoteCacheKey)
         val remoteFlags =
             if (entry != null) {
-                entry.flags ?: EMPTY_FLAGS
+                entry.flags
             } else {
                 getFeatureFlagsFromRemote(
                     distinctId,
@@ -977,22 +1033,27 @@ internal class PostHogFeatureFlags(
                     groupProperties,
                     remoteFlagKeys,
                     disableGeoip,
-                ).also { entry = cache.getEntry(remoteCacheKey) } ?: EMPTY_FLAGS
+                ).also { entry = cache.getEntry(remoteCacheKey) }
             }
 
-        // Keep the raw remote response in the shared cache and merge locally on every call. This
-        // prevents partial evaluation snapshots from leaking into legacy all-or-nothing readers.
-        val mergedFlags = LinkedHashMap<String, FeatureFlag>(remoteFlags)
-        mergedFlags.putAll(localFlags)
-
+        val localFlags = local?.flags ?: EMPTY_FLAGS
+        // Local wins: `/flags` fills the gaps, it never overwrites a key local evaluation resolved.
+        // Same precedence as posthog-python, which skips remote keys already in
+        // `locally_evaluated_keys`. Note a group flag evaluated without `groups` resolves locally to
+        // `false`, and that now beats the server's answer — pass `groups` when gating on one.
+        val merged = LinkedHashMap(remoteFlags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
         return EvaluateFlagsResult(
-            flags = mergedFlags,
-            locallyEvaluated = mergedFlags.mapValues { localFlags.containsKey(it.key) },
+            flags = merged,
+            locallyEvaluated = merged.mapValues { it.key in localFlags },
             requestId = entry?.requestId,
             evaluatedAt = entry?.evaluatedAt,
             definitionsLoadedAt = definitionsLoadedAt,
             responseError = entry?.error,
         )
+    }
+
+    private fun isLocallyEvaluated(flag: FeatureFlag): Boolean {
+        return flag.reason?.code == LOCAL_EVALUATION_REASON_CODE
     }
 
     override fun getFeatureFlagError(
@@ -1051,16 +1112,4 @@ internal class PostHogFeatureFlags(
                 responseError = null,
             )
     }
-}
-
-/**
- * Outcome of a local-evaluation pass: the flags that resolved in-process and the requested keys
- * that were inconclusive or missing from the local definitions.
- */
-private data class LocalEvaluationResult(
-    val flags: Map<String, FeatureFlag>,
-    val unresolvedFlagKeys: List<String>,
-) {
-    val fallbackToFlags: Boolean
-        get() = unresolvedFlagKeys.isNotEmpty()
 }

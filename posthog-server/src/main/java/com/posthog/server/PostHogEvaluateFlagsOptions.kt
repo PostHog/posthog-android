@@ -8,8 +8,12 @@ package com.posthog.server
  * @property groups Groups for group-based flags, keyed by group type.
  * @property personProperties Person properties to use for flag evaluation.
  * @property groupProperties Group properties to use for flag evaluation, keyed by group type.
- * @property flagKeys Optional list of flag keys to evaluate. When null, all matching flags are evaluated.
- * @property onlyEvaluateLocally Whether to skip the remote `/flags` fallback if local evaluation is inconclusive.
+ * @property flagKeys Optional list of flag keys to evaluate, scoping both local evaluation and the
+ *   remote request. When null, all matching flags are evaluated. Keys with no local definition
+ *   never force a request on their own: they are absent from the snapshot, unless an unresolved
+ *   flag already requires the `/flags` call, which then also fills them.
+ * @property onlyEvaluateLocally Whether the snapshot must hold exactly what local evaluation
+ *   resolved: no `/flags` fallback, no cached remote values, unresolved flags absent.
  * @property disableGeoip Whether to send `geoip_disable=true` during remote evaluation.
  */
 public class PostHogEvaluateFlagsOptions private constructor(

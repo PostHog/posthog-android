@@ -2,11 +2,10 @@
 "posthog-server": patch
 ---
 
-fix(server): keep locally resolvable flags in `evaluateFlags` instead of falling back to `/flags` for the whole set
+fix(server): fetch only unresolved scoped flags during local evaluation fallback
 
-`evaluateFlags` now keeps every flag that resolves during local evaluation and, for scoped calls,
-only fetches unresolved keys from `/flags`, merging the response without overwriting local results.
-Requested keys missing from local definitions also fall back to `/flags`. `flagKeys` scopes local
-evaluation before the loop, so unrequested flags can't trigger fallback. Merged snapshots are built
-per call while the shared cache keeps only raw remote responses, preserving strict local-only calls
-and the legacy all-or-nothing behavior.
+For scoped `evaluateFlags` calls, `/flags` now receives only keys that local evaluation could not
+resolve, while locally resolved results remain authoritative. Requested keys missing from the
+currently loaded local definitions are included in the fallback so newly created or stale keys can
+still resolve remotely. The shared cache continues to store only raw remote responses, preserving
+strict local-only calls and the legacy all-or-nothing behavior.
