@@ -1,0 +1,8 @@
+{
+  "api_key": "test-api-key",
+  "distinct_id": "minimal-user",
+  "geoip_disable": false,
+  "group_properties": {},
+  "groups": {},
+  "timezone": "UTC"
+}

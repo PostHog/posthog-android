@@ -12,7 +12,7 @@ import java.util.Date
  * @property userProperties Person properties to set as `$set` with the capture.
  * @property userPropertiesSetOnce Person properties to set as `$set_once` with the capture.
  * @property groups Group assignments to attach as `$groups`.
- * @property timestamp Event timestamp. When null, the SDK uses the current time.
+ * @property timestamp Event timestamp. UTC is preferred; the equivalent instant is serialized in UTC. When null, the SDK uses the current time.
  * @property appendFeatureFlags Whether to enrich the event by evaluating and attaching feature flag
  *   properties. Prefer passing a pre-evaluated [flags] snapshot for new code.
  * @property flags Optional snapshot returned by [PostHogInterface.evaluateFlags] to attach feature
@@ -44,7 +44,7 @@ public class PostHogCaptureOptions private constructor(
         /** Group assignments to attach as `$groups`. */
         public var groups: MutableMap<String, String>? = null
 
-        /** Event timestamp override. */
+        /** Event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. */
         public var timestamp: Date? = null
 
         /** Whether to evaluate and append feature flag properties during capture. */
@@ -166,7 +166,7 @@ public class PostHogCaptureOptions private constructor(
         /**
          * Override the timestamp for the event.
          *
-         * @param date Event timestamp.
+         * @param date Event timestamp. UTC is preferred; the equivalent instant is serialized in UTC.
          * @return This builder.
          * @see <a href="https://posthog.com/docs/data/timestamps">Documentation: Timestamps</a>
          */
@@ -190,7 +190,7 @@ public class PostHogCaptureOptions private constructor(
         /**
          * Override the timestamp for the event.
          *
-         * @param instant Event timestamp.
+         * @param instant Event timestamp, serialized in UTC.
          * @return This builder.
          * @see <a href="https://posthog.com/docs/data/timestamps">Documentation: Timestamps</a>
          */

@@ -7,8 +7,6 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.interruptSafely
 import com.posthog.internal.replay.RRPluginEvent
 import com.posthog.internal.replay.capture
-import java.text.SimpleDateFormat
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig) : PostHogIntegration {
@@ -38,10 +36,8 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
             return
         }
         ownsInstallation = true
-        val cmd = mutableListOf("logcat", "-v", "threadtime", "*:E")
-        val sdf = SimpleDateFormat("MM-dd HH:mm:ss.mmm", Locale.ROOT)
-        cmd.add("-T")
-        cmd.add(sdf.format(config.dateProvider.currentTimeMillis()))
+        val cmd = logcatCommand(config.dateProvider.currentTimeMillis())
+        val logcatParser = LogcatParser()
 
         logcatInProgress = false
         logcatThread?.interruptSafely()
@@ -69,7 +65,7 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                                 if (line.contains("PostHog") || line.contains("StrictMode")) {
                                     continue
                                 } else {
-                                    val log = LogcatParser().parse(line) ?: continue
+                                    val log = logcatParser.parse(line) ?: continue
 
                                     val props = mutableMapOf<String, Any>()
                                     props["level"] = log.level.toString()
@@ -110,6 +106,17 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
     @PostHogVisibleForTesting
     internal fun isInstalled(): Boolean = integrationInstalled.get()
+
+    @PostHogVisibleForTesting
+    internal fun logcatCommand(timestampMillis: Long): MutableList<String> =
+        mutableListOf(
+            "logcat",
+            "-v",
+            "epoch",
+            "-T",
+            "${timestampMillis / 1000}.${(timestampMillis % 1000).toString().padStart(3, '0')}",
+            "*:E",
+        )
 
     @Synchronized
     override fun uninstall() {
