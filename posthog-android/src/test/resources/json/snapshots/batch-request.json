@@ -215,7 +215,8 @@
               "mechanism": {
                 "handled": true,
                 "synthetic": false,
-                "type": "generic"
+                "type": "generic",
+                "exception_id": 0
               },
               "thread_id": "<thread_id>",
               "value": "Checkout failed",
@@ -240,7 +241,9 @@
               "mechanism": {
                 "handled": true,
                 "synthetic": false,
-                "type": "generic"
+                "type": "chained",
+                "exception_id": 1,
+                "parent_id": 0
               },
               "thread_id": "<thread_id>",
               "value": "Card token is invalid",

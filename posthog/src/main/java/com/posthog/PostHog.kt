@@ -876,6 +876,7 @@ public class PostHog private constructor(
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
                     inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
+                    inAppExcludes = config?.errorTrackingConfig?.inAppExcludes ?: listOf(),
                     releaseIdentifier = config?.releaseIdentifier,
                 )
 
