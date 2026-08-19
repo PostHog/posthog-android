@@ -857,6 +857,7 @@ public class PostHog private constructor(
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
                     inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
+                    inAppExcludes = config?.errorTrackingConfig?.inAppExcludes ?: listOf(),
                     releaseIdentifier = config?.releaseIdentifier,
                 )
 
@@ -1095,6 +1096,17 @@ public class PostHog private constructor(
             getPreferences().setValue(OPT_OUT, false)
             // an explicit runtime choice; the deferred read must not override it
             optOutLoaded = true
+        }
+
+        // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
+        // re-registers, since a logout unregister cleared it and opt-in alone leaves it unsubscribed).
+        // Gated on the opt-in capability interface so the public PostHogIntegration contract is unchanged.
+        config?.integrations?.filterIsInstance<PostHogOptInReceiver>()?.forEach { receiver ->
+            try {
+                receiver.onOptIn()
+            } catch (e: Throwable) {
+                safeLog("Integration ${receiver.javaClass.name} failed to handle opt-in: $e.")
+            }
         }
     }
 

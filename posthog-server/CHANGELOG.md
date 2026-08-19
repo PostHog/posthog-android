@@ -1,5 +1,36 @@
 ## Next
 
+## 2.13.0
+
+### Minor Changes
+
+- 34b1647: Release the shared `ThrowableCoercer` error-tracking improvements (shipped in core 6.32.0, PostHog/posthog-android#669) in the Android and server artifacts:
+
+  - Each `$exception_list` item's mechanism now carries `exception_id` (0-based position); cause items get `parent_id` and mechanism `type: "chained"`, suppressed exceptions (`Throwable.suppressed`) are serialized with mechanism `type: "suppressed"` and the holder's `parent_id`. A single-item list carries no ids, matching the other SDKs. The ids are emitted on the wire for cross-SDK parity; PostHog ingestion does not persist them yet.
+  - Caps: at most 50 items per `$exception_list` and 64 frames per stacktrace (keeps the frames nearest the crash); the cap bounds the traversal itself.
+  - Compiler-generated frames (JVM and Kotlin lambdas, Android D8/R8 desugared lambdas and outlines, Spring CGLIB proxies, reflection accessors, dynamic proxies) are flagged with `method_synthetic: true` rather than dropped.
+  - New `PostHogErrorTrackingConfig.inAppExcludes` to force frames out of `in_app` (excludes win over `inAppIncludes`); matching happens against runtime class names before symbolication.
+
+  All field/key names and `platform: "java"` are unchanged; the additions are backwards compatible on the wire.
+
+## 2.12.1
+
+### Patch Changes
+
+- b1c2130: Support fractional rollout percentages when evaluating feature flags locally.
+
+## 2.12.0
+
+### Minor Changes
+
+- dfd0a9c: `evaluateFlags` now keeps whatever local evaluation resolved and asks `/flags` only for the keys it could not resolve. Previously a single inconclusive flag definition discarded the whole locally-computed batch, so one flag gated on a property the caller does not pass forced a request per identity, and a `/flags` outage turned locally-resolvable flags off. `flagKeys` now scopes local evaluation as well as the request, and a requested key with no local definition never forces a request on its own: it is absent from the snapshot, unless an unresolved flag already required the `/flags` call, which then also fills it. `onlyEvaluateLocally = true` is now strictly local: it never serves cached remote values, so flags it cannot resolve are omitted. A group-aggregated flag evaluated without its group key still resolves locally to `false`, and that value now takes precedence over the server's, so pass `groups` when gating on group flags.
+
+## 2.11.0
+
+### Minor Changes
+
+- 0aeab4e: Support the `starts_with`, `not_starts_with`, `ends_with`, and `not_ends_with` property-filter operators in local feature flag evaluation. Both the property value and filter value are stringified and ASCII case-folded before the prefix/suffix comparison; the `not_*` variants negate the result. Flags targeting on these operators previously could not be evaluated locally and always fell back to remote evaluation.
+
 ## 2.10.0
 
 ### Minor Changes

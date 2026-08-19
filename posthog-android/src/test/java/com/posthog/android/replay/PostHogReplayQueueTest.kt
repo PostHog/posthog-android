@@ -40,8 +40,8 @@ internal class PostHogReplayQueueTest {
         var startCallCount = 0
         var stopCallCount = 0
 
-        override fun add(event: PostHogEvent) {
-            events.add(event)
+        override fun add(record: PostHogEvent) {
+            events.add(record)
         }
 
         override fun flush() {

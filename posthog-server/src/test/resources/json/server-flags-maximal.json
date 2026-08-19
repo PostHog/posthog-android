@@ -1,0 +1,35 @@
+{
+  "api_key": "test-api-key",
+  "distinct_id": "maximal-user",
+  "evaluation_contexts": [
+    "production",
+    "checkout"
+  ],
+  "flag_keys_to_evaluate": [
+    "checkout-v2",
+    "new-pricing"
+  ],
+  "geoip_disable": true,
+  "group_properties": {
+    "company": {
+      "employees": 100,
+      "region": "EU"
+    },
+    "project": {
+      "tier": "open-source"
+    }
+  },
+  "groups": {
+    "company": "posthog",
+    "project": "android"
+  },
+  "person_properties": {
+    "age": 37,
+    "email": "ada@example.com",
+    "traits": {
+      "active": true,
+      "role": "admin"
+    }
+  },
+  "timezone": "UTC"
+}

@@ -12,6 +12,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.ThrowableCoercer
 import java.util.Date
 import java.util.UUID
@@ -617,7 +618,11 @@ public open class PostHogStateless protected constructor(
         if (ignored.isNullOrEmpty()) {
             return false
         }
-        val match = findIgnoredTypeInCauseChain(throwable, ignored) ?: return false
+        // Start where the coercer starts: the PostHogThrowable transport wrapper is never
+        // serialized, so matching it (or letting it consume walk capacity) would make the
+        // suppression decision diverge from the visible chain.
+        val root = if (throwable is PostHogThrowable) throwable.cause else throwable
+        val match = root?.let { findIgnoredTypeInCauseChain(it, ignored) } ?: return false
         config?.logger?.log(
             "Skipping \$exception: ${match.name} (or a cause in its chain) matches ignoredExceptionTypes",
         )
@@ -628,13 +633,11 @@ public open class PostHogStateless protected constructor(
         throwable: Throwable,
         ignored: List<Class<out Throwable>>,
     ): Class<out Throwable>? {
-        // same cycle detection as ThrowableCoercer, so both walks cover the same chain
-        val seen = hashSetOf<Throwable>()
-        var current: Throwable? = throwable
-        while (current != null && seen.add(current)) {
-            val link = current
+        // the same bounded, identity-based walk the coercer serializes, so the suppression
+        // decision and the visible chain agree, and a pathological `cause` getter cannot hang
+        // the capture path before the coercer's own bound applies
+        for (link in ThrowableCoercer.walkCauseChain(throwable)) {
             ignored.firstOrNull { it.isInstance(link) }?.let { return it }
-            current = link.cause
         }
         return null
     }
@@ -657,6 +660,7 @@ public open class PostHogStateless protected constructor(
                 throwableCoercer.fromThrowableToPostHogProperties(
                     throwable,
                     inAppIncludes = config?.errorTrackingConfig?.inAppIncludes ?: listOf(),
+                    inAppExcludes = config?.errorTrackingConfig?.inAppExcludes ?: listOf(),
                     releaseIdentifier = config?.releaseIdentifier,
                 )
 

@@ -4,6 +4,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogOptInReceiver
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.executeSafely
@@ -28,7 +29,7 @@ internal class PostHogPushSubscriptionIntegration(
     // thread (typically main, inside Application.onCreate()), and FirebaseMessaging's first-touch
     // init is synchronous, so the fetch is hopped off-thread. Tests inject a synchronous executor.
     private val executor: ExecutorService = Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogPushSub")),
-) : PostHogIntegration {
+) : PostHogIntegration, PostHogOptInReceiver {
     private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
 
@@ -43,6 +44,16 @@ internal class PostHogPushSubscriptionIntegration(
         }
         ownsInstallation = true
         this.postHog = postHog
+        fetchAndRegister()
+    }
+
+    // Opt-in re-arms push: a prior logout unregister cleared the token, so refetch it and re-register
+    // the device instead of leaving it unsubscribed until the next app launch (posthog-android#675).
+    override fun onOptIn() {
+        fetchAndRegister()
+    }
+
+    private fun fetchAndRegister() {
         executor.executeSafely {
             tokenFetcher.fetchToken { token, appId ->
                 this.postHog?.registerPushNotificationToken(token, appId)

@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.android.errortracking.PostHogNativeCrashIntegration
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
 import com.posthog.android.internal.PostHogAndroidContext
@@ -182,6 +183,9 @@ public class PostHogAndroid private constructor() {
             }
             if (config.capturePushNotificationSubscriptions) {
                 config.addIntegration(PostHogPushSubscriptionIntegration(config))
+            }
+            if (config.errorTrackingConfig.captureNativeCrashes) {
+                config.addIntegration(PostHogNativeCrashIntegration(context, config))
             }
         }
     }

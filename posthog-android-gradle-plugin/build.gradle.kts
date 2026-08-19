@@ -85,6 +85,10 @@ val dokkaHtmlJar by tasks.register<Jar>("dokkaHtmlJar") {
     archiveClassifier.set("html-doc")
 }
 
+tasks.named("assemble") {
+    dependsOn(dokkaJavadocJar, dokkaHtmlJar)
+}
+
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions {
         jvmTarget.set(
@@ -94,7 +98,7 @@ tasks.withType<KotlinCompile>().configureEach {
         languageVersion.set(compatVersion)
         allWarningsAsErrors.set(true)
         apiVersion.set(compatVersion)
-        freeCompilerArgs.add("-Xexplicit-api=strict")
+        freeCompilerArgs.addAll("-Xexplicit-api=strict", "-Xsuppress-version-warnings")
     }
 }
 
@@ -191,4 +195,30 @@ dependencies {
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
+}
+
+// Functional tests run the plugin through Gradle TestKit against real AGP
+// versions (the oldest supported and a current one), because the merged
+// native libs directory and its producer task are AGP internals that can
+// move between releases.
+val functionalTest: SourceSet by sourceSets.creating
+
+dependencies {
+    "functionalTestImplementation"(gradleTestKit())
+    "functionalTestImplementation"("org.jetbrains.kotlin:kotlin-test-junit:${versions["kotlinVersion"]}")
+}
+
+gradlePlugin.testSourceSets(functionalTest)
+
+val functionalTestTask =
+    tasks.register<Test>("functionalTest") {
+        description = "Runs the functional tests."
+        group = "verification"
+        testClassesDirs = functionalTest.output.classesDirs
+        classpath = functionalTest.runtimeClasspath
+        useJUnit()
+    }
+
+tasks.named("check") {
+    dependsOn(functionalTestTask)
 }

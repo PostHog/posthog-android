@@ -48,7 +48,7 @@ internal class PostHogMemoryQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
-    override fun add(event: PostHogEvent) {
+    override fun add(record: PostHogEvent) {
         executor.executeSafely {
             var removedEvent: PostHogEvent? = null
 
@@ -57,14 +57,14 @@ internal class PostHogMemoryQueue(
                     removedEvent = events.removeFirstOrNull()
                 }
 
-                events.addLast(event)
+                events.addLast(record)
             }
 
             if (removedEvent != null) {
                 config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
             }
 
-            config.logger.log("Event: ${event.event} was added to the queue.")
+            config.logger.log("Event: ${record.event} was added to the queue.")
 
             flushIfOverThreshold()
         }

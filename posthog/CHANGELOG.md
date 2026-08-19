@@ -1,5 +1,52 @@
 ## Next
 
+## 6.33.0
+
+### Minor Changes
+
+- 470c1fa: Add native (NDK) crash capture on Android 12+, opt-in via `errorTrackingConfig.captureNativeCrashes`. On startup the SDK reads the native crash records the OS kept (`ApplicationExitInfo` tombstones) and captures an `$exception` event per crash with raw native stack frames and `$debug_images`, so PostHog symbolicates them against `.so` debug symbols uploaded with `posthog-cli symbol-sets upload`.
+
+## 6.32.0
+
+### Minor Changes
+
+- f8ba0f2: Completes the exception-item model in the shared `ThrowableCoercer`:
+
+  - Each `$exception_list` item's mechanism now carries `exception_id` (0-based position); cause items get `parent_id` and mechanism `type: "chained"`, the primary item keeps its existing type. A single-item list carries no ids, matching the other SDKs. The chain metadata is emitted on the wire; persisting the relationships requires the PostHog-side mechanism-schema change (in flight), which today drops the ids on ingestion.
+  - Suppressed exceptions (`Throwable.suppressed`) are serialized with mechanism `type: "suppressed"` and the holder's `parent_id`.
+  - Caps: at most 50 items per `$exception_list` and 64 frames per stacktrace (keeps the frames nearest the crash). The 50-item cap bounds the traversal itself, so a pathological cause chain cannot be walked without limit.
+  - Compiler-generated frames (JVM and Kotlin lambdas, Android D8/R8 desugared lambdas and outlines, Spring CGLIB proxies, reflection accessors, dynamic proxies) are flagged with `method_synthetic: true` rather than dropped.
+  - New `PostHogErrorTrackingConfig.inAppExcludes` to force frames out of `in_app` (excludes win over `inAppIncludes`). Matching happens against runtime class names before symbolication, so on minified (ProGuard/R8) builds excludes generally will not match and server-side deobfuscation may reclassify frames afterwards; a deobfuscation-aware in-app contract is a follow-up.
+
+  All field/key names and `platform: "java"` are unchanged; the additions are backwards compatible on the wire.
+
+## 6.31.1
+
+### Patch Changes
+
+- 7efc609: Clarify that event timestamps are serialized in UTC, and make session replay log timestamp handling more robust by parsing timezone-independent logcat epoch timestamps instead of local wall-clock timestamps.
+- b1c2130: Support fractional rollout percentages when evaluating feature flags locally.
+
+## 6.31.0
+
+### Minor Changes
+
+- 0aeab4e: Support the `starts_with`, `not_starts_with`, `ends_with`, and `not_ends_with` property-filter operators in local feature flag evaluation. Both the property value and filter value are stringified and ASCII case-folded before the prefix/suffix comparison; the `not_*` variants negate the result. Flags targeting on these operators previously could not be evaluated locally and always fell back to remote evaluation.
+
+## 6.30.0
+
+### Minor Changes
+
+- 71b632d: Fix: opting back in now re-arms push notifications without an app restart. After a logout unregister clears the device token, `optIn()` refetches the FCM token and re-registers the device (when `capturePushNotificationSubscriptions` is enabled) instead of only restoring consent (#675).
+
+  Adds a public `PostHogOptInReceiver` interface that integrations can implement to be notified when the user opts back in via `optIn()`.
+
+## 6.29.2
+
+### Patch Changes
+
+- 7825f07: Fix: opting out no longer strands an in-flight push unregister. The unregister `DELETE` is data removal, so it now completes even after `setOptOut(true)` instead of leaving the server-side subscription active for the whole opted-out period (#675).
+
 ## 6.29.1
 
 ### Patch Changes

@@ -47,24 +47,45 @@ internal fun TaskProvider<out Task>.hookWithMinifyTasks(
 internal fun TaskProvider<out Task>.hookWithAssembleTasks(
     project: Project,
     variant: ApplicationVariant,
+    failureTracker: Provider<PostHogTaskFailureTracker>,
 ) {
     // we need to wait for project evaluation to have all tasks available, otherwise the new
     // AndroidComponentsExtension is configured too early to look up for the tasks
     project.afterEvaluate {
         val bundleTask =
             withLogging(project.logger, "bundleTask") { getBundleTask(project, variant.name) }
-        getAssembleTaskProvider(project, variant)?.configure {
+        val anchors = mutableListOf<TaskProvider<out Task>>()
+        getAssembleTaskProvider(project, variant)?.also { anchors.add(it) }?.configure {
             finalizedBy(this@hookWithAssembleTasks)
         }
-        getInstallTaskProvider(project, variant)?.configure {
+        getInstallTaskProvider(project, variant)?.also { anchors.add(it) }?.configure {
             finalizedBy(this@hookWithAssembleTasks)
         }
         // if its a bundle aab, assemble might not be executed, so we hook into bundle task
-        bundleTask?.configure {
+        bundleTask?.also { anchors.add(it) }?.configure {
             finalizedBy(this@hookWithAssembleTasks)
+        }
+        // Finalizers run even when the build they finalize fails; skip the
+        // upload then, so artifacts of a failed build are not uploaded and the
+        // upload's own errors cannot obscure the original failure. The check
+        // goes through a build service keyed by task path: resolving Task
+        // instances inside an execution-time predicate breaks the
+        // configuration cache. Explicit invocations are unaffected: an
+        // unexecuted anchor never registers a failure.
+        val anchorPaths = anchors.map { anchor -> taskPath(project, anchor.name) }
+        this@hookWithAssembleTasks.configure {
+            usesService(failureTracker)
+            onlyIf("the finalized build succeeded") {
+                !failureTracker.get().anyFailed(anchorPaths)
+            }
         }
     }
 }
+
+private fun taskPath(
+    project: Project,
+    taskName: String,
+): String = if (project.path == ":") ":$taskName" else "${project.path}:$taskName"
 
 internal fun ApplicationVariant.mappingFileProvider(project: Project): Provider<FileCollection> =
     project.provider {

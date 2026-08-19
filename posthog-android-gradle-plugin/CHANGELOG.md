@@ -1,5 +1,20 @@
 ## Next
 
+## 1.5.0
+
+### Minor Changes
+
+- 89fcfd0: Add the `posthog.releaseMode` gradle property (falling back to the `POSTHOG_RELEASE_MODE` environment variable), which selects how the uploaded proguard mapping is associated with a release. `symbol-set`, the default, is unchanged. Experimental `event` passes `--release-mode event` to `posthog-cli` (>= 0.12.0) so the mapping is uploaded release-independent, and each event resolves its own release from the `$app_namespace` / `$app_version` / `$app_build` the SDK already sends — two releases that ship the same mapping no longer both report whichever release uploaded it first. An unrecognized value fails the build instead of silently falling back.
+- d67097f: Upload native (`.so`) debug symbols via `posthog-cli symbol-sets upload` (>= 0.7.32), so native crash stack traces can be symbolicated. Opt in with the new plugin extension:
+
+  ```kotlin
+  posthog {
+      uploadNativeSymbols.set(true)
+  }
+  ```
+
+  When enabled, a new `uploadPostHogNativeSymbols<Variant>` task reads the variant's unstripped merged native libs (NDK builds, `jniLibs`, and libraries packaged by dependencies) and runs automatically after `assemble`/`install`/`bundle` for non-debuggable variants, minified or not. Set `includeNativeSymbolSources.set(true)` to also bundle the project sources referenced by the debug info (off by default). The task can always be invoked explicitly, for any variant, without opting in.
+
 ## 1.4.0
 
 ### Minor Changes
