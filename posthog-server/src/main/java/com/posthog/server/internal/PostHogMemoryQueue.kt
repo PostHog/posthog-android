@@ -71,17 +71,22 @@ internal class PostHogMemoryQueue(
     }
 
     override fun flush() {
-        // only flushes if the queue has events
-        if (!isAboveThreshold(1)) {
-            return
-        }
-
         if (isFlushing.getAndSet(true)) {
             config.logger.log("Queue is flushing.")
             return
         }
 
-        executeBatch()
+        // dispatch on the executor so this is ordered after any in-flight add() calls
+        // rather than racing ahead of them and seeing an empty queue
+        executor.executeSafely {
+            // only flushes if the queue has events
+            if (!isAboveThreshold(1)) {
+                isFlushing.set(false)
+                return@executeSafely
+            }
+
+            executeBatch()
+        }
     }
 
     override fun start() {
