@@ -10,6 +10,7 @@ import com.posthog.server.internal.PostHogFeatureFlags
 import com.posthog.server.internal.PostHogMemoryQueue
 import com.posthog.server.internal.PostHogServerContext
 import java.net.Proxy
+import java.util.Collections
 
 /**
  * Server-side SDK configuration.
@@ -310,27 +311,34 @@ public open class PostHogConfig constructor(
          * Default [inAppExcludes] prefixes: common JVM, Kotlin, and server-framework packages
          * whose frames are noise in application stack traces. Assigning your own list to
          * [inAppExcludes] replaces these defaults.
+         *
+         * Unmodifiable: `List<String>` is only read-only in Kotlin, and this single instance is
+         * shared by every config and builder that does not override it, so a Java caller reaching
+         * the `@JvmField` could otherwise `set()` an element and change the default for the whole
+         * process.
          */
         @JvmField
         public val DEFAULT_IN_APP_EXCLUDES: List<String> =
-            listOf(
-                "java.",
-                "javax.",
-                "jakarta.",
-                "kotlin.",
-                "kotlinx.",
-                "scala.",
-                "sun.",
-                "com.sun.",
-                "jdk.",
-                "org.springframework.",
-                "io.netty.",
-                "org.apache.",
-                "org.eclipse.jetty.",
-                "io.undertow.",
-                "okhttp3.",
-                "okio.",
-                "com.posthog.",
+            Collections.unmodifiableList(
+                listOf(
+                    "java.",
+                    "javax.",
+                    "jakarta.",
+                    "kotlin.",
+                    "kotlinx.",
+                    "scala.",
+                    "sun.",
+                    "com.sun.",
+                    "jdk.",
+                    "org.springframework.",
+                    "io.netty.",
+                    "org.apache.",
+                    "org.eclipse.jetty.",
+                    "io.undertow.",
+                    "okhttp3.",
+                    "okio.",
+                    "com.posthog.",
+                ),
             )
 
         /**
@@ -566,19 +574,25 @@ public open class PostHogConfig constructor(
          * Sets the package prefixes whose stack trace frames are marked in-app on captured
          * exceptions. [inAppExcludes] always wins over this list.
          *
+         * The list is copied: the caller keeps a reference to what it passed, and a `List<String>`
+         * parameter is only read-only from Kotlin, so without a copy a later mutation would reach
+         * the built config.
+         *
          * @param inAppIncludes Package prefixes, e.g. `listOf("com.yourcompany")`.
          * @return This builder.
          */
-        public fun inAppIncludes(inAppIncludes: List<String>): Builder = apply { this.inAppIncludes = inAppIncludes }
+        public fun inAppIncludes(inAppIncludes: List<String>): Builder = apply { this.inAppIncludes = inAppIncludes.toList() }
 
         /**
          * Sets the package prefixes whose stack trace frames are never marked in-app on captured
          * exceptions, replacing [DEFAULT_IN_APP_EXCLUDES]. Excludes win over [inAppIncludes].
          *
+         * Copied for the same reason as [inAppIncludes].
+         *
          * @param inAppExcludes Package prefixes to exclude from in-app classification.
          * @return This builder.
          */
-        public fun inAppExcludes(inAppExcludes: List<String>): Builder = apply { this.inAppExcludes = inAppExcludes }
+        public fun inAppExcludes(inAppExcludes: List<String>): Builder = apply { this.inAppExcludes = inAppExcludes.toList() }
 
         /**
          * Builds a [PostHogConfig] from the accumulated values.

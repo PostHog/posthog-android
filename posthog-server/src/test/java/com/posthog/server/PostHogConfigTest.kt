@@ -4,6 +4,7 @@ import com.posthog.PostHogOnFeatureFlags
 import java.net.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -745,6 +746,46 @@ internal class PostHogConfigTest {
         val config = PostHogConfig.builder(TEST_API_KEY).build()
 
         assertEquals(PostHogConfig.DEFAULT_IN_APP_EXCLUDES, config.inAppExcludes)
+    }
+
+    /**
+     * `DEFAULT_IN_APP_EXCLUDES` is a `@JvmField` shared by every config that does not override it,
+     * and a Kotlin `List<String>` is only read-only by convention — a Java caller sees
+     * `java.util.List` and can call `set()`. Guard the process-wide default against that.
+     */
+    @Test
+    fun `DEFAULT_IN_APP_EXCLUDES rejects mutation through the java list interface`() {
+        @Suppress("UNCHECKED_CAST")
+        val asJavaList = PostHogConfig.DEFAULT_IN_APP_EXCLUDES as MutableList<String>
+
+        assertFailsWith<UnsupportedOperationException> { asJavaList[0] = "com.attacker." }
+        assertFailsWith<UnsupportedOperationException> { asJavaList.add("com.attacker.") }
+        assertFailsWith<UnsupportedOperationException> { asJavaList.clear() }
+
+        assertEquals("java.", PostHogConfig.DEFAULT_IN_APP_EXCLUDES[0])
+        assertEquals(
+            PostHogConfig.DEFAULT_IN_APP_EXCLUDES,
+            PostHogConfig(apiKey = TEST_API_KEY).inAppExcludes,
+            "A fresh config must still see the untouched defaults",
+        )
+    }
+
+    @Test
+    fun `builder copies the in-app lists so later caller mutation cannot reach the config`() {
+        val includes = mutableListOf("com.myapp.")
+        val excludes = mutableListOf("com.thirdparty.")
+
+        val config =
+            PostHogConfig.builder(TEST_API_KEY)
+                .inAppIncludes(includes)
+                .inAppExcludes(excludes)
+                .build()
+
+        includes.add("com.sneaky.")
+        excludes.add("com.sneaky.")
+
+        assertEquals(listOf("com.myapp."), config.inAppIncludes)
+        assertEquals(listOf("com.thirdparty."), config.inAppExcludes)
     }
 
     private class NoOpFlagDefinitionCacheProvider : PostHogBlockingFlagDefinitionCacheProvider() {

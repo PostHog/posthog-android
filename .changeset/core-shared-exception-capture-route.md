@@ -1,6 +1,7 @@
 ---
 'posthog': patch
 'posthog-android': patch
+'posthog-server': patch
 ---
 
 `PostHogStateless` now builds every `$exception` event through a single internal route
