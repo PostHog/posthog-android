@@ -2745,9 +2745,8 @@ internal class PostHogRemoteConfigTest {
         http.shutdown()
     }
 
-    // The queuing branch in executeFeatureFlags is unreachable on the single-threaded executor every
-    // production path uses, so forcing overlap is the only way to exercise it. This pins the contract
-    // that machinery claims — no queued reload loses its callback — rather than a shipping scenario.
+    // The queuing branch is unreachable on the single-threaded executor every production path uses,
+    // so forcing overlap is the only way to exercise the contract that machinery claims.
     @Test
     fun `queued reloads displaced from the pending slot still run their callbacks`() {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
@@ -2782,7 +2781,6 @@ internal class PostHogRemoteConfigTest {
         }
 
         assertTrue(fired.await(10, TimeUnit.SECONDS), "every queued reload must run its callback, ${fired.count} never did")
-        // at-least-once is not enough: a displaced callback must not be invoked twice either
         counts.forEachIndexed { index, count -> assertEquals(1, count.get(), "callback $index ran ${count.get()} times") }
 
         sut.clear()

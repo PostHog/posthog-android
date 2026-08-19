@@ -710,17 +710,15 @@ public class PostHogRemoteConfig(
             return
         }
 
-        // Claiming the in-flight slot and queuing behind it must happen under one lock: otherwise a
-        // reload can observe "already loading", have the in-flight request drain an empty queue, and
-        // only then write itself into a slot nothing will ever drain.
+        // Claiming the in-flight slot and queuing behind it must happen under one lock, or a reload can
+        // observe "already loading" after the in-flight request has drained, and strand itself.
         val queued: Boolean
         synchronized(pendingFeatureFlagsLock) {
             queued = isLoadingFeatureFlags.getAndSet(true)
             if (queued) {
                 pendingFeatureFlagsReload.set(true)
-                // The newest parameters win, but a displaced caller's callbacks are carried over so
-                // that queuing a reload never loses one. The internal callback may repeat in this
-                // list, so it must stay idempotent.
+                // Newest parameters win; displaced callers' callbacks are carried over so none is
+                // lost. The internal callback can repeat here, so it must stay idempotent.
                 val displaced = pendingFeatureFlagsRequest
                 pendingFeatureFlagsRequest =
                     PendingFeatureFlagsRequest(
@@ -734,8 +732,7 @@ public class PostHogRemoteConfig(
             }
         }
         if (queued) {
-            // Queue the reload request instead of dropping it
-            // This ensures that requests with $anon_distinct_id (from identify()) are not lost
+            // Queuing rather than dropping keeps identify()'s $anon_distinct_id request alive
             config.logger.log("Feature flags are being loaded already, queuing reload.")
             return
         }
