@@ -2,10 +2,9 @@
 "posthog-server": patch
 ---
 
-fix(server): fetch only unresolved scoped flags during local evaluation fallback
+fix(server): remotely evaluate requested flags missing from local definitions
 
-For scoped `evaluateFlags` calls, `/flags` now receives only keys that local evaluation could not
-resolve, while locally resolved results remain authoritative. Requested keys missing from the
-currently loaded local definitions are included in the fallback so newly created or stale keys can
-still resolve remotely. The shared cache continues to store only raw remote responses, preserving
-strict local-only calls and the legacy all-or-nothing behavior.
+Scoped `evaluateFlags` calls now fall back to `/flags` when a requested key is absent from the
+currently loaded local definitions, allowing newly created or stale keys to resolve remotely. The
+fallback forwards the caller's original `flagKeys` scope, matching the Python and Rust SDKs, while
+locally resolved values remain authoritative when the response is merged.

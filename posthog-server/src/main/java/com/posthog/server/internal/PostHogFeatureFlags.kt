@@ -235,16 +235,13 @@ internal class PostHogFeatureFlags(
     }
 
     /**
-     * The result of one local evaluation pass. [flags] holds every flag that resolved and
-     * [unresolvedFlagKeys] identifies the gaps callers can fill from `/flags`.
+     * The result of one local evaluation pass. [flags] holds every flag that resolved, whether or
+     * not [needsRemote] is set, so callers can fill only the gaps from `/flags`.
      */
     private data class LocalEvaluationOutcome(
         val flags: Map<String, FeatureFlag>,
-        val unresolvedFlagKeys: List<String>,
-    ) {
-        val needsRemote: Boolean
-            get() = unresolvedFlagKeys.isNotEmpty()
-    }
+        val needsRemote: Boolean,
+    )
 
     /**
      * Evaluate flags against the definitions held in memory, recording failures per flag.
@@ -279,7 +276,7 @@ internal class PostHogFeatureFlags(
         val localFlags = mutableMapOf<String, FeatureFlag>()
         val props = localPersonProperties(distinctId, personProperties)
         val requestedKeys = flagKeys?.toHashSet()
-        val unresolvedFlagKeys = linkedSetOf<String>()
+        var needsRemote = false
 
         for ((key, flagDef) in currentFlagDefinitions) {
             if (requestedKeys != null && key !in requestedKeys) {
@@ -299,17 +296,17 @@ internal class PostHogFeatureFlags(
                 localFlags[key] = buildFeatureFlagFromResult(key, result, flagDef)
             } catch (e: InconclusiveMatchException) {
                 config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
-                unresolvedFlagKeys.add(key)
+                needsRemote = true
             } catch (e: Exception) {
                 config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
-                unresolvedFlagKeys.add(key)
+                needsRemote = true
             }
         }
 
         if (flagKeys != null) {
             val undefined = flagKeys.distinct().filterNot { currentFlagDefinitions.containsKey(it) }
             if (undefined.isNotEmpty()) {
-                unresolvedFlagKeys.addAll(undefined)
+                needsRemote = true
                 config.logger.log(
                     "No local definition for requested flag(s) ${undefined.joinToString(", ")} - " +
                         "falling back to remote evaluation",
@@ -317,11 +314,8 @@ internal class PostHogFeatureFlags(
             }
         }
 
-        config.logger.log(
-            "Local evaluation resolved ${localFlags.size} flags, " +
-                "unresolved=${unresolvedFlagKeys.size}",
-        )
-        return LocalEvaluationOutcome(localFlags, unresolvedFlagKeys.toList())
+        config.logger.log("Local evaluation resolved ${localFlags.size} flags, needsRemote=$needsRemote")
+        return LocalEvaluationOutcome(localFlags, needsRemote)
     }
 
     /**
@@ -1009,19 +1003,11 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        // For scoped calls, ask only for keys that did not resolve locally. Unscoped calls retain
-        // their original API scope so flags absent from stale local definitions can still be returned.
-        val remoteFlagKeys =
-            if (local != null && requestedKeys != null) {
-                local.unresolvedFlagKeys
-            } else {
-                flagKeys
-            }
-        val remoteCacheKey = cacheKey.copy(flagKeys = remoteFlagKeys)
-
+        // Forward the caller's original scope to `/flags`, matching the Python and Rust SDKs.
+        // Locally resolved values still win when the response is merged below.
         // Read the entry, not the flags: a cached failure holds null flags, and honoring it is what
         // keeps an outage from being re-requested on every call within the window.
-        var entry = cache.getEntry(remoteCacheKey)
+        var entry = cache.getEntry(cacheKey)
         val remoteFlags =
             if (entry != null) {
                 entry.flags
@@ -1031,9 +1017,9 @@ internal class PostHogFeatureFlags(
                     groups,
                     personProperties,
                     groupProperties,
-                    remoteFlagKeys,
+                    flagKeys,
                     disableGeoip,
-                ).also { entry = cache.getEntry(remoteCacheKey) }
+                ).also { entry = cache.getEntry(cacheKey) }
             }
 
         val localFlags = local?.flags ?: EMPTY_FLAGS

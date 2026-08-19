@@ -600,7 +600,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `evaluateFlags keeps locally resolved flags and only fetches unresolved keys remotely`() {
+    fun `evaluateFlags forwards the original scope and keeps locally resolved flags`() {
         val mockServer =
             createMockHttp(
                 jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
@@ -624,7 +624,7 @@ internal class PostHogFeatureFlagsTest {
         // The flag that resolved in-process survives instead of being discarded on the first miss...
         assertEquals(true, result.flags["resolves-locally"]?.enabled)
         assertEquals(true, result.locallyEvaluated["resolves-locally"])
-        // ...and only the inconclusive flag is filled in from the /flags response.
+        // ...and the inconclusive flag is filled in from the /flags response.
         assertEquals(true, result.flags["needs-server"]?.enabled)
         assertEquals(false, result.locallyEvaluated["needs-server"])
 
@@ -646,7 +646,7 @@ internal class PostHogFeatureFlagsTest {
         mockServer.takeRequest() // local_evaluation request
         val flagsRequestBody = mockServer.takeRequest().body.unGzip()
         assertTrue(flagsRequestBody.contains("\"needs-server\""))
-        assertFalse(flagsRequestBody.contains("\"resolves-locally\""))
+        assertTrue(flagsRequestBody.contains("\"resolves-locally\""))
 
         featureFlags.shutDown()
         mockServer.shutdown()
@@ -682,7 +682,7 @@ internal class PostHogFeatureFlagsTest {
         mockServer.takeRequest() // local_evaluation request
         val flagsRequestBody = mockServer.takeRequest().body.unGzip()
         assertTrue(flagsRequestBody.contains("\"remote-only\""))
-        assertFalse(flagsRequestBody.contains("\"resolves-locally\""))
+        assertTrue(flagsRequestBody.contains("\"resolves-locally\""))
         assertFalse(flagsRequestBody.contains("\"needs-server\""))
 
         featureFlags.shutDown()

@@ -538,7 +538,7 @@ internal class PostHogEvaluateFlagsTest {
             assertTrue(snapshot.isEnabled("gated"), "the unresolvable key must be filled from /flags")
             postHog.flush()
 
-            assertEquals(1, dispatcher.flagsCalls.get(), "one request, for the unresolved key only")
+            assertEquals(1, dispatcher.flagsCalls.get(), "one fallback request")
 
             val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
             val conclusive = assertNotNull(flagCalled["conclusive"])
