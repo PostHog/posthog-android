@@ -236,8 +236,16 @@ public class PostHogRemoteConfig(
         when (size) {
             0 -> null
             1 -> first()
-            else -> PostHogOnFeatureFlags { forEach { it.loaded() } }
+            else -> PostHogOnFeatureFlags { forEach { it.runSafely() } }
         }
+
+    private fun PostHogOnFeatureFlags.runSafely() {
+        try {
+            loaded()
+        } catch (e: Throwable) {
+            config.logger.log("Executing the feature flags callback failed: $e")
+        }
+    }
 
     private fun runOnFeatureFlagsCallbacks(
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
@@ -245,12 +253,8 @@ public class PostHogRemoteConfig(
     ) {
         // if we don't load the feature flags (because there are none), we need to call the callback
         // because the app might be waiting for it.
-        try {
-            internalOnFeatureFlags?.loaded()
-            onFeatureFlags?.loaded()
-        } catch (e: Throwable) {
-            config.logger.log("Executing the feature flags callback failed: $e")
-        }
+        internalOnFeatureFlags?.runSafely()
+        onFeatureFlags?.runSafely()
     }
 
     // Notifies that a remote config resolution attempt finished. Callers set
@@ -706,14 +710,17 @@ public class PostHogRemoteConfig(
             return
         }
 
-        if (isLoadingFeatureFlags.getAndSet(true)) {
-            config.logger.log("Feature flags are being loaded already, queuing reload.")
-            // Queue the reload request instead of dropping it
-            // This ensures that requests with $anon_distinct_id (from identify()) are not lost
-            synchronized(pendingFeatureFlagsLock) {
+        // Claiming the in-flight slot and queuing behind it must happen under one lock: otherwise a
+        // reload can observe "already loading", have the in-flight request drain an empty queue, and
+        // only then write itself into a slot nothing will ever drain.
+        val queued: Boolean
+        synchronized(pendingFeatureFlagsLock) {
+            queued = isLoadingFeatureFlags.getAndSet(true)
+            if (queued) {
                 pendingFeatureFlagsReload.set(true)
                 // The newest parameters win, but a displaced caller's callbacks are carried over so
-                // that queuing a reload never loses one.
+                // that queuing a reload never loses one. The internal callback may repeat in this
+                // list, so it must stay idempotent.
                 val displaced = pendingFeatureFlagsRequest
                 pendingFeatureFlagsRequest =
                     PendingFeatureFlagsRequest(
@@ -725,6 +732,11 @@ public class PostHogRemoteConfig(
                         onFeatureFlags = displaced?.onFeatureFlags.orEmpty() + listOfNotNull(onFeatureFlags),
                     )
             }
+        }
+        if (queued) {
+            // Queue the reload request instead of dropping it
+            // This ensures that requests with $anon_distinct_id (from identify()) are not lost
+            config.logger.log("Feature flags are being loaded already, queuing reload.")
             return
         }
 
@@ -917,8 +929,8 @@ public class PostHogRemoteConfig(
                 } else {
                     pendingRequest = null
                 }
+                isLoadingFeatureFlags.set(false)
             }
-            isLoadingFeatureFlags.set(false)
 
             pendingRequest?.let { request ->
                 config.logger.log("Executing pending feature flags reload.")

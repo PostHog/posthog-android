@@ -2767,16 +2767,23 @@ internal class PostHogRemoteConfigTest {
 
         val reloads = 10
         val fired = CountDownLatch(reloads)
-        repeat(reloads) {
+        val counts = List(reloads) { AtomicInteger(0) }
+        repeat(reloads) { index ->
             sut.loadFeatureFlags(
                 "my_identify",
                 anonymousId = "anonId",
                 emptyMap(),
-                onFeatureFlags = PostHogOnFeatureFlags { fired.countDown() },
+                onFeatureFlags =
+                    PostHogOnFeatureFlags {
+                        counts[index].incrementAndGet()
+                        fired.countDown()
+                    },
             )
         }
 
-        assertTrue(fired.await(30, TimeUnit.SECONDS), "every queued reload must run its callback, ${fired.count} never did")
+        assertTrue(fired.await(10, TimeUnit.SECONDS), "every queued reload must run its callback, ${fired.count} never did")
+        // at-least-once is not enough: a displaced callback must not be invoked twice either
+        counts.forEachIndexed { index, count -> assertEquals(1, count.get(), "callback $index ran ${count.get()} times") }
 
         sut.clear()
         overlapping.shutdownAndAwaitTermination()
