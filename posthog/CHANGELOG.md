@@ -1,5 +1,11 @@
 ## Next
 
+## 6.33.0
+
+### Minor Changes
+
+- 470c1fa: Add native (NDK) crash capture on Android 12+, opt-in via `errorTrackingConfig.captureNativeCrashes`. On startup the SDK reads the native crash records the OS kept (`ApplicationExitInfo` tombstones) and captures an `$exception` event per crash with raw native stack frames and `$debug_images`, so PostHog symbolicates them against `.so` debug symbols uploaded with `posthog-cli symbol-sets upload`.
+
 ## 6.32.0
 
 ### Minor Changes
