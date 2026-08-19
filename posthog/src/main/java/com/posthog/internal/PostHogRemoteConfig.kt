@@ -39,7 +39,8 @@ public class PostHogRemoteConfig(
         PostHogFeatureFlagCalledProvider { _, _ -> },
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
-    private var isLoadingFeatureFlags = AtomicBoolean(false)
+    // guarded by pendingFeatureFlagsLock
+    private var isLoadingFeatureFlags = false
     private var isLoadingRemoteConfig = AtomicBoolean(false)
 
     // True once the live remote config has been resolved for the current identity, via either the
@@ -50,7 +51,6 @@ public class PostHogRemoteConfig(
 
     // Track if an additional reload was requested while a request was in flight
     // This prevents dropping reload requests (e.g., from identify()) when preload is in progress
-    private var pendingFeatureFlagsReload = AtomicBoolean(false)
     private val pendingFeatureFlagsLock = Any()
 
     // Stores the parameters for the pending feature flags reload
@@ -243,7 +243,11 @@ public class PostHogRemoteConfig(
         try {
             loaded()
         } catch (e: Throwable) {
-            config.logger.log("Executing the feature flags callback failed: $e")
+            try {
+                config.logger.log("Executing the feature flags callback failed: $e")
+            } catch (ignored: Throwable) {
+                // a logger that throws must not escape and strand the in-flight claim below
+            }
         }
     }
 
@@ -714,9 +718,9 @@ public class PostHogRemoteConfig(
         // observe "already loading" after the in-flight request has drained, and strand itself.
         val queued: Boolean
         synchronized(pendingFeatureFlagsLock) {
-            queued = isLoadingFeatureFlags.getAndSet(true)
+            queued = isLoadingFeatureFlags
+            isLoadingFeatureFlags = true
             if (queued) {
-                pendingFeatureFlagsReload.set(true)
                 // Newest parameters win; displaced callers' callbacks are carried over so none is
                 // lost. The internal callback can repeat here, so it must stay idempotent.
                 val displaced = pendingFeatureFlagsRequest
@@ -725,9 +729,14 @@ public class PostHogRemoteConfig(
                         distinctId = distinctId,
                         anonymousId = anonymousId,
                         groups = groups,
+                        // distinct(): the SDK's own listeners and config.onFeatureFlags are singleton
+                        // instances reused across reloads, so appending each queued reload would fire
+                        // them once per coalesced reload instead of once per response.
                         internalOnFeatureFlags =
-                            displaced?.internalOnFeatureFlags.orEmpty() + listOfNotNull(internalOnFeatureFlags),
-                        onFeatureFlags = displaced?.onFeatureFlags.orEmpty() + listOfNotNull(onFeatureFlags),
+                            (displaced?.internalOnFeatureFlags.orEmpty() + listOfNotNull(internalOnFeatureFlags))
+                                .distinct(),
+                        onFeatureFlags =
+                            (displaced?.onFeatureFlags.orEmpty() + listOfNotNull(onFeatureFlags)).distinct(),
                     )
             }
         }
@@ -912,21 +921,21 @@ public class PostHogRemoteConfig(
                 notifyRemoteConfigResolved()
             }
         } finally {
-            runOnFeatureFlagsCallbacks(
-                internalOnFeatureFlags = internalOnFeatureFlags,
-                onFeatureFlags = onFeatureFlags,
-            )
+            try {
+                runOnFeatureFlagsCallbacks(
+                    internalOnFeatureFlags = internalOnFeatureFlags,
+                    onFeatureFlags = onFeatureFlags,
+                )
+            } catch (ignored: Throwable) {
+                // never skip the release below: leaving the claim set stops all future flag loads
+            }
 
             // Check if there's a pending reload request and execute it
             val pendingRequest: PendingFeatureFlagsRequest?
             synchronized(pendingFeatureFlagsLock) {
-                if (pendingFeatureFlagsReload.getAndSet(false)) {
-                    pendingRequest = pendingFeatureFlagsRequest
-                    pendingFeatureFlagsRequest = null
-                } else {
-                    pendingRequest = null
-                }
-                isLoadingFeatureFlags.set(false)
+                pendingRequest = pendingFeatureFlagsRequest
+                pendingFeatureFlagsRequest = null
+                isLoadingFeatureFlags = false
             }
 
             pendingRequest?.let { request ->

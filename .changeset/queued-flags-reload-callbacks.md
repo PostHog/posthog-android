@@ -2,4 +2,4 @@
 "posthog": patch
 ---
 
-Fix `reloadFeatureFlags` callbacks being dropped when several flag reloads overlap
+Fix `onFeatureFlags` not running when the internal flags-loaded callback throws
