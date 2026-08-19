@@ -1479,6 +1479,29 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `onPushAppIdsChanged runs the cache-advance callback after handling the transition`() {
+        // The cached app_id list must advance only after the delivered marker is durably cleared, so a
+        // crash in that window can't leave the next launch with a stale marker and no transition to
+        // detect. The manager signals durability by invoking onDurable once, on the executor, after it
+        // has handled (and persisted) the marker clear.
+        val http = mockHttp()
+        var appIds: List<String>? = emptyList()
+        val (_, config, _) = getSut(http)
+        val gated =
+            PostHogPushSubscriptionManager(config, PostHogApi(config), executor, { distinctId }, { appIds })
+
+        gated.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        var durableCalls = 0
+        appIds = listOf("firebase-project")
+        gated.onPushAppIdsChanged(setOf("firebase-project")) { durableCalls++ }
+        flush()
+
+        assertEquals(1, durableCalls)
+    }
+
+    @Test
     fun `an unrelated app_id becoming registerable does not re-register`() {
         val http = mockHttp()
         val (sut, _, _) = getSut(http, pushAppIds = listOf("firebase-project"))

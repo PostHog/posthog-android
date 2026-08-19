@@ -211,7 +211,15 @@ public class PostHog private constructor(
                                 // stopped asking. This is the only signal that reaches it.
                                 remoteConfig?.consumeNewlyRegisterablePushAppIds()?.let { newlyRegisterable ->
                                     if (newlyRegisterable.isNotEmpty()) {
-                                        pushSubscriptionManager?.onPushAppIdsChanged(newlyRegisterable)
+                                        val manager = pushSubscriptionManager
+                                        if (manager != null) {
+                                            // Advance the cached list only after the marker clear is durable.
+                                            manager.onPushAppIdsChanged(newlyRegisterable) {
+                                                remoteConfig?.persistPushConfigCache()
+                                            }
+                                        } else {
+                                            remoteConfig?.persistPushConfigCache()
+                                        }
                                     }
                                 }
                             } catch (e: Throwable) {

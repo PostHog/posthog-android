@@ -676,15 +676,37 @@ public class PostHogRemoteConfig(
             }
 
         pushAppIds = appIds
-        if (persist) {
-            if (appIds != null) {
-                config.cachePreferences?.setValue(PUSH, mapOf("appIds" to appIds))
-            } else {
-                config.cachePreferences?.remove(PUSH)
-            }
+        val newlyRegisterable = appIds?.toSet().orEmpty() - previous
+
+        // When an app_id becomes registerable, the cached list must not advance until the delivered
+        // marker is durably cleared. Otherwise a crash in that window leaves the next launch preloading
+        // the new list, no longer detecting the transition, with a stale marker that permanently
+        // suppresses registration. Defer the write to persistPushConfigCache(), called once the manager
+        // has cleared the marker. With no transition there is nothing to clear, so persist immediately.
+        if (persist && newlyRegisterable.isEmpty()) {
+            writePushConfigCache(appIds)
         }
 
-        return appIds?.toSet().orEmpty() - previous
+        return newlyRegisterable
+    }
+
+    private fun writePushConfigCache(appIds: List<String>?) {
+        if (appIds != null) {
+            config.cachePreferences?.setValue(PUSH, mapOf("appIds" to appIds))
+        } else {
+            config.cachePreferences?.remove(PUSH)
+        }
+    }
+
+    /**
+     * Advances the on-disk push app_id cache to the current in-memory list. Called by the push manager
+     * once it has durably cleared the delivered marker for a transition, so a crash between the two can
+     * never strand a device on a stale marker.
+     */
+    public fun persistPushConfigCache() {
+        synchronized(remoteConfigLock) {
+            writePushConfigCache(pushAppIds)
+        }
     }
 
     private fun preloadPushConfig() {

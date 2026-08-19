@@ -179,26 +179,36 @@ internal class PostHogPushSubscriptionManager(
      * token discarded, but still recorded the send as delivered and stopped asking. Clearing that
      * marker for an app_id that just became registerable is the only thing that reaches it.
      */
-    fun onPushAppIdsChanged(newlyRegisterable: Set<String>) {
+    fun onPushAppIdsChanged(
+        newlyRegisterable: Set<String>,
+        onDurable: () -> Unit = {},
+    ) {
         executor.executeSafely {
-            val record = currentRecord() ?: return@executeSafely
-            if (record.appId !in newlyRegisterable) {
-                // Either nothing changed for this device, or the app_id was already registerable and
-                // the existing delivered marker is honest. Re-sending here would put the request back
-                // on every launch, which is what the marker exists to prevent.
-                return@executeSafely
+            // onDurable advances the cached app_id list. It must run only after any delivered-marker
+            // clear below is durably persisted, and on every path (including the early returns, where
+            // there is no marker to clear), so the cache always eventually advances.
+            try {
+                val record = currentRecord() ?: return@executeSafely
+                if (record.appId !in newlyRegisterable) {
+                    // Either nothing changed for this device, or the app_id was already registerable and
+                    // the existing delivered marker is honest. Re-sending here would put the request back
+                    // on every launch, which is what the marker exists to prevent.
+                    return@executeSafely
+                }
+                if (record.deliveredForDistinctId != null) {
+                    val cleared = record.copy(deliveredForDistinctId = null)
+                    pendingRecord = cleared
+                    pendingFile?.let { writePending(it, cleared, "Failed to persist push subscription") }
+                }
+                retryCount = 0
+                nextAttemptAtMs = 0L
+                halted = false
+                didAuthRetry = false
+                config.logger.log("Push app_id ${record.appId} became registerable; re-registering.")
+                attempt(resetStateOnFold = true)
+            } finally {
+                onDurable()
             }
-            if (record.deliveredForDistinctId != null) {
-                val cleared = record.copy(deliveredForDistinctId = null)
-                pendingRecord = cleared
-                pendingFile?.let { writePending(it, cleared, "Failed to persist push subscription") }
-            }
-            retryCount = 0
-            nextAttemptAtMs = 0L
-            halted = false
-            didAuthRetry = false
-            config.logger.log("Push app_id ${record.appId} became registerable; re-registering.")
-            attempt(resetStateOnFold = true)
         }
     }
 
