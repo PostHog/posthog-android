@@ -31,6 +31,8 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
             val androidComponentsExt =
                 project.extensions.getByType(ApplicationAndroidComponentsExtension::class.java)
 
+            val releaseMode = resolvePostHogReleaseMode(project)
+
             androidComponentsExt.onVariants { variant ->
                 if (!variant.isMinifyEnabled) {
                     return@onVariants
@@ -41,7 +43,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 // TODO: skip variants, skip autoUpload, release info, allow failure, debug mode
 
                 val paths = OutputPaths(project, variant.name)
-                val generateMapIdTask = generateMapIdTask(project, variant, paths)
+                val generateMapIdTask = generateMapIdTask(project, variant, paths, releaseMode)
                 tasksGeneratingProperties.add(generateMapIdTask)
 
                 variant.apply {
@@ -81,6 +83,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
         project: Project,
         variant: ApplicationVariant,
         paths: OutputPaths,
+        releaseMode: PostHogReleaseMode,
     ): TaskProvider<PostHogGenerateMapIdTask> {
         val generateMapIdTask =
             PostHogGenerateMapIdTask.register(
@@ -96,6 +99,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 generateMapIdTask = generateMapIdTask,
                 variant = variant,
                 mappingFiles = variant.mappingFileProvider(project),
+                releaseMode = releaseMode,
             )
 
         generateMapIdTask.hookWithMinifyTasks(project, variant.name, generateMapIdTask)
@@ -110,6 +114,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
         generateMapIdTask: Provider<PostHogGenerateMapIdTask>,
         variant: ApplicationVariant,
         mappingFiles: Provider<FileCollection>,
+        releaseMode: PostHogReleaseMode,
     ): TaskProvider<PostHogUploadProguardMappingsTask> {
         val primaryOutput = variant.outputs.firstOrNull()
         val uploadMapIdTask =
@@ -121,6 +126,7 @@ internal class PostHogAndroidGradlePlugin : Plugin<Project> {
                 releaseName = variant.applicationId,
                 releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
                 build = primaryOutput?.versionCode?.map { it ?: 0 },
+                releaseMode = releaseMode,
             )
         return uploadMapIdTask
     }
