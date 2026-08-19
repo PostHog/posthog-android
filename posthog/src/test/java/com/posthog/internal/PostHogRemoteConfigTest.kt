@@ -2744,4 +2744,42 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
         http.shutdown()
     }
+
+    // The queuing branch in executeFeatureFlags is unreachable on the single-threaded executor every
+    // production path uses, so forcing overlap is the only way to exercise it. This pins the contract
+    // that machinery claims — no queued reload loses its callback — rather than a shipping scenario.
+    @Test
+    fun `queued reloads displaced from the pending slot still run their callbacks`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        repeat(9) {
+            http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(300, TimeUnit.MILLISECONDS))
+        }
+        val overlapping = Executors.newFixedThreadPool(4, PostHogThreadFactory("TestOverlap"))
+        val config = PostHogConfig(API_KEY, http.url("/").toString()).apply { cachePreferences = preferences }
+        val sut =
+            PostHogRemoteConfig(
+                config,
+                PostHogApi(config),
+                executor = overlapping,
+                defaultPersonPropertiesProvider = { emptyMap() },
+                onRemoteConfigLoaded = null,
+            )
+
+        val reloads = 10
+        val fired = CountDownLatch(reloads)
+        repeat(reloads) {
+            sut.loadFeatureFlags(
+                "my_identify",
+                anonymousId = "anonId",
+                emptyMap(),
+                onFeatureFlags = PostHogOnFeatureFlags { fired.countDown() },
+            )
+        }
+
+        assertTrue(fired.await(30, TimeUnit.SECONDS), "every queued reload must run its callback, ${fired.count} never did")
+
+        sut.clear()
+        overlapping.shutdownAndAwaitTermination()
+        http.shutdown()
+    }
 }

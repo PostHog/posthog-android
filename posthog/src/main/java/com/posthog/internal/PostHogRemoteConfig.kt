@@ -58,8 +58,8 @@ public class PostHogRemoteConfig(
         val distinctId: String,
         val anonymousId: String?,
         val groups: Map<String, String>?,
-        val internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        val onFeatureFlags: PostHogOnFeatureFlags?,
+        val internalOnFeatureFlags: List<PostHogOnFeatureFlags>,
+        val onFeatureFlags: List<PostHogOnFeatureFlags>,
     )
 
     private var pendingFeatureFlagsRequest: PendingFeatureFlagsRequest? = null
@@ -231,6 +231,13 @@ public class PostHogRemoteConfig(
 
         return recordingActive
     }
+
+    private fun List<PostHogOnFeatureFlags>.asSingleCallback(): PostHogOnFeatureFlags? =
+        when (size) {
+            0 -> null
+            1 -> first()
+            else -> PostHogOnFeatureFlags { forEach { it.loaded() } }
+        }
 
     private fun runOnFeatureFlagsCallbacks(
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
@@ -705,13 +712,17 @@ public class PostHogRemoteConfig(
             // This ensures that requests with $anon_distinct_id (from identify()) are not lost
             synchronized(pendingFeatureFlagsLock) {
                 pendingFeatureFlagsReload.set(true)
+                // The newest parameters win, but a displaced caller's callbacks are carried over so
+                // that queuing a reload never loses one.
+                val displaced = pendingFeatureFlagsRequest
                 pendingFeatureFlagsRequest =
                     PendingFeatureFlagsRequest(
                         distinctId = distinctId,
                         anonymousId = anonymousId,
                         groups = groups,
-                        internalOnFeatureFlags = internalOnFeatureFlags,
-                        onFeatureFlags = onFeatureFlags,
+                        internalOnFeatureFlags =
+                            displaced?.internalOnFeatureFlags.orEmpty() + listOfNotNull(internalOnFeatureFlags),
+                        onFeatureFlags = displaced?.onFeatureFlags.orEmpty() + listOfNotNull(onFeatureFlags),
                     )
             }
             return
@@ -915,8 +926,8 @@ public class PostHogRemoteConfig(
                     distinctId = request.distinctId,
                     anonymousId = request.anonymousId,
                     groups = request.groups,
-                    internalOnFeatureFlags = request.internalOnFeatureFlags,
-                    onFeatureFlags = request.onFeatureFlags,
+                    internalOnFeatureFlags = request.internalOnFeatureFlags.asSingleCallback(),
+                    onFeatureFlags = request.onFeatureFlags.asSingleCallback(),
                 )
             }
         }
