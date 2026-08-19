@@ -15,7 +15,7 @@ import java.util.UUID
  * @property event The event name
  * @property distinctId The distinct Id
  * @property properties All the event properties
- * @property timestamp The timestamp is automatically generated
+ * @property timestamp The event timestamp. UTC is preferred; the equivalent instant is serialized in UTC
  * @property uuid the UUID v4 is automatically generated and used for deduplication
  */
 public data class PostHogEvent(

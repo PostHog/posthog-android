@@ -1,4 +1,7 @@
-FROM --platform=linux/amd64 gradle:9.6.1-jdk17 AS builder
+# Build with the repo's own Gradle wrapper: an image-pinned Gradle skews from
+# the wrapper-generated lockfiles on every wrapper bump (the embedded Kotlin
+# build-tools version is locked strictly per Gradle release).
+FROM --platform=linux/amd64 eclipse-temurin:17-jdk AS builder
 
 WORKDIR /app
 

@@ -548,6 +548,7 @@ public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
 	public final fun getAutoCapture ()Z
 	public final fun getExceptionSteps ()Lcom/posthog/errortracking/PostHogExceptionStepsConfig;
 	public final fun getIgnoredExceptionTypes ()Ljava/util/List;
+	public final fun getInAppExcludes ()Ljava/util/List;
 	public final fun getInAppIncludes ()Ljava/util/List;
 	public final fun setAutoCapture (Z)V
 }
@@ -637,9 +638,9 @@ public final class com/posthog/internal/FeatureFlagMetadata {
 }
 
 public final class com/posthog/internal/FlagConditionGroup {
-	public fun <init> (Ljava/util/List;Ljava/lang/Integer;Ljava/lang/String;)V
+	public fun <init> (Ljava/util/List;Ljava/lang/Double;Ljava/lang/String;)V
 	public final fun getProperties ()Ljava/util/List;
-	public final fun getRolloutPercentage ()Ljava/lang/Integer;
+	public final fun getRolloutPercentage ()Ljava/lang/Double;
 	public final fun getVariant ()Ljava/lang/String;
 }
 
@@ -1066,6 +1067,7 @@ public final class com/posthog/internal/PropertyGroupDeserializer : com/google/g
 
 public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field Companion Lcom/posthog/internal/PropertyOperator$Companion;
+	public static final field ENDS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field EXACT Lcom/posthog/internal/PropertyOperator;
 	public static final field FLAG_EVALUATES_TO Lcom/posthog/internal/PropertyOperator;
 	public static final field GT Lcom/posthog/internal/PropertyOperator;
@@ -1079,8 +1081,10 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field IS_SET Lcom/posthog/internal/PropertyOperator;
 	public static final field LT Lcom/posthog/internal/PropertyOperator;
 	public static final field LTE Lcom/posthog/internal/PropertyOperator;
+	public static final field NOT_ENDS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field NOT_ICONTAINS Lcom/posthog/internal/PropertyOperator;
 	public static final field NOT_REGEX Lcom/posthog/internal/PropertyOperator;
+	public static final field NOT_STARTS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field REGEX Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_CARET Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_EQ Lcom/posthog/internal/PropertyOperator;
@@ -1091,6 +1095,7 @@ public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field SEMVER_NEQ Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_TILDE Lcom/posthog/internal/PropertyOperator;
 	public static final field SEMVER_WILDCARD Lcom/posthog/internal/PropertyOperator;
+	public static final field STARTS_WITH Lcom/posthog/internal/PropertyOperator;
 	public static final field UNKNOWN Lcom/posthog/internal/PropertyOperator;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/internal/PropertyOperator;
@@ -1160,9 +1165,11 @@ public final class com/posthog/internal/VariantDefinition {
 public final class com/posthog/internal/errortracking/ThrowableCoercer {
 	public static final field EXCEPTION_LEVEL_ATTRIBUTE Ljava/lang/String;
 	public static final field EXCEPTION_LEVEL_FATAL Ljava/lang/String;
+	public static final field MAX_EXCEPTION_LIST_SIZE I
+	public static final field MAX_FRAMES_PER_STACKTRACE I
 	public fun <init> ()V
-	public final fun fromThrowableToPostHogProperties (Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;)Ljava/util/Map;
-	public static synthetic fun fromThrowableToPostHogProperties$default (Lcom/posthog/internal/errortracking/ThrowableCoercer;Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Ljava/util/Map;
+	public final fun fromThrowableToPostHogProperties (Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;Ljava/util/List;)Ljava/util/Map;
+	public static synthetic fun fromThrowableToPostHogProperties$default (Lcom/posthog/internal/errortracking/ThrowableCoercer;Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ljava/util/Map;
 }
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
