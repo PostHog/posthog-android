@@ -1017,6 +1017,7 @@ internal class PostHogTest {
                 .property("\$exception_level", "warning")
                 .group("company", "acme")
                 .userProperty("plan", "enterprise")
+                .userPropertySetOnce("signup", "2020")
                 .build(),
         )
 
@@ -1032,9 +1033,79 @@ internal class PostHogTest {
         val groups = props["\$groups"] as Map<String, Any?>
         assertEquals("acme", groups["company"])
 
-        @Suppress("UNCHECKED_CAST")
-        val set = props["\$set"] as Map<String, Any?>
-        assertEquals("enterprise", set["plan"])
+        // person updates are dropped by the error-tracking ingestion pipeline, so the SDK must not
+        // pretend otherwise by putting them on the wire
+        assertNull(props["\$set"], "\$exception events must not carry \$set")
+        assertNull(props["\$set_once"], "\$exception events must not carry \$set_once")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options does not evaluate flags for an ignored throwable`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            IllegalStateException("suppressed"),
+            "user123",
+            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An ignored exception must not fire a /flags request nor a \$exception event",
+        )
+
+        // control: the same overload with the same options still enriches and ships a kept type,
+        // so the assertion above is about the ignore gate and not about a dead client
+        postHog.captureException(
+            RuntimeException("kept"),
+            "user123",
+            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
+        )
+
+        val flagsRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(flagsRequest, "Expected /flags request for the kept exception")
+        assertTrue(flagsRequest.path?.contains("/flags") == true, "First request should be /flags")
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+        assertNotNull(batchRequest.parseBatch().findEvent("\$exception"), "Expected \$exception event in batch")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options sends nothing when the client is opted out`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val coreConfig =
+            PostHogConfig.builder(TEST_API_KEY)
+                .host(mockServer.url("/").toString())
+                .flushAt(1)
+                .build()
+                .asCoreConfig()
+        coreConfig.optOut = true
+        val postHog = PostHog().apply { setup(coreConfig) }
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            "user123",
+            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An opted-out client must not fire a /flags request nor a \$exception event",
+        )
 
         postHog.close()
         mockServer.shutdown()

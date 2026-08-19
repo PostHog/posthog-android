@@ -824,9 +824,16 @@ public sealed interface PostHogInterface {
      * @param exception the exception to capture
      * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
      *   distinct ID is used; if none exists, a personless UUID is generated.
-     * @param options capture options containing properties, user properties, groups, timestamp,
-     *   and feature flag snapshot settings. Reserved exception properties such as
-     *   `$exception_level` can be overridden via the options properties.
+     * @param options capture options containing properties, groups, timestamp, and feature flag
+     *   snapshot settings. Reserved exception properties such as `$exception_level` can be
+     *   overridden via the options properties.
+     *
+     * `$exception` events do not perform person updates: they are ingested by a separate
+     * error-tracking pipeline with no ordering guarantee against the person pipeline, so
+     * `$set`/`$set_once` are dropped server-side. The SDK therefore does not send them for an
+     * exception: `options.userProperties` is honoured only as person-property input for
+     * `appendFeatureFlags` flag evaluation, and `options.userPropertiesSetOnce` is ignored here.
+     * Set person properties with `capture` or `identify` instead.
      *
      * Java callers passing an explicit untyped `null` third argument must cast it
      * (`captureException(e, id, (Map<String, Object>) null)`) since it now matches both this
@@ -843,8 +850,14 @@ public sealed interface PostHogInterface {
      * personless event when no request context identity is active.
      * Docs https://posthog.com/docs/error-tracking
      * @param exception the exception to capture
-     * @param options capture options containing properties, user properties, groups, timestamp,
-     *   and feature flag snapshot settings
+     * @param options capture options containing properties, groups, timestamp, and feature flag
+     *   snapshot settings
+     *
+     * `$exception` events do not perform person updates: they are ingested by a separate
+     * error-tracking pipeline with no ordering guarantee against the person pipeline, so
+     * `$set`/`$set_once` are dropped server-side. The SDK therefore does not send them for an
+     * exception: `options.userProperties` is honoured only as person-property input for
+     * `appendFeatureFlags` flag evaluation.
      */
     public fun captureException(
         exception: Throwable,

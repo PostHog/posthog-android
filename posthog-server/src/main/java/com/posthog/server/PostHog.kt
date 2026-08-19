@@ -280,7 +280,20 @@ public class PostHog : PostHogStateless(), PostHogInterface {
 
         try {
             val captureContext = PostHogRequestContext.resolveCaptureContext(distinctId, options.properties)
-            val callerProperties =
+
+            // captureExceptionStateless cannot carry groups/timestamp, so this overload takes the
+            // shared core route instead: it runs the same enabled/opt-out and ignoredExceptionTypes
+            // gates and merges the provided properties AFTER the coerced exception properties (so
+            // options can still override reserved keys like $exception_level). The merge is passed
+            // as a provider so `appendFeatureFlags` cannot fire a /flags request for an event the
+            // gates then drop; options.userProperties feeds flag evaluation only — $exception
+            // events do not perform person updates.
+            super.captureExceptionEvent(
+                exception,
+                distinctId = captureContext.distinctId,
+                groups = options.groups,
+                timestamp = options.timestamp,
+            ) {
                 mergeCaptureProperties(
                     distinctId = captureContext.distinctId,
                     properties = captureContext.properties,
@@ -289,20 +302,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                     appendFeatureFlags = options.appendFeatureFlags,
                     flags = options.flags,
                 )
-
-            // captureExceptionStateless cannot carry groups/user properties/timestamp, so this
-            // overload takes the shared core route instead: it runs the same ignoredExceptionTypes
-            // prefilter and merges callerProperties AFTER the coerced exception properties (so
-            // options can still override reserved keys like $exception_level).
-            super.captureExceptionEvent(
-                exception,
-                distinctId = captureContext.distinctId,
-                properties = callerProperties,
-                userProperties = options.userProperties,
-                userPropertiesSetOnce = options.userPropertiesSetOnce,
-                groups = options.groups,
-                timestamp = options.timestamp,
-            )
+            }
         } catch (e: Throwable) {
             // error capture must never throw into user code (parity with captureExceptionStateless)
             getConfig<com.posthog.PostHogConfig>()?.logger?.log("captureException has thrown an exception: $e.")
