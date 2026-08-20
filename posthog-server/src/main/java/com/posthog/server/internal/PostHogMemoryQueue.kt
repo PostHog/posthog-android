@@ -79,13 +79,13 @@ internal class PostHogMemoryQueue(
         // dispatch on the executor so this is ordered after any in-flight add() calls
         // rather than racing ahead of them and seeing an empty queue
         executor.executeSafely {
-            // only flushes if the queue has events
-            if (!isAboveThreshold(1)) {
+            try {
+                while (isAboveThreshold(1) && executeBatch()) {
+                    // Keep draining successful batches until the queue is empty.
+                }
+            } finally {
                 isFlushing.set(false)
-                return@executeSafely
             }
-
-            executeBatch()
         }
     }
 
@@ -178,10 +178,14 @@ internal class PostHogMemoryQueue(
             return
         }
 
-        executeBatch()
+        try {
+            executeBatch()
+        } finally {
+            isFlushing.set(false)
+        }
     }
 
-    private fun executeBatch() {
+    private fun executeBatch(): Boolean {
         var retry = false
         try {
             batchEvents()
@@ -193,9 +197,8 @@ internal class PostHogMemoryQueue(
             retryCount++
         } finally {
             calculateDelay(retry)
-
-            isFlushing.set(false)
         }
+        return !retry
     }
 
     @Throws(PostHogApiError::class, IOException::class)
