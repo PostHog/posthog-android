@@ -1,10 +1,10 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine updateLocks
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine checkRelease updateLocks
 
 clean:
 	./gradlew clean
 
 compile:
-	./gradlew build
+	./gradlew build :posthog-android-gradle-plugin:build
 
 # We stop gradle at the end to make sure the cache folders
 # don't contain any lock files and are free to be cached.
@@ -71,6 +71,14 @@ generateLintBaseLine:
 	rm -f posthog-android/lint-baseline.xml
 	./gradlew lintDebug -Dlint.baselines.continue=true
 
-# Regenerate gradle.lockfile for all projects after dependency changes
+# Verify release tasks succeed and committed dependency locks are complete
+checkRelease:
+	CI=false ./gradlew publishToMavenLocal :posthog-android-gradle-plugin:publishToMavenLocal --write-locks
+	git diff --exit-code -- ':(glob)**/gradle.lockfile'
+	@test -z "$$(git status --porcelain --untracked-files=all -- ':(glob)**/gradle.lockfile')" || \
+		(git status --short --untracked-files=all -- ':(glob)**/gradle.lockfile'; exit 1)
+
+# Regenerate gradle.lockfile for all build and publishing configurations
 updateLocks:
-	./gradlew build --write-locks
+	./gradlew build :posthog-android-gradle-plugin:build --write-locks
+	CI=false ./gradlew publishToMavenLocal :posthog-android-gradle-plugin:publishToMavenLocal --write-locks
