@@ -1265,22 +1265,23 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `remotely returned missing definition key is never suppressed`() {
-        val remoteResponse = jsonResponse(createFlagsResponse("remote-only", enabled = true))
+    fun `remotely returned key is probed until a clean response omits it`() {
         val mockServer =
             createMockHttp(
                 jsonResponse(createLocalEvaluationResponse("known-flag")),
-                remoteResponse,
                 jsonResponse(createFlagsResponse("remote-only", enabled = true)),
+                jsonResponse(createEmptyFlagsResponse()),
             )
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
 
         val first = evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
         val second = evaluateMissingFlag(featureFlags, "user-2", missingKey = "remote-only")
+        val suppressed = evaluateMissingFlag(featureFlags, "user-3", missingKey = "remote-only")
 
         assertEquals(true, first.flags["remote-only"]?.enabled)
-        assertEquals(true, second.flags["remote-only"]?.enabled)
-        assertEquals(3, mockServer.requestCount, "a remotely resolved key must be probed for each identity")
+        assertFalse(second.flags.containsKey("remote-only"))
+        assertFalse(suppressed.flags.containsKey("remote-only"))
+        assertEquals(3, mockServer.requestCount, "the clean omission should suppress later probes")
 
         featureFlags.shutDown()
         mockServer.shutdown()

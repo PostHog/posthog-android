@@ -1205,6 +1205,7 @@ internal class PostHogFeatureFlags(
                 } finally {
                     plan.probe?.let { completeMissingFlagProbe(plan, it, response) }
                 }
+            reconcileKnownRemoteFlagKeys(plan, response)
             return flags to entry
         }
     }
@@ -1256,6 +1257,28 @@ internal class PostHogFeatureFlags(
             }
         }
         probe.complete()
+    }
+
+    private fun reconcileKnownRemoteFlagKeys(
+        plan: MissingFlagProbePlan,
+        response: PostHogFlagsResponse?,
+    ) {
+        val clean =
+            response != null &&
+                !response.errorsWhileComputingFlags &&
+                response.quotaLimited?.contains("feature_flags") != true
+        if (!clean || plan.knownRemote.isEmpty()) return
+
+        val returned = response.flags.orEmpty().keys
+        synchronized(missingFlagKeysLock) {
+            if (missingFlagKeysGeneration != plan.generation) return
+            for (key in plan.knownRemote) {
+                if (key !in returned) {
+                    knownRemoteFlagKeys.remove(key)
+                    knownMissingFlagKeys.add(key)
+                }
+            }
+        }
     }
 
     private fun isLocallyEvaluated(flag: FeatureFlag): Boolean {
