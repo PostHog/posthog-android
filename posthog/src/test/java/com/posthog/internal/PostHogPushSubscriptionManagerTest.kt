@@ -45,6 +45,8 @@ internal class PostHogPushSubscriptionManagerTest {
         networkStatus: PostHogNetworkStatus? = null,
         maxRetries: Int = 3,
         encryption: PostHogEncryption? = null,
+        pushAppIds: List<String>? = null,
+        pushAppIdsProvider: (() -> List<String>?)? = null,
     ): Triple<PostHogPushSubscriptionManager, PostHogConfig, String?> {
         val config =
             PostHogConfig(API_KEY, host = http.url("/").toString()).apply {
@@ -54,7 +56,7 @@ internal class PostHogPushSubscriptionManagerTest {
                 this.encryption = encryption
             }
         val api = PostHogApi(config)
-        val manager = PostHogPushSubscriptionManager(config, api, executor) { distinctId }
+        val manager = PostHogPushSubscriptionManager(config, api, executor, { distinctId }, pushAppIdsProvider ?: { pushAppIds })
         return Triple(manager, config, storagePrefix)
     }
 
@@ -1389,5 +1391,130 @@ internal class PostHogPushSubscriptionManagerTest {
 
                 override fun close() = inputStream.close()
             }
+    }
+
+    @Test
+    fun `register sends nothing when the app_id is not configured for the project`() {
+        val http = mockHttp()
+        val (sut, _, storagePrefix) = getSut(http, pushAppIds = listOf("another-project"))
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        assertEquals(0, http.requestCount)
+        // The record is still persisted: onPushAppIdsChanged needs a token to register once the
+        // project configures push, rather than waiting for the app to hand us one again.
+        assertTrue(pendingFile(storagePrefix!!).exists())
+    }
+
+    @Test
+    fun `eligibility revoked during the identity token mint skips the send`() {
+        val http = mockHttp()
+        // Registerable at attempt() time; remote config drops the app_id while the mint is outstanding.
+        var appIds: List<String>? = listOf("firebase-project")
+        val (sut, config, storagePrefix) = getSut(http, pushAppIdsProvider = { appIds })
+        val mints = java.util.concurrent.LinkedBlockingQueue<(String?) -> Unit>()
+        config.pushIdentityProvider = { _, _, completion -> mints.add(completion) }
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        // Config resolves mid-mint and no longer lists this app_id.
+        appIds = emptyList()
+        mints.take().invoke("jwt-abc")
+        flush()
+
+        // Without the post-mint re-check the token would POST, get discarded, and be marked delivered.
+        assertEquals(0, http.requestCount)
+        assertFalse(pendingFile(storagePrefix!!).readText().contains("delivered_for_distinct_id"))
+    }
+
+    @Test
+    fun `register sends when no app_id list has been published`() {
+        val http = mockHttp()
+        // A server older than the push config key sends nothing, and an SDK cannot tell that apart
+        // from a project with push disabled. Failing closed here would silently disable push against
+        // every deployment that predates the key.
+        val (sut, _, _) = getSut(http, pushAppIds = null)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `register sends when the app_id is configured for the project`() {
+        val http = mockHttp()
+        val (sut, _, _) = getSut(http, pushAppIds = listOf("firebase-project"))
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `an app_id becoming registerable clears the delivered marker and re-registers`() {
+        val http = mockHttp()
+        // The device registered while the project had no integration: the server answered 200 and
+        // discarded the token, but the SDK recorded a delivery and stopped asking. Clearing that
+        // marker is the only thing that reaches the device once the project configures push.
+        var appIds: List<String>? = emptyList()
+        // getSut only supplies a fixed list; this case needs one that changes mid-test.
+        val (_, config, storagePrefix) = getSut(http)
+        val gated =
+            PostHogPushSubscriptionManager(config, PostHogApi(config), executor, { distinctId }, { appIds })
+
+        gated.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals(0, http.requestCount)
+
+        appIds = listOf("firebase-project")
+        gated.onPushAppIdsChanged(setOf("firebase-project"))
+        flush()
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+    }
+
+    @Test
+    fun `onPushAppIdsChanged runs the cache-advance callback after handling the transition`() {
+        // The cached app_id list must advance only after the delivered marker is durably cleared, so a
+        // crash in that window can't leave the next launch with a stale marker and no transition to
+        // detect. The manager signals durability by invoking onDurable once, on the executor, after it
+        // has handled (and persisted) the marker clear.
+        val http = mockHttp()
+        var appIds: List<String>? = emptyList()
+        val (_, config, _) = getSut(http)
+        val gated =
+            PostHogPushSubscriptionManager(config, PostHogApi(config), executor, { distinctId }, { appIds })
+
+        gated.register("fcm-token", "firebase-project", "android")
+        flush()
+
+        var durableCalls = 0
+        appIds = listOf("firebase-project")
+        gated.onPushAppIdsChanged(setOf("firebase-project")) { durableCalls++ }
+        flush()
+
+        assertEquals(1, durableCalls)
+    }
+
+    @Test
+    fun `an unrelated app_id becoming registerable does not re-register`() {
+        val http = mockHttp()
+        val (sut, _, _) = getSut(http, pushAppIds = listOf("firebase-project"))
+
+        sut.register("fcm-token", "firebase-project", "android")
+        flush()
+        assertEquals(1, http.requestCount)
+
+        // Firing on every config load would put the request back on every launch, which is exactly
+        // what the delivered marker exists to prevent.
+        sut.onPushAppIdsChanged(setOf("some-other-project"))
+        flush()
+
+        assertEquals(1, http.requestCount)
     }
 }
