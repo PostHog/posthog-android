@@ -10,8 +10,9 @@ package com.posthog.server
  * @property groupProperties Group properties to use for flag evaluation, keyed by group type.
  * @property flagKeys Optional list of flag keys to evaluate, scoping both local evaluation and the
  *   remote request. When null, all matching flags are evaluated. Keys with no local definition are
- *   included in the `/flags` fallback, so a key that is never defined locally costs one request per
- *   identity per cache window.
+ *   included in the `/flags` fallback. After a clean response also omits a key, later calls suppress
+ *   its fallback until the next successful definitions refresh, bounding deleted keys and typos to
+ *   at most one clean probe per refresh interval.
  * @property onlyEvaluateLocally Whether the snapshot must hold exactly what local evaluation
  *   resolved: no `/flags` fallback, no cached remote values, unresolved flags absent.
  * @property disableGeoip Whether to send `geoip_disable=true` during remote evaluation.

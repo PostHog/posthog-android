@@ -7,6 +7,8 @@ import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.TestLogger
 import com.posthog.server.createEmptyFlagsResponse
 import com.posthog.server.createFlagsResponse
+import com.posthog.server.createFlagsResponseWithErrors
+import com.posthog.server.createFlagsResponseWithQuotaLimited
 import com.posthog.server.createLocalEvaluationResponse
 import com.posthog.server.createMockHttp
 import com.posthog.server.createMultipleFlagsResponse
@@ -600,6 +602,35 @@ internal class PostHogFeatureFlagsTest {
         )
     }
 
+    private fun manuallyLoadedFeatureFlags(mockServer: MockWebServer): PostHogFeatureFlags {
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        return PostHogFeatureFlags(
+            config,
+            PostHogApi(config),
+            60000,
+            100,
+            localEvaluation = true,
+            personalApiKey = "test-personal-key",
+            pollerEnabled = false,
+        ).also { it.loadFeatureFlagDefinitions() }
+    }
+
+    private fun evaluateMissingFlag(
+        featureFlags: PostHogFeatureFlags,
+        distinctId: String,
+        onlyEvaluateLocally: Boolean = false,
+        missingKey: String = "missing-flag",
+    ): EvaluateFlagsResult =
+        featureFlags.evaluateFlags(
+            distinctId = distinctId,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+            flagKeys = listOf("known-flag", missingKey),
+            onlyEvaluateLocally = onlyEvaluateLocally,
+            disableGeoip = false,
+        )
+
     @Test
     fun `evaluateFlags forwards the original scope and keeps locally resolved flags`() {
         val mockServer =
@@ -926,13 +957,149 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `missing requested keys reuse an empty remote response within the cache window`() {
+    fun `clean remote omission suppresses missing key probes across identities`() {
         val mockServer =
             createMockHttp(
                 jsonResponse(createLocalEvaluationResponse("known-flag")),
                 jsonResponse(createEmptyFlagsResponse()),
             )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        assertEquals(setOf("known-flag"), evaluateMissingFlag(featureFlags, "user-1").flags.keys)
+        assertEquals(setOf("known-flag"), evaluateMissingFlag(featureFlags, "user-2").flags.keys)
+        assertEquals(2, mockServer.requestCount, "only the definitions load and first probe are allowed")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `modified definitions refresh clears missing key suppression and bypasses identity cache`() {
+        val definitions = createLocalEvaluationResponse("known-flag")
+        val mockServer =
+            createMockHttp(
+                jsonResponse(definitions),
+                jsonResponse(createEmptyFlagsResponse()),
+                jsonResponse(definitions),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
+
+        assertEquals(4, mockServer.requestCount, "the first call after refresh must make a new probe")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `not modified definitions refresh clears missing key suppression`() {
+        val definitions = createLocalEvaluationResponse("known-flag")
+        val mockServer =
+            createMockHttp(
+                jsonResponseWithEtag(definitions, "\"etag-v1\""),
+                jsonResponse(createEmptyFlagsResponse()),
+                notModifiedResponse("\"etag-v1\""),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
+
+        assertEquals(4, mockServer.requestCount, "a 304 must permit a new probe")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `failed definitions refresh preserves missing key suppression`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createEmptyFlagsResponse()),
+                errorResponse(500, "Internal Server Error"),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-2")
+
+        assertEquals(3, mockServer.requestCount, "a failed refresh must not permit another probe")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `failed and inconclusive remote responses do not suppress missing key probes`() {
+        val responses =
+            listOf(
+                "HTTP failure" to errorResponse(500, "Internal Server Error"),
+                "quota limit" to jsonResponse(createFlagsResponseWithQuotaLimited()),
+                "computation error" to jsonResponse(createFlagsResponseWithErrors()),
+            )
+
+        for ((name, firstResponse) in responses) {
+            val mockServer =
+                createMockHttp(
+                    jsonResponse(createLocalEvaluationResponse("known-flag")),
+                    firstResponse,
+                    jsonResponse(createEmptyFlagsResponse()),
+                )
+            val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+            evaluateMissingFlag(featureFlags, "user-1")
+            evaluateMissingFlag(featureFlags, "user-2")
+
+            assertEquals(3, mockServer.requestCount, "$name must allow the next identity to retry")
+            featureFlags.shutDown()
+            mockServer.shutdown()
+        }
+    }
+
+    @Test
+    fun `remotely returned missing definition key is never suppressed`() {
+        val remoteResponse = jsonResponse(createFlagsResponse("remote-only", enabled = true))
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                remoteResponse,
+                jsonResponse(createFlagsResponse("remote-only", enabled = true)),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        val first = evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
+        val second = evaluateMissingFlag(featureFlags, "user-2", missingKey = "remote-only")
+
+        assertEquals(true, first.flags["remote-only"]?.enabled)
+        assertEquals(true, second.flags["remote-only"]?.enabled)
+        assertEquals(3, mockServer.requestCount, "a remotely resolved key must be probed for each identity")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `shared definition cache refresh clears missing key suppression`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createEmptyFlagsResponse()),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
         val config = createTestConfig(host = mockServer.url("/").toString())
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "known-flag"),
+                shouldFetch = false,
+            )
         val featureFlags =
             PostHogFeatureFlags(
                 config,
@@ -942,23 +1109,15 @@ internal class PostHogFeatureFlagsTest {
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
                 pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
             )
 
-        repeat(2) {
-            val result =
-                featureFlags.evaluateFlags(
-                    distinctId = "user-123",
-                    groups = null,
-                    personProperties = null,
-                    groupProperties = null,
-                    flagKeys = listOf("known-flag", "typo-flag"),
-                    onlyEvaluateLocally = false,
-                    disableGeoip = false,
-                )
-            assertEquals(setOf("known-flag"), result.flags.keys)
-        }
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
 
-        assertEquals(2, mockServer.requestCount, "the empty /flags response must be cached")
+        assertEquals(2, mockServer.requestCount, "a shared-cache refresh must permit a new probe")
 
         featureFlags.shutDown()
         mockServer.shutdown()
