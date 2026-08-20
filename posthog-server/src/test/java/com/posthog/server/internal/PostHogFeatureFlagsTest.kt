@@ -9,6 +9,7 @@ import com.posthog.server.createEmptyFlagsResponse
 import com.posthog.server.createFlagsResponse
 import com.posthog.server.createLocalEvaluationResponse
 import com.posthog.server.createMockHttp
+import com.posthog.server.createMultipleFlagsResponse
 import com.posthog.server.createTestConfig
 import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
@@ -594,7 +595,7 @@ internal class PostHogFeatureFlagsTest {
             100,
             localEvaluation = true,
             personalApiKey = "test-personal-key",
-            pollIntervalSeconds = 30,
+            pollIntervalSeconds = 3600,
             onFeatureFlags = { loadedLatch.countDown() },
         )
     }
@@ -690,7 +691,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `evaluateFlags partial fallback does not populate the legacy cache`() {
+    fun `a failed partial fallback does not suppress the legacy retry`() {
         val mockServer =
             createMockHttp(
                 jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
@@ -722,6 +723,50 @@ internal class PostHogFeatureFlagsTest {
             )
         assertEquals(setOf("needs-server"), legacyFlags?.keys)
         assertEquals(3, mockServer.requestCount, "legacy evaluation must retry the failed fallback")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `successful partial fallback caches the raw remote response for legacy callers`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                jsonResponse(
+                    createMultipleFlagsResponse(
+                        "resolves-locally" to false,
+                        "needs-server" to true,
+                    ),
+                ),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val evaluation =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(true, evaluation.flags["resolves-locally"]?.enabled)
+        assertEquals(true, evaluation.flags["needs-server"]?.enabled)
+
+        val legacyFlags =
+            featureFlags.getFeatureFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+            )
+        assertEquals(false, legacyFlags?.get("resolves-locally")?.enabled)
+        assertEquals(true, legacyFlags?.get("needs-server")?.enabled)
+        assertEquals(2, mockServer.requestCount, "legacy evaluation must reuse the raw remote entry")
 
         featureFlags.shutDown()
         mockServer.shutdown()
@@ -875,6 +920,78 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(setOf("known-flag", "typo-flag"), result.flags.keys)
         assertTrue(logger.containsLog("No local definition for requested flag(s) typo-flag"))
         assertEquals(2, mockServer.requestCount, "the undefined key falls back to /flags")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `missing requested keys reuse an empty remote response within the cache window`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        repeat(2) {
+            val result =
+                featureFlags.evaluateFlags(
+                    distinctId = "user-123",
+                    groups = null,
+                    personProperties = null,
+                    groupProperties = null,
+                    flagKeys = listOf("known-flag", "typo-flag"),
+                    onlyEvaluateLocally = false,
+                    disableGeoip = false,
+                )
+            assertEquals(setOf("known-flag"), result.flags.keys)
+        }
+
+        assertEquals(2, mockServer.requestCount, "the empty /flags response must be cached")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local only evaluation omits missing requested keys without remote fallback`() {
+        val mockServer = createMockHttp(jsonResponse(createLocalEvaluationResponse("known-flag")))
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("known-flag", "typo-flag"),
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("known-flag"), result.flags.keys)
+        assertEquals(1, mockServer.requestCount, "only the definitions load is allowed")
 
         featureFlags.shutDown()
         mockServer.shutdown()

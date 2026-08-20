@@ -309,7 +309,7 @@ internal class PostHogFeatureFlags(
                 needsRemote = true
                 config.logger.log(
                     "No local definition for requested flag(s) ${undefined.joinToString(", ")} - " +
-                        "falling back to remote evaluation",
+                        "eligible for remote fallback",
                 )
             }
         }
@@ -1003,7 +1003,7 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        // Forward the caller's original scope to `/flags`, matching the Python and Rust SDKs.
+        // Forward the caller's original scope to `/flags`.
         // Locally resolved values still win when the response is merged below.
         // Read the entry, not the flags: a cached failure holds null flags, and honoring it is what
         // keeps an outage from being re-requested on every call within the window.
