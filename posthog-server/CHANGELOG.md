@@ -1,5 +1,30 @@
 ## Next
 
+## 2.14.0
+
+### Minor Changes
+
+- 4fd466a: Expose the error-tracking configuration surface on the server SDK:
+
+  - `PostHogConfig.inAppIncludes` / `inAppExcludes` control the `in_app` classification of captured stack-trace frames (prefix match on the class name; excludes always win). `inAppExcludes` defaults to the new `PostHogConfig.DEFAULT_IN_APP_EXCLUDES` — a list of common JVM/framework prefixes (JDK, Kotlin, Spring, Netty, servlet containers, HTTP clients, the PostHog SDK) — so zero-config users get a sensible your-code vs framework split. Assigning your own list replaces the defaults.
+  - Both are available on the config `Builder` (`inAppIncludes(...)`, `inAppExcludes(...)`), which copies the list you pass so a later mutation of your own list cannot reach the built config. `DEFAULT_IN_APP_EXCLUDES` is unmodifiable: it is a `@JvmField` shared by every config that does not override it, and a Kotlin `List` is only read-only by convention, so a Java caller could otherwise `set()` an element and change the default for the whole process.
+  - New `captureException(exception, distinctId, options)` / `captureException(exception, options)` overloads accept `PostHogCaptureOptions` with the same merging semantics as `capture(..., options)`: custom properties, `$groups`, timestamp, and feature-flag enrichment via a pre-evaluated `flags` snapshot or `appendFeatureFlags`. Reserved exception properties (e.g. `$exception_level`, `$exception_fingerprint`) can be overridden through options properties. `$exception` events do not perform person updates — they are ingested by a separate error-tracking pipeline with no ordering guarantee against the person pipeline, so `$set`/`$set_once` are dropped server-side and are not sent; `options.userProperties` is used only as person-property input for `appendFeatureFlags` flag evaluation. Request-context distinct-id resolution, personless fallback and the `errorTrackingConfig.ignoredExceptionTypes` prefilter behave exactly like the existing `captureException` overloads — all overloads share one pre-capture route in core, and flag enrichment now runs only after the opt-out and ignore-list gates pass, so a suppressed or opted-out capture never fires a `/flags` request. Java callers that passed an explicit untyped `null` as the third argument of `captureException` need to cast it (`(Map<String, Object>) null`), since that call now matches both the properties and the options overload.
+
+### Patch Changes
+
+- 4fd466a: `PostHogStateless` now builds every `$exception` event through a single internal route
+  (`captureExceptionEvent`), which `captureExceptionStateless` delegates to. The route owns the
+  `errorTrackingConfig.ignoredExceptionTypes` prefilter, the coerce-then-merge property order and the
+  personless distinct-id fallback, and it can carry the event fields `captureExceptionStateless`
+  cannot express (groups, an explicit timestamp), so SDK layers that need those no longer have to
+  re-implement the pre-capture steps and drift from the guarded path. Caller properties are supplied
+  as a provider that runs only after the enabled/opt-out and ignore-list gates pass, so expensive
+  enrichment is never computed for an event that is about to be dropped. `$exception` events carry no
+  person properties: they are ingested by a separate error-tracking pipeline with no ordering
+  guarantee against the person pipeline, so `$set`/`$set_once` are dropped server-side. Capture
+  behavior is unchanged; the addition is internal (`@PostHogInternal`) and visible only because of
+  the multi-module architecture.
+
 ## 2.13.0
 
 ### Minor Changes
