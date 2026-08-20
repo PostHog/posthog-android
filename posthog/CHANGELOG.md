@@ -1,5 +1,11 @@
 ## Next
 
+## 6.33.2
+
+### Patch Changes
+
+- e37fd6a: Fix `onFeatureFlags` not running when the internal flags-loaded callback throws
+
 ## 6.33.1
 
 ### Patch Changes
