@@ -1,5 +1,11 @@
 ## Next
 
+## 3.60.1
+
+### Patch Changes
+
+- 3e09338: Skip push token registration when the project has no push integration for the app_id, using the `push.appIds` list published in remote config. A device whose project configures push later re-registers on the next config load rather than staying unreachable.
+
 ## 3.60.0
 
 ### Minor Changes
