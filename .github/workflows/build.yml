@@ -53,6 +53,10 @@ jobs:
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make compile
 
+      - name: Check release tasks and dependency locks
+        if: needs.detect-markdown-only.outputs.markdown_only != 'true'
+        run: make checkRelease
+
       - name: Make stop
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make stop
