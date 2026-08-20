@@ -28,6 +28,7 @@ import java.util.Collections
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -969,6 +970,202 @@ internal class PostHogFeatureFlagsTest {
         assertEquals(setOf("known-flag"), evaluateMissingFlag(featureFlags, "user-2").flags.keys)
         assertEquals(2, mockServer.requestCount, "only the definitions load and first probe are allowed")
 
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `concurrent missing key calls share one clean probe`() {
+        val firstProbeStarted = CountDownLatch(1)
+        val releaseProbe = CountDownLatch(1)
+        val duplicateProbe = CountDownLatch(1)
+        val responseNumber = AtomicInteger(0)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    if (responseNumber.incrementAndGet() == 1) {
+                        firstProbeStarted.countDown()
+                    } else {
+                        duplicateProbe.countDown()
+                    }
+                    releaseProbe.await()
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        val owner = Thread { runCatching { evaluateMissingFlag(featureFlags, "owner") }.exceptionOrNull()?.let(errors::add) }
+        owner.start()
+        assertTrue(firstProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+
+        val entered = CountDownLatch(10)
+        val waiters =
+            (1..10).map { index ->
+                Thread {
+                    entered.countDown()
+                    runCatching { evaluateMissingFlag(featureFlags, "waiter-$index") }.exceptionOrNull()?.let(errors::add)
+                }.also { it.start() }
+            }
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val sawDuplicate = duplicateProbe.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        releaseProbe.countDown()
+        (waiters + owner).forEach { it.join(5_000) }
+
+        assertFalse(sawDuplicate)
+        assertTrue(errors.isEmpty(), "unexpected errors: $errors")
+        assertTrue((waiters + owner).none { it.isAlive })
+        assertEquals(1, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `unrelated missing keys probe concurrently`() {
+        val probesStarted = CountDownLatch(2)
+        val releaseProbes = CountDownLatch(1)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    probesStarted.countDown()
+                    releaseProbes.await()
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val callers =
+            listOf("missing-a", "missing-b").map { key ->
+                Thread { evaluateMissingFlag(featureFlags, "user-$key", missingKey = key) }.also { it.start() }
+            }
+
+        val ranConcurrently = probesStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        releaseProbes.countDown()
+        callers.forEach { it.join(5_000) }
+
+        assertTrue(ranConcurrently)
+        assertTrue(callers.none { it.isAlive })
+        assertEquals(2, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `failed owner coalesces waiters behind one retry`() {
+        val firstProbeStarted = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val retryStarted = CountDownLatch(1)
+        val extraRetry = CountDownLatch(1)
+        val releaseRetry = CountDownLatch(1)
+        val responseNumber = AtomicInteger(0)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    when (responseNumber.incrementAndGet()) {
+                        1 -> {
+                            firstProbeStarted.countDown()
+                            releaseFirst.await()
+                            errorResponse(500, "Internal Server Error")
+                        }
+                        2 -> {
+                            retryStarted.countDown()
+                            releaseRetry.await()
+                            jsonResponse(createEmptyFlagsResponse())
+                        }
+                        else -> {
+                            extraRetry.countDown()
+                            jsonResponse(createEmptyFlagsResponse())
+                        }
+                    }
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val owner = Thread { evaluateMissingFlag(featureFlags, "failed-owner") }.also { it.start() }
+        assertTrue(firstProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val entered = CountDownLatch(8)
+        val waiters =
+            (1..8).map { index ->
+                Thread {
+                    entered.countDown()
+                    evaluateMissingFlag(featureFlags, "retry-waiter-$index")
+                }.also { it.start() }
+            }
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+
+        releaseFirst.countDown()
+        val retried = retryStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        val sawExtraRetry = extraRetry.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        releaseRetry.countDown()
+        (waiters + owner).forEach { it.join(5_000) }
+
+        assertTrue(retried)
+        assertFalse(sawExtraRetry)
+        assertTrue((waiters + owner).none { it.isAlive })
+        assertEquals(2, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `refresh invalidates an in-flight probe generation`() {
+        val oldProbeStarted = CountDownLatch(1)
+        val releaseOldProbe = CountDownLatch(1)
+        val newProbeStarted = CountDownLatch(1)
+        val releaseNewProbe = CountDownLatch(1)
+        val flagsCalls = AtomicInteger(0)
+        val definitions = createLocalEvaluationResponse("known-flag")
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(definitions) },
+                {
+                    if (flagsCalls.incrementAndGet() == 1) {
+                        oldProbeStarted.countDown()
+                        releaseOldProbe.await()
+                    } else {
+                        newProbeStarted.countDown()
+                        releaseNewProbe.await()
+                    }
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val owner = Thread { evaluateMissingFlag(featureFlags, "old-owner") }.also { it.start() }
+        assertTrue(oldProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val waiter = Thread { evaluateMissingFlag(featureFlags, "new-waiter") }.also { it.start() }
+
+        featureFlags.loadFeatureFlagDefinitions()
+        val newGenerationProbed = newProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        releaseNewProbe.countDown()
+        releaseOldProbe.countDown()
+        owner.join(5_000)
+        waiter.join(5_000)
+
+        assertTrue(newGenerationProbed)
+        assertTrue(owner.isAlive.not() && waiter.isAlive.not())
+        assertEquals(2, flagsCalls.get())
+        evaluateMissingFlag(featureFlags, "after-refresh")
+        assertEquals(2, flagsCalls.get(), "the new generation should retain its clean omission")
         featureFlags.shutDown()
         mockServer.shutdown()
     }
