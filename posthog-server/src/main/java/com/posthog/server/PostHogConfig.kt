@@ -211,11 +211,13 @@ public open class PostHogConfig constructor(
      * Unlike the Android SDK, this is gated purely on this local flag — the server SDK never
      * fetches remote config, so no remote toggle is involved.
      *
-     * Delivery: the queue treats a fatal `$exception` event specially — it is enqueued and sent
-     * synchronously on the crashing thread, bypassing [flushAt] — so the crash itself does not depend
-     * on the periodic flush. The handler still calls `flush()` afterwards for anything else that was
-     * pending. Delivery remains best-effort under an immediate hard exit (the same guarantee the
-     * Android SDK provides). See [PostHog] for details.
+     * Delivery: the crash capture is enqueued asynchronously like any other event, and the crash path
+     * then performs a bounded blocking flush — ordered behind that pending enqueue and ignoring
+     * [flushAt] — so the event gets a network attempt before the JVM exits instead of waiting for the
+     * periodic flush, without ever blocking the crashing thread indefinitely. Delivery stays
+     * best-effort, the same guarantee class the Android SDK provides: the flush can hit its timeout,
+     * the HTTP attempt can fail, and an immediate hard exit can cut it short. See [PostHog] for
+     * details.
      *
      * Docs https://posthog.com/docs/error-tracking
      * Defaults to false

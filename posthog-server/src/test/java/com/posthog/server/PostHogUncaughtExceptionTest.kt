@@ -1,9 +1,14 @@
 package com.posthog.server
 
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -78,7 +83,6 @@ internal class PostHogUncaughtExceptionTest {
             PostHog.with(
                 PostHogConfig.builder(TEST_API_KEY)
                     .host(mockServer.url("/").toString())
-                    .flushAt(1)
                     .captureUncaughtExceptions(true)
                     .build(),
             )
@@ -109,11 +113,12 @@ internal class PostHogUncaughtExceptionTest {
     @Test
     fun `uncaught exception is captured as a fatal, unhandled exception event`() {
         val mockServer = startServer()
+        // Default flushAt (100) on purpose: the crash path's blocking flush is what delivers the
+        // event, so a low threshold would mask whether that flush works at all.
         val postHog =
             PostHog.with(
                 PostHogConfig.builder(TEST_API_KEY)
                     .host(mockServer.url("/").toString())
-                    .flushAt(1)
                     .captureUncaughtExceptions(true)
                     .build(),
             )
@@ -123,8 +128,9 @@ internal class PostHogUncaughtExceptionTest {
 
         handler.uncaughtException(Thread.currentThread(), IllegalStateException("kaboom"))
 
-        val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
-        assertNotNull(request, "Expected a /batch request within 5 seconds")
+        // Already sent when the handler returned, so this should not have to wait.
+        val request = mockServer.takeRequest(1, TimeUnit.SECONDS)
+        assertNotNull(request, "Expected the crash event to be flushed before the handler returned")
 
         val batch = request.parseBatch()
         val exceptionEvent = batch.findEvent("\$exception")
@@ -247,6 +253,101 @@ internal class PostHogUncaughtExceptionTest {
         )
 
         second.close()
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `crash event is flushed even while its enqueue is still pending`() {
+        // Makes the crash-path race deterministic instead of hoping for a scheduling order. The queue
+        // thread is parked inside the gated warmup batch, so the crash capture's enqueue is provably
+        // still pending when the handler flushes, and with flushAt above one and a 600s flush interval
+        // nothing else can deliver the crash event. The handler runs on its own thread so the test can
+        // assert it is still blocked inside the flush while the enqueue is pending — the inline flush
+        // it used to do returned immediately, having read an empty queue, and the event died with the
+        // JVM.
+        val batches = CopyOnWriteArrayList<BatchRequest>()
+        val warmupReceived = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val mockServer = MockWebServer()
+        mockServer.dispatcher =
+            object : Dispatcher() {
+                private val batchRequests = AtomicInteger(0)
+
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path?.contains("/batch") == true) {
+                        batches.add(request.parseBatch())
+                        if (batchRequests.getAndIncrement() == 0) {
+                            warmupReceived.countDown()
+                            // Holds the queue thread until the test opens the gate.
+                            gate.await(5, TimeUnit.SECONDS)
+                        }
+                    }
+                    return MockResponse().setResponseCode(200)
+                }
+            }
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .flushAt(2)
+                    // Long enough that only the crash path can deliver the event within the test.
+                    .flushIntervalSeconds(600)
+                    .captureUncaughtExceptions(true)
+                    .build(),
+            )
+
+        // Two events reach flushAt(2), so the queue thread flushes and parks in the gated request.
+        postHog.capture(DISTINCT_ID, "warmup_1")
+        postHog.capture(DISTINCT_ID, "warmup_2")
+        assertTrue(
+            warmupReceived.await(5, TimeUnit.SECONDS),
+            "Expected the warmup batch to reach the server and park the queue thread",
+        )
+
+        val handler = Thread.getDefaultUncaughtExceptionHandler()
+        assertTrue(handler is PostHogErrorTrackingAutoCaptureIntegration)
+        val crashThread =
+            Thread {
+                handler.uncaughtException(Thread.currentThread(), IllegalStateException("kaboom"))
+            }.apply {
+                isDaemon = true
+                start()
+            }
+
+        // The only timed wait on this thread's crash path is the blocking flush's bounded await, so
+        // TIMED_WAITING while the queue thread is parked means the barrier is queued behind the
+        // pending enqueue and the handler is waiting for it. The old inline flush never blocked: the
+        // thread just finishes, and this assertion fails.
+        val parkedBy = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (crashThread.isAlive &&
+            crashThread.state != Thread.State.TIMED_WAITING &&
+            System.nanoTime() < parkedBy
+        ) {
+            Thread.sleep(1)
+        }
+        assertTrue(
+            crashThread.isAlive && crashThread.state == Thread.State.TIMED_WAITING,
+            "Expected the handler to still be blocked inside the crash flush",
+        )
+        assertEquals(1, batches.size, "The crash event cannot have been sent yet")
+
+        gate.countDown()
+        crashThread.join(TimeUnit.SECONDS.toMillis(5))
+        assertFalse(
+            crashThread.isAlive,
+            "Expected the handler to return once the crash flush completed",
+        )
+
+        // The handler only returns after its flush ran, so the crash batch is already on the wire.
+        assertEquals(2, batches.size, "Expected the crash event to be flushed before returning")
+        assertNotNull(
+            batches[1].findEvent("\$exception"),
+            "Expected an \$exception event in the crash batch",
+        )
+
         postHog.close()
         mockServer.shutdown()
     }

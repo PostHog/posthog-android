@@ -6,6 +6,7 @@ import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
 import com.posthog.server.internal.PostHogFeatureFlags
+import com.posthog.server.internal.PostHogMemoryQueue
 
 @Suppress("DEPRECATION")
 public class PostHog : PostHogStateless(), PostHogInterface {
@@ -61,8 +62,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                 getConfig<com.posthog.PostHogConfig>()?.let { coreConfig ->
                     val integration = PostHogErrorTrackingAutoCaptureIntegration(coreConfig) { true }
                     // The uncaught Throwable is a PostHogThrowable carrying fatal/handled=false/mechanism;
-                    // routing it through captureException preserves those via the shared coercer, and the
-                    // queue sends fatal exception events synchronously on the crashing thread.
+                    // routing it through captureException preserves those via the shared coercer.
                     integration.installWith(
                         object : PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget {
                             override fun capture(throwable: Throwable) {
@@ -70,7 +70,21 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                             }
 
                             override fun flush() {
-                                this@PostHog.flush()
+                                // Crash path only: capture() above enqueues on the queue executor, and the
+                                // regular flush() runs inline on this (the crashing) thread — it would
+                                // usually read the queue before that enqueue landed, send nothing, and let
+                                // the event die with the JVM. flushBlocking orders the drain behind the
+                                // pending enqueue and blocks the crashing thread for at most
+                                // CRASH_FLUSH_TIMEOUT_MS, like the Rust SDK's bounded panic-hook flush.
+                                // The server client always runs a PostHogMemoryQueue
+                                // (PostHogConfig.asCoreConfig), so the fallback is unreachable in practice
+                                // and only keeps the crash flush from silently becoming a no-op.
+                                val memoryQueue = this@PostHog.queue as? PostHogMemoryQueue
+                                if (memoryQueue != null) {
+                                    memoryQueue.flushBlocking(CRASH_FLUSH_TIMEOUT_MS)
+                                } else {
+                                    this@PostHog.flush()
+                                }
                             }
                         },
                     )
@@ -461,6 +475,12 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     }
 
     public companion object {
+        /**
+         * How long the crashing thread waits for the crash event's flush to reach the network attempt
+         * before it delegates to the next handler and lets the JVM go down.
+         */
+        private const val CRASH_FLUSH_TIMEOUT_MS = 2_000L
+
         /**
          * Sets up the SDK and returns an instance that you can hold and pass around.
          *

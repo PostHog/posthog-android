@@ -245,10 +245,10 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
                 // (`logger.error(..., e); throw e`).
                 PostHogCapturedThrowables.markAndCheck(throwable)
                 target.capture(PostHogThrowable(throwable, thread))
-                // The queue sends a fatal exception event synchronously on this (the crashing)
-                // thread, bypassing the flushAt threshold; this flush covers anything else still
-                // pending. Delivery is still best-effort under an immediate hard exit — same
-                // guarantee as the Android SDK.
+                // Depending on the target's queue the capture above may only enqueue the event, so
+                // this flush is its last chance to reach the network before the process goes down.
+                // Targets whose enqueue is asynchronous make this a bounded blocking flush (see the
+                // server SDK's target). Delivery stays best-effort under an immediate hard exit.
                 target.flush()
             }
         }

@@ -16,6 +16,7 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.test.Test
 
@@ -245,6 +246,81 @@ internal class PostHogMemoryQueueTest {
         // If we get here without deadlock, the timer management works
         assertTrue(true)
 
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `flushBlocking sends an event whose enqueue has not run yet`() {
+        val http = createMockHttp(MockResponse().setBody("{}"))
+        val sut = getSut(http.url("/").toString(), flushAt = 100)
+
+        // Park the single queue thread so the enqueue below is provably still pending while the
+        // caller flushes inline: the crash-path race, made deterministic without any sleeping.
+        val blocked = CountDownLatch(1)
+        executor.execute { blocked.await() }
+
+        sut.add(generateEvent())
+
+        // The inline flush cannot see the pending enqueue, so it sends nothing.
+        sut.flush()
+        assertEquals(0, http.requestCount)
+
+        blocked.countDown()
+
+        // The barrier is queued behind the enqueue on the same single thread, so the send sees it.
+        assertTrue("Expected the blocking flush to complete", sut.flushBlocking(2_000))
+        assertEquals(1, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `flushBlocking still flushes when the calling thread is already interrupted`() {
+        val http = createMockHttp(MockResponse().setBody("{}"))
+        val sut = getSut(http.url("/").toString(), flushAt = 100)
+
+        sut.add(generateEvent())
+
+        // A crash on a thread some shutdown just interrupted must not lose its flush.
+        Thread.currentThread().interrupt()
+        try {
+            assertTrue("Expected the blocking flush to complete", sut.flushBlocking(2_000))
+            assertEquals(1, http.requestCount)
+            assertTrue(
+                "Expected the interrupt flag to be restored for the caller",
+                Thread.currentThread().isInterrupted,
+            )
+        } finally {
+            // Never leak the interrupt into whatever runs next on this thread.
+            Thread.interrupted()
+        }
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `flushBlocking gives up after the timeout instead of hanging`() {
+        val http = createMockHttp()
+        val sut = getSut(http.url("/").toString(), flushAt = 100)
+
+        // Occupy the single queue thread so the barrier can never run.
+        val blocked = CountDownLatch(1)
+        executor.execute { blocked.await() }
+
+        sut.add(generateEvent())
+
+        val startedAt = System.nanoTime()
+        assertFalse("Expected the blocking flush to time out", sut.flushBlocking(200))
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertTrue("Expected to wait for the timeout, waited $elapsedMs ms", elapsedMs >= 200)
+        assertTrue("Expected to return right after the timeout, waited $elapsedMs ms", elapsedMs < 2_000)
+        assertEquals(0, http.requestCount)
+
+        blocked.countDown()
         http.shutdown()
         executor.shutdownAndAwaitTermination()
     }
