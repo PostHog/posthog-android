@@ -1236,7 +1236,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `failed and inconclusive remote responses do not suppress missing key probes`() {
+    fun `failed and inconclusive responses throttle the same identity without global suppression`() {
         val responses =
             listOf(
                 "HTTP failure" to errorResponse(500, "Internal Server Error"),
@@ -1254,9 +1254,11 @@ internal class PostHogFeatureFlagsTest {
             val featureFlags = manuallyLoadedFeatureFlags(mockServer)
 
             evaluateMissingFlag(featureFlags, "user-1")
-            evaluateMissingFlag(featureFlags, "user-2")
+            evaluateMissingFlag(featureFlags, "user-1")
+            assertEquals(2, mockServer.requestCount, "$name should use identity-scoped failure backoff")
 
-            assertEquals(3, mockServer.requestCount, "$name must allow the next identity to retry")
+            evaluateMissingFlag(featureFlags, "user-2")
+            assertEquals(3, mockServer.requestCount, "$name must allow another identity to retry")
             featureFlags.shutDown()
             mockServer.shutdown()
         }

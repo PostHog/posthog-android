@@ -1177,7 +1177,13 @@ internal class PostHogFeatureFlags(
             var entry = cache.getEntry(cacheKey)
             val cacheHasRemoteKeys =
                 plan.knownRemote.all { entry?.flags?.containsKey(it) == true }
-            val bypassCache = plan.owned.isNotEmpty() || refreshMadeKeysLocal || !cacheHasRemoteKeys
+            // Failures remain identity-scoped cache entries so an outage is retried after the normal
+            // cache window, not on every call. They never establish global missing-key knowledge,
+            // so another identity can still retry immediately.
+            val cachedInconclusive = entry?.error != null
+            val bypassCache =
+                !cachedInconclusive &&
+                    (plan.owned.isNotEmpty() || refreshMadeKeysLocal || !cacheHasRemoteKeys)
             if (bypassCache) entry = null
             var response: PostHogFlagsResponse? = null
             val flags =
