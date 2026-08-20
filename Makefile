@@ -75,6 +75,8 @@ generateLintBaseLine:
 checkRelease:
 	CI=false ./gradlew publishToMavenLocal :posthog-android-gradle-plugin:publishToMavenLocal --write-locks
 	git diff --exit-code -- ':(glob)**/gradle.lockfile'
+	@test -z "$$(git status --porcelain --untracked-files=all -- ':(glob)**/gradle.lockfile')" || \
+		(git status --short --untracked-files=all -- ':(glob)**/gradle.lockfile'; exit 1)
 
 # Regenerate gradle.lockfile for all build and publishing configurations
 updateLocks:
