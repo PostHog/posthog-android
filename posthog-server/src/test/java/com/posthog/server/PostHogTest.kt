@@ -682,4 +682,432 @@ internal class PostHogTest {
         postHog.close()
         mockServer.shutdown()
     }
+
+    /**
+     * `ignoredExceptionTypes` has no server-config builder yet, so configure it on the core config
+     * the server config produces — the same object the capture path reads at runtime.
+     */
+    private fun postHogWithIgnoredTypes(
+        url: String,
+        vararg ignored: Class<out Throwable>,
+    ): PostHog {
+        val coreConfig =
+            PostHogConfig.builder(TEST_API_KEY)
+                .host(url)
+                .flushAt(1)
+                .build()
+                .asCoreConfig()
+        coreConfig.errorTrackingConfig.ignoredExceptionTypes.addAll(ignored)
+        return PostHog().apply { setup(coreConfig) }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun framesOf(props: Map<String, Any?>): List<Map<String, Any?>> {
+        val exceptionList = props["\$exception_list"] as List<Map<String, Any?>>
+        val stacktrace = exceptionList.first()["stacktrace"] as Map<String, Any?>
+        return stacktrace["frames"] as List<Map<String, Any?>>
+    }
+
+    @Test
+    fun `captureException with options merges groups, flag and custom properties, and stamps frames`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createLocalEvaluationResponse("test-flag")))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .personalApiKey("phx_test_personal_api_key")
+                    .flushAt(1)
+                    .inAppIncludes(listOf("com.posthog.server"))
+                    .inAppExcludes(listOf("org.", "jdk.", "java."))
+                    .releaseIdentifier("posthog-server@1.0.0")
+                    .build(),
+            )
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            "user123",
+            PostHogCaptureOptions.builder()
+                .property("custom", "value")
+                .group("company", "acme")
+                .appendFeatureFlags(true)
+                .build(),
+        )
+
+        // Skip /local_evaluation request
+        mockServer.takeRequest(5, TimeUnit.SECONDS)
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val batch = batchRequest.parseBatch()
+        assertNotNull(batch.findEvent("\$exception"), "Expected \$exception event in batch")
+
+        val props = batch.eventProperties("\$exception")
+        assertEquals("value", props["custom"])
+        assertEquals(true, props["\$feature/test-flag"])
+
+        @Suppress("UNCHECKED_CAST")
+        val groups = props["\$groups"] as Map<String, Any?>
+        assertEquals("acme", groups["company"])
+
+        val frames = framesOf(props)
+        assertTrue(frames.isNotEmpty())
+        frames.forEach { frame -> assertEquals("posthog-server@1.0.0", frame["map_id"]) }
+
+        val inAppFrames = frames.filter { it["in_app"] == true }
+        val notInAppFrames = frames.filter { it["in_app"] == false }
+        assertTrue(inAppFrames.isNotEmpty(), "Expected in-app frames from com.posthog.server")
+        assertTrue(
+            inAppFrames.all { (it["module"] as String).startsWith("com.posthog.server") },
+            "Only frames matching inAppIncludes should be in-app",
+        )
+        assertTrue(notInAppFrames.isNotEmpty(), "Expected frames outside inAppIncludes to not be in-app")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with flags snapshot attaches flag properties without another flags request`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createFlagsResponse("test-flag")))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .build(),
+            )
+
+        val snapshot = postHog.evaluateFlags("user123")
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            "user123",
+            PostHogCaptureOptions.builder()
+                .flags(snapshot)
+                .build(),
+        )
+
+        val flagsRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(flagsRequest, "Expected /flags request within 5 seconds")
+        assertTrue(flagsRequest.path?.contains("/flags") == true, "First request should be /flags")
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+        assertTrue(batchRequest.path?.contains("/batch") == true, "Second request should be /batch")
+
+        val props = batchRequest.parseBatch().eventProperties("\$exception")
+        assertEquals(true, props["\$feature/test-flag"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options allows overriding exception level via properties`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            "user123",
+            PostHogCaptureOptions.builder()
+                .property("\$exception_level", "warning")
+                .property("\$exception_fingerprint", "custom-fingerprint")
+                .build(),
+        )
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val props = batchRequest.parseBatch().eventProperties("\$exception")
+        assertEquals("warning", props["\$exception_level"])
+        assertEquals("custom-fingerprint", props["\$exception_fingerprint"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options and no distinct id stays personless`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            PostHogCaptureOptions.builder()
+                .property("custom", "value")
+                .build(),
+        )
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val batch = batchRequest.parseBatch()
+        val event = batch.findEvent("\$exception")
+        assertNotNull(event, "Expected \$exception event in batch")
+        val eventDistinctId = event.get("distinct_id").asString
+        assertTrue(
+            eventDistinctId.matches("[0-9a-fA-F-]{36}".toRegex()),
+            "Expected a generated UUID distinct id, got $eventDistinctId",
+        )
+
+        val props = batch.eventProperties("\$exception")
+        assertEquals(false, props["\$process_person_profile"])
+        assertEquals("value", props["custom"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with default config splits in-app frames by DEFAULT_IN_APP_EXCLUDES`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .flushAt(1)
+                    .build(),
+            )
+
+        postHog.captureException(RuntimeException("boom"), "user123")
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val props = batchRequest.parseBatch().eventProperties("\$exception")
+        val frames = framesOf(props)
+        assertTrue(frames.isNotEmpty())
+
+        val sdkFrames = frames.filter { (it["module"] as String).startsWith("com.posthog.") }
+        assertTrue(sdkFrames.isNotEmpty(), "Expected frames from the test class itself")
+        assertTrue(
+            sdkFrames.all { it["in_app"] == false },
+            "Frames matching DEFAULT_IN_APP_EXCLUDES (com.posthog.) should not be in-app",
+        )
+        assertTrue(
+            frames.any { it["in_app"] == true },
+            "Frames not matching any default exclude (e.g. junit/gradle) should stay in-app",
+        )
+        assertTrue(
+            frames.none { it.containsKey("map_id") },
+            "map_id should be absent when releaseIdentifier is not configured",
+        )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException options overload without distinct id delegates to canonical overload`() {
+        val postHog = spy(PostHog())
+        val exception = RuntimeException("Test exception")
+        val options = PostHogCaptureOptions.builder().property("k", "v").build()
+
+        postHog.captureException(exception, options)
+
+        verify(postHog).captureException(exception, null, options)
+    }
+
+    @Test
+    fun `captureException with options drops throwables matching ignoredExceptionTypes`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            IllegalStateException("suppressed"),
+            "user123",
+            PostHogCaptureOptions.builder().property("marker", "suppressed").build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An ignored exception must not reach /batch through the options overload",
+        )
+
+        // control: the same overload still ships a type that is not ignored
+        postHog.captureException(
+            RuntimeException("kept"),
+            "user123",
+            PostHogCaptureOptions.builder().property("marker", "kept").build(),
+        )
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+        assertEquals("kept", batchRequest.parseBatch().eventProperties("\$exception")["marker"])
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options drops a throwable whose cause matches ignoredExceptionTypes`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            RuntimeException("outer", IllegalStateException("ignored cause")),
+            "user123",
+            PostHogCaptureOptions.builder().property("marker", "suppressed").build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An ignored type anywhere in the cause chain must not reach /batch",
+        )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options merges options for types outside ignoredExceptionTypes`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            "user123",
+            PostHogCaptureOptions.builder()
+                .property("custom", "value")
+                .property("\$exception_level", "warning")
+                .group("company", "acme")
+                .userProperty("plan", "enterprise")
+                .userPropertySetOnce("signup", "2020")
+                .build(),
+        )
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+
+        val props = batchRequest.parseBatch().eventProperties("\$exception")
+        assertEquals("value", props["custom"])
+        assertEquals("warning", props["\$exception_level"])
+        assertNotNull(props["\$exception_list"], "The coerced exception properties should still be present")
+
+        @Suppress("UNCHECKED_CAST")
+        val groups = props["\$groups"] as Map<String, Any?>
+        assertEquals("acme", groups["company"])
+
+        // person updates are dropped by the error-tracking ingestion pipeline, so the SDK must not
+        // pretend otherwise by putting them on the wire
+        assertNull(props["\$set"], "\$exception events must not carry \$set")
+        assertNull(props["\$set_once"], "\$exception events must not carry \$set_once")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options does not evaluate flags for an ignored throwable`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
+
+        postHog.captureException(
+            IllegalStateException("suppressed"),
+            "user123",
+            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An ignored exception must not fire a /flags request nor a \$exception event",
+        )
+
+        // control: the same overload with the same options still enriches and ships a kept type,
+        // so the assertion above is about the ignore gate and not about a dead client
+        postHog.captureException(
+            RuntimeException("kept"),
+            "user123",
+            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
+        )
+
+        val flagsRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(flagsRequest, "Expected /flags request for the kept exception")
+        assertTrue(flagsRequest.path?.contains("/flags") == true, "First request should be /flags")
+
+        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
+        assertNotNull(batchRequest.parseBatch().findEvent("\$exception"), "Expected \$exception event in batch")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `captureException with options sends nothing when the client is opted out`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val coreConfig =
+            PostHogConfig.builder(TEST_API_KEY)
+                .host(mockServer.url("/").toString())
+                .flushAt(1)
+                .build()
+                .asCoreConfig()
+        coreConfig.optOut = true
+        val postHog = PostHog().apply { setup(coreConfig) }
+
+        postHog.captureException(
+            RuntimeException("boom"),
+            "user123",
+            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
+        )
+
+        assertNull(
+            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
+            "An opted-out client must not fire a /flags request nor a \$exception event",
+        )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
 }

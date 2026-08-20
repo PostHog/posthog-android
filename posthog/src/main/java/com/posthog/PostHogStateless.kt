@@ -647,11 +647,56 @@ public open class PostHogStateless protected constructor(
         distinctId: String?,
         properties: Map<String, Any>?,
     ) {
+        captureExceptionEvent(
+            throwable,
+            distinctId = distinctId,
+            groups = null,
+            timestamp = null,
+        ) { properties }
+    }
+
+    /**
+     * The single pre-capture route for `$exception` events built from a [Throwable].
+     *
+     * Subclasses that need event fields [captureExceptionStateless] cannot carry (groups, an
+     * explicit timestamp) must go through here rather than coercing the throwable and calling
+     * [captureStateless] themselves, so the `ignoredExceptionTypes` prefilter, the
+     * caller-properties-win merge order and the personless fallback stay in one place instead of
+     * being re-implemented (and drifting) per capture path.
+     *
+     * [properties] is a provider invoked only once the enabled/opt-out state and the
+     * `ignoredExceptionTypes` prefilter have all passed, so callers can build expensive enrichment
+     * (e.g. a feature-flag evaluation that hits `/flags`) inside it without paying for an event
+     * that is about to be dropped. Its result is merged AFTER the coerced exception properties, so
+     * callers can override reserved keys such as `$exception_level`.
+     *
+     * This route never adds `$set`/`$set_once` of its own: `$exception` events are ingested by a
+     * separate error-tracking pipeline with no ordering guarantee against the person pipeline, so
+     * person updates are dropped server-side. Person properties therefore have no parameter here —
+     * send them with a regular [captureStateless] call or `identify`. (A caller that writes the
+     * reserved keys straight into [properties] still gets them serialized, same as any other
+     * reserved key it chooses to override; they simply have no effect.)
+     */
+    @PostHogInternal
+    protected fun captureExceptionEvent(
+        throwable: Throwable,
+        distinctId: String?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+        properties: () -> Map<String, Any>?,
+    ) {
         if (!isEnabled()) {
             return
         }
 
         try {
+            // gate before the property provider runs: enrichment must not fire for an event that
+            // opt-out or the ignore list is about to drop
+            if (config?.optOut == true) {
+                config?.logger?.log("PostHog is in OptOut state.")
+                return
+            }
+
             if (isIgnoredThrowable(throwable)) {
                 return
             }
@@ -664,7 +709,7 @@ public open class PostHogStateless protected constructor(
                     releaseIdentifier = config?.releaseIdentifier,
                 )
 
-            properties?.let {
+            properties()?.let {
                 exceptionProperties.putAll(it)
             }
 
@@ -674,7 +719,13 @@ public open class PostHogStateless protected constructor(
                 id = UUID.randomUUID().toString()
             }
 
-            captureStateless(PostHogEventName.EXCEPTION.event, distinctId = id, properties = exceptionProperties)
+            captureStateless(
+                PostHogEventName.EXCEPTION.event,
+                distinctId = id,
+                properties = exceptionProperties,
+                groups = groups,
+                timestamp = timestamp,
+            )
         } catch (e: Throwable) {
             // we swallow all exceptions that the SDK has thrown by trying to convert
             // a captured exception to a PostHog exception event
