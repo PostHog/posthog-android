@@ -1,5 +1,46 @@
 ## Next
 
+## 6.33.4
+
+### Patch Changes
+
+- 34e90b5: Fix `beforeSend` hook chaining so each hook receives the previous hook's output.
+
+## 6.33.3
+
+### Patch Changes
+
+- 4fd466a: `PostHogStateless` now builds every `$exception` event through a single internal route
+  (`captureExceptionEvent`), which `captureExceptionStateless` delegates to. The route owns the
+  `errorTrackingConfig.ignoredExceptionTypes` prefilter, the coerce-then-merge property order and the
+  personless distinct-id fallback, and it can carry the event fields `captureExceptionStateless`
+  cannot express (groups, an explicit timestamp), so SDK layers that need those no longer have to
+  re-implement the pre-capture steps and drift from the guarded path. Caller properties are supplied
+  as a provider that runs only after the enabled/opt-out and ignore-list gates pass, so expensive
+  enrichment is never computed for an event that is about to be dropped. `$exception` events carry no
+  person properties: they are ingested by a separate error-tracking pipeline with no ordering
+  guarantee against the person pipeline, so `$set`/`$set_once` are dropped server-side. Capture
+  behavior is unchanged; the addition is internal (`@PostHogInternal`) and visible only because of
+  the multi-module architecture.
+
+## 6.33.2
+
+### Patch Changes
+
+- e37fd6a: Fix `onFeatureFlags` not running when the internal flags-loaded callback throws
+
+## 6.33.1
+
+### Patch Changes
+
+- 3e09338: Skip push token registration when the project has no push integration for the app_id, using the `push.appIds` list published in remote config. A device whose project configures push later re-registers on the next config load rather than staying unreachable.
+
+## 6.33.0
+
+### Minor Changes
+
+- 470c1fa: Add native (NDK) crash capture on Android 12+, opt-in via `errorTrackingConfig.captureNativeCrashes`. On startup the SDK reads the native crash records the OS kept (`ApplicationExitInfo` tombstones) and captures an `$exception` event per crash with raw native stack frames and `$debug_images`, so PostHog symbolicates them against `.so` debug symbols uploaded with `posthog-cli symbol-sets upload`.
+
 ## 6.32.0
 
 ### Minor Changes

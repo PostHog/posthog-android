@@ -162,6 +162,31 @@ internal class PostHogMemoryQueueTest {
     }
 
     @Test
+    fun `flush drains all pending batches`() {
+        val http =
+            createMockHttp(
+                MockResponse().setBody("{}"),
+                MockResponse().setBody("{}"),
+                MockResponse().setBody("{}"),
+            )
+        val sut = getSut(http.url("/").toString(), maxBatchSize = 2, flushAt = 10)
+        val event = generateEvent()
+
+        repeat(5) {
+            sut.add(event.copy())
+        }
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(3, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
     fun `does not flush if network is not connected`() {
         val http = createMockHttp()
         val sut =

@@ -206,6 +206,26 @@ public class PostHog private constructor(
                                 config.logger.log("Failed to notify surveys loaded: $e.")
                             }
 
+                            try {
+                                // A device whose project had no push integration was answered 200 and
+                                // stopped asking. This is the only signal that reaches it.
+                                remoteConfig?.consumeNewlyRegisterablePushAppIds()?.let { newlyRegisterable ->
+                                    if (newlyRegisterable.isNotEmpty()) {
+                                        val manager = pushSubscriptionManager
+                                        if (manager != null) {
+                                            // Advance the cached list only after the marker clear is durable.
+                                            manager.onPushAppIdsChanged(newlyRegisterable) {
+                                                remoteConfig?.persistPushConfigCache()
+                                            }
+                                        } else {
+                                            remoteConfig?.persistPushConfigCache()
+                                        }
+                                    }
+                                }
+                            } catch (e: Throwable) {
+                                config.logger.log("Failed to re-register push subscription: $e.")
+                            }
+
                             // Notify all integrations about remote config changes
                             notifyIntegrationsRemoteConfig(config, loaded = true)
                         } else {
@@ -242,7 +262,14 @@ public class PostHog private constructor(
                 this.queue = queue
                 this.replayQueue = replayQueue
                 this.logsQueue = logsQueue
-                this.pushSubscriptionManager = PostHogPushSubscriptionManager(config, api, pushExecutor) { distinctId }
+                this.pushSubscriptionManager =
+                    PostHogPushSubscriptionManager(
+                        config,
+                        api,
+                        pushExecutor,
+                        { distinctId },
+                        { remoteConfig?.getPushAppIds() },
+                    )
 
                 if (config.errorTrackingConfig.exceptionSteps.enabled) {
                     val maxBytes = config.errorTrackingConfig.exceptionSteps.maxBytes
@@ -482,6 +509,9 @@ public class PostHog private constructor(
                 if (!isEnabled()) {
                     return
                 }
+
+                // flush pending events before tearing down so queued data isn't lost
+                flush()
 
                 enabled = false
 

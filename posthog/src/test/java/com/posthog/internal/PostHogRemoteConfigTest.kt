@@ -2744,4 +2744,155 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
         http.shutdown()
     }
+
+    // The queuing branch is unreachable on the single-threaded executor every production path uses,
+    // so forcing overlap is the only way to exercise the contract that machinery claims.
+    @Test
+    fun `queued reloads displaced from the pending slot still run their callbacks`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        repeat(9) {
+            http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(300, TimeUnit.MILLISECONDS))
+        }
+        val overlapping = Executors.newFixedThreadPool(4, PostHogThreadFactory("TestOverlap"))
+        val config = PostHogConfig(API_KEY, http.url("/").toString()).apply { cachePreferences = preferences }
+        val sut =
+            PostHogRemoteConfig(
+                config,
+                PostHogApi(config),
+                executor = overlapping,
+                defaultPersonPropertiesProvider = { emptyMap() },
+                onRemoteConfigLoaded = null,
+            )
+
+        val reloads = 10
+        val fired = CountDownLatch(reloads)
+        val counts = List(reloads) { AtomicInteger(0) }
+        repeat(reloads) { index ->
+            sut.loadFeatureFlags(
+                "my_identify",
+                anonymousId = "anonId",
+                emptyMap(),
+                onFeatureFlags =
+                    PostHogOnFeatureFlags {
+                        counts[index].incrementAndGet()
+                        fired.countDown()
+                    },
+            )
+        }
+
+        assertTrue(fired.await(10, TimeUnit.SECONDS), "every queued reload must run its callback, ${fired.count} never did")
+        assertTrue(http.requestCount < reloads, "reloads must have coalesced, otherwise this never reached the queuing branch")
+        counts.forEachIndexed { index, count -> assertEquals(1, count.get(), "callback $index ran ${count.get()} times") }
+
+        sut.clear()
+        overlapping.shutdownAndAwaitTermination()
+        http.shutdown()
+    }
+
+    @Test
+    fun `a listener reused across queued reloads is notified once per response`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        repeat(9) {
+            http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(300, TimeUnit.MILLISECONDS))
+        }
+        val overlapping = Executors.newFixedThreadPool(4, PostHogThreadFactory("TestShared"))
+        val config = PostHogConfig(API_KEY, http.url("/").toString()).apply { cachePreferences = preferences }
+        val sut =
+            PostHogRemoteConfig(
+                config,
+                PostHogApi(config),
+                executor = overlapping,
+                defaultPersonPropertiesProvider = { emptyMap() },
+                onRemoteConfigLoaded = null,
+            )
+
+        // the SDK passes the same listener instance on every automatic reload
+        val invocations = AtomicInteger(0)
+        val shared = PostHogOnFeatureFlags { invocations.incrementAndGet() }
+        repeat(10) {
+            sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = shared)
+        }
+
+        Thread.sleep(3000)
+        assertTrue(
+            invocations.get() <= http.requestCount,
+            "shared listener fired ${invocations.get()} times for ${http.requestCount} responses",
+        )
+
+        sut.clear()
+        overlapping.shutdownAndAwaitTermination()
+        http.shutdown()
+    }
+
+    @Test
+    fun `a throwing logger in a throwing callback does not stop later reloads`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        repeat(3) { http.enqueue(MockResponse().setBody(responseFlagsApi)) }
+        val config =
+            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+                cachePreferences = preferences
+                logger =
+                    object : PostHogLogger {
+                        override fun log(message: String) = throw IllegalStateException("logger blew up")
+
+                        override fun isEnabled(): Boolean = true
+                    }
+            }
+        val sut =
+            PostHogRemoteConfig(
+                config,
+                PostHogApi(config),
+                executor = executor,
+                defaultPersonPropertiesProvider = { emptyMap() },
+                onRemoteConfigLoaded = null,
+            )
+
+        val first = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags =
+                PostHogOnFeatureFlags {
+                    first.countDown()
+                    throw IllegalStateException("callback blew up")
+                },
+        )
+        first.await(5, TimeUnit.SECONDS)
+        val afterFirst = http.requestCount
+
+        val second = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { second.countDown() },
+        )
+
+        assertTrue(second.await(5, TimeUnit.SECONDS), "a later reload never ran - the in-flight claim was stranded")
+        assertTrue(http.requestCount > afterFirst, "a later reload never reached the network")
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `a throwing internal callback does not suppress the caller's callback`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut = getSut(host = http.url("/").toString())
+
+        val userCallbackRan = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            internalOnFeatureFlags = PostHogOnFeatureFlags { throw IllegalStateException("internal blew up") },
+            onFeatureFlags = PostHogOnFeatureFlags { userCallbackRan.countDown() },
+        )
+
+        assertTrue(userCallbackRan.await(5, TimeUnit.SECONDS), "the caller's callback was suppressed by the internal one")
+
+        sut.clear()
+        http.shutdown()
+    }
 }

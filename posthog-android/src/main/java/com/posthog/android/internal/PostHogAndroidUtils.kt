@@ -1,6 +1,7 @@
 package com.posthog.android.internal
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -20,6 +21,8 @@ import android.view.WindowManager
 import com.posthog.PostHogInternal
 import com.posthog.android.PostHogAndroidConfig
 import java.io.ByteArrayOutputStream
+
+internal fun getActivityManager(context: Context): ActivityManager? = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
 
 @Suppress("DEPRECATION")
 internal fun getPackageInfo(

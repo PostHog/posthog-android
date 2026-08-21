@@ -13,6 +13,7 @@ import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_EVALUATED_
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAG_REQUEST_ID
 import com.posthog.internal.PostHogPreferences.Companion.FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.MINIMAL_FLAG_CALLED_EVENTS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
@@ -39,7 +40,8 @@ public class PostHogRemoteConfig(
         PostHogFeatureFlagCalledProvider { _, _ -> },
     private val onRemoteConfigLoaded: PostHogOnRemoteConfigLoaded? = null,
 ) : PostHogFeatureFlagsInterface {
-    private var isLoadingFeatureFlags = AtomicBoolean(false)
+    // guarded by pendingFeatureFlagsLock
+    private var isLoadingFeatureFlags = false
     private var isLoadingRemoteConfig = AtomicBoolean(false)
 
     // True once the live remote config has been resolved for the current identity, via either the
@@ -50,7 +52,6 @@ public class PostHogRemoteConfig(
 
     // Track if an additional reload was requested while a request was in flight
     // This prevents dropping reload requests (e.g., from identify()) when preload is in progress
-    private var pendingFeatureFlagsReload = AtomicBoolean(false)
     private val pendingFeatureFlagsLock = Any()
 
     // Stores the parameters for the pending feature flags reload
@@ -58,8 +59,8 @@ public class PostHogRemoteConfig(
         val distinctId: String,
         val anonymousId: String?,
         val groups: Map<String, String>?,
-        val internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        val onFeatureFlags: PostHogOnFeatureFlags?,
+        val internalOnFeatureFlags: List<PostHogOnFeatureFlags>,
+        val onFeatureFlags: List<PostHogOnFeatureFlags>,
     )
 
     private var pendingFeatureFlagsRequest: PendingFeatureFlagsRequest? = null
@@ -130,6 +131,14 @@ public class PostHogRemoteConfig(
     @Volatile
     private var autoCaptureExceptions = false
 
+    // The app_ids this project accepts push registrations for, or null when we have never heard
+    // from a server that sends the key. Null means "attempt the registration" — an SDK cannot tell an
+    // unconfigured project from a server older than the key, so absent has to stay permissive.
+    @Volatile private var pushAppIds: List<String>? = null
+
+    // app_ids that became registerable on the last /config read, drained by the push manager.
+    @Volatile private var newlyRegisterablePushAppIds: Set<String> = emptySet()
+
     // Set by preloadErrorTrackingConfig when a disk-cached error-tracking config exists at startup.
     // Survives clear()/reset(): it's project-level config, not user data, like the cached config.
     @Volatile
@@ -170,6 +179,7 @@ public class PostHogRemoteConfig(
         preloadSurveys()
         preloadErrorTrackingConfig()
         preloadCapturePerformanceConfig()
+        preloadPushConfig()
         loadCachedPropertiesForFlags()
         // Apply the bootstrap snapshot before any network load so reads serve it immediately.
         synchronized(featureFlagsLock) {
@@ -232,18 +242,33 @@ public class PostHogRemoteConfig(
         return recordingActive
     }
 
+    private fun List<PostHogOnFeatureFlags>.asSingleCallback(): PostHogOnFeatureFlags? =
+        when (size) {
+            0 -> null
+            1 -> first()
+            else -> PostHogOnFeatureFlags { forEach { it.runSafely() } }
+        }
+
+    private fun PostHogOnFeatureFlags.runSafely() {
+        try {
+            loaded()
+        } catch (e: Throwable) {
+            try {
+                config.logger.log("Executing the feature flags callback failed: $e")
+            } catch (ignored: Throwable) {
+                // a logger that throws must not escape and strand the in-flight claim below
+            }
+        }
+    }
+
     private fun runOnFeatureFlagsCallbacks(
         internalOnFeatureFlags: PostHogOnFeatureFlags?,
         onFeatureFlags: PostHogOnFeatureFlags?,
     ) {
         // if we don't load the feature flags (because there are none), we need to call the callback
         // because the app might be waiting for it.
-        try {
-            internalOnFeatureFlags?.loaded()
-            onFeatureFlags?.loaded()
-        } catch (e: Throwable) {
-            config.logger.log("Executing the feature flags callback failed: $e")
-        }
+        internalOnFeatureFlags?.runSafely()
+        onFeatureFlags?.runSafely()
     }
 
     // Notifies that a remote config resolution attempt finished. Callers set
@@ -293,6 +318,7 @@ public class PostHogRemoteConfig(
                         processSurveys(it.surveys)
                         processErrorTrackingConfig(it.errorTracking)
                         processCapturePerformanceConfig(it.capturePerformance)
+                        newlyRegisterablePushAppIds = processPushConfig(it.push)
 
                         val hasFlags = it.hasFeatureFlags ?: false
 
@@ -640,11 +666,104 @@ public class PostHogRemoteConfig(
     }
 
     /**
+     * Parses the `push` slice and returns the app_ids that became registerable since the last time
+     * we looked, so the push manager can re-register a device that was stuck.
+     *
+     * A missing key clears the cache rather than keeping it: a server that stops sending the key is
+     * treated as one that never sent it, which means "attempt the registration" and never silently
+     * withholds a device from a project that has push.
+     */
+    private fun processPushConfig(
+        push: Any?,
+        persist: Boolean = true,
+    ): Set<String> {
+        // Absent for the comparison means the empty set, not unknown. The first launch that ever sees
+        // the key therefore treats every configured app_id as new, which re-registers a device that
+        // recorded a success while its project had no integration. That costs one request per device,
+        // once, and it is the only way to reach a device whose project was configured before it
+        // updated to an SDK that reads this key.
+        val previous = pushAppIds?.toSet() ?: emptySet()
+
+        val appIds =
+            when (push) {
+                is Map<*, *> -> (push["appIds"] as? List<*>)?.mapNotNull { it as? String }
+                else -> null
+            }
+
+        pushAppIds = appIds
+        val newlyRegisterable = appIds?.toSet().orEmpty() - previous
+
+        // When an app_id becomes registerable, the cached list must not advance until the delivered
+        // marker is durably cleared. Otherwise a crash in that window leaves the next launch preloading
+        // the new list, no longer detecting the transition, with a stale marker that permanently
+        // suppresses registration. Defer the write to persistPushConfigCache(), called once the manager
+        // has cleared the marker. With no transition there is nothing to clear, so persist immediately.
+        if (persist && newlyRegisterable.isEmpty()) {
+            writePushConfigCache(appIds)
+        }
+
+        return newlyRegisterable
+    }
+
+    private fun writePushConfigCache(appIds: List<String>?) {
+        if (appIds != null) {
+            config.cachePreferences?.setValue(PUSH, mapOf("appIds" to appIds))
+        } else {
+            config.cachePreferences?.remove(PUSH)
+        }
+    }
+
+    /**
+     * Advances the on-disk push app_id cache to the current in-memory list. Called by the push manager
+     * once it has durably cleared the delivered marker for a transition, so a crash between the two can
+     * never strand a device on a stale marker.
+     */
+    public fun persistPushConfigCache() {
+        synchronized(remoteConfigLock) {
+            writePushConfigCache(pushAppIds)
+        }
+    }
+
+    private fun preloadPushConfig() {
+        synchronized(remoteConfigLock) {
+            config.cachePreferences?.let { preferences ->
+                val push = preferences.getValue(PUSH) as? Map<*, *>
+                if (push != null) {
+                    pushAppIds = (push["appIds"] as? List<*>)?.mapNotNull { it as? String }
+                }
+            }
+        }
+    }
+
+    /**
+     * The app_ids this project accepts push registrations for, or null when no server has told us.
+     * Null is not the empty list: it means attempt the registration.
+     */
+    public fun getPushAppIds(): List<String>? = pushAppIds
+
+    /**
+     * app_ids that became registerable on the most recent /config read, cleared by reading them.
+     * Draining rather than peeking keeps a device from re-registering on every subsequent load.
+     */
+    public fun consumeNewlyRegisterablePushAppIds(): Set<String> {
+        val newlyRegisterable = newlyRegisterablePushAppIds
+        newlyRegisterablePushAppIds = emptySet()
+        return newlyRegisterable
+    }
+
+    /**
      * Returns whether autocapture of exceptions is enabled.
      * Both remote config (errorTracking.autocaptureExceptions) AND local config
      * (PostHogConfig.errorTrackingConfig.autoCapture) must be enabled.
      */
     public fun isAutocaptureExceptionsEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.autoCapture
+
+    /**
+     * Returns whether native (NDK) crash capture is enabled.
+     * Both remote config (errorTracking.autocaptureExceptions) AND local config
+     * (PostHogConfig.errorTrackingConfig.captureNativeCrashes) must be enabled.
+     */
+    public fun isNativeCrashCaptureEnabled(): Boolean = autoCaptureExceptions && config.errorTrackingConfig.captureNativeCrashes
 
     /**
      * Whether a disk-cached error tracking config was present at SDK startup, before any live
@@ -692,21 +811,35 @@ public class PostHogRemoteConfig(
             return
         }
 
-        if (isLoadingFeatureFlags.getAndSet(true)) {
-            config.logger.log("Feature flags are being loaded already, queuing reload.")
-            // Queue the reload request instead of dropping it
-            // This ensures that requests with $anon_distinct_id (from identify()) are not lost
-            synchronized(pendingFeatureFlagsLock) {
-                pendingFeatureFlagsReload.set(true)
+        // Claiming the in-flight slot and queuing behind it must happen under one lock, or a reload can
+        // observe "already loading" after the in-flight request has drained, and strand itself.
+        val queued: Boolean
+        synchronized(pendingFeatureFlagsLock) {
+            queued = isLoadingFeatureFlags
+            isLoadingFeatureFlags = true
+            if (queued) {
+                // Newest parameters win; displaced callers' callbacks are carried over so none is
+                // lost. The internal callback can repeat here, so it must stay idempotent.
+                val displaced = pendingFeatureFlagsRequest
                 pendingFeatureFlagsRequest =
                     PendingFeatureFlagsRequest(
                         distinctId = distinctId,
                         anonymousId = anonymousId,
                         groups = groups,
-                        internalOnFeatureFlags = internalOnFeatureFlags,
-                        onFeatureFlags = onFeatureFlags,
+                        // distinct(): the SDK's own listeners and config.onFeatureFlags are singleton
+                        // instances reused across reloads, so appending each queued reload would fire
+                        // them once per coalesced reload instead of once per response.
+                        internalOnFeatureFlags =
+                            (displaced?.internalOnFeatureFlags.orEmpty() + listOfNotNull(internalOnFeatureFlags))
+                                .distinct(),
+                        onFeatureFlags =
+                            (displaced?.onFeatureFlags.orEmpty() + listOfNotNull(onFeatureFlags)).distinct(),
                     )
             }
+        }
+        if (queued) {
+            // Queuing rather than dropping keeps identify()'s $anon_distinct_id request alive
+            config.logger.log("Feature flags are being loaded already, queuing reload.")
             return
         }
 
@@ -885,22 +1018,22 @@ public class PostHogRemoteConfig(
                 notifyRemoteConfigResolved()
             }
         } finally {
-            runOnFeatureFlagsCallbacks(
-                internalOnFeatureFlags = internalOnFeatureFlags,
-                onFeatureFlags = onFeatureFlags,
-            )
+            try {
+                runOnFeatureFlagsCallbacks(
+                    internalOnFeatureFlags = internalOnFeatureFlags,
+                    onFeatureFlags = onFeatureFlags,
+                )
+            } catch (ignored: Throwable) {
+                // never skip the release below: leaving the claim set stops all future flag loads
+            }
 
             // Check if there's a pending reload request and execute it
             val pendingRequest: PendingFeatureFlagsRequest?
             synchronized(pendingFeatureFlagsLock) {
-                if (pendingFeatureFlagsReload.getAndSet(false)) {
-                    pendingRequest = pendingFeatureFlagsRequest
-                    pendingFeatureFlagsRequest = null
-                } else {
-                    pendingRequest = null
-                }
+                pendingRequest = pendingFeatureFlagsRequest
+                pendingFeatureFlagsRequest = null
+                isLoadingFeatureFlags = false
             }
-            isLoadingFeatureFlags.set(false)
 
             pendingRequest?.let { request ->
                 config.logger.log("Executing pending feature flags reload.")
@@ -908,8 +1041,8 @@ public class PostHogRemoteConfig(
                     distinctId = request.distinctId,
                     anonymousId = request.anonymousId,
                     groups = request.groups,
-                    internalOnFeatureFlags = request.internalOnFeatureFlags,
-                    onFeatureFlags = request.onFeatureFlags,
+                    internalOnFeatureFlags = request.internalOnFeatureFlags.asSingleCallback(),
+                    onFeatureFlags = request.onFeatureFlags.asSingleCallback(),
                 )
             }
         }

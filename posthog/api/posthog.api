@@ -448,6 +448,7 @@ public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterfac
 	public fun aliasStateless (Ljava/lang/String;Ljava/lang/String;)V
 	protected final fun buildEvent (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;)Lcom/posthog/PostHogEvent;
 	public static synthetic fun buildEvent$default (Lcom/posthog/PostHogStateless;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;ILjava/lang/Object;)Lcom/posthog/PostHogEvent;
+	protected final fun captureExceptionEvent (Ljava/lang/Throwable;Ljava/lang/String;Ljava/util/Map;Ljava/util/Date;Lkotlin/jvm/functions/Function0;)V
 	public fun captureExceptionStateless (Ljava/lang/Throwable;Ljava/lang/String;Ljava/util/Map;)V
 	protected final fun captureFeatureFlagCalledEvent (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;)V
 	protected final fun captureFeatureFlagCalledEvent (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/util/Map;Ljava/util/Map;)V
@@ -546,11 +547,13 @@ public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
 	public fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;)V
 	public synthetic fun <init> (ZLjava/util/List;Lcom/posthog/errortracking/PostHogExceptionStepsConfig;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAutoCapture ()Z
+	public final fun getCaptureNativeCrashes ()Z
 	public final fun getExceptionSteps ()Lcom/posthog/errortracking/PostHogExceptionStepsConfig;
 	public final fun getIgnoredExceptionTypes ()Ljava/util/List;
 	public final fun getInAppExcludes ()Ljava/util/List;
 	public final fun getInAppIncludes ()Ljava/util/List;
 	public final fun setAutoCapture (Z)V
+	public final fun setCaptureNativeCrashes (Z)V
 }
 
 public final class com/posthog/errortracking/PostHogExceptionStepsConfig {
@@ -963,6 +966,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogFeatureFlagCalledProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;)V
 	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/util/concurrent/ExecutorService;Lcom/posthog/internal/PostHogDefaultPersonPropertiesProvider;Lcom/posthog/internal/PostHogFeatureFlagCalledProvider;Lcom/posthog/internal/PostHogOnRemoteConfigLoaded;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun clear ()V
+	public final fun consumeNewlyRegisterablePushAppIds ()Ljava/util/Set;
 	public final fun getActiveFeatureFlagKeys ()Ljava/util/List;
 	public fun getEvaluatedAt (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/Long;
 	public final fun getEventTriggers ()Ljava/util/Set;
@@ -976,6 +980,7 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun getFeatureFlags (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/util/Map;
 	public final fun getFlagDetails (Ljava/lang/String;)Lcom/posthog/internal/FeatureFlag;
 	public final fun getPersonPropertiesForFlags ()Ljava/util/Map;
+	public final fun getPushAppIds ()Ljava/util/List;
 	public final fun getRecordingMinimumDurationMs ()Ljava/lang/Long;
 	public fun getRequestId (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Ljava/lang/String;
 	public final fun getSessionRecordingSampleRate ()Ljava/lang/Double;
@@ -986,12 +991,14 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public final fun isCaptureNetworkTimingEnabled ()Z
 	public final fun isConsoleLogRecordingEnabled ()Z
 	public fun isMinimalFlagCalledEventsEnabled ()Z
+	public final fun isNativeCrashCaptureEnabled ()Z
 	public final fun isSessionReplayFlagActive ()Z
 	public final fun loadFeatureFlags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadFeatureFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lcom/posthog/PostHogOnFeatureFlags;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public final fun makeSamplingDecision (Ljava/lang/String;)Z
+	public final fun persistPushConfigCache ()V
 	public final fun resetGroupPropertiesForFlags (Ljava/lang/String;)V
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun resetPersonPropertiesForFlags ()V
@@ -1002,11 +1009,12 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 
 public class com/posthog/internal/PostHogRemoteConfigResponse {
 	public fun <init> ()V
-	public fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;Ljava/lang/Object;Ljava/lang/Object;)V
-	public synthetic fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;Ljava/lang/Object;Ljava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V
+	public synthetic fun <init> (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Boolean;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCapturePerformance ()Ljava/lang/Object;
 	public final fun getErrorTracking ()Ljava/lang/Object;
 	public final fun getHasFeatureFlags ()Ljava/lang/Boolean;
+	public final fun getPush ()Ljava/lang/Object;
 	public final fun getSessionRecording ()Ljava/lang/Object;
 	public final fun getSurveys ()Ljava/lang/Object;
 }
