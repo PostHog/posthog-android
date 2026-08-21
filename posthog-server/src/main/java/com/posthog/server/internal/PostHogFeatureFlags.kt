@@ -1241,7 +1241,7 @@ internal class PostHogFeatureFlags(
     ) {
         val returned = response?.flags.orEmpty().keys
         synchronized(missingFlagKeysLock) {
-            if (response.isCleanForSuppression() && missingFlagKeysGeneration == plan.generation) {
+            if (response?.isCleanForSuppression() == true && missingFlagKeysGeneration == plan.generation) {
                 for (key in plan.owned) {
                     if (key in returned) {
                         knownRemoteFlagKeys.add(key)
@@ -1261,9 +1261,10 @@ internal class PostHogFeatureFlags(
         plan: MissingFlagProbePlan,
         response: PostHogFlagsResponse?,
     ) {
-        if (!response.isCleanForSuppression() || plan.knownRemote.isEmpty()) return
+        if (plan.knownRemote.isEmpty()) return
+        val cleanResponse = response?.takeIf { it.isCleanForSuppression() } ?: return
 
-        val returned = response?.flags.orEmpty().keys
+        val returned = cleanResponse.flags.orEmpty().keys
         synchronized(missingFlagKeysLock) {
             if (missingFlagKeysGeneration != plan.generation) return
             for (key in plan.knownRemote) {
@@ -1275,9 +1276,8 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun PostHogFlagsResponse?.isCleanForSuppression(): Boolean =
-        this != null &&
-            !errorsWhileComputingFlags &&
+    private fun PostHogFlagsResponse.isCleanForSuppression(): Boolean =
+        !errorsWhileComputingFlags &&
             quotaLimited?.contains("feature_flags") != true
 
     private fun isLocallyEvaluated(flag: FeatureFlag): Boolean {
