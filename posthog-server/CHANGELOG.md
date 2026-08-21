@@ -1,5 +1,11 @@
 ## Next
 
+## 2.14.1
+
+### Patch Changes
+
+- 34e90b5: Fix `beforeSend` hook chaining so each hook receives the previous hook's output.
+
 ## 2.14.0
 
 ### Minor Changes

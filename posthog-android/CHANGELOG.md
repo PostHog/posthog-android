@@ -1,5 +1,11 @@
 ## Next
 
+## 3.60.3
+
+### Patch Changes
+
+- 34e90b5: Fix `beforeSend` hook chaining so each hook receives the previous hook's output.
+
 ## 3.60.2
 
 ### Patch Changes
