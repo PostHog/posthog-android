@@ -660,11 +660,11 @@ public sealed interface PostHogInterface {
      * @param groupProperties group properties for flag evaluation
      * @param flagKeys when non-empty, restricts both local evaluation and the underlying request to
      *   the given keys, so a flag you did not ask for cannot force a request. Requested keys with no
-     *   local definition never force a request on their own: they are warn-logged and absent from
-     *   the snapshot, unless an unresolved flag already requires the `/flags` call, which then also
-     *   fills them. A flag created since the last definitions poll may therefore not be visible
-     *   until the next one. This is distinct from [PostHogFeatureFlagEvaluations.only] which
-     *   filters in memory after the call
+     *   local definition are logged and included in the `/flags` fallback, so a flag created since
+     *   the last definitions poll still resolves. After a clean response also omits a key, later
+     *   calls suppress that key's fallback until the next successful definitions refresh. A deleted
+     *   flag or typo therefore costs at most one clean probe per refresh interval. This is distinct
+     *   from [PostHogFeatureFlagEvaluations.only] which filters in memory after the call
      * @param onlyEvaluateLocally when true, the snapshot holds exactly what local evaluation
      *   resolved: no `/flags` request is made, no cached remote values are served, and flags that
      *   could not be resolved locally are absent
