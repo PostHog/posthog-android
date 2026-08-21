@@ -1225,10 +1225,11 @@ internal class PostHogFeatureFlagsTest {
             )
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
 
-        evaluateMissingFlag(featureFlags, "user-1")
+        val first = evaluateMissingFlag(featureFlags, "user-1")
         featureFlags.loadFeatureFlagDefinitions()
         evaluateMissingFlag(featureFlags, "user-2")
 
+        assertEquals(setOf("known-flag"), first.flags.keys)
         assertEquals(3, mockServer.requestCount, "a failed refresh must not permit another probe")
 
         featureFlags.shutDown()
@@ -1236,7 +1237,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `failed and inconclusive responses throttle the same identity without global suppression`() {
+    fun `failed and inconclusive responses allow the same identity to retry`() {
         val responses =
             listOf(
                 "HTTP failure" to errorResponse(500, "Internal Server Error"),
@@ -1249,23 +1250,23 @@ internal class PostHogFeatureFlagsTest {
                 createMockHttp(
                     jsonResponse(createLocalEvaluationResponse("known-flag")),
                     firstResponse,
-                    jsonResponse(createEmptyFlagsResponse()),
+                    jsonResponse(createFlagsResponse("missing-flag", enabled = true)),
                 )
             val featureFlags = manuallyLoadedFeatureFlags(mockServer)
 
-            evaluateMissingFlag(featureFlags, "user-1")
-            evaluateMissingFlag(featureFlags, "user-1")
-            assertEquals(2, mockServer.requestCount, "$name should use identity-scoped failure backoff")
+            val first = evaluateMissingFlag(featureFlags, "user-1")
+            val retried = evaluateMissingFlag(featureFlags, "user-1")
 
-            evaluateMissingFlag(featureFlags, "user-2")
-            assertEquals(3, mockServer.requestCount, "$name must allow another identity to retry")
+            assertFalse(first.flags.containsKey("missing-flag"))
+            assertEquals(true, retried.flags["missing-flag"]?.enabled, "$name must not suppress the retry")
+            assertEquals(3, mockServer.requestCount, "$name must allow the same identity to retry")
             featureFlags.shutDown()
             mockServer.shutdown()
         }
     }
 
     @Test
-    fun `remotely returned key is probed until a clean response omits it`() {
+    fun `remotely returned key uses the identity cache until a clean response omits it`() {
         val mockServer =
             createMockHttp(
                 jsonResponse(createLocalEvaluationResponse("known-flag")),
@@ -1275,13 +1276,51 @@ internal class PostHogFeatureFlagsTest {
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
 
         val first = evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
+        val cached = evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
+        assertEquals(2, mockServer.requestCount, "the same identity should reuse the returned flag")
+
         val second = evaluateMissingFlag(featureFlags, "user-2", missingKey = "remote-only")
         val suppressed = evaluateMissingFlag(featureFlags, "user-3", missingKey = "remote-only")
 
         assertEquals(true, first.flags["remote-only"]?.enabled)
+        assertEquals(true, cached.flags["remote-only"]?.enabled)
         assertFalse(second.flags.containsKey("remote-only"))
         assertFalse(suppressed.flags.containsKey("remote-only"))
         assertEquals(3, mockServer.requestCount, "the clean omission should suppress later probes")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `known remote and brand new keys share one scoped fallback`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createFlagsResponse("remote-only", enabled = true)),
+                jsonResponse(
+                    createMultipleFlagsResponse(
+                        "remote-only" to true,
+                        "brand-new" to true,
+                    ),
+                ),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
+
+        val mixed =
+            featureFlags.evaluateFlags(
+                distinctId = "user-2",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("known-flag", "remote-only", "brand-new"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("known-flag", "remote-only", "brand-new"), mixed.flags.keys)
+        assertEquals(3, mockServer.requestCount, "both missing keys should share one fallback")
 
         featureFlags.shutDown()
         mockServer.shutdown()
