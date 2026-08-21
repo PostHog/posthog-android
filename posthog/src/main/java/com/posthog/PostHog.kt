@@ -510,6 +510,9 @@ public class PostHog private constructor(
                     return
                 }
 
+                // flush pending events before tearing down so queued data isn't lost
+                flush()
+
                 enabled = false
 
                 config?.let { config ->

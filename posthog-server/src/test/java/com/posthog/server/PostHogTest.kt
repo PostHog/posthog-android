@@ -349,6 +349,31 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `close flushes pending events before tearing down`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val url = mockServer.url("/").toString()
+        // default flushAt is 20, so this single captured event stays queued
+        // instead of auto-flushing on capture; only close() should deliver it
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(url)
+                    .build(),
+            )
+
+        postHog.capture("user123", "test_event")
+
+        postHog.close()
+
+        assertEquals(1, mockServer.requestCount, "Expected /batch request before close() returned")
+
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `capture with appendFeatureFlags false does not enrich properties`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(MockResponse().setResponseCode(200))

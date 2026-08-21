@@ -111,6 +111,9 @@ public open class PostHogStateless protected constructor(
                     return
                 }
 
+                // flush pending events before tearing down so queued data isn't lost
+                queue?.flush()
+
                 enabled = false
 
                 config?.let { config ->

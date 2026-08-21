@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.executeSafely
 import com.posthog.internal.isNetworkingError
+import com.posthog.internal.submitSyncSafely
 import java.io.IOException
 import java.util.Date
 import java.util.Timer
@@ -71,17 +72,22 @@ internal class PostHogMemoryQueue(
     }
 
     override fun flush() {
-        // only flushes if the queue has events
-        if (!isAboveThreshold(1)) {
-            return
-        }
-
         if (isFlushing.getAndSet(true)) {
             config.logger.log("Queue is flushing.")
             return
         }
 
-        executeBatch()
+        // dispatch on the executor so this is ordered after any in-flight add() calls
+        // rather than racing ahead of them and seeing an empty queue
+        executor.submitSyncSafely {
+            try {
+                while (isAboveThreshold(1) && executeBatch()) {
+                    // Keep draining successful batches until the queue is empty.
+                }
+            } finally {
+                isFlushing.set(false)
+            }
+        }
     }
 
     override fun start() {
@@ -173,10 +179,14 @@ internal class PostHogMemoryQueue(
             return
         }
 
-        executeBatch()
+        try {
+            executeBatch()
+        } finally {
+            isFlushing.set(false)
+        }
     }
 
-    private fun executeBatch() {
+    private fun executeBatch(): Boolean {
         var retry = false
         try {
             batchEvents()
@@ -188,9 +198,8 @@ internal class PostHogMemoryQueue(
             retryCount++
         } finally {
             calculateDelay(retry)
-
-            isFlushing.set(false)
         }
+        return !retry
     }
 
     @Throws(PostHogApiError::class, IOException::class)
