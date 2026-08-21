@@ -208,4 +208,72 @@ internal class PostHogBeforeSendTest {
 
         postHogInterface.close()
     }
+
+    @Test
+    fun `chains multiple hooks, each receiving the previous hook's output`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val postHogInterface: PostHogInterface =
+            getSut(
+                url.toString(),
+                listBeforeSend =
+                    listOf(
+                        PostHogBeforeSend { event ->
+                            event.copy(
+                                properties =
+                                    event.properties?.toMutableMap()?.apply {
+                                        set("first", "1")
+                                    },
+                            )
+                        },
+                        PostHogBeforeSend { event ->
+                            event.properties?.set("sawFirst", event.properties?.get("first").toString())
+                            event
+                        },
+                    ),
+            )
+        postHogInterface.getFeatureFlag("key")
+
+        queueExecutor.shutdownAndAwaitTermination()
+        replayQueueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        assertEquals(1, http.requestCount)
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+        val theEvent = batch.batch.first()
+
+        assertEquals("1", theEvent.properties?.get("first"))
+        assertEquals("1", theEvent.properties?.get("sawFirst"))
+
+        postHogInterface.close()
+    }
+
+    @Test
+    fun `drops the event when a hook throws`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val postHogInterface: PostHogInterface =
+            getSut(
+                url.toString(),
+                listBeforeSend =
+                    listOf(
+                        PostHogBeforeSend { event ->
+                            event.properties?.set("key", "value")
+                            event
+                        },
+                        PostHogBeforeSend {
+                            throw RuntimeException("boom")
+                        },
+                    ),
+            )
+        postHogInterface.getFeatureFlag("key")
+
+        queueExecutor.shutdownAndAwaitTermination()
+        replayQueueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        postHogInterface.close()
+    }
 }
