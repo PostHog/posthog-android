@@ -533,10 +533,17 @@ public abstract interface annotation class com/posthog/PostHogVisibleForTesting 
 
 public final class com/posthog/errortracking/PostHogErrorTrackingAutoCaptureIntegration : com/posthog/PostHogIntegration, java/lang/Thread$UncaughtExceptionHandler {
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
+	public fun <init> (Lcom/posthog/PostHogConfig;Lkotlin/jvm/functions/Function0;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
+	public final fun installWith (Lcom/posthog/errortracking/PostHogErrorTrackingAutoCaptureIntegration$CaptureTarget;)V
 	public fun onRemoteConfig (Z)V
 	public fun uncaughtException (Ljava/lang/Thread;Ljava/lang/Throwable;)V
 	public fun uninstall ()V
+}
+
+public abstract interface class com/posthog/errortracking/PostHogErrorTrackingAutoCaptureIntegration$CaptureTarget {
+	public abstract fun capture (Ljava/lang/Throwable;)V
+	public abstract fun flush ()V
 }
 
 public final class com/posthog/errortracking/PostHogErrorTrackingConfig {
@@ -1168,6 +1175,11 @@ public final class com/posthog/internal/VariantDefinition {
 	public fun <init> (Ljava/lang/String;D)V
 	public final fun getKey ()Ljava/lang/String;
 	public final fun getRolloutPercentage ()D
+}
+
+public final class com/posthog/internal/errortracking/PostHogCapturedThrowables {
+	public static final field INSTANCE Lcom/posthog/internal/errortracking/PostHogCapturedThrowables;
+	public final fun markAndCheck (Ljava/lang/Throwable;)Z
 }
 
 public final class com/posthog/internal/errortracking/ThrowableCoercer {

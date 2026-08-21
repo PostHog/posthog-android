@@ -12,7 +12,9 @@ import java.io.IOException
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.math.min
@@ -76,6 +78,84 @@ internal class PostHogMemoryQueue(
             return
         }
 
+        flushIgnoringThreshold()
+    }
+
+    /**
+     * Bounded blocking flush for the crash path: submits a barrier task onto the queue executor and
+     * waits up to [timeoutMs] for that task to send the pending batch.
+     *
+     * [add] enqueues on the executor, so a caller that flushes inline (see [flush]) can read the
+     * deque before its own event landed and send nothing — fatal on a crashing thread whose process
+     * is about to exit, taking the daemon queue thread with it. The executor is single-threaded
+     * (owned by `PostHogStateless`), so a barrier submitted after [add] runs strictly after that
+     * enqueue instead of racing it.
+     *
+     * The send runs on the executor thread and ignores `flushAt` (a crash must not wait for the
+     * threshold), so the caller blocks on the barrier only, never longer than [timeoutMs].
+     *
+     * @return true when the barrier ran within the timeout. Delivery itself stays best-effort: the
+     * batch is capped at `maxBatchSize`, another flush already in progress (the periodic timer runs
+     * on its own thread) makes the barrier a no-op, and the HTTP attempt can still fail or be cut
+     * short by process exit. False means the barrier could not be scheduled (executor shut down) or
+     * did not run in time.
+     */
+    fun flushBlocking(timeoutMs: Long): Boolean {
+        val drained = CountDownLatch(1)
+
+        try {
+            executor.execute {
+                try {
+                    flushIgnoringThreshold()
+                } finally {
+                    drained.countDown()
+                }
+            }
+        } catch (e: Throwable) {
+            // RejectedExecutionException and friends: the executor is gone, there is nothing to await
+            config.logger.log("Blocking flush could not be scheduled: $e.")
+            return false
+        }
+
+        return awaitUninterruptibly(drained, timeoutMs)
+    }
+
+    /**
+     * Waits out the whole [timeoutMs] even when the calling thread is already interrupted or gets
+     * interrupted while waiting — a crash on a thread some shutdown just interrupted must still get
+     * its flush attempt instead of returning on the spot with the budget unspent. The interrupt flag
+     * is restored before returning so the caller's own handling still sees it.
+     */
+    private fun awaitUninterruptibly(
+        latch: CountDownLatch,
+        timeoutMs: Long,
+    ): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        var interrupted = false
+        try {
+            while (true) {
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0) {
+                    config.logger.log("Blocking flush timed out after $timeoutMs ms.")
+                    return false
+                }
+                try {
+                    if (latch.await(remaining, TimeUnit.NANOSECONDS)) {
+                        return true
+                    }
+                } catch (e: InterruptedException) {
+                    // await clears the interrupt status when it throws, so the next wait really waits.
+                    interrupted = true
+                }
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt()
+            }
+        }
+    }
+
+    private fun flushIgnoringThreshold() {
         if (isFlushing.getAndSet(true)) {
             config.logger.log("Queue is flushing.")
             return

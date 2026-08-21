@@ -4,6 +4,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogRemoteConfig
+import com.posthog.internal.errortracking.PostHogCapturedThrowables
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
 import org.mockito.kotlin.any
@@ -16,6 +17,7 @@ import org.mockito.kotlin.whenever
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     private val mockConfig = mock<PostHogConfig>()
@@ -259,6 +261,30 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         integration.onRemoteConfig()
 
         verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+    }
+
+    @Test
+    fun `local-only gate installs without any remote config present`() {
+        // No remoteConfigHolder and no errorTrackingConfig stubbed: the default gate reads both, a
+        // local-only gate bypasses them entirely. This is the server SDK's path.
+        currentHandler = null
+
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        integration.install(mockPostHog)
+
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `local-only gate that is false does not install`() {
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { false }
+        integration.install(mockPostHog)
+
+        verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
+
+        integration.uninstall()
     }
 
     @Test
@@ -555,5 +581,116 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         verify(mockAdapter, times(1)).setDefaultUncaughtExceptionHandler(any())
 
         integration.uninstall()
+    }
+
+    private class RecordingTarget : PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget {
+        val captured = mutableListOf<Throwable>()
+        var flushCount = 0
+
+        override fun capture(throwable: Throwable) {
+            captured.add(throwable)
+        }
+
+        override fun flush() {
+            flushCount++
+        }
+    }
+
+    @Test
+    fun `uncaughtException captures even when the throwable was already captured elsewhere`() {
+        val target = RecordingTarget()
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        integration.installWith(target)
+
+        val alreadyLogged = RuntimeException("logged then crashed")
+        // Simulate the appender having captured this exact instance first.
+        assertEquals(true, PostHogCapturedThrowables.markAndCheck(alreadyLogged))
+
+        integration.uncaughtException(Thread.currentThread(), alreadyLogged)
+
+        // The crash is the authoritative fatal/unhandled record: it must be captured even though
+        // the instance was already reported as a handled log capture, and the queue is flushed so
+        // both events leave before the process exits.
+        assertEquals(1, target.captured.size, "The crash capture must not be suppressed by dedup")
+        assertEquals(1, target.flushCount, "flush() must run on the crash path")
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `uncaughtException marks the throwable so later log mirrors dedup against it`() {
+        val target = RecordingTarget()
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        integration.installWith(target)
+
+        val crash = RuntimeException("crashed then logged")
+        integration.uncaughtException(Thread.currentThread(), crash)
+
+        assertEquals(1, target.captured.size)
+        // A post-crash log mirror consulting the guard must see the instance as already captured.
+        assertEquals(false, PostHogCapturedThrowables.markAndCheck(crash))
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `uncaughtException reproduces the JVM default crash output when no previous handler exists`() {
+        currentHandler = null
+
+        val target = RecordingTarget()
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        integration.installWith(target)
+
+        val originalErr = System.err
+        val stderr = java.io.ByteArrayOutputStream()
+        System.setErr(java.io.PrintStream(stderr))
+        try {
+            integration.uncaughtException(Thread.currentThread(), RuntimeException("printed crash"))
+        } finally {
+            System.setErr(originalErr)
+        }
+
+        val output = stderr.toString()
+        // Installing capture must not hide the crash from stderr: with no previous handler to
+        // chain to, the integration prints what ThreadGroup's default behavior would have.
+        assertEquals(true, output.contains("Exception in thread"), "Expected the default crash banner, got: $output")
+        assertEquals(true, output.contains("printed crash"), "Expected the throwable in stderr, got: $output")
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `uncaughtException captures and flushes for a fresh throwable`() {
+        val target = RecordingTarget()
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        integration.installWith(target)
+
+        integration.uncaughtException(Thread.currentThread(), RuntimeException("fresh"))
+
+        assertEquals(1, target.captured.size, "A first-seen throwable must be captured")
+        assertEquals(1, target.flushCount)
+
+        integration.uninstall()
+    }
+
+    @Test
+    fun `uninstall by a non-installing instance does not tear down the installed handler`() {
+        // First instance installs and owns the global handler.
+        currentHandler = mockExceptionHandler
+        val first = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        first.installWith(RecordingTarget())
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(first)
+
+        // Second instance's install is a process-wide no-op (a handler is already installed).
+        val second = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        second.installWith(RecordingTarget())
+
+        // Closing the second must NOT restore/replace the handler — it never installed.
+        second.uninstall()
+        verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
+
+        // The first still owns it and can restore on its own uninstall.
+        first.uninstall()
+        verify(mockAdapter).setDefaultUncaughtExceptionHandler(mockExceptionHandler)
     }
 }

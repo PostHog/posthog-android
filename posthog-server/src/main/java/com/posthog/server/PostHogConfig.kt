@@ -200,6 +200,30 @@ public open class PostHogConfig constructor(
      */
     public var inAppExcludes: List<String> = DEFAULT_IN_APP_EXCLUDES
 
+    /**
+     * Opt in to capturing uncaught exceptions for the whole JVM as `$exception` events.
+     *
+     * When true, [PostHog] installs a [Thread.defaultUncaughtExceptionHandler] on setup that
+     * captures the crashing exception (marked fatal, `handled=false`, mechanism
+     * `UncaughtExceptionHandler`), flushes, and then delegates to the previously registered
+     * handler. The handler is removed again on [PostHog.close].
+     *
+     * Unlike the Android SDK, this is gated purely on this local flag — the server SDK never
+     * fetches remote config, so no remote toggle is involved.
+     *
+     * Delivery: the crash capture is enqueued asynchronously like any other event, and the crash path
+     * then performs a bounded blocking flush — ordered behind that pending enqueue and ignoring
+     * [flushAt] — so the event gets a network attempt before the JVM exits instead of waiting for the
+     * periodic flush, without ever blocking the crashing thread indefinitely. Delivery stays
+     * best-effort, the same guarantee class the Android SDK provides: the flush can hit its timeout,
+     * the HTTP attempt can fail, and an immediate hard exit can cut it short. See [PostHog] for
+     * details.
+     *
+     * Docs https://posthog.com/docs/error-tracking
+     * Defaults to false
+     */
+    public var captureUncaughtExceptions: Boolean = false
+
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
 
@@ -382,6 +406,7 @@ public open class PostHogConfig constructor(
         private var releaseIdentifier: String? = null
         private var inAppIncludes: List<String> = emptyList()
         private var inAppExcludes: List<String> = DEFAULT_IN_APP_EXCLUDES
+        private var captureUncaughtExceptions: Boolean = false
 
         /**
          * Sets the PostHog ingestion host.
@@ -595,6 +620,15 @@ public open class PostHogConfig constructor(
         public fun inAppExcludes(inAppExcludes: List<String>): Builder = apply { this.inAppExcludes = inAppExcludes.toList() }
 
         /**
+         * Opts in to capturing uncaught JVM exceptions as `$exception` events.
+         *
+         * @param captureUncaughtExceptions true to install a global uncaught-exception handler on setup.
+         * @return This builder.
+         */
+        public fun captureUncaughtExceptions(captureUncaughtExceptions: Boolean): Builder =
+            apply { this.captureUncaughtExceptions = captureUncaughtExceptions }
+
+        /**
          * Builds a [PostHogConfig] from the accumulated values.
          *
          * @return The configured server SDK config.
@@ -628,6 +662,7 @@ public open class PostHogConfig constructor(
             config.releaseIdentifier = releaseIdentifier
             config.inAppIncludes = inAppIncludes
             config.inAppExcludes = inAppExcludes
+            config.captureUncaughtExceptions = captureUncaughtExceptions
             return config
         }
     }

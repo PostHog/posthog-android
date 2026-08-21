@@ -3,6 +3,8 @@ package com.posthog.errortracking
 import com.posthog.PostHogConfig
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogInternal
+import com.posthog.internal.errortracking.PostHogCapturedThrowables
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
 import java.util.concurrent.atomic.AtomicBoolean
@@ -11,12 +13,19 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     private val config: PostHogConfig
     private val adapterExceptionHandler: UncaughtExceptionHandlerAdapter
 
+    /**
+     * Decides whether the handler may capture. Defaults to the Android/core gate: local
+     * `errorTrackingConfig.autoCapture` with remote config acting only as a kill-switch. Layers that
+     * decide autocapture purely from local config (e.g. the server SDK, which never fetches remote
+     * config) supply their own gate.
+     */
+    private val enabledGate: () -> Boolean
+
     // @Volatile: read on the crashing thread in uncaughtException with no happens-before edge to
     // the install()/uninstall() writes; a pre-existing thread could otherwise see a stale null and
     // skip delegating to the app/system handler.
     @Volatile
     private var defaultExceptionHandler: Thread.UncaughtExceptionHandler? = null
-    private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
 
     // Tracks whether we should capture, separate from whether we're linked into the handler chain.
@@ -25,14 +34,60 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     @Volatile
     private var captureEnabled = false
 
+    /**
+     * Where captured uncaught exceptions are delivered. Set on install. The core [PostHogInterface]
+     * client and the stateless server client do not share a common capture supertype, so the handler
+     * targets this minimal seam instead of a concrete client type.
+     */
+    private var captureTarget: CaptureTarget? = null
+
     public constructor(config: PostHogConfig) {
         this.config = config
         this.adapterExceptionHandler = UncaughtExceptionHandlerAdapter.Adapter.getInstance()
+        this.enabledGate = { defaultGate() }
+    }
+
+    /**
+     * Internal constructor allowing a custom [enabledGate]. Used by SDK layers (e.g. the server SDK)
+     * that decide autocapture purely from local config without any remote-config round trip.
+     *
+     * Not part of the public API; visible only because of the multi-module architecture.
+     */
+    @PostHogInternal
+    public constructor(config: PostHogConfig, enabledGate: () -> Boolean) {
+        this.config = config
+        this.adapterExceptionHandler = UncaughtExceptionHandlerAdapter.Adapter.getInstance()
+        this.enabledGate = enabledGate
     }
 
     internal constructor(config: PostHogConfig, adapterExceptionHandler: UncaughtExceptionHandlerAdapter) {
         this.config = config
         this.adapterExceptionHandler = adapterExceptionHandler
+        this.enabledGate = { defaultGate() }
+    }
+
+    internal constructor(
+        config: PostHogConfig,
+        adapterExceptionHandler: UncaughtExceptionHandlerAdapter,
+        enabledGate: () -> Boolean,
+    ) {
+        this.config = config
+        this.adapterExceptionHandler = adapterExceptionHandler
+        this.enabledGate = enabledGate
+    }
+
+    /**
+     * Minimal capture surface the uncaught handler needs. Both the core client and the stateless
+     * server client can satisfy it, without sharing a public supertype. [capture] and [flush] are
+     * separate so the handler can ask for everything pending to be sent as its last act.
+     *
+     * Not part of the public API; visible only because of the multi-module architecture.
+     */
+    @PostHogInternal
+    public interface CaptureTarget {
+        public fun capture(throwable: Throwable)
+
+        public fun flush()
     }
 
     internal companion object {
@@ -45,7 +100,29 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
 
     @Synchronized
     override fun install(postHog: PostHogInterface) {
-        this.postHog = postHog
+        installWith(
+            object : CaptureTarget {
+                override fun capture(throwable: Throwable) {
+                    postHog.captureException(throwable)
+                }
+
+                override fun flush() {
+                    postHog.flush()
+                }
+            },
+        )
+    }
+
+    /**
+     * Installs the handler delivering captures to [target]. Used by SDK layers whose client is not a
+     * core [PostHogInterface] (e.g. the server SDK).
+     *
+     * Not part of the public API; visible only because of the multi-module architecture.
+     */
+    @PostHogInternal
+    @Synchronized
+    public fun installWith(target: CaptureTarget) {
+        this.captureTarget = target
 
         // Already linked into the chain (possibly dormant below a handler installed after us):
         // resume capturing in place. Re-running the link logic while we're a mid-chain delegate
@@ -84,8 +161,10 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         }
     }
 
+    private fun canCapture(): Boolean = enabledGate()
+
     // Local config is the primary gate; remote config is only a kill-switch (below).
-    private fun canCapture(): Boolean = config.errorTrackingConfig.autoCapture && !remoteKillSwitchActive()
+    private fun defaultGate(): Boolean = config.errorTrackingConfig.autoCapture && !remoteKillSwitchActive()
 
     // Remote config is a kill-switch, not a gate: it blocks capture only when a config that
     // already exists — fetched this session or cached from a prior launch — explicitly disables
@@ -122,7 +201,7 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             ownsInstallation = false
             integrationInstalled.set(false)
             // We're out of the chain now, so drop the delegate ref (a re-install re-reads it).
-            // postHog is kept: onRemoteConfig re-enable calls install(postHog) on this instance.
+            // captureTarget is kept: an onRemoteConfig re-enable re-installs with it.
             defaultExceptionHandler = null
             config.logger.log("Exception autocapture is disabled.")
         } else {
@@ -147,7 +226,7 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         }
         val autocaptureExceptionsEnabled = config.remoteConfigHolder?.isAutocaptureExceptionsEnabled() ?: false
         if (autocaptureExceptionsEnabled) {
-            postHog?.let { install(it) }
+            captureTarget?.let { installWith(it) }
         } else {
             uninstall()
         }
@@ -158,13 +237,33 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         throwable: Throwable,
     ) {
         if (captureEnabled) {
-            postHog?.let { postHog ->
-                postHog.captureException(PostHogThrowable(throwable, thread))
-                postHog.flush()
+            captureTarget?.let { target ->
+                // Mark the throwable so post-crash log mirrors of this exact instance (e.g. a
+                // shutdown hook logging the crash) don't re-report it — but never skip the capture
+                // itself: this is the authoritative fatal/unhandled record for the crash and must not
+                // be downgraded by an earlier handled capture of the same instance
+                // (`logger.error(..., e); throw e`).
+                PostHogCapturedThrowables.markAndCheck(throwable)
+                target.capture(PostHogThrowable(throwable, thread))
+                // Depending on the target's queue the capture above may only enqueue the event, so
+                // this flush is its last chance to reach the network before the process goes down.
+                // Targets whose enqueue is asynchronous make this a bounded blocking flush (see the
+                // server SDK's target). Delivery stays best-effort under an immediate hard exit.
+                target.flush()
             }
         }
 
         // Always delegate: we may still be mid-chain even while dormant.
-        defaultExceptionHandler?.uncaughtException(thread, throwable)
+        val previousHandler = defaultExceptionHandler
+        if (previousHandler != null) {
+            previousHandler.uncaughtException(thread, throwable)
+        } else if (throwable !is ThreadDeath) {
+            // No previous default handler: reproduce the JVM's built-in crash output that
+            // ThreadGroup would have printed had we not installed ourselves as the default handler,
+            // so opting into capture never hides crashes from stderr log collection. ThreadDeath is
+            // excluded because ThreadGroup stays silent for it.
+            System.err.print("Exception in thread \"${thread.name}\" ")
+            throwable.printStackTrace(System.err)
+        }
     }
 }
