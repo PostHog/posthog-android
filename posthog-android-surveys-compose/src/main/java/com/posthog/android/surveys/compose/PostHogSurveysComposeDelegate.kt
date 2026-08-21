@@ -47,6 +47,8 @@ import com.posthog.surveys.PostHogSurveysDelegate
  *   follows the next-question index the host SDK returns
  * - Thank-you / confirmation screen when the customer has enabled
  *   `displayThankYouMessage` in PostHog
+ * - Intro screen before the first question when the customer has enabled
+ *   `displayIntroScreen` in PostHog — advancing records no response
  * - The configured popup delay (`surveyPopupDelaySeconds`) before the sheet
  *   is shown
  * - Theming from `PostHogDisplaySurveyAppearance` — customer appearance config
@@ -55,7 +57,7 @@ import com.posthog.surveys.PostHogSurveysDelegate
  *
  * ### Known gaps (tracked follow-ups)
  *
- * - HTML question / thank-you descriptions (rendered as plain text only)
+ * - HTML question / thank-you / intro descriptions (rendered as plain text only)
  * - Dark-mode polish
  *
  * The constructor accepts any [Context] and resolves the [Application] from
