@@ -28,4 +28,15 @@ public class PostHogSurveysConfig {
      * Default: `null`.
      */
     public var overrideDisplayLanguage: String? = null
+
+    /**
+     * When enabled, surveys without explicit device-type targeting are excluded.
+     *
+     * If `true`, surveys with missing or empty [SurveyConditions.deviceTypes] are ineligible.
+     * Surveys with a non-empty device-type condition continue to use the existing match
+     * operators against the current device type (`Mobile`, `Tablet`, or `TV`).
+     *
+     * Default: `false` (preserve existing allow-when-unspecified behavior).
+     */
+    public var requireDeviceTypeTargeting: Boolean = false
 }
