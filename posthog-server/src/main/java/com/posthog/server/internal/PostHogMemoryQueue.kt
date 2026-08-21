@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.executeSafely
 import com.posthog.internal.isNetworkingError
+import com.posthog.internal.submitSyncSafely
 import java.io.IOException
 import java.util.Date
 import java.util.Timer
@@ -78,7 +79,7 @@ internal class PostHogMemoryQueue(
 
         // dispatch on the executor so this is ordered after any in-flight add() calls
         // rather than racing ahead of them and seeing an empty queue
-        executor.executeSafely {
+        executor.submitSyncSafely {
             try {
                 while (isAboveThreshold(1) && executeBatch()) {
                     // Keep draining successful batches until the queue is empty.

@@ -368,8 +368,7 @@ internal class PostHogTest {
 
         postHog.close()
 
-        val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
-        assertNotNull(request, "Expected /batch request within 5 seconds after close()")
+        assertEquals(1, mockServer.requestCount, "Expected /batch request before close() returned")
 
         mockServer.shutdown()
     }
