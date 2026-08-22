@@ -494,6 +494,28 @@ internal class PostHogCaptureOptionsTest {
     }
 
     @Test
+    fun `built options are isolated from later builder changes`() {
+        val builder =
+            PostHogCaptureOptions.builder()
+                .property("property", "original")
+                .userProperty("user", "original")
+                .userPropertySetOnce("once", "original")
+                .group("organization", "original")
+        val options = builder.build()
+
+        builder
+            .property("property", "changed")
+            .userProperty("user", "changed")
+            .userPropertySetOnce("once", "changed")
+            .group("organization", "changed")
+
+        assertEquals(mapOf("property" to "original"), options.properties)
+        assertEquals(mapOf("user" to "original"), options.userProperties)
+        assertEquals(mapOf("once" to "original"), options.userPropertiesSetOnce)
+        assertEquals(mapOf("organization" to "original"), options.groups)
+    }
+
+    @Test
     fun `timestamp with Date sets timestamp correctly`() {
         val date = Date(1234567890L)
         val options =
