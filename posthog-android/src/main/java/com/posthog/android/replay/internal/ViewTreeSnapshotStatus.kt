@@ -63,6 +63,16 @@ internal class WindowDrawState {
     var isLegacyCaptureActive: Boolean = false
         private set
 
+    // Whether this window's view tree is rooted in Jetpack Compose. Detected once from the tree,
+    // then cached, so the redraw handling does not re-walk the tree on every draw.
+    @Volatile
+    var composeRooted: Boolean? = null
+
+    // Screenshots discarded in a row for mask safety. Written only on the capture thread. Drives a
+    // one-time warning so a silently blank recording becomes diagnosable.
+    @Volatile
+    var consecutiveScreenshotDiscards: Int = 0
+
     private val captureLock = Any()
     private var nextCaptureId: Long = 0
     private var activeCapture: ActiveMaskCapture? = null

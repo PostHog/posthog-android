@@ -243,7 +243,7 @@ public class PostHogReplayIntegration(
         drawState.recordDraw()
 
         val classifyLegacyDraw =
-            !config.sessionReplayConfig.verifyScreenshotMaskAlignment ||
+            !shouldVerifyMaskAlignment(view, drawState) ||
                 drawState.isLegacyCaptureActive
         if (classifyLegacyDraw) {
             val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
@@ -1251,6 +1251,51 @@ public class PostHogReplayIntegration(
         return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)
     }
 
+    // Compose recomposes on almost every frame, and the legacy redraw classifier can never treat a
+    // Compose redraw as animation-only, so the legacy path discards every frame and the recording
+    // stays blank. Route Compose-rooted windows onto the verified path, which compares real mask
+    // geometry, so pixel-only redraws survive.
+    private fun shouldVerifyMaskAlignment(
+        view: View,
+        drawState: WindowDrawState,
+    ): Boolean {
+        return config.sessionReplayConfig.verifyScreenshotMaskAlignment ||
+            view.isComposeRooted(drawState)
+    }
+
+    private fun View.isComposeRooted(drawState: WindowDrawState): Boolean {
+        drawState.composeRooted?.let { return it }
+        val rooted = isComposeAvailable && containsComposeView()
+        drawState.composeRooted = rooted
+        return rooted
+    }
+
+    private fun View.containsComposeView(): Boolean {
+        if (isComposeView()) {
+            return true
+        }
+        if (this is ViewGroup) {
+            for (i in 0 until childCount) {
+                if (getChildAt(i)?.containsComposeView() == true) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // Warns once after a run of discards so a silently blank recording stops being invisible.
+    private fun recordScreenshotDiscarded(drawState: WindowDrawState) {
+        val discards = drawState.consecutiveScreenshotDiscards + 1
+        drawState.consecutiveScreenshotDiscards = discards
+        if (discards == CONSECUTIVE_DISCARD_WARNING_THRESHOLD) {
+            config.logger.log(
+                "Session Replay discarded $discards screenshots in a row because the screen kept " +
+                    "changing during capture; the recording may be blank.",
+            )
+        }
+    }
+
     private val isComposeAvailable by lazy(LazyThreadSafetyMode.PUBLICATION) {
         try {
             Class.forName(ANDROID_COMPOSE_VIEW_CLASS_NAME)
@@ -1432,7 +1477,7 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
-        val verifyMaskAlignment = config.sessionReplayConfig.verifyScreenshotMaskAlignment
+        val verifyMaskAlignment = shouldVerifyMaskAlignment(view, drawState)
         val armedCapture =
             if (verifyMaskAlignment) {
                 drawState.reset()
@@ -1445,6 +1490,7 @@ public class PostHogReplayIntegration(
             }
         if (verifyMaskAlignment && armedCapture == null) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            recordScreenshotDiscarded(drawState)
             return null
         }
         val bitmap: Bitmap
@@ -1528,8 +1574,10 @@ public class PostHogReplayIntegration(
         // renders as its placeholder tile — a visible flash. Skip the frame
         // instead; the caller retries on the next capture.
         if (base64 == null) {
+            recordScreenshotDiscarded(drawState)
             return null
         }
+        drawState.consecutiveScreenshotDiscards = 0
 
         return RRWireframe(
             id = viewId,
@@ -2548,6 +2596,9 @@ public class PostHogReplayIntegration(
         // Pre-walk re-arm attempts per capture: a screen that redraws during every attempt
         // discards this tick and retries at the next scheduled snapshot.
         private const val MAX_BASELINE_ARM_ATTEMPTS: Int = 3
+
+        // Consecutive screenshot discards before warning that the recording may be blank.
+        private const val CONSECUTIVE_DISCARD_WARNING_THRESHOLD: Int = 3
 
         private val integrationInstalled = AtomicBoolean(false)
     }
