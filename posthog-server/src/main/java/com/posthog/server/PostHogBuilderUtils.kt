@@ -27,3 +27,12 @@ internal fun MutableMap<String, MutableMap<String, Any?>>?.putBuilderGroupProper
             getOrPut(group) { mutableMapOf() }.putAll(properties)
         }
     }
+
+internal fun MutableMap<String, Map<String, Any?>>?.mergeBuilderGroupProperties(
+    groupProperties: Map<String, Map<String, Any?>>,
+): MutableMap<String, Map<String, Any?>> =
+    (this ?: mutableMapOf()).apply {
+        groupProperties.forEach { (group, properties) ->
+            put(group, get(group).orEmpty() + properties)
+        }
+    }

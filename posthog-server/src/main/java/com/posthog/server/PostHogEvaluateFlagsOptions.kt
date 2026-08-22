@@ -123,7 +123,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
          * @return This builder.
          */
         public fun groupProperties(groupProperties: Map<String, Map<String, Any?>>): Builder {
-            this.groupProperties = this.groupProperties.putBuilderValues(groupProperties)
+            this.groupProperties = this.groupProperties.mergeBuilderGroupProperties(groupProperties)
             return this
         }
 
