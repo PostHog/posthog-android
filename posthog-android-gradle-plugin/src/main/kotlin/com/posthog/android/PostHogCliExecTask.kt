@@ -4,7 +4,6 @@
 
 package com.posthog.android
 
-import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
@@ -42,8 +41,13 @@ public abstract class PostHogCliExecTask : Exec() {
         // Probe against the task's environment (defaults to the process env but
         // respects a PATH configured on the task) so discovery and execution agree.
         val taskEnvironment = environment.mapValues { it.value.toString() }
-        val resolved = resolvePostHogCliExecutable(configured, logger, taskEnvironment)
-        executable = resolved
+        val resolved =
+            resolvePostHogCliExecutable(
+                configured = configured,
+                logger = logger,
+                environment = taskEnvironment,
+                workingDirectory = workingDir,
+            )
         if (resolved != configured) {
             // npm installs posthog-cli as a node shim; prepend the discovered
             // bin dir so the shim's `env node` resolves alongside it.
@@ -52,11 +56,10 @@ public abstract class PostHogCliExecTask : Exec() {
             environment("PATH", "$binDir${File.pathSeparator}$path")
         }
 
-        val args =
-            computeCommandLineArgs().also {
-                logger.info("cli args: $it")
-            }
-        args(args)
+        val args = mutableListOf<String>()
+        getArguments(args)
+        logger.info("cli args: $args")
+        commandLine(buildPostHogCliCommandLine(resolved, args))
 
         // Setup environment variables for authentication etc
         postHogHost.orNull?.let {
@@ -76,17 +79,4 @@ public abstract class PostHogCliExecTask : Exec() {
     }
 
     protected abstract fun getArguments(args: MutableList<String>)
-
-    /** Computes the full list of arguments for the task */
-    private fun computeCommandLineArgs(): List<String> {
-        val args = mutableListOf<String>()
-        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-            args.add(0, "cmd")
-            args.add(1, "/c")
-        }
-
-        getArguments(args)
-
-        return args
-    }
 }
