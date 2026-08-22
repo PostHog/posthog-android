@@ -183,6 +183,7 @@ internal fun resolvePostHogCliExecutable(
     home: File = File(System.getProperty("user.home")),
     workingDirectory: File? = null,
     isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+    nodeInstallLocations: List<File>? = null,
 ): String {
     if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE) {
         return configured
@@ -194,7 +195,8 @@ internal fun resolvePostHogCliExecutable(
             .distinct()
             .map { File(it, "node_modules/.bin/$launcherName") }
             .firstOrNull { it.isRunnableFile(isWindows) }
-    if (localLauncher != null) {
+    val nodeExecutable = resolveNodeExecutable(environment, home, isWindows, nodeInstallLocations)
+    if (localLauncher != null && nodeExecutable != null) {
         logger.info("using project-local posthog-cli at ${localLauncher.absolutePath}")
         return localLauncher.absolutePath
     }
@@ -239,15 +241,51 @@ internal fun resolvePostHogCliExecutable(
     return configured
 }
 
-internal fun prependExecutableDirectoryToPath(
-    executable: String,
+internal fun resolveNodeExecutable(
+    environment: Map<String, String> = System.getenv(),
+    home: File = File(System.getProperty("user.home")),
+    isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+    knownInstallLocations: List<File>? = null,
+): String? {
+    val executableName = if (isWindows) "node.exe" else "node"
+    val onPath =
+        pathValue(environment)
+            ?.split(File.pathSeparator)
+            ?.map { File(it, executableName) }
+            ?.firstOrNull { it.isRunnableFile(isWindows) }
+    if (onPath != null) {
+        return onPath.absolutePath
+    }
+    if (isWindows) {
+        return null
+    }
+
+    val candidates =
+        knownInstallLocations ?: buildList {
+            addAll(nodeVersionExecutables(File(home, ".nvm/versions/node"), executableName))
+            File("/opt/homebrew/Cellar/nvm").listFilesSafe().forEach { cellar ->
+                addAll(nodeVersionExecutables(File(cellar, "versions/node"), executableName))
+            }
+            add(File("/usr/local/bin/node"))
+            add(File("/opt/homebrew/bin/node"))
+            add(File(home, ".local/bin/node"))
+        }
+    return candidates.firstOrNull { it.isRunnableFile(isWindows = false) }?.absolutePath
+}
+
+internal fun prependExecutableDirectoriesToPath(
+    executables: List<String>,
     environment: Map<String, String>,
 ): Pair<String, String> {
     val pathKey = environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
     val path = environment[pathKey].orEmpty()
-    val binDirectory = File(executable).parent
-    return pathKey to "$binDirectory${File.pathSeparator}$path"
+    val binDirectories = executables.mapNotNull { File(it).parent }.distinct()
+    val entries = if (path.isEmpty()) binDirectories else binDirectories + path
+    return pathKey to entries.joinToString(File.pathSeparator)
 }
+
+private fun pathValue(environment: Map<String, String>): String? =
+    environment.entries.firstOrNull { it.key.equals("PATH", ignoreCase = true) }?.value
 
 internal fun buildPostHogCliCommandLine(
     executable: String,
@@ -265,10 +303,15 @@ private fun File.isRunnableFile(isWindows: Boolean): Boolean = isFile && (isWind
 private fun File.listFilesSafe(): List<File> = listFiles()?.toList() ?: emptyList()
 
 /** `<root>/vX.Y.Z/bin/posthog-cli` candidates, newest node version first. */
-private fun nodeVersionBins(root: File): List<File> =
+private fun nodeVersionBins(root: File): List<File> = nodeVersionExecutables(root, "posthog-cli")
+
+private fun nodeVersionExecutables(
+    root: File,
+    executableName: String,
+): List<File> =
     root.listFilesSafe()
         .sortedWith(NODE_VERSION_DIR_ORDER.reversed())
-        .map { File(it, "bin/posthog-cli") }
+        .map { File(it, "bin/$executableName") }
 
 private val NODE_VERSION_DIR_ORDER =
     Comparator<File> { a, b ->

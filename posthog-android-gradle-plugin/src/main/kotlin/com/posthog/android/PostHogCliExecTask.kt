@@ -52,7 +52,8 @@ public abstract class PostHogCliExecTask : Exec() {
         if (resolved != configured) {
             // npm installs posthog-cli as a node shim; prepend the discovered
             // bin dir so the shim's `env node` resolves alongside it.
-            val (pathKey, pathValue) = prependExecutableDirectoryToPath(resolved, taskEnvironment)
+            val executables = listOfNotNull(resolved, resolveNodeExecutable(taskEnvironment))
+            val (pathKey, pathValue) = prependExecutableDirectoriesToPath(executables, taskEnvironment)
             environment(pathKey, pathValue)
         }
 
