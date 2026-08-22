@@ -12,7 +12,9 @@ import com.posthog.server.createMockHttp
 import com.posthog.server.generateEvent
 import com.posthog.server.shutdownAndAwaitTermination
 import com.posthog.server.unGzip
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -248,6 +250,48 @@ internal class PostHogMemoryQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `explicit flush stops draining if network disconnects between batches`() {
+        var connected = true
+        val http = createMockHttp()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    connected = false
+                    return MockResponse().setBody("{}")
+                }
+            }
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 10,
+                maxBatchSize = 2,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+                    },
+            )
+
+        repeat(3) {
+            sut.add(generateEvent())
+        }
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+
+        connected = true
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(2, http.requestCount)
 
         http.shutdown()
         executor.shutdownAndAwaitTermination()
