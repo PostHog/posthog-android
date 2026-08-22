@@ -14,47 +14,26 @@ import kotlin.test.assertTrue
 
 internal class GsonSurveyAdaptersTest {
     @Test
-    fun `question adapter returns null for malformed object`() {
-        val logger = TestLogger()
-        val gson =
-            GsonBuilder()
-                .registerTypeAdapter(SurveyQuestion::class.java, GsonSurveyQuestionAdapter(config(logger)))
-                .create()
+    fun `survey adapters return null for malformed objects`() {
+        val adapters =
+            listOf<Pair<Class<*>, (PostHogConfig) -> Any>>(
+                SurveyQuestion::class.java to { GsonSurveyQuestionAdapter(it) },
+                SurveyTextContentType::class.java to { GsonSurveyTextContentTypeAdapter(it) },
+                SurveyType::class.java to { GsonSurveyTypeAdapter(it) },
+            )
 
-        val result = gson.fromJson("{}", SurveyQuestion::class.java)
+        adapters.forEach { (targetType, adapterFactory) ->
+            val logger = TestLogger()
+            val gson =
+                GsonBuilder()
+                    .registerTypeAdapter(targetType, adapterFactory(config(logger)))
+                    .create()
 
-        assertNull(result)
-        assertMalformedObjectLogged(logger)
-    }
+            val result = gson.fromJson("{}", targetType)
 
-    @Test
-    fun `text content adapter returns null for malformed object`() {
-        val logger = TestLogger()
-        val gson =
-            GsonBuilder()
-                .registerTypeAdapter(
-                    SurveyTextContentType::class.java,
-                    GsonSurveyTextContentTypeAdapter(config(logger)),
-                ).create()
-
-        val result = gson.fromJson("{}", SurveyTextContentType::class.java)
-
-        assertNull(result)
-        assertMalformedObjectLogged(logger)
-    }
-
-    @Test
-    fun `enum adapter returns null for malformed object`() {
-        val logger = TestLogger()
-        val gson =
-            GsonBuilder()
-                .registerTypeAdapter(SurveyType::class.java, GsonSurveyTypeAdapter(config(logger)))
-                .create()
-
-        val result = gson.fromJson("{}", SurveyType::class.java)
-
-        assertNull(result)
-        assertMalformedObjectLogged(logger)
+            assertNull(result, "${targetType.simpleName} adapter should return null")
+            assertMalformedObjectLogged(logger)
+        }
     }
 
     private fun config(logger: TestLogger): PostHogConfig =
