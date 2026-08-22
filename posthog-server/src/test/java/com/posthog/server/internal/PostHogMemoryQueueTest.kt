@@ -16,11 +16,24 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import java.util.Date
 import java.util.concurrent.Executors
 import kotlin.test.Test
 
 internal class PostHogMemoryQueueTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+
+    private class MutableDateProvider(
+        var nowMillis: Long = 0,
+    ) : PostHogDateProvider {
+        override fun currentDate(): Date = Date(nowMillis)
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date = Date(nowMillis + seconds * 1000L)
+
+        override fun currentTimeMillis(): Long = nowMillis
+
+        override fun nanoTime(): Long = nowMillis * 1_000_000L
+    }
 
     private fun getSut(
         host: String,
@@ -203,6 +216,74 @@ internal class PostHogMemoryQueueTest {
         executor.awaitExecution()
 
         assertEquals(0, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `explicit flush does not flush if network is not connected`() {
+        val http = createMockHttp(MockResponse().setBody("{}"))
+        var connected = false
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 10,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+                    },
+            )
+
+        sut.add(generateEvent())
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        connected = true
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `explicit flush waits for retry pause to expire`() {
+        val http =
+            createMockHttp(
+                MockResponse().setResponseCode(500),
+                MockResponse().setBody("{}"),
+            )
+        val dateProvider = MutableDateProvider()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 10,
+                dateProvider = dateProvider,
+                retryDelaySeconds = 5,
+            )
+
+        sut.add(generateEvent())
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(1, http.requestCount)
+
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(1, http.requestCount)
+
+        dateProvider.nowMillis += 5_000
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(2, http.requestCount)
 
         http.shutdown()
         executor.shutdownAndAwaitTermination()
