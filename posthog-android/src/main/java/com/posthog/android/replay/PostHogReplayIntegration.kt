@@ -1290,8 +1290,9 @@ public class PostHogReplayIntegration(
         drawState.consecutiveScreenshotDiscards = discards
         if (discards == CONSECUTIVE_DISCARD_WARNING_THRESHOLD) {
             config.logger.log(
-                "Session Replay discarded $discards screenshots in a row because the screen kept " +
-                    "changing during capture; the recording may be blank.",
+                "Session Replay discarded $discards screenshots in a row during capture; the " +
+                    "recording may be blank. This can be caused by the screen changing during " +
+                    "capture, PixelCopy failing or timing out, or bitmap encoding failing.",
             )
         }
     }
