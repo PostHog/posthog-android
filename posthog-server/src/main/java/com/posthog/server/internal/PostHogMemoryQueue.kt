@@ -81,8 +81,8 @@ internal class PostHogMemoryQueue(
         // rather than racing ahead of them and seeing an empty queue
         executor.submitSyncSafely {
             try {
-                while (isAboveThreshold(1) && executeBatch()) {
-                    // Keep draining successful batches until the queue is empty.
+                while (isAboveThreshold(1) && canFlushBatch() && executeBatch()) {
+                    // Keep draining eligible, successful batches until the queue is empty.
                 }
             } finally {
                 isFlushing.set(false)
