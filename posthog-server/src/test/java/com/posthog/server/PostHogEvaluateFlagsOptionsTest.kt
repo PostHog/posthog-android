@@ -84,6 +84,30 @@ internal class PostHogEvaluateFlagsOptionsTest {
     }
 
     @Test
+    fun `built options are isolated from later builder changes`() {
+        val companyProperties = mutableMapOf<String, Any?>("size" to "small")
+        val builder =
+            PostHogEvaluateFlagsOptions.builder()
+                .group("organization", "original")
+                .personProperty("plan", "original")
+                .flagKeys(listOf("original"))
+        builder.groupProperties = mutableMapOf("company" to companyProperties)
+        val options = builder.build()
+
+        builder
+            .group("organization", "changed")
+            .personProperty("plan", "changed")
+            .groupProperty("company", "plan", "enterprise")
+            .flagKeys(listOf("changed"))
+        companyProperties["size"] = "large"
+
+        assertEquals(mapOf("organization" to "original"), options.groups)
+        assertEquals(mapOf("plan" to "original"), options.personProperties)
+        assertEquals(mapOf("company" to mapOf("size" to "small")), options.groupProperties)
+        assertEquals(listOf("original"), options.flagKeys)
+    }
+
+    @Test
     fun `later values replace earlier values for matching keys`() {
         val options =
             PostHogEvaluateFlagsOptions.builder()

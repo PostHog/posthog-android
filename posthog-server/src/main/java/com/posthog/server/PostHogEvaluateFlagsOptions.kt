@@ -170,10 +170,10 @@ public class PostHogEvaluateFlagsOptions private constructor(
          */
         public fun build(): PostHogEvaluateFlagsOptions =
             PostHogEvaluateFlagsOptions(
-                groups,
-                personProperties,
-                groupProperties,
-                flagKeys,
+                groups.toBuilderMapSnapshot(),
+                personProperties.toBuilderMapSnapshot(),
+                groupProperties.toBuilderGroupPropertiesSnapshot(),
+                flagKeys.toBuilderListSnapshot(),
                 onlyEvaluateLocally,
                 disableGeoip,
             )
