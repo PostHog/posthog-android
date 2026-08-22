@@ -170,8 +170,8 @@ internal fun resolvePostHogReleaseMode(
  * Locates posthog-cli for builds whose environment lacks the shell PATH —
  * IDE-launched Gradle daemons don't source shell profiles, so a CLI installed
  * via nvm/npm is invisible to a plain PATH lookup. An explicitly configured
- * executable is used verbatim. On macOS and Linux, project-local npm launchers
- * are preferred before PATH and well-known global install locations.
+ * executable is used verbatim. The existing PATH and global install lookup keeps
+ * its precedence, with project-local npm launchers added as the final fallback.
  *
  * [workingDirectory] is the Android Gradle root. Its parent is checked as well
  * because React Native projects normally keep node_modules beside android/.
@@ -183,6 +183,7 @@ internal fun resolvePostHogCliExecutable(
     home: File = File(System.getProperty("user.home")),
     workingDirectory: File? = null,
     isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+    cliInstallLocations: List<File>? = null,
     nodeInstallLocations: List<File>? = null,
 ): String {
     if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE || isWindows) {
@@ -190,16 +191,6 @@ internal fun resolvePostHogCliExecutable(
     }
 
     val launcherName = configured
-    val localLauncher =
-        listOfNotNull(workingDirectory, workingDirectory?.parentFile)
-            .distinct()
-            .map { File(it, "node_modules/.bin/$launcherName") }
-            .firstOrNull { it.isRunnableFile(isWindows) }
-    val nodeExecutable = resolveNodeExecutable(environment, home, isWindows, nodeInstallLocations)
-    if (localLauncher != null && nodeExecutable != null) {
-        logger.info("using project-local posthog-cli at ${localLauncher.absolutePath}")
-        return localLauncher.absolutePath
-    }
 
     // Resolve a PATH hit to an absolute path instead of keeping the bare name:
     // a bare name is resolved against the daemon process's own environment,
@@ -214,7 +205,7 @@ internal fun resolvePostHogCliExecutable(
 
     if (!isWindows) {
         val candidates =
-            buildList {
+            cliInstallLocations ?: buildList {
                 add(File(home, ".posthog/posthog-cli"))
                 addAll(nodeVersionBins(File(home, ".nvm/versions/node")))
                 File("/opt/homebrew/Cellar/nvm").listFilesSafe().forEach { cellar ->
@@ -231,6 +222,17 @@ internal fun resolvePostHogCliExecutable(
             logger.info("posthog-cli not on PATH, using ${found.absolutePath}")
             return found.absolutePath
         }
+    }
+
+    val localLauncher =
+        listOfNotNull(workingDirectory, workingDirectory?.parentFile)
+            .distinct()
+            .map { File(it, "node_modules/.bin/$launcherName") }
+            .firstOrNull { it.isRunnableFile(isWindows) }
+    val nodeExecutable = resolveNodeExecutable(environment, home, isWindows, nodeInstallLocations)
+    if (localLauncher != null && nodeExecutable != null) {
+        logger.info("using project-local posthog-cli at ${localLauncher.absolutePath}")
+        return localLauncher.absolutePath
     }
 
     logger.warn(

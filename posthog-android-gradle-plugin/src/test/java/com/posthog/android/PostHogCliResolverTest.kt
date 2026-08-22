@@ -16,12 +16,12 @@ internal class PostHogCliResolverTest {
     private val logger = Logging.getLogger(PostHogCliResolverTest::class.java)
 
     @Test
-    fun `prefers React Native project-local CLI over PATH`() {
+    fun `keeps PATH precedence over a React Native project-local CLI`() {
         val reactNativeRoot = temporaryFolder.newFolder("project")
         val androidRoot = File(reactNativeRoot, "android").apply { mkdirs() }
-        val localCli = createLauncher(reactNativeRoot, "posthog-cli", executable = true)
+        createLauncher(reactNativeRoot, "posthog-cli", executable = true)
         val pathDirectory = temporaryFolder.newFolder("global-bin")
-        createExecutable(File(pathDirectory, "posthog-cli"))
+        val pathCli = createExecutable(File(pathDirectory, "posthog-cli"))
         createExecutable(File(pathDirectory, "node"))
 
         val resolved =
@@ -34,7 +34,29 @@ internal class PostHogCliResolverTest {
                 isWindows = false,
             )
 
-        assertEquals(localCli.absolutePath, resolved)
+        assertEquals(pathCli.absolutePath, resolved)
+    }
+
+    @Test
+    fun `keeps known global install precedence over a project-local CLI`() {
+        val androidRoot = temporaryFolder.newFolder("android")
+        createLauncher(androidRoot, "posthog-cli", executable = true)
+        val home = temporaryFolder.newFolder("home")
+        val globalCli = createExecutable(File(home, ".posthog/posthog-cli"))
+        createExecutable(File(home, ".nvm/versions/node/v22.0.0/bin/node"))
+
+        val resolved =
+            resolvePostHogCliExecutable(
+                configured = POSTHOG_CLI_DEFAULT_EXECUTABLE,
+                logger = logger,
+                environment = emptyMap(),
+                home = home,
+                workingDirectory = androidRoot,
+                isWindows = false,
+                cliInstallLocations = listOf(globalCli),
+            )
+
+        assertEquals(globalCli.absolutePath, resolved)
     }
 
     @Test
@@ -52,6 +74,7 @@ internal class PostHogCliResolverTest {
                 home = home,
                 workingDirectory = androidRoot,
                 isWindows = false,
+                cliInstallLocations = emptyList(),
             )
 
         assertEquals(localCli.absolutePath, resolved)
@@ -77,6 +100,7 @@ internal class PostHogCliResolverTest {
                 home = home,
                 workingDirectory = androidRoot,
                 isWindows = false,
+                cliInstallLocations = emptyList(),
                 nodeInstallLocations = listOf(node),
             )
         val (_, path) =
@@ -108,6 +132,7 @@ internal class PostHogCliResolverTest {
                 home = home,
                 workingDirectory = androidRoot,
                 isWindows = false,
+                cliInstallLocations = listOf(globalCli),
                 nodeInstallLocations = emptyList(),
             )
 
