@@ -170,8 +170,8 @@ internal fun resolvePostHogReleaseMode(
  * Locates posthog-cli for builds whose environment lacks the shell PATH —
  * IDE-launched Gradle daemons don't source shell profiles, so a CLI installed
  * via nvm/npm is invisible to a plain PATH lookup. An explicitly configured
- * executable is used verbatim. Otherwise, project-local npm launchers are
- * preferred before PATH and well-known global install locations.
+ * executable is used verbatim. On macOS and Linux, project-local npm launchers
+ * are preferred before PATH and well-known global install locations.
  *
  * [workingDirectory] is the Android Gradle root. Its parent is checked as well
  * because React Native projects normally keep node_modules beside android/.
@@ -185,11 +185,11 @@ internal fun resolvePostHogCliExecutable(
     isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
     nodeInstallLocations: List<File>? = null,
 ): String {
-    if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE) {
+    if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE || isWindows) {
         return configured
     }
 
-    val launcherName = if (isWindows) "$configured.cmd" else configured
+    val launcherName = configured
     val localLauncher =
         listOfNotNull(workingDirectory, workingDirectory?.parentFile)
             .distinct()
@@ -286,17 +286,6 @@ internal fun prependExecutableDirectoriesToPath(
 
 private fun pathValue(environment: Map<String, String>): String? =
     environment.entries.firstOrNull { it.key.equals("PATH", ignoreCase = true) }?.value
-
-internal fun buildPostHogCliCommandLine(
-    executable: String,
-    arguments: List<String>,
-    isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
-): List<String> =
-    if (isWindows) {
-        listOf("cmd", "/c", executable) + arguments
-    } else {
-        listOf(executable) + arguments
-    }
 
 private fun File.isRunnableFile(isWindows: Boolean): Boolean = isFile && (isWindows || canExecute())
 

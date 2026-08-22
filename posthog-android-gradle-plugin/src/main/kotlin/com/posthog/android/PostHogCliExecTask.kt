@@ -4,6 +4,7 @@
 
 package com.posthog.android
 
+import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
@@ -49,6 +50,7 @@ public abstract class PostHogCliExecTask : Exec() {
                 // in a standard React Native project. The resolver also checks its parent.
                 workingDirectory = workingDir,
             )
+        executable = resolved
         if (resolved != configured) {
             // npm installs posthog-cli as a node shim; prepend the discovered
             // bin dir so the shim's `env node` resolves alongside it.
@@ -57,10 +59,11 @@ public abstract class PostHogCliExecTask : Exec() {
             environment(pathKey, pathValue)
         }
 
-        val args = mutableListOf<String>()
-        getArguments(args)
-        logger.info("cli args: $args")
-        commandLine(buildPostHogCliCommandLine(resolved, args))
+        val args =
+            computeCommandLineArgs().also {
+                logger.info("cli args: $it")
+            }
+        args(args)
 
         // Setup environment variables for authentication etc
         postHogHost.orNull?.let {
@@ -80,4 +83,17 @@ public abstract class PostHogCliExecTask : Exec() {
     }
 
     protected abstract fun getArguments(args: MutableList<String>)
+
+    /** Computes the full list of arguments for the task */
+    private fun computeCommandLineArgs(): List<String> {
+        val args = mutableListOf<String>()
+        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+            args.add(0, "cmd")
+            args.add(1, "/c")
+        }
+
+        getArguments(args)
+
+        return args
+    }
 }

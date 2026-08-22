@@ -115,53 +115,6 @@ internal class PostHogCliResolverTest {
     }
 
     @Test
-    fun `uses the Windows npm launcher and command shell`() {
-        val reactNativeRoot = temporaryFolder.newFolder("project")
-        val androidRoot = File(reactNativeRoot, "android").apply { mkdirs() }
-        val localCli = createLauncher(reactNativeRoot, "posthog-cli.cmd", executable = false)
-        val nodeDirectory = temporaryFolder.newFolder("node")
-        createLauncherFile(File(nodeDirectory, "node.exe"), executable = false)
-
-        val resolved =
-            resolvePostHogCliExecutable(
-                configured = POSTHOG_CLI_DEFAULT_EXECUTABLE,
-                logger = logger,
-                environment = mapOf("Path" to nodeDirectory.absolutePath),
-                home = temporaryFolder.newFolder("home"),
-                workingDirectory = androidRoot,
-                isWindows = true,
-            )
-
-        assertEquals(localCli.absolutePath, resolved)
-        assertEquals(
-            listOf("cmd", "/c", localCli.absolutePath, "exp", "proguard", "upload"),
-            buildPostHogCliCommandLine(
-                executable = resolved,
-                arguments = listOf("exp", "proguard", "upload"),
-                isWindows = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `preserves the case and value of the Windows Path variable`() {
-        val executable = File(temporaryFolder.newFolder("node_modules", ".bin"), "posthog-cli.cmd")
-        val node = File(temporaryFolder.newFolder("node"), "node.exe")
-        val existingPath = "C:\\Windows"
-
-        val path =
-            prependExecutableDirectoriesToPath(
-                executables = listOf(executable.absolutePath, node.absolutePath),
-                environment = mapOf("Path" to existingPath),
-            )
-
-        assertEquals(
-            "Path" to listOf(executable.parent, node.parent, existingPath).joinToString(File.pathSeparator),
-            path,
-        )
-    }
-
-    @Test
     fun `keeps an explicitly configured executable`() {
         val customExecutable = temporaryFolder.newFile("custom-posthog-cli").absolutePath
 

@@ -2,4 +2,4 @@
 'posthog-android-gradle-plugin': patch
 ---
 
-Resolve project-local `@posthog/cli` installations for symbol and ProGuard mapping uploads.
+Resolve project-local `@posthog/cli` installations on macOS and Linux for symbol and ProGuard mapping uploads.
