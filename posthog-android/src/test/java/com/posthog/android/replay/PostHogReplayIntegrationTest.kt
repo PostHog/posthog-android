@@ -54,6 +54,7 @@ import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowPixelCopy
 import java.lang.ref.WeakReference
+import java.util.Collections
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.Callable
@@ -1518,6 +1519,85 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(0, visibleRectCalls)
         } finally {
             drawState.finishLegacyCapture()
+            fx.sut.uninstall()
+        }
+    }
+
+    // A class name the production Compose-view heuristic accepts, so a window containing it is
+    // treated as Compose-rooted.
+    private class FakeAndroidComposeView(context: Context) : View(context)
+
+    @Test
+    fun `compose rooted window uses the verified path when verification is disabled`() {
+        // A Compose redraw can never be classified as animation-only, so on the legacy path
+        // every frame is discarded. Compose-rooted windows must use the verified path instead,
+        // so the legacy animation-redraw classifier never runs for them.
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root = FrameLayout(activity).apply { addView(FakeAndroidComposeView(activity)) }
+            root.setHasTransientState(true)
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `non compose window keeps the legacy classifier when verification is disabled`() {
+        // Control for the Compose routing test: a plain View window still runs the legacy
+        // animation-redraw classifier.
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root = FrameLayout(activity).apply { addView(View(activity)) }
+            root.setHasTransientState(true)
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertTrue(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `warns after consecutive screenshot discards`() {
+        // A blank recording is silent: each discard logs a debug line, but nothing tells the
+        // customer the recording is empty. A run of discards must raise one warning.
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val (fx, _) = screenshotFixture()
+        fx.config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    messages.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            // A mock window has no decor, so PixelCopy throws and every capture is discarded.
+            repeat(3) {
+                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+            }
+
+            assertTrue(messages.any { it.contains("screenshots in a row") })
+        } finally {
             fx.sut.uninstall()
         }
     }
