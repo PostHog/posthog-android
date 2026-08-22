@@ -239,6 +239,16 @@ internal fun resolvePostHogCliExecutable(
     return configured
 }
 
+internal fun prependExecutableDirectoryToPath(
+    executable: String,
+    environment: Map<String, String>,
+): Pair<String, String> {
+    val pathKey = environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
+    val path = environment[pathKey].orEmpty()
+    val binDirectory = File(executable).parent
+    return pathKey to "$binDirectory${File.pathSeparator}$path"
+}
+
 internal fun buildPostHogCliCommandLine(
     executable: String,
     arguments: List<String>,

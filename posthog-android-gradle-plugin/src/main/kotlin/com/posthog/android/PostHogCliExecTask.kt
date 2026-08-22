@@ -9,7 +9,6 @@ import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.work.DisableCachingByDefault
-import java.io.File
 
 @DisableCachingByDefault(because = "abstract task, should not be used directly")
 public abstract class PostHogCliExecTask : Exec() {
@@ -46,14 +45,15 @@ public abstract class PostHogCliExecTask : Exec() {
                 configured = configured,
                 logger = logger,
                 environment = taskEnvironment,
+                // Upload task registrations set workingDir(project.rootDir), which is android/
+                // in a standard React Native project. The resolver also checks its parent.
                 workingDirectory = workingDir,
             )
         if (resolved != configured) {
             // npm installs posthog-cli as a node shim; prepend the discovered
             // bin dir so the shim's `env node` resolves alongside it.
-            val binDir = File(resolved).parent
-            val path = taskEnvironment["PATH"].orEmpty()
-            environment("PATH", "$binDir${File.pathSeparator}$path")
+            val (pathKey, pathValue) = prependExecutableDirectoryToPath(resolved, taskEnvironment)
+            environment(pathKey, pathValue)
         }
 
         val args = mutableListOf<String>()

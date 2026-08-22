@@ -80,6 +80,19 @@ internal class PostHogCliResolverTest {
     }
 
     @Test
+    fun `preserves the case and value of the Windows Path variable`() {
+        val executable = File(temporaryFolder.newFolder("node_modules", ".bin"), "posthog-cli.cmd")
+        val existingPath = "C:\\Program Files\\nodejs;C:\\Windows"
+
+        val path = prependExecutableDirectoryToPath(executable.absolutePath, mapOf("Path" to existingPath))
+
+        assertEquals(
+            "Path" to "${executable.parent}${File.pathSeparator}$existingPath",
+            path,
+        )
+    }
+
+    @Test
     fun `keeps an explicitly configured executable`() {
         val customExecutable = temporaryFolder.newFile("custom-posthog-cli").absolutePath
 
