@@ -177,11 +177,20 @@ public class PostHogReplayIntegration(
             color = Color.BLACK
         }
 
-    @Volatile
-    private var isSessionReplayActive: Boolean = false
+    private enum class RecordingState {
+        INACTIVE,
+        AUTOMATIC,
+        MANUAL,
+    }
 
     @Volatile
-    private var isManualSessionReplayActive: Boolean = false
+    private var recordingState: RecordingState = RecordingState.INACTIVE
+
+    private val isSessionReplayActive: Boolean
+        get() = recordingState != RecordingState.INACTIVE
+
+    private val isManualSessionReplayActive: Boolean
+        get() = recordingState == RecordingState.MANUAL
 
     // Event triggers for session recording
     private val eventTriggersLock = Any()
@@ -576,7 +585,7 @@ public class PostHogReplayIntegration(
                 status.drawState.invalidateMaskCapture()
             }
 
-            isSessionReplayActive = false
+            recordingState = RecordingState.INACTIVE
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -2093,10 +2102,9 @@ public class PostHogReplayIntegration(
         val currentSessionId = postHog?.getSessionId()?.toString()
         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
-        isSessionReplayActive = true
         // Automatic setup never starts while this setting is false. A start in that state comes
         // from the manual API or an event trigger and must survive automatic-start checks.
-        isManualSessionReplayActive = !config.sessionReplay
+        recordingState = if (config.sessionReplay) RecordingState.AUTOMATIC else RecordingState.MANUAL
 
         if (!resumeCurrent) {
             // Without this, on a static UI the first user-driven onDraw can be tens of seconds
@@ -2120,8 +2128,7 @@ public class PostHogReplayIntegration(
     }
 
     override fun stop() {
-        isSessionReplayActive = false
-        isManualSessionReplayActive = false
+        recordingState = RecordingState.INACTIVE
         synchronized(decorViews) {
             decorViews.values.forEach { it.drawState.invalidateMaskCapture() }
         }
@@ -2501,8 +2508,7 @@ public class PostHogReplayIntegration(
             // Flip the active gate synchronously so a concurrent add() on the replay executor stops
             // persisting immediately (PostHogReplayQueue.shouldPersist reads isActive), instead of
             // leaking snapshots to the send queue in the window before the posted stop() runs on main.
-            isSessionReplayActive = false
-            isManualSessionReplayActive = false
+            recordingState = RecordingState.INACTIVE
             mainHandler.handler.post { stop() }
         }
     }
