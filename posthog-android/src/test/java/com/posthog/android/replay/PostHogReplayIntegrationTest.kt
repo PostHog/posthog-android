@@ -440,6 +440,27 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `onSessionIdChanged stops automatically started replay after config sessionReplay turns false`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val sut = getSut(config)
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
+            config.sessionReplay = false
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
     fun `manual replay start survives queued session change when config sessionReplay is false`() {
         val sut =
             getSut(
@@ -779,6 +800,24 @@ internal class PostHogReplayIntegrationTest {
             shadowOf(Looper.getMainLooper()).idle()
 
             assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onRemoteConfig stops automatically started replay after automatic replay is disabled`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.config.sessionReplay = false
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(fx.sut.isActive())
         } finally {
             fx.sut.uninstall()
         }
