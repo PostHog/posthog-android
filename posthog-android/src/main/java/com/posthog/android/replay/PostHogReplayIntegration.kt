@@ -2418,14 +2418,14 @@ public class PostHogReplayIntegration(
 
     /**
      * Whether the live (or, on a fetch failure, disk-cached) remote config permits recording the
-     * current session right now. Mirrors the decision [reevaluateRecordingState] makes — master
-     * switch, session-replay flag, event triggers, and the sampling decision — so the buffered
+     * current session right now. Mirrors the decision [reevaluateRecordingState] makes — automatic
+     * start setting, session-replay flag, event triggers, and the sampling decision — so the buffered
      * opening window is migrated only when the session is genuinely recordable, never for one the
      * fresh config samples out.
      */
     private fun isRecordingPermittedForCurrentSession(): Boolean {
         val remoteConfig = config.remoteConfigHolder ?: return false
-        if (!config.sessionReplay || !remoteConfig.isSessionReplayFlagActive()) {
+        if ((!config.sessionReplay && !isSessionReplayActive) || !remoteConfig.isSessionReplayFlagActive()) {
             return false
         }
         if (shouldWaitForEventTriggers()) {
@@ -2436,9 +2436,10 @@ public class PostHogReplayIntegration(
     }
 
     /**
-     * Re-evaluate recording against the live remote config: stop when session replay is no longer
-     * permitted (master switch off, flag off, or sampled out) and resume when it turns on. Without
-     * this, a fresh-`false` would keep recording until the next session rotation.
+     * Re-evaluate recording against the live remote config: preserve a manual recording when
+     * automatic replay is off, stop when the project flag turns off or the session is sampled out,
+     * and automatically resume only when automatic replay is enabled. Without this, a fresh-`false`
+     * would keep recording until the next session rotation.
      *
      * The very first delivery is exempt from the **flag-off** stop only: on that delivery
      * [resolveFirstRemoteConfig] already owns the stop-and-drop decision for the buffered opening
@@ -2449,7 +2450,7 @@ public class PostHogReplayIntegration(
         val postHog = this.postHog ?: return
         val remoteConfig = config.remoteConfigHolder ?: return
 
-        if (!config.sessionReplay || !remoteConfig.isSessionReplayFlagActive()) {
+        if ((!config.sessionReplay && !isSessionReplayActive) || !remoteConfig.isSessionReplayFlagActive()) {
             if (!isFirstDelivery) {
                 stopIfActive("Remote config disabled recording. Stopping.")
             }

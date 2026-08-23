@@ -661,6 +661,34 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `first remote config keeps manually started replay active when automatic replay is disabled`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = false,
+                sessionReplay = false,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            Thread.sleep(5)
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            fx.sut.onRemoteConfig()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+            assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
     fun `first remote config with flag off clears buffer and stops recording`() {
         val fx = createIntegrationWithRealQueue(flagActive = false, hasFetched = false)
         fx.sut.install(mock<PostHogInterface>())
@@ -729,6 +757,28 @@ internal class PostHogReplayIntegrationTest {
             shadowOf(Looper.getMainLooper()).idle()
 
             assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onRemoteConfig keeps manually started replay active when automatic replay is disabled`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                sessionReplay = false,
+            )
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(fx.sut.isActive())
         } finally {
             fx.sut.uninstall()
         }
