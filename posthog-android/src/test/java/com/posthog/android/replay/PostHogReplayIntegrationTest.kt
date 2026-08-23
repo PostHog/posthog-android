@@ -414,9 +414,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `onSessionIdChanged stops active replay on rotation when config sessionReplay is false`() {
-        // Defensive: if replay was somehow started (e.g. trigger-matched, or pre-config-flip),
-        // a rotation under config.sessionReplay = false should stop it rather than restart.
+    fun `onSessionIdChanged keeps manually active replay running when config sessionReplay is false`() {
         val sut =
             getSut(
                 configWithSampling(
@@ -435,7 +433,39 @@ internal class PostHogReplayIntegrationTest {
             sut.onSessionIdChanged()
             shadowOf(Looper.getMainLooper()).idle()
 
-            assertFalse(sut.isActive())
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `manual replay start survives queued session change when config sessionReplay is false`() {
+        val sut =
+            getSut(
+                configWithSampling(
+                    flagActive = true,
+                    samplingPasses = true,
+                    sessionReplay = false,
+                ),
+            )
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+
+            // Mirror PostHog.startSessionReplay(resumeCurrent = false): session changes notify
+            // replay before the explicit manual start, while re-initialization is queued on main.
+            PostHogSessionManager.endSession()
+            sut.onSessionIdChanged()
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            sut.start(resumeCurrent = false)
+
+            assertTrue(sut.isActive())
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
         } finally {
             sut.uninstall()
         }

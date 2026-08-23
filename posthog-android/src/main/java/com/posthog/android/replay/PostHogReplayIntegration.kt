@@ -2202,11 +2202,9 @@ public class PostHogReplayIntegration(
         // rotated; going through PostHog.startSessionReplay(false) would double-rotate).
         config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
         mainHandler.handler.post {
-            // config.sessionReplay is the customer-facing master switch: a config-level disable
-            // must not be overridden by remote flag + sampling. Manual PostHog.startSessionReplay
-            // calls and trigger-matched starts go through different code paths and are unaffected.
-            if (!config.sessionReplay) {
-                if (isSessionReplayActive) stop()
+            // config.sessionReplay controls automatic starts. An active replay may have been
+            // started manually, so preserve it across rotation even when automatic replay is off.
+            if (!config.sessionReplay && !isSessionReplayActive) {
                 return@post
             }
             if (remoteConfig?.isSessionReplayFlagActive() != true) {
