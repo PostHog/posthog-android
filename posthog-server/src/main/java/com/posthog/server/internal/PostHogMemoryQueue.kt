@@ -72,6 +72,14 @@ internal class PostHogMemoryQueue(
     }
 
     override fun flush() {
+        flush(ignoreRetryPause = false)
+    }
+
+    override fun flushForShutdown() {
+        flush(ignoreRetryPause = true)
+    }
+
+    private fun flush(ignoreRetryPause: Boolean) {
         if (isFlushing.getAndSet(true)) {
             config.logger.log("Queue is flushing.")
             return
@@ -81,7 +89,7 @@ internal class PostHogMemoryQueue(
         // rather than racing ahead of them and seeing an empty queue
         executor.submitSyncSafely {
             try {
-                while (isAboveThreshold(1) && canFlushBatch() && executeBatch()) {
+                while (isAboveThreshold(1) && canFlushBatch(ignoreRetryPause) && executeBatch()) {
                     // Keep draining eligible, successful batches until the queue is empty.
                 }
             } finally {
@@ -141,8 +149,8 @@ internal class PostHogMemoryQueue(
         return false
     }
 
-    private fun canFlushBatch(): Boolean {
-        if (pausedUntil?.after(config.dateProvider.currentDate()) == true) {
+    private fun canFlushBatch(ignoreRetryPause: Boolean = false): Boolean {
+        if (!ignoreRetryPause && pausedUntil?.after(config.dateProvider.currentDate()) == true) {
             config.logger.log("Queue is paused until $pausedUntil")
             return false
         }
