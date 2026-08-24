@@ -177,8 +177,20 @@ public class PostHogReplayIntegration(
             color = Color.BLACK
         }
 
+    private enum class RecordingState {
+        INACTIVE,
+        AUTOMATIC,
+        MANUAL,
+    }
+
     @Volatile
-    private var isSessionReplayActive: Boolean = false
+    private var recordingState: RecordingState = RecordingState.INACTIVE
+
+    private val isSessionReplayActive: Boolean
+        get() = recordingState != RecordingState.INACTIVE
+
+    private val isManualSessionReplayActive: Boolean
+        get() = recordingState == RecordingState.MANUAL
 
     // Event triggers for session recording
     private val eventTriggersLock = Any()
@@ -573,7 +585,7 @@ public class PostHogReplayIntegration(
                 status.drawState.invalidateMaskCapture()
             }
 
-            isSessionReplayActive = false
+            recordingState = RecordingState.INACTIVE
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -2090,7 +2102,9 @@ public class PostHogReplayIntegration(
         val currentSessionId = postHog?.getSessionId()?.toString()
         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
-        isSessionReplayActive = true
+        // Automatic setup never starts while this setting is false. A start in that state comes
+        // from the manual API or an event trigger and must survive automatic-start checks.
+        recordingState = if (config.sessionReplay) RecordingState.AUTOMATIC else RecordingState.MANUAL
 
         if (!resumeCurrent) {
             // Without this, on a static UI the first user-driven onDraw can be tens of seconds
@@ -2114,7 +2128,7 @@ public class PostHogReplayIntegration(
     }
 
     override fun stop() {
-        isSessionReplayActive = false
+        recordingState = RecordingState.INACTIVE
         synchronized(decorViews) {
             decorViews.values.forEach { it.drawState.invalidateMaskCapture() }
         }
@@ -2202,10 +2216,9 @@ public class PostHogReplayIntegration(
         // rotated; going through PostHog.startSessionReplay(false) would double-rotate).
         config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
         mainHandler.handler.post {
-            // config.sessionReplay is the customer-facing master switch: a config-level disable
-            // must not be overridden by remote flag + sampling. Manual PostHog.startSessionReplay
-            // calls and trigger-matched starts go through different code paths and are unaffected.
-            if (!config.sessionReplay) {
+            // config.sessionReplay controls automatic starts. An active replay may have been
+            // started manually, so preserve it across rotation even when automatic replay is off.
+            if (!config.sessionReplay && !isManualSessionReplayActive) {
                 if (isSessionReplayActive) stop()
                 return@post
             }
@@ -2420,14 +2433,14 @@ public class PostHogReplayIntegration(
 
     /**
      * Whether the live (or, on a fetch failure, disk-cached) remote config permits recording the
-     * current session right now. Mirrors the decision [reevaluateRecordingState] makes — master
-     * switch, session-replay flag, event triggers, and the sampling decision — so the buffered
+     * current session right now. Mirrors the decision [reevaluateRecordingState] makes — automatic
+     * start setting, session-replay flag, event triggers, and the sampling decision — so the buffered
      * opening window is migrated only when the session is genuinely recordable, never for one the
      * fresh config samples out.
      */
     private fun isRecordingPermittedForCurrentSession(): Boolean {
         val remoteConfig = config.remoteConfigHolder ?: return false
-        if (!config.sessionReplay || !remoteConfig.isSessionReplayFlagActive()) {
+        if ((!config.sessionReplay && !isManualSessionReplayActive) || !remoteConfig.isSessionReplayFlagActive()) {
             return false
         }
         if (shouldWaitForEventTriggers()) {
@@ -2438,9 +2451,10 @@ public class PostHogReplayIntegration(
     }
 
     /**
-     * Re-evaluate recording against the live remote config: stop when session replay is no longer
-     * permitted (master switch off, flag off, or sampled out) and resume when it turns on. Without
-     * this, a fresh-`false` would keep recording until the next session rotation.
+     * Re-evaluate recording against the live remote config: preserve a manual recording when
+     * automatic replay is off, stop when the project flag turns off or the session is sampled out,
+     * and automatically resume only when automatic replay is enabled. Without this, a fresh-`false`
+     * would keep recording until the next session rotation.
      *
      * The very first delivery is exempt from the **flag-off** stop only: on that delivery
      * [resolveFirstRemoteConfig] already owns the stop-and-drop decision for the buffered opening
@@ -2451,7 +2465,7 @@ public class PostHogReplayIntegration(
         val postHog = this.postHog ?: return
         val remoteConfig = config.remoteConfigHolder ?: return
 
-        if (!config.sessionReplay || !remoteConfig.isSessionReplayFlagActive()) {
+        if ((!config.sessionReplay && !isManualSessionReplayActive) || !remoteConfig.isSessionReplayFlagActive()) {
             if (!isFirstDelivery) {
                 stopIfActive("Remote config disabled recording. Stopping.")
             }
@@ -2494,7 +2508,7 @@ public class PostHogReplayIntegration(
             // Flip the active gate synchronously so a concurrent add() on the replay executor stops
             // persisting immediately (PostHogReplayQueue.shouldPersist reads isActive), instead of
             // leaking snapshots to the send queue in the window before the posted stop() runs on main.
-            isSessionReplayActive = false
+            recordingState = RecordingState.INACTIVE
             mainHandler.handler.post { stop() }
         }
     }
