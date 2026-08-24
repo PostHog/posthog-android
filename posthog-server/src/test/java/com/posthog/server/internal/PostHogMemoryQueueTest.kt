@@ -445,6 +445,39 @@ internal class PostHogMemoryQueueTest {
     }
 
     @Test
+    fun `maxQueueSize stays a hard bound even when every queued event is fatal`() {
+        // Persistent send failures in a surviving process can park fatal events; the fatal-eviction
+        // preference must not turn the cap into unbounded growth — with only fatal events queued,
+        // the oldest one is evicted anyway.
+        val http =
+            createMockHttp(
+                MockResponse().setResponseCode(500),
+                MockResponse().setResponseCode(500),
+                MockResponse().setBody("{}"),
+            )
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 1)
+
+        val fatalA = generateFatalEvent().also { it.properties?.put("marker", "fatal_a") }
+        val fatalB = generateFatalEvent().also { it.properties?.put("marker", "fatal_b") }
+
+        sut.add(fatalA)
+        sut.add(fatalB)
+        assertEquals(2, http.requestCount)
+        http.takeRequest()
+        http.takeRequest()
+
+        // Only the newer fatal event survived the cap; the retry sends it alone.
+        sut.flush()
+        assertEquals(3, http.requestCount)
+        val retryBody = http.takeRequest().body.unGzip()
+        assertTrue("The newest fatal event must survive", retryBody.contains("fatal_b"))
+        assertFalse("The evicted fatal event must be gone", retryBody.contains("fatal_a"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
     fun `the fatal path still flushes when the calling thread is already interrupted`() {
         val http = createMockHttp(MockResponse().setBody("{}"))
         val sut = getSut(http.url("/").toString(), flushAt = 100)

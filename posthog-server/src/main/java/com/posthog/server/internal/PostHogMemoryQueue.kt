@@ -100,18 +100,18 @@ internal class PostHogMemoryQueue(
         config.logger.log("Event: ${record.event} was added to the front of the queue.")
     }
 
-    // Must be called under eventsLock. Evicts the oldest NON-fatal event: front-inserting a fatal
-    // record breaks the head-is-oldest invariant, and a fatal event parked at the head after a
-    // failed attempt (in a process that survived) must not be displaced by ordinary traffic. In the
-    // common case the head is non-fatal, so this stays O(1). If every queued event is fatal, nothing
-    // is evicted — fatal adds drain synchronously, so they cannot accumulate at capacity.
+    // Must be called under eventsLock. Prefers the oldest NON-fatal victim: front-inserting a
+    // fatal record breaks the head-is-oldest invariant, and a fatal event parked at the head after
+    // a failed attempt (in a process that survived) must not be displaced by ordinary traffic. In
+    // the common case the head is non-fatal, so this stays O(1). If every queued event is fatal,
+    // the oldest is evicted anyway — maxQueueSize is a hard bound.
     private fun evictIfFullLocked(): PostHogEvent? {
         if (events.size < config.maxQueueSize) {
             return null
         }
         val victimIndex = events.indexOfFirst { !it.isFatalExceptionEvent() }
         if (victimIndex < 0) {
-            return null
+            return events.removeFirstOrNull()
         }
         return events.removeAt(victimIndex)
     }
