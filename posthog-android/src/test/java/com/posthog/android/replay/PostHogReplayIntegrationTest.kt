@@ -493,6 +493,69 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `manually started replay resumes after the session is cleared and a new one starts`() {
+        val sut =
+            getSut(
+                configWithSampling(
+                    flagActive = true,
+                    samplingPasses = true,
+                    sessionReplay = false,
+                ),
+            )
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = false)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+
+            // Backgrounded past the inactivity window: the session is cleared and recording stops.
+            PostHogSessionManager.endSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive())
+
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `explicit stop of a manually started replay is not resumed by a rotation`() {
+        val sut =
+            getSut(
+                configWithSampling(
+                    flagActive = true,
+                    samplingPasses = true,
+                    sessionReplay = false,
+                ),
+            )
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = false)
+            shadowOf(Looper.getMainLooper()).idle()
+            sut.stop()
+
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
     fun `clears buffer when PostHogReplayIntegration is installed`() {
         val config = PostHogAndroidConfig(API_KEY)
         val replayQueue = createReplayQueue(config)
