@@ -92,7 +92,7 @@ internal class PostHogMemoryQueue(
             return
         }
         if (removedEvent != null) {
-            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
+            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
         }
 
         config.logger.log("Event: ${record.event} was added to the queue.")
@@ -124,7 +124,7 @@ internal class PostHogMemoryQueue(
         }
 
         if (removedEvent != null) {
-            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
+            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
         }
 
         config.logger.log("Event: ${record.event} was added to the front of the queue.")
