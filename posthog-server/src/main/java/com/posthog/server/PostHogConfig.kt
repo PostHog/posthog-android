@@ -215,6 +215,12 @@ public open class PostHogConfig constructor(
      * Unlike the Android SDK, this is gated purely on this local flag — the server SDK never
      * fetches remote config, so no remote toggle is involved.
      *
+     * The JVM has a single process-wide default handler, so capture is single-owner: the first
+     * client that opts in installs the handler, later opted-in clients do not. Closing the owner
+     * restores the previous handler — other still-open clients do not take over; capture resumes
+     * with the next client that is set up with this flag enabled. Server apps normally run one
+     * client per process, where none of this matters.
+     *
      * Delivery for a fatal (main-thread) crash: the event takes a dedicated queue path that
      * enqueues and sends in one ordered task, draining the queue batch by batch and ignoring
      * [flushAt], while the crashing thread waits on it for a bounded timeout — so the crash gets a
