@@ -1,5 +1,11 @@
 ## Next
 
+## 1.5.1
+
+### Patch Changes
+
+- faf72aa: Resolve project-local `@posthog/cli` installations on macOS and Linux for symbol and ProGuard mapping uploads.
+
 ## 1.5.0
 
 ### Minor Changes
