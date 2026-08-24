@@ -110,16 +110,35 @@ internal class PostHogLifecycleObserverIntegrationTest {
     }
 
     @Test
-    fun `onStart reloads feature flags before the session rotates`() {
+    fun `onStart reloads feature flags on a warm foreground`() {
         // A warm foreground re-checks the cached session-replay flag when the session rotates. The
         // reload refreshes that verdict so a flag that turned on while backgrounded is picked up.
+        // Only the foreground that follows a background reloads; the cold-start onStart does not,
+        // since SDK setup already fetched the flags on process start.
+        val sut = getSut()
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+        sut.onStop(ProcessLifecycleOwner.get())
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        assertEquals(1, fake.reloadFeatureFlagsCalls)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStart does not reload feature flags on a cold start`() {
+        // SDK setup already loads the flags on process start, so the first onStart must not fire a
+        // duplicate /flags request.
         val sut = getSut()
         val fake = createPostHogFake()
         sut.install(fake)
 
         sut.onStart(ProcessLifecycleOwner.get())
 
-        assertEquals(1, fake.reloadFeatureFlagsCalls)
+        assertEquals(0, fake.reloadFeatureFlagsCalls)
 
         sut.uninstall()
     }
@@ -135,6 +154,10 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fake = createPostHogFake()
         sut.install(fake)
 
+        // Cycle through a background so the reload gate would otherwise fire; preloadFeatureFlags
+        // being off must still suppress it.
+        sut.onStart(ProcessLifecycleOwner.get())
+        sut.onStop(ProcessLifecycleOwner.get())
         sut.onStart(ProcessLifecycleOwner.get())
 
         assertEquals(0, fake.reloadFeatureFlagsCalls)

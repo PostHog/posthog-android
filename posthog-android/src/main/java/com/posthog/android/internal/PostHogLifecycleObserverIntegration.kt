@@ -42,6 +42,13 @@ internal class PostHogLifecycleObserverIntegration(
         @Volatile
         private var fromBackground = false
 
+        // Whether the app has been backgrounded at least once, tracked independently of
+        // captureApplicationLifecycleEvents. Gates the onStart flag reload so the initial cold
+        // start does not fire a second /flags request on top of the one SDK setup already sends.
+        @JvmStatic
+        @Volatile
+        private var hasBackgrounded = false
+
         private val integrationInstalled = AtomicBoolean(false)
     }
 
@@ -55,8 +62,9 @@ internal class PostHogLifecycleObserverIntegration(
         // or identify(), so flag-gated replay never starts for a returning user. The reload
         // re-evaluates the linked flag when the response lands and resumes replay through the replay
         // integration's remote-config callback. Gated on preloadFeatureFlags so an app that opts out
-        // of automatic flag loading keeps that behaviour.
-        if (config.preloadFeatureFlags) {
+        // of automatic flag loading keeps that behaviour, and on hasBackgrounded so the initial cold
+        // start does not duplicate the /flags request SDK setup already sends.
+        if (config.preloadFeatureFlags && hasBackgrounded) {
             postHog?.reloadFeatureFlags()
         }
 
@@ -117,6 +125,9 @@ internal class PostHogLifecycleObserverIntegration(
         // this after setAppInBackground(true) would no-op.
         PostHogSessionManager.touchSession()
         PostHogSessionManager.setAppInBackground(true)
+        // Record the background transition so the next onStart reloads the flags. The cold-start
+        // onStart must not reload, since SDK setup already fetched the flags on process start.
+        hasBackgrounded = true
         if (config.captureApplicationLifecycleEvents) {
             postHog?.capture("Application Backgrounded")
         }
