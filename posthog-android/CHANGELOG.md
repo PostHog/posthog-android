@@ -1,5 +1,11 @@
 ## Next
 
+## 3.60.6
+
+### Patch Changes
+
+- 31b805f: Prevent malformed survey JSON from throwing while logging deserialization errors.
+
 ## 3.60.5
 
 ### Patch Changes
