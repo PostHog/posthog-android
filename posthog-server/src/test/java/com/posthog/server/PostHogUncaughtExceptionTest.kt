@@ -149,9 +149,14 @@ internal class PostHogUncaughtExceptionTest {
         assertNotNull(mechanism, "Expected a mechanism on the first exception item")
         assertEquals(false, mechanism["handled"], "Uncaught exceptions must be marked handled=false")
         assertEquals(
-            "UncaughtExceptionHandler",
+            "onuncaughtexception",
             mechanism["type"],
-            "Uncaught exceptions must carry the UncaughtExceptionHandler mechanism",
+            "Uncaught exceptions must carry the canonical onuncaughtexception mechanism",
+        )
+        assertEquals(
+            "jvm.uncaught_exception_handler",
+            props["\$exception_source"],
+            "Uncaught exceptions must name the concrete runtime hook in \$exception_source",
         )
 
         postHog.close()

@@ -2912,7 +2912,7 @@ internal class PostHogTest {
         val mechanism = mainException["mechanism"] as Map<*, *>
         assertEquals(false, mechanism["handled"])
         assertEquals(false, mechanism["synthetic"])
-        assertEquals("UncaughtExceptionHandler", mechanism["type"])
+        assertEquals("onuncaughtexception", mechanism["type"])
         // A single-item list carries no chain ids at all.
         assertFalse(mechanism.containsKey("exception_id"))
         assertFalse(mechanism.containsKey("parent_id"))

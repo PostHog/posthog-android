@@ -69,7 +69,14 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                     integration.installWith(
                         object : PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget {
                             override fun capture(throwable: Throwable) {
-                                captureException(throwable)
+                                // $exception_source names the concrete runtime hook per the sdk-specs
+                                // convention (<technology>.<stable_hook>); the mechanism category
+                                // (onuncaughtexception) rides on the PostHogThrowable.
+                                captureException(
+                                    throwable,
+                                    null,
+                                    mapOf(EXCEPTION_SOURCE_ATTRIBUTE to EXCEPTION_SOURCE_UNCAUGHT_HANDLER),
+                                )
                             }
 
                             override fun flush() {
@@ -464,6 +471,11 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     }
 
     public companion object {
+        // Event-level capture-integration identity for the uncaught handler, following the
+        // sdk-specs lowercase <technology>.<stable_hook> convention.
+        private const val EXCEPTION_SOURCE_ATTRIBUTE = "\$exception_source"
+        private const val EXCEPTION_SOURCE_UNCAUGHT_HANDLER = "jvm.uncaught_exception_handler"
+
         /**
          * Sets up the SDK and returns an instance that you can hold and pass around.
          *
