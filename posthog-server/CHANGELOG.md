@@ -1,5 +1,11 @@
 ## Next
 
+## 2.15.1
+
+### Patch Changes
+
+- ad23727: Respect network availability and retry pauses during explicit queue flushes while allowing shutdown to retry pending events immediately.
+
 ## 2.15.0
 
 ### Minor Changes
