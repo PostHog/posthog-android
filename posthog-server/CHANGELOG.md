@@ -1,5 +1,11 @@
 ## Next
 
+## 2.15.3
+
+### Patch Changes
+
+- 35969a5: Keep built server options unchanged when their builders are reused.
+
 ## 2.15.2
 
 ### Patch Changes
