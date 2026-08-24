@@ -110,6 +110,39 @@ internal class PostHogLifecycleObserverIntegrationTest {
     }
 
     @Test
+    fun `onStart reloads feature flags before the session rotates`() {
+        // A warm foreground re-checks the cached session-replay flag when the session rotates. The
+        // reload refreshes that verdict so a flag that turned on while backgrounded is picked up.
+        val sut = getSut()
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        assertEquals(1, fake.reloadFeatureFlagsCalls)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `onStart does not reload feature flags when preloadFeatureFlags is disabled`() {
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                preloadFeatureFlags = false
+            }
+        val mainHandler = MainHandler()
+        val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
+        val fake = createPostHogFake()
+        sut.install(fake)
+
+        sut.onStart(ProcessLifecycleOwner.get())
+
+        assertEquals(0, fake.reloadFeatureFlagsCalls)
+
+        sut.uninstall()
+    }
+
+    @Test
     fun `onStart captures app backgrounded`() {
         val sut = getSut()
 

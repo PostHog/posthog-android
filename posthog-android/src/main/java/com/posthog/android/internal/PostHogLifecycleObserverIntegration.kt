@@ -48,6 +48,18 @@ internal class PostHogLifecycleObserverIntegration(
     override fun onStart(owner: LifecycleOwner) {
         cancelTask()
         PostHogSessionManager.setAppInBackground(false)
+
+        // Refresh the flags before the session rotation below re-checks the session-replay flag.
+        // Without it, a flag that turned on while the app was backgrounded (a wider rollout, or
+        // person-property targeting the server now resolves) stays false until the next cold start
+        // or identify(), so flag-gated replay never starts for a returning user. The reload
+        // re-evaluates the linked flag when the response lands and resumes replay through the replay
+        // integration's remote-config callback. Gated on preloadFeatureFlags so an app that opts out
+        // of automatic flag loading keeps that behaviour.
+        if (config.preloadFeatureFlags) {
+            postHog?.reloadFeatureFlags()
+        }
+
         // touchSession rotates an idle session; startSession creates a fresh one if the
         // session was cleared during bg. Both fire the manager's session-id-changed listener,
         // which drives the sampling-aware replay restart in the replay integration.

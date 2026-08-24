@@ -13,6 +13,7 @@ import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -624,6 +625,32 @@ internal class PostHogRemoteConfigTest {
 
         sut.clear()
         http.shutdown()
+    }
+
+    @Test
+    fun `cold start re-evaluates the config linked flag against the flags response`() {
+        // /config carries the linkedFlag gate but arrives before /flags, so its first evaluation runs
+        // against an empty flag map and disables replay. The /flags response, which resolves the flag,
+        // must re-evaluate the cached recording config so replay ends up enabled for a matching user.
+        val configBody = File("src/test/resources/json/basic-remote-config-linked-flag.json").readText()
+        val flagsBody = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json").readText()
+
+        val mock = MockWebServer()
+        mock.start()
+        // The default dispatcher serves enqueued responses in order: /config first, then /flags.
+        mock.enqueue(MockResponse().setBody(configBody))
+        mock.enqueue(MockResponse().setBody(flagsBody))
+
+        val sut = getSut(host = mock.url("/").toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertEquals(2, mock.requestCount)
+
+        sut.clear()
+        mock.shutdown()
     }
 
     @Test

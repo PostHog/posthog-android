@@ -15,6 +15,7 @@ public class PostHogFake : PostHogInterface {
     public var sessionReplayActive: Boolean = false
     public var startSessionReplayCalls: Int = 0
     public var stopSessionReplayCalls: Int = 0
+    public var reloadFeatureFlagsCalls: Int = 0
     public var pushDeviceToken: String? = null
     public var pushAppId: String? = null
     public var pushRegistrations: Int = 0
@@ -80,6 +81,8 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
+        reloadFeatureFlagsCalls++
+        onFeatureFlags?.loaded()
     }
 
     override fun isFeatureEnabled(
