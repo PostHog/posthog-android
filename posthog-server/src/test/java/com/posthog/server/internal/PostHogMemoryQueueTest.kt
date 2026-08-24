@@ -478,6 +478,60 @@ internal class PostHogMemoryQueueTest {
     }
 
     @Test
+    fun `ordinary traffic is dropped rather than displacing a parked fatal event`() {
+        val http = createMockHttp(MockResponse().setResponseCode(500), MockResponse().setBody("{}"))
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 1)
+
+        val fatal = generateFatalEvent().also { it.properties?.put("marker", "fatal_a") }
+        sut.add(fatal)
+        assertEquals(1, http.requestCount)
+        http.takeRequest()
+
+        // The queue is full of exactly one parked crash report; the ordinary event loses.
+        sut.add(generateEvent("ordinary_1"))
+        executor.awaitExecution()
+
+        sut.flush()
+        assertEquals(2, http.requestCount)
+        val retryBody = http.takeRequest().body.unGzip()
+        assertTrue("The parked fatal event must survive ordinary traffic", retryBody.contains("fatal_a"))
+        assertFalse("The ordinary event must have been dropped", retryBody.contains("ordinary_1"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `fatal-on-fatal eviction removes the oldest crash report, not the newest`() {
+        // Fatal records are front-inserted (head is NEWEST), so all-fatal trimming must take the
+        // tail; taking the head would silently discard the most recent crash.
+        val http =
+            createMockHttp(
+                MockResponse().setResponseCode(500),
+                MockResponse().setResponseCode(500),
+                MockResponse().setResponseCode(500),
+                MockResponse().setBody("{}"),
+            )
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 2)
+
+        listOf("fatal_a", "fatal_b", "fatal_c").forEach { marker ->
+            sut.add(generateFatalEvent().also { it.properties?.put("marker", marker) })
+        }
+        assertEquals(3, http.requestCount)
+        repeat(3) { http.takeRequest() }
+
+        sut.flush()
+        assertEquals(4, http.requestCount)
+        val retryBody = http.takeRequest().body.unGzip()
+        assertTrue("The newest crash reports must survive", retryBody.contains("fatal_b"))
+        assertTrue("The newest crash reports must survive", retryBody.contains("fatal_c"))
+        assertFalse("The oldest crash report is the one trimmed", retryBody.contains("fatal_a"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
     fun `the fatal path still flushes when the calling thread is already interrupted`() {
         val http = createMockHttp(MockResponse().setBody("{}"))
         val sut = getSut(http.url("/").toString(), flushAt = 100)

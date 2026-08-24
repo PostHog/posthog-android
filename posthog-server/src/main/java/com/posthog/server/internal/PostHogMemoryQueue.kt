@@ -67,15 +67,31 @@ internal class PostHogMemoryQueue(
     }
 
     private fun enqueue(record: PostHogEvent) {
-        val removedEvent =
-            synchronized(eventsLock) {
-                val removed = evictIfFullLocked()
-                events.addLast(record)
-                removed
-            }
+        var removedEvent: PostHogEvent? = null
+        var dropped = false
 
+        synchronized(eventsLock) {
+            if (events.size >= config.maxQueueSize) {
+                val victimIndex = nonFatalVictimIndexLocked()
+                if (victimIndex < 0) {
+                    // Every queued event is a fatal record awaiting retry; ordinary traffic must
+                    // not displace a crash report, so the incoming event is dropped instead.
+                    dropped = true
+                } else {
+                    removedEvent = events.removeAt(victimIndex)
+                }
+            }
+            if (!dropped) {
+                events.addLast(record)
+            }
+        }
+
+        if (dropped) {
+            config.logger.log("Queue is full of fatal events awaiting retry, ${record.event} was dropped.")
+            return
+        }
         if (removedEvent != null) {
-            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
+            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
         }
 
         config.logger.log("Event: ${record.event} was added to the queue.")
@@ -86,35 +102,35 @@ internal class PostHogMemoryQueue(
     // process), which would otherwise consume the whole budget before the crash event ever reached
     // the wire. Batch order does not matter to ingestion — events carry their own timestamps.
     private fun enqueueFatalFirst(record: PostHogEvent) {
-        val removedEvent =
-            synchronized(eventsLock) {
-                val removed = evictIfFullLocked()
-                events.addFirst(record)
-                removed
+        var removedEvent: PostHogEvent? = null
+
+        synchronized(eventsLock) {
+            if (events.size >= config.maxQueueSize) {
+                val victimIndex = nonFatalVictimIndexLocked()
+                removedEvent =
+                    if (victimIndex >= 0) {
+                        events.removeAt(victimIndex)
+                    } else {
+                        // All-fatal contents were all front-inserted, so the tail is the oldest;
+                        // maxQueueSize stays a hard bound and the newest crash reports win.
+                        events.removeLastOrNull()
+                    }
             }
+            events.addFirst(record)
+        }
 
         if (removedEvent != null) {
-            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
+            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
         }
 
         config.logger.log("Event: ${record.event} was added to the front of the queue.")
     }
 
-    // Must be called under eventsLock. Prefers the oldest NON-fatal victim: front-inserting a
-    // fatal record breaks the head-is-oldest invariant, and a fatal event parked at the head after
-    // a failed attempt (in a process that survived) must not be displaced by ordinary traffic. In
-    // the common case the head is non-fatal, so this stays O(1). If every queued event is fatal,
-    // the oldest is evicted anyway — maxQueueSize is a hard bound.
-    private fun evictIfFullLocked(): PostHogEvent? {
-        if (events.size < config.maxQueueSize) {
-            return null
-        }
-        val victimIndex = events.indexOfFirst { !it.isFatalExceptionEvent() }
-        if (victimIndex < 0) {
-            return events.removeFirstOrNull()
-        }
-        return events.removeAt(victimIndex)
-    }
+    // Must be called under eventsLock. The preferred eviction victim is the oldest NON-fatal event:
+    // front-inserting fatal records breaks the head-is-oldest invariant, and a fatal event parked
+    // after a failed attempt (in a process that survived) must not be displaced by ordinary
+    // traffic. In the common case the head is non-fatal, so callers stay O(1).
+    private fun nonFatalVictimIndexLocked(): Int = events.indexOfFirst { !it.isFatalExceptionEvent() }
 
     override fun flush() {
         // only flushes if the queue has events
