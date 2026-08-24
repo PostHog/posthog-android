@@ -5,8 +5,10 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import java.io.File
+import java.io.InputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -23,6 +25,16 @@ internal class PostHogUncaughtExceptionSubprocessTest {
         val stderr: String,
         val batches: List<BatchRequest>,
     )
+
+    private fun drainAsync(stream: InputStream): Pair<AtomicReference<String>, Thread> {
+        val content = AtomicReference("")
+        val reader =
+            Thread { content.set(stream.bufferedReader().readText()) }.apply {
+                isDaemon = true
+                start()
+            }
+        return content to reader
+    }
 
     private fun runFixture(scenario: String): FixtureRun {
         val batches = CopyOnWriteArrayList<BatchRequest>()
@@ -50,13 +62,21 @@ internal class PostHogUncaughtExceptionSubprocessTest {
                     scenario,
                 ).start()
 
-            // Both streams stay tiny (a banner line, one stack trace), far below the pipe buffer,
-            // so sequential reads cannot deadlock.
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Fixture JVM did not exit in time")
+            // Drain both streams on their own threads so a fixture that fails to exit — the exact
+            // regression this suite exists to catch — hits the timed wait below instead of hanging
+            // this thread in readText().
+            val stdout = drainAsync(process.inputStream)
+            val stderr = drainAsync(process.errorStream)
+            val exited = process.waitFor(60, TimeUnit.SECONDS)
+            if (!exited) {
+                process.destroyForcibly()
+                process.waitFor(10, TimeUnit.SECONDS)
+            }
+            stdout.second.join(5_000)
+            stderr.second.join(5_000)
+            assertTrue(exited, "Fixture JVM did not exit in time; stderr was: ${stderr.first.get()}")
 
-            return FixtureRun(process.exitValue(), stdout, stderr, batches.toList())
+            return FixtureRun(process.exitValue(), stdout.first.get(), stderr.first.get(), batches.toList())
         } finally {
             server.shutdown()
         }

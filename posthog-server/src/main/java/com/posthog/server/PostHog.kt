@@ -65,8 +65,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                     // routing it through captureException preserves those via the shared coercer. A
                     // fatal-level event takes PostHogMemoryQueue's bounded blocking fatal path inside
                     // add() (same fatal-record marker the core queue keys on), so capture() itself
-                    // delivers the crash before returning; the flush below is just a best-effort sweep
-                    // of whatever else is still queued.
+                    // delivers the crash — and everything queued ahead of it — before returning.
                     integration.installWith(
                         object : PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget {
                             override fun capture(throwable: Throwable) {
@@ -81,7 +80,12 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                             }
 
                             override fun flush() {
-                                this@PostHog.flush()
+                                // Deliberately empty. The fatal path above already drains the queue
+                                // within its bounded budget; the public flush() would run another HTTP
+                                // batch inline on the crashing thread with no timeout (e.g. retrying a
+                                // batch a 5xx just requeued), stalling crash delegation past the
+                                // advertised bound. A worker-thread (non-fatal) capture leaves the
+                                // process alive, so the periodic flush delivers it.
                             }
                         },
                     )
@@ -95,7 +99,11 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     // spec's "expected to terminate" boundary with the main thread: an uncaught exception there is
     // fatal, while a worker thread's kills only that thread (level error) and the process lives on.
     // Id 1 is the initial thread on mainstream JVMs and "main" its conventional name; either match
-    // counts, since a missed main thread would silently downgrade a real crash.
+    // counts, since a missed main thread would silently downgrade a real crash. Known approximation
+    // limits, accepted rather than censusing live threads inside a crash handler: a worker that
+    // happens to be the last non-daemon thread does end the process (its crash is still level
+    // error, async delivery), and a main-thread exception need not end it while other non-daemon
+    // threads keep running.
     @Suppress("DEPRECATION") // Thread.getId is deprecated on JDK 19+ but stable while a thread lives
     private fun isProcessFatal(thread: Thread): Boolean = thread.id == 1L || thread.name == "main"
 
