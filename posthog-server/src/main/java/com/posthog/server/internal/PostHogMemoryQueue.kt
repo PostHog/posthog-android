@@ -198,7 +198,10 @@ internal class PostHogMemoryQueue(
         executor.executeSafely {
             synchronized(timerLock) {
                 if (timer == null) {
-                    timer = Timer()
+                    // Daemon, matching the core PostHogQueue's Timer(true) and the executor's
+                    // daemon threads: a background flush timer must never keep a finished (or
+                    // crashed) JVM alive until close() is called.
+                    timer = Timer(true)
                     startTimer(delay)
                     config.logger.log("Queue timer started.")
                 }
