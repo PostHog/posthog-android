@@ -1,5 +1,29 @@
 ## Next
 
+## 6.33.7
+
+### Patch Changes
+
+- 31b805f: Prevent malformed survey JSON from throwing while logging deserialization errors.
+
+## 6.33.6
+
+### Patch Changes
+
+- ad23727: Respect network availability and retry pauses during explicit queue flushes while allowing shutdown to retry pending events immediately.
+
+## 6.33.5
+
+### Patch Changes
+
+- 8773f4d: Fix: `close()` now flushes pending events before tearing down the queue, so events captured shortly before shutdown are no longer left stranded until the SDK is re-initialized. Also fixes `PostHogMemoryQueue.flush()` (used by `posthog-server`) to dispatch on the queue's executor instead of running synchronously on the caller's thread, so it can no longer race ahead of an in-flight `add()` and see an empty queue.
+
+## 6.33.4
+
+### Patch Changes
+
+- 34e90b5: Fix `beforeSend` hook chaining so each hook receives the previous hook's output.
+
 ## 6.33.3
 
 ### Patch Changes

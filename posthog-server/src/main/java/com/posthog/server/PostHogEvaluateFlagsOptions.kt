@@ -9,9 +9,10 @@ package com.posthog.server
  * @property personProperties Person properties to use for flag evaluation.
  * @property groupProperties Group properties to use for flag evaluation, keyed by group type.
  * @property flagKeys Optional list of flag keys to evaluate, scoping both local evaluation and the
- *   remote request. When null, all matching flags are evaluated. Keys with no local definition
- *   never force a request on their own: they are absent from the snapshot, unless an unresolved
- *   flag already requires the `/flags` call, which then also fills them.
+ *   remote request. When null, all matching flags are evaluated. Keys with no local definition are
+ *   included in the `/flags` fallback. After a clean response also omits a key, later calls suppress
+ *   its fallback until the next successful definitions refresh, bounding deleted keys and typos to
+ *   at most one clean probe per refresh interval.
  * @property onlyEvaluateLocally Whether the snapshot must hold exactly what local evaluation
  *   resolved: no `/flags` fallback, no cached remote values, unresolved flags absent.
  * @property disableGeoip Whether to send `geoip_disable=true` during remote evaluation.
@@ -123,7 +124,7 @@ public class PostHogEvaluateFlagsOptions private constructor(
          * @return This builder.
          */
         public fun groupProperties(groupProperties: Map<String, Map<String, Any?>>): Builder {
-            this.groupProperties = this.groupProperties.putBuilderValues(groupProperties)
+            this.groupProperties = this.groupProperties.mergeBuilderGroupProperties(groupProperties)
             return this
         }
 

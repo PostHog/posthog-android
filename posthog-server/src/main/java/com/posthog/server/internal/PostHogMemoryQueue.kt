@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogApiError
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.executeSafely
 import com.posthog.internal.isNetworkingError
+import com.posthog.internal.submitSyncSafely
 import java.io.IOException
 import java.util.Date
 import java.util.Timer
@@ -136,12 +137,30 @@ internal class PostHogMemoryQueue(
     private fun nonFatalVictimIndexLocked(): Int = events.indexOfFirst { !it.isFatalExceptionEvent() }
 
     override fun flush() {
-        // only flushes if the queue has events
-        if (!isAboveThreshold(1)) {
+        flush(ignoreRetryPause = false)
+    }
+
+    override fun flushForShutdown() {
+        flush(ignoreRetryPause = true)
+    }
+
+    private fun flush(ignoreRetryPause: Boolean) {
+        if (isFlushing.getAndSet(true)) {
+            config.logger.log("Queue is flushing.")
             return
         }
 
-        flushIgnoringThreshold()
+        // dispatch on the executor so this is ordered after any in-flight add() calls
+        // rather than racing ahead of them and seeing an empty queue
+        executor.submitSyncSafely {
+            try {
+                while (isAboveThreshold(1) && canFlushBatch(ignoreRetryPause) && executeBatch()) {
+                    // Keep draining eligible, successful batches until the queue is empty.
+                }
+            } finally {
+                isFlushing.set(false)
+            }
+        }
     }
 
     /**
@@ -185,9 +204,11 @@ internal class PostHogMemoryQueue(
     /**
      * Sends batch after batch until the queue is empty, the [deadlineNanos] budget is spent, or a
      * send fails (a failed send requeues its batch; a crashing process gets one straight-line
-     * attempt per batch, never a retry loop). A flush already in progress on another thread (the
-     * periodic timer) is waited out within the budget instead of bailing, so a timer firing at
-     * crash time cannot make the fatal drain a silent no-op.
+     * attempt per batch, never a retry loop). A flush already holding the [isFlushing] flag is
+     * polled within the budget instead of bailing, so a periodic-timer flush racing the crash
+     * cannot make the fatal drain a silent no-op. (A public [flush] caller that set the flag but
+     * whose executor task is queued BEHIND this one cannot release it while we poll — the poll then
+     * just runs out and that flush's own drain delivers whatever is left.)
      */
     private fun drainUntilDeadline(deadlineNanos: Long) {
         while (System.nanoTime() < deadlineNanos) {
@@ -207,7 +228,11 @@ internal class PostHogMemoryQueue(
                 }
                 continue
             }
-            executeBatch()
+            try {
+                executeBatch()
+            } finally {
+                isFlushing.set(false)
+            }
             val after = synchronized(eventsLock) { events.size }
             if (after >= before) {
                 return
@@ -248,15 +273,6 @@ internal class PostHogMemoryQueue(
                 Thread.currentThread().interrupt()
             }
         }
-    }
-
-    private fun flushIgnoringThreshold() {
-        if (isFlushing.getAndSet(true)) {
-            config.logger.log("Queue is flushing.")
-            return
-        }
-
-        executeBatch()
     }
 
     override fun start() {
@@ -313,8 +329,8 @@ internal class PostHogMemoryQueue(
         return false
     }
 
-    private fun canFlushBatch(): Boolean {
-        if (pausedUntil?.after(config.dateProvider.currentDate()) == true) {
+    private fun canFlushBatch(ignoreRetryPause: Boolean = false): Boolean {
+        if (!ignoreRetryPause && pausedUntil?.after(config.dateProvider.currentDate()) == true) {
             config.logger.log("Queue is paused until $pausedUntil")
             return false
         }
@@ -351,10 +367,14 @@ internal class PostHogMemoryQueue(
             return
         }
 
-        executeBatch()
+        try {
+            executeBatch()
+        } finally {
+            isFlushing.set(false)
+        }
     }
 
-    private fun executeBatch() {
+    private fun executeBatch(): Boolean {
         var retry = false
         try {
             batchEvents()
@@ -366,9 +386,8 @@ internal class PostHogMemoryQueue(
             retryCount++
         } finally {
             calculateDelay(retry)
-
-            isFlushing.set(false)
         }
+        return !retry
     }
 
     @Throws(PostHogApiError::class, IOException::class)

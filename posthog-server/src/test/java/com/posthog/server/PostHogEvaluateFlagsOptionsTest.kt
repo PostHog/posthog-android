@@ -62,6 +62,28 @@ internal class PostHogEvaluateFlagsOptionsTest {
     }
 
     @Test
+    fun `groupProperties merges with existing group properties without mutating input maps`() {
+        val companyProperties = mapOf<String, Any?>("size" to "large", "plan" to "premium")
+        val input = mapOf("company" to companyProperties, "project" to mapOf("tier" to 2))
+
+        val options =
+            PostHogEvaluateFlagsOptions.builder()
+                .groupProperty("company", "industry", "tech")
+                .groupProperty("company", "size", "small")
+                .groupProperties(input)
+                .build()
+
+        assertEquals(
+            mapOf(
+                "company" to mapOf("industry" to "tech", "size" to "large", "plan" to "premium"),
+                "project" to mapOf("tier" to 2),
+            ),
+            options.groupProperties,
+        )
+        assertEquals(mapOf("size" to "large", "plan" to "premium"), companyProperties)
+    }
+
+    @Test
     fun `later values replace earlier values for matching keys`() {
         val options =
             PostHogEvaluateFlagsOptions.builder()

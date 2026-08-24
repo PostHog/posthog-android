@@ -2133,6 +2133,24 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `close flushes pending events before tearing down`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        // flushAt above 1 so the captured event stays queued instead of
+        // auto-flushing on capture, and only close() triggers delivery
+        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false)
+
+        sut.capture(EVENT, DISTINCT_ID)
+
+        sut.close()
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
     fun `reads legacy shared prefs and set distinctId and AnonId`() {
         val http = mockHttp()
         val url = http.url("/")

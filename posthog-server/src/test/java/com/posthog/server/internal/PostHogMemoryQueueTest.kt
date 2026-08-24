@@ -20,6 +20,7 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import java.util.Date
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -29,6 +30,18 @@ import kotlin.test.Test
 
 internal class PostHogMemoryQueueTest {
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+
+    private class MutableDateProvider(
+        var nowMillis: Long = 0,
+    ) : PostHogDateProvider {
+        override fun currentDate(): Date = Date(nowMillis)
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date = Date(nowMillis + seconds * 1000L)
+
+        override fun currentTimeMillis(): Long = nowMillis
+
+        override fun nanoTime(): Long = nowMillis * 1_000_000L
+    }
 
     private fun getSut(
         host: String,
@@ -180,6 +193,31 @@ internal class PostHogMemoryQueueTest {
     }
 
     @Test
+    fun `flush drains all pending batches`() {
+        val http =
+            createMockHttp(
+                MockResponse().setBody("{}"),
+                MockResponse().setBody("{}"),
+                MockResponse().setBody("{}"),
+            )
+        val sut = getSut(http.url("/").toString(), maxBatchSize = 2, flushAt = 10)
+        val event = generateEvent()
+
+        repeat(5) {
+            sut.add(event.copy())
+        }
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(3, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
     fun `does not flush if network is not connected`() {
         val http = createMockHttp()
         val sut =
@@ -196,6 +234,116 @@ internal class PostHogMemoryQueueTest {
         executor.awaitExecution()
 
         assertEquals(0, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `explicit flush does not flush if network is not connected`() {
+        val http = createMockHttp(MockResponse().setBody("{}"))
+        var connected = false
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 10,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+                    },
+            )
+
+        sut.add(generateEvent())
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        connected = true
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `explicit flush stops draining if network disconnects between batches`() {
+        var connected = true
+        val http = createMockHttp()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    connected = false
+                    return MockResponse().setBody("{}")
+                }
+            }
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 10,
+                maxBatchSize = 2,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+                    },
+            )
+
+        repeat(3) {
+            sut.add(generateEvent())
+        }
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+
+        connected = true
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(2, http.requestCount)
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `explicit flush waits for retry pause to expire`() {
+        val http =
+            createMockHttp(
+                MockResponse().setResponseCode(500),
+                MockResponse().setBody("{}"),
+            )
+        val dateProvider = MutableDateProvider()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 10,
+                dateProvider = dateProvider,
+                retryDelaySeconds = 5,
+            )
+
+        sut.add(generateEvent())
+        executor.awaitExecution()
+
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(1, http.requestCount)
+
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(1, http.requestCount)
+
+        dateProvider.nowMillis += 5_000
+        sut.flush()
+        executor.awaitExecution()
+        assertEquals(2, http.requestCount)
 
         http.shutdown()
         executor.shutdownAndAwaitTermination()
@@ -424,7 +572,7 @@ internal class PostHogMemoryQueueTest {
         // survived, later ordinary captures reaching maxQueueSize used to evict the head as the
         // "oldest" event — discarding the crash before any retry could send it.
         val http = createMockHttp(MockResponse().setResponseCode(500), MockResponse().setBody("{}"))
-        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 2)
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 2, retryDelaySeconds = 0)
 
         sut.add(generateFatalEvent())
         assertEquals(1, http.requestCount)
@@ -455,7 +603,7 @@ internal class PostHogMemoryQueueTest {
                 MockResponse().setResponseCode(500),
                 MockResponse().setBody("{}"),
             )
-        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 1)
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 1, retryDelaySeconds = 0)
 
         val fatalA = generateFatalEvent().also { it.properties?.put("marker", "fatal_a") }
         val fatalB = generateFatalEvent().also { it.properties?.put("marker", "fatal_b") }
@@ -480,7 +628,7 @@ internal class PostHogMemoryQueueTest {
     @Test
     fun `ordinary traffic is dropped rather than displacing a parked fatal event`() {
         val http = createMockHttp(MockResponse().setResponseCode(500), MockResponse().setBody("{}"))
-        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 1)
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 1, retryDelaySeconds = 0)
 
         val fatal = generateFatalEvent().also { it.properties?.put("marker", "fatal_a") }
         sut.add(fatal)
@@ -512,7 +660,7 @@ internal class PostHogMemoryQueueTest {
                 MockResponse().setResponseCode(500),
                 MockResponse().setBody("{}"),
             )
-        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 2)
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 2, retryDelaySeconds = 0)
 
         listOf("fatal_a", "fatal_b", "fatal_c").forEach { marker ->
             sut.add(generateFatalEvent().also { it.properties?.put("marker", marker) })

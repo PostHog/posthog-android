@@ -1,5 +1,36 @@
 ## Next
 
+## 3.60.7
+
+### Patch Changes
+
+- e0827f0: Fix session replay started with `sessionReplay = false` staying stopped for the rest of the process after an internal stop, such as the session being cleared while the app is backgrounded.
+
+## 3.60.6
+
+### Patch Changes
+
+- 31b805f: Prevent malformed survey JSON from throwing while logging deserialization errors.
+
+## 3.60.5
+
+### Patch Changes
+
+- 42dcb3d: Prevent date arithmetic from overflowing for large second offsets.
+- 130ecd1: Fix manually started session replay being stopped by a queued session-rotation callback when automatic replay is disabled with `sessionReplay = false`.
+
+## 3.60.4
+
+### Patch Changes
+
+- 8773f4d: Fix: `close()` now flushes pending events before tearing down the queue, so events captured shortly before shutdown are no longer left stranded until the SDK is re-initialized. Also fixes `PostHogMemoryQueue.flush()` (used by `posthog-server`) to dispatch on the queue's executor instead of running synchronously on the caller's thread, so it can no longer race ahead of an in-flight `add()` and see an empty queue.
+
+## 3.60.3
+
+### Patch Changes
+
+- 34e90b5: Fix `beforeSend` hook chaining so each hook receives the previous hook's output.
+
 ## 3.60.2
 
 ### Patch Changes

@@ -30,6 +30,22 @@ internal class PostHogAndroidDateProviderTest {
     }
 
     @Test
+    fun `adds seconds to the current date`() {
+        val clock = CountingClock(1_000_000L)
+        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { 100L })
+
+        assertEquals(1_005_000L, sut.addSecondsToCurrentDate(5).time)
+    }
+
+    @Test
+    fun `adds seconds without overflowing integer milliseconds`() {
+        val clock = CountingClock(1_000_000L)
+        val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { 100L })
+
+        assertEquals(1_000_000L + Int.MAX_VALUE * 1_000L, sut.addSecondsToCurrentDate(Int.MAX_VALUE).time)
+    }
+
+    @Test
     fun `does not query the network clock on every call`() {
         val clock = CountingClock(1_000_000L)
         val sut = PostHogAndroidDateProvider(networkClock = clock, elapsedRealtimeMs = { 100L }, refreshIntervalMs = 60_000L)

@@ -111,6 +111,9 @@ public open class PostHogStateless protected constructor(
                     return
                 }
 
+                // flush pending events before tearing down so queued data isn't lost
+                queue?.flushForShutdown()
+
                 enabled = false
 
                 config?.let { config ->
@@ -302,17 +305,18 @@ public open class PostHogStateless protected constructor(
                 properties = sanitizedProperties,
                 timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
             )
-        var eventChecked: PostHogEvent? = postHogEvent
+        var eventChecked: PostHogEvent = postHogEvent
 
         val beforeSendList = config?.beforeSendList ?: emptyList()
 
         for (beforeSend in beforeSendList) {
             try {
-                eventChecked = beforeSend.run(postHogEvent)
-                if (eventChecked == null) {
+                val result = beforeSend.run(eventChecked)
+                if (result == null) {
                     config?.logger?.log("Event $event was rejected in beforeSend function")
                     return null
                 }
+                eventChecked = result
             } catch (e: Throwable) {
                 config?.logger?.log("Error in beforeSend function: $e")
                 return null
