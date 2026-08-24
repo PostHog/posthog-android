@@ -111,8 +111,11 @@ internal class PostHogMemoryQueue(
                     if (victimIndex >= 0) {
                         events.removeAt(victimIndex)
                     } else {
-                        // All-fatal contents were all front-inserted, so the tail is the oldest;
-                        // maxQueueSize stays a hard bound and the newest crash reports win.
+                        // All-fatal contents were front-inserted, so the tail is normally the
+                        // oldest and the newest crash reports win; maxQueueSize stays a hard bound.
+                        // (Approximate: a concurrent failed flush requeues its batch at the head,
+                        // which can reorder parked fatal events — which of several parked crash
+                        // reports gets trimmed is deliberately best-effort, not age-tracked.)
                         events.removeLastOrNull()
                     }
             }
