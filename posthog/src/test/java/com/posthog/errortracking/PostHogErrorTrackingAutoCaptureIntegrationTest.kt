@@ -4,7 +4,6 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogRemoteConfig
-import com.posthog.internal.errortracking.PostHogCapturedThrowables
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.UncaughtExceptionHandlerAdapter
 import org.mockito.kotlin.any
@@ -616,43 +615,6 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         override fun flush() {
             flushCount++
         }
-    }
-
-    @Test
-    fun `uncaughtException captures even when the throwable was already captured elsewhere`() {
-        val target = RecordingTarget()
-        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
-        integration.installWith(target)
-
-        val alreadyLogged = RuntimeException("logged then crashed")
-        // Simulate the appender having captured this exact instance first.
-        assertEquals(true, PostHogCapturedThrowables.markAndCheck(alreadyLogged))
-
-        integration.uncaughtException(Thread.currentThread(), alreadyLogged)
-
-        // The crash is the authoritative fatal/unhandled record: it must be captured even though
-        // the instance was already reported as a handled log capture, and the queue is flushed so
-        // both events leave before the process exits.
-        assertEquals(1, target.captured.size, "The crash capture must not be suppressed by dedup")
-        assertEquals(1, target.flushCount, "flush() must run on the crash path")
-
-        integration.uninstall()
-    }
-
-    @Test
-    fun `uncaughtException marks the throwable so later log mirrors dedup against it`() {
-        val target = RecordingTarget()
-        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
-        integration.installWith(target)
-
-        val crash = RuntimeException("crashed then logged")
-        integration.uncaughtException(Thread.currentThread(), crash)
-
-        assertEquals(1, target.captured.size)
-        // A post-crash log mirror consulting the guard must see the instance as already captured.
-        assertEquals(false, PostHogCapturedThrowables.markAndCheck(crash))
-
-        integration.uninstall()
     }
 
     @Test

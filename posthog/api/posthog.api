@@ -1177,11 +1177,6 @@ public final class com/posthog/internal/VariantDefinition {
 	public final fun getRolloutPercentage ()D
 }
 
-public final class com/posthog/internal/errortracking/PostHogCapturedThrowables {
-	public static final field INSTANCE Lcom/posthog/internal/errortracking/PostHogCapturedThrowables;
-	public final fun markAndCheck (Ljava/lang/Throwable;)Z
-}
-
 public final class com/posthog/internal/errortracking/ThrowableCoercer {
 	public static final field EXCEPTION_LEVEL_ATTRIBUTE Ljava/lang/String;
 	public static final field EXCEPTION_LEVEL_FATAL Ljava/lang/String;
