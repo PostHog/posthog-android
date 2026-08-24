@@ -1,6 +1,7 @@
 package com.posthog.server.internal
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogEvent
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
 import com.posthog.internal.PostHogDateProvider
@@ -32,6 +33,7 @@ internal class PostHogMemoryQueueTest {
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
         retryDelaySeconds: Int = 5,
+        fatalFlushTimeoutMs: Long = 2_000L,
     ): PostHogMemoryQueue {
         val config =
             PostHogConfig("some_api_key", host).apply {
@@ -49,7 +51,16 @@ internal class PostHogMemoryQueueTest {
             PostHogApiEndpoint.BATCH,
             executor = executor,
             retryDelaySeconds = retryDelaySeconds,
+            fatalFlushTimeoutMs = fatalFlushTimeoutMs,
         )
+    }
+
+    // A fatal $exception event, i.e. one PostHogEvent.isFatalExceptionEvent() marks for the
+    // blocking crash path in add().
+    private fun generateFatalEvent(): PostHogEvent {
+        val event = generateEvent("\$exception")
+        event.properties?.put("\$exception_level", "fatal")
+        return event
     }
 
     @Test
@@ -251,42 +262,88 @@ internal class PostHogMemoryQueueTest {
     }
 
     @Test
-    fun `flushBlocking sends an event whose enqueue has not run yet`() {
+    fun `a fatal exception event is sent before add returns`() {
         val http = createMockHttp(MockResponse().setBody("{}"))
         val sut = getSut(http.url("/").toString(), flushAt = 100)
 
-        // Park the single queue thread so the enqueue below is provably still pending while the
-        // caller flushes inline: the crash-path race, made deterministic without any sleeping.
-        val blocked = CountDownLatch(1)
-        executor.execute { blocked.await() }
+        // add() blocks on the fatal path, so the request must already be there when it returns —
+        // no executor await, no waiting takeRequest.
+        sut.add(generateFatalEvent())
 
-        sut.add(generateEvent())
-
-        // The inline flush cannot see the pending enqueue, so it sends nothing.
-        sut.flush()
-        assertEquals(0, http.requestCount)
-
-        blocked.countDown()
-
-        // The barrier is queued behind the enqueue on the same single thread, so the send sees it.
-        assertTrue("Expected the blocking flush to complete", sut.flushBlocking(2_000))
         assertEquals(1, http.requestCount)
+        val body = http.takeRequest().body.unGzip()
+        assertTrue("Body should contain the fatal exception event", body.contains("\$exception"))
 
         http.shutdown()
         executor.shutdownAndAwaitTermination()
     }
 
     @Test
-    fun `flushBlocking still flushes when the calling thread is already interrupted`() {
+    fun `the fatal path is ordered behind a pending enqueue instead of racing it`() {
         val http = createMockHttp(MockResponse().setBody("{}"))
         val sut = getSut(http.url("/").toString(), flushAt = 100)
 
-        sut.add(generateEvent())
+        // Park the single queue thread so the enqueue below is provably still pending: the
+        // crash-path race, made deterministic without any sleeping.
+        val blocked = CountDownLatch(1)
+        executor.execute { blocked.await() }
+
+        sut.add(generateEvent("earlier_event"))
+
+        // The fatal add has to wait for the parked thread, so nothing can have been sent yet.
+        val sender = Thread { sut.add(generateFatalEvent()) }
+        sender.start()
+        assertEquals(0, http.requestCount)
+
+        blocked.countDown()
+        sender.join(5_000)
+        assertFalse("Expected the fatal add to return once the queue drained", sender.isAlive)
+
+        // Both the pending earlier event and the fatal event went out.
+        val body = http.takeRequest().body.unGzip()
+        assertTrue("Body should contain the earlier pending event", body.contains("earlier_event"))
+        assertTrue("Body should contain the fatal exception event", body.contains("\$exception"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `the fatal path drains a backlog larger than maxBatchSize so the crash event is not stranded`() {
+        // 5 older events + the fatal one at maxBatchSize=2 need 3 sequential batches; a single
+        // bounded batch would send only the oldest 2 and strand the crash event (FIFO puts it last).
+        val http =
+            createMockHttp(
+                MockResponse().setBody("{}"),
+                MockResponse().setBody("{}"),
+                MockResponse().setBody("{}"),
+            )
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxBatchSize = 2)
+
+        repeat(5) { sut.add(generateEvent("backlog_event_$it")) }
+        executor.awaitExecution()
+        assertEquals(0, http.requestCount)
+
+        sut.add(generateFatalEvent())
+
+        assertEquals(3, http.requestCount)
+        val lastBody =
+            (1..3).joinToString("\n") { http.takeRequest().body.unGzip() }
+        assertTrue("The crash event must be part of the drained batches", lastBody.contains("\$exception"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `the fatal path still flushes when the calling thread is already interrupted`() {
+        val http = createMockHttp(MockResponse().setBody("{}"))
+        val sut = getSut(http.url("/").toString(), flushAt = 100)
 
         // A crash on a thread some shutdown just interrupted must not lose its flush.
         Thread.currentThread().interrupt()
         try {
-            assertTrue("Expected the blocking flush to complete", sut.flushBlocking(2_000))
+            sut.add(generateFatalEvent())
             assertEquals(1, http.requestCount)
             assertTrue(
                 "Expected the interrupt flag to be restored for the caller",
@@ -302,18 +359,16 @@ internal class PostHogMemoryQueueTest {
     }
 
     @Test
-    fun `flushBlocking gives up after the timeout instead of hanging`() {
+    fun `the fatal path gives up after the timeout instead of hanging the crashing thread`() {
         val http = createMockHttp()
-        val sut = getSut(http.url("/").toString(), flushAt = 100)
+        val sut = getSut(http.url("/").toString(), flushAt = 100, fatalFlushTimeoutMs = 200)
 
-        // Occupy the single queue thread so the barrier can never run.
+        // Occupy the single queue thread so the fatal enqueue-and-drain task can never run.
         val blocked = CountDownLatch(1)
         executor.execute { blocked.await() }
 
-        sut.add(generateEvent())
-
         val startedAt = System.nanoTime()
-        assertFalse("Expected the blocking flush to time out", sut.flushBlocking(200))
+        sut.add(generateFatalEvent())
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
 
         assertTrue("Expected to wait for the timeout, waited $elapsedMs ms", elapsedMs >= 200)

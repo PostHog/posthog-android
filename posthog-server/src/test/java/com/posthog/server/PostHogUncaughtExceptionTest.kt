@@ -260,10 +260,10 @@ internal class PostHogUncaughtExceptionTest {
     @Test
     fun `crash event is flushed even while its enqueue is still pending`() {
         // Makes the crash-path race deterministic instead of hoping for a scheduling order. The queue
-        // thread is parked inside the gated warmup batch, so the crash capture's enqueue is provably
+        // thread is parked inside the gated warmup batch, so the crash capture's fatal task is provably
         // still pending when the handler flushes, and with flushAt above one and a 600s flush interval
         // nothing else can deliver the crash event. The handler runs on its own thread so the test can
-        // assert it is still blocked inside the flush while the enqueue is pending — the inline flush
+        // assert it is still blocked inside the capture while the task is pending — the inline flush
         // it used to do returned immediately, having read an empty queue, and the event died with the
         // JVM.
         val batches = CopyOnWriteArrayList<BatchRequest>()
@@ -317,9 +317,9 @@ internal class PostHogUncaughtExceptionTest {
                 start()
             }
 
-        // The only timed wait on this thread's crash path is the blocking flush's bounded await, so
-        // TIMED_WAITING while the queue thread is parked means the barrier is queued behind the
-        // pending enqueue and the handler is waiting for it. The old inline flush never blocked: the
+        // The only timed wait on this thread's crash path is the fatal add's bounded await, so
+        // TIMED_WAITING while the queue thread is parked means the enqueue-and-drain task is queued
+        // behind the parked warmup flush. The old inline flush never blocked: the
         // thread just finishes, and this assertion fails.
         val parkedBy = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (crashThread.isAlive &&

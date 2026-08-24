@@ -14,6 +14,7 @@ import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
@@ -33,6 +34,7 @@ internal class PostHogMemoryQueue(
     private val executor: ExecutorService,
     private val retryDelaySeconds: Int = DEFAULT_RETRY_DELAY_SECONDS,
     private val maxRetryDelaySeconds: Int = DEFAULT_MAX_RETRY_DELAY_SECONDS,
+    private val fatalFlushTimeoutMs: Long = FATAL_FLUSH_TIMEOUT_MS,
 ) : PostHogQueueInterface<PostHogEvent> {
     private val events: ArrayDeque<PostHogEvent> = ArrayDeque()
     private val eventsLock = Any()
@@ -51,25 +53,35 @@ internal class PostHogMemoryQueue(
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
     override fun add(record: PostHogEvent) {
+        // Same fatal-record marker the core PostHogQueue keys on: a fatal $exception event is about
+        // to take the process down with it, so it must not take the regular async path.
+        if (record.isFatalExceptionEvent()) {
+            addFatalBlocking(record)
+            return
+        }
+
         executor.executeSafely {
-            var removedEvent: PostHogEvent? = null
-
-            synchronized(eventsLock) {
-                if (events.size >= config.maxQueueSize) {
-                    removedEvent = events.removeFirstOrNull()
-                }
-
-                events.addLast(record)
-            }
-
-            if (removedEvent != null) {
-                config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
-            }
-
-            config.logger.log("Event: ${record.event} was added to the queue.")
-
+            enqueue(record)
             flushIfOverThreshold()
         }
+    }
+
+    private fun enqueue(record: PostHogEvent) {
+        var removedEvent: PostHogEvent? = null
+
+        synchronized(eventsLock) {
+            if (events.size >= config.maxQueueSize) {
+                removedEvent = events.removeFirstOrNull()
+            }
+
+            events.addLast(record)
+        }
+
+        if (removedEvent != null) {
+            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
+        }
+
+        config.logger.log("Event: ${record.event} was added to the queue.")
     }
 
     override fun flush() {
@@ -82,42 +94,60 @@ internal class PostHogMemoryQueue(
     }
 
     /**
-     * Bounded blocking flush for the crash path: submits a barrier task onto the queue executor and
-     * waits up to [timeoutMs] for that task to send the pending batch.
+     * Crash path for fatal `$exception` events: enqueue and drain in one ordered task on the queue
+     * executor, blocking the calling (crashing) thread for at most [fatalFlushTimeoutMs].
      *
-     * [add] enqueues on the executor, so a caller that flushes inline (see [flush]) can read the
-     * deque before its own event landed and send nothing — fatal on a crashing thread whose process
-     * is about to exit, taking the daemon queue thread with it. The executor is single-threaded
-     * (owned by `PostHogStateless`), so a barrier submitted after [add] runs strictly after that
-     * enqueue instead of racing it.
+     * The regular [add] path submits the enqueue asynchronously, so a crashing thread that flushed
+     * inline could read the deque before its own event landed, send nothing, and let the event die
+     * with the JVM. Running enqueue + drain as one task on the single-threaded executor makes the
+     * send happen-after the enqueue, and draining batch by batch (ignoring `flushAt`) until the
+     * queue is empty keeps a backlog of `maxBatchSize` or more from stranding the fatal event,
+     * which FIFO puts last.
      *
-     * The send runs on the executor thread and ignores `flushAt` (a crash must not wait for the
-     * threshold), so the caller blocks on the barrier only, never longer than [timeoutMs].
-     *
-     * @return true when the barrier ran within the timeout. Delivery itself stays best-effort: the
-     * batch is capped at `maxBatchSize`, another flush already in progress (the periodic timer runs
-     * on its own thread) makes the barrier a no-op, and the HTTP attempt can still fail or be cut
-     * short by process exit. False means the barrier could not be scheduled (executor shut down) or
-     * did not run in time.
+     * Delivery stays best-effort: the caller stops waiting at the timeout (the drain keeps going on
+     * the executor thread for whatever process lifetime remains), and each HTTP attempt can fail or
+     * be cut short by process exit.
      */
-    fun flushBlocking(timeoutMs: Long): Boolean {
-        val drained = CountDownLatch(1)
+    private fun addFatalBlocking(record: PostHogEvent) {
+        val done = CountDownLatch(1)
+        val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(fatalFlushTimeoutMs)
 
         try {
             executor.execute {
                 try {
-                    flushIgnoringThreshold()
+                    enqueue(record)
+                    drainUntilDeadline(deadlineNanos)
                 } finally {
-                    drained.countDown()
+                    done.countDown()
                 }
             }
-        } catch (e: Throwable) {
-            // RejectedExecutionException and friends: the executor is gone, there is nothing to await
-            config.logger.log("Blocking flush could not be scheduled: $e.")
-            return false
+        } catch (e: RejectedExecutionException) {
+            // the executor is gone (client closed mid-crash); there is nothing to await
+            config.logger.log("The fatal event flush could not be scheduled: $e.")
+            return
         }
 
-        return awaitUninterruptibly(drained, timeoutMs)
+        awaitUninterruptibly(done, fatalFlushTimeoutMs)
+    }
+
+    /**
+     * Sends batch after batch until the queue is empty, the [deadlineNanos] budget is spent, or a
+     * pass makes no progress (a failed send requeues its batch, and a flush already in progress on
+     * another thread makes the pass a no-op) — a crashing process gets one straight-line attempt
+     * per batch, never a retry loop.
+     */
+    private fun drainUntilDeadline(deadlineNanos: Long) {
+        while (System.nanoTime() < deadlineNanos) {
+            val before = synchronized(eventsLock) { events.size }
+            if (before == 0) {
+                return
+            }
+            flushIgnoringThreshold()
+            val after = synchronized(eventsLock) { events.size }
+            if (after >= before) {
+                return
+            }
+        }
     }
 
     /**
@@ -334,5 +364,9 @@ internal class PostHogMemoryQueue(
     public companion object {
         private const val DEFAULT_RETRY_DELAY_SECONDS = 5
         private const val DEFAULT_MAX_RETRY_DELAY_SECONDS = 60
+
+        // How long a crashing thread waits for the fatal enqueue + drain, mirroring the Rust SDK's
+        // bounded panic-hook flush. Bounded so telemetry can never hang a dying process.
+        internal const val FATAL_FLUSH_TIMEOUT_MS = 2_000L
     }
 }
