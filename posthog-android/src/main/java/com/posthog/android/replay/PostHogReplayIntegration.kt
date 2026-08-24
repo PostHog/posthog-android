@@ -1265,17 +1265,50 @@ public class PostHogReplayIntegration(
 
     private fun View.isComposeRooted(drawState: WindowDrawState): Boolean {
         drawState.composeRooted?.let { return it }
-        val rooted = isComposeAvailable && containsComposeView()
+        if (!isComposeAvailable) {
+            // Can never become true, so skip the main-thread hop entirely.
+            drawState.composeRooted = false
+            return false
+        }
+
+        // The View hierarchy is main-thread-owned, so detection must run there: inline when
+        // already on it, otherwise post and wait, exactly like findMaskableComposeWidgets.
+        val rooted =
+            if (Looper.myLooper() == mainHandler.handler.looper) {
+                containsComposeView()
+            } else {
+                val latch = CountDownLatch(1)
+                var result: Boolean? = null
+                mainHandler.handler.post {
+                    try {
+                        result = containsComposeView()
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+                try {
+                    if (latch.await(1000, TimeUnit.MILLISECONDS)) result else null
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay Compose view detection failed: $e.")
+                    null
+                }
+            }
+
+        // A swallowed failure cached as false would silently restore the every-frame-discard
+        // bug, so only a definite verdict is cached; "unknown" retries on the next draw.
+        if (rooted == null) {
+            return false
+        }
         drawState.composeRooted = rooted
         return rooted
     }
 
-    private fun View.containsComposeView(): Boolean {
+    private fun View.containsComposeView(): Boolean? {
         return try {
             containsComposeView(mutableSetOf())
         } catch (e: Throwable) {
             config.logger.log("Session Replay Compose view detection failed: $e.")
-            false
+            null
         }
     }
 
@@ -1519,6 +1552,7 @@ public class PostHogReplayIntegration(
                 drawState.finishLegacyCapture()
             }
             config.logger.log("Session Replay screenshot setup failed: $e.")
+            recordScreenshotDiscarded(drawState)
             return null
         }
 

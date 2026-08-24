@@ -190,7 +190,12 @@ internal class WindowDrawState {
 
     fun recordLayout() {
         didLayoutSinceReset = true
-        composeRooted = null
+        // Compose can be mounted lazily, so a "not Compose" verdict must be re-checked after a
+        // layout. A "Compose" verdict never needs re-checking: the window simply stays on the
+        // verified path (the safe direction), avoiding a tree re-walk on every layout pass.
+        if (composeRooted == false) {
+            composeRooted = null
+        }
         synchronized(captureLock) {
             activeCapture?.invalid = true
         }

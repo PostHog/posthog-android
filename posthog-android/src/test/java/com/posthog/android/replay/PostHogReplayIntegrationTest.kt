@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
 import android.view.Window
+import android.view.WindowManager
 import android.view.animation.Animation
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -52,7 +53,9 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
+import org.robolectric.shadows.ShadowLegacyBitmap
 import org.robolectric.shadows.ShadowPixelCopy
+import org.robolectric.util.ReflectionHelpers
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.Date
@@ -1615,6 +1618,83 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private class OnceThrowingChildFrameLayout(context: Context) : FrameLayout(context) {
+        private var thrown = false
+
+        override fun getChildAt(index: Int): View? {
+            if (!thrown) {
+                thrown = true
+                throw IllegalStateException("broken hierarchy")
+            }
+            return super.getChildAt(index)
+        }
+    }
+
+    @Test
+    fun `compose detection failure is not cached and re-runs on the next draw`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                OnceThrowingChildFrameLayout(activity).apply {
+                    addView(FakeAndroidComposeView(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+            assertTrue(drawState.isOnlyAnimationRedraw)
+
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    private class CountingChildFrameLayout(context: Context) : FrameLayout(context) {
+        var childWalkCount = 0
+
+        override fun getChildAt(index: Int): View? {
+            childWalkCount++
+            return super.getChildAt(index)
+        }
+    }
+
+    @Test
+    fun `positive compose verdict survives a layout without re-walking the tree`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                CountingChildFrameLayout(activity).apply {
+                    addView(FakeAndroidComposeView(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+            assertFalse(drawState.isOnlyAnimationRedraw)
+            val walkCountAfterFirstDraw = root.childWalkCount
+            assertTrue(walkCountAfterFirstDraw > 0)
+
+            drawState.recordLayout()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertEquals(walkCountAfterFirstDraw, root.childWalkCount)
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
     @Test
     fun `non compose window keeps the legacy classifier when verification is disabled`() {
         // Control for the Compose routing test: a plain View window still runs the legacy
@@ -1669,6 +1749,82 @@ internal class PostHogReplayIntegrationTest {
                 fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
             }
 
+            assertEquals(1, messages.count { it.contains("screenshots in a row") })
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    // Bitmap.createBitmap only throws for a degenerate size, but a zero/negative-size view is
+    // already filtered out earlier by isVisible(), before this code is reached (getWidth/
+    // getHeight are final so a call-counting View can't fake that out either). Shadowing
+    // Bitmap.createBitmap directly, gated on a sentinel width so unrelated bitmap allocation
+    // (e.g. theme inflation) still goes through the real implementation, is the actual lever
+    // for exercising this catch block.
+    @Implements(Bitmap::class)
+    class ThrowingShadowBitmap {
+        companion object {
+            const val ALLOCATION_FAILURE_WIDTH = 823476
+
+            @JvmStatic
+            @Implementation
+            fun createBitmap(
+                width: Int,
+                height: Int,
+                config: Bitmap.Config,
+            ): Bitmap {
+                if (width == ALLOCATION_FAILURE_WIDTH) {
+                    throw IllegalArgumentException("width and height must be > 0")
+                }
+                return ReflectionHelpers.callStaticMethod(
+                    ShadowLegacyBitmap::class.java,
+                    "createBitmap",
+                    ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType, width),
+                    ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType, height),
+                    ReflectionHelpers.ClassParameter.from(Bitmap.Config::class.java, config),
+                )
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ThrowingShadowBitmap::class])
+    fun `bitmap allocation failure feeds the discard counter`() {
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val (fx, _) = screenshotFixture()
+        fx.config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    messages.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+        try {
+            // Attach via WindowManager (not an Activity's themed decor) so isVisible() sees a
+            // real attached, visible view without going through theme drawable inflation, which
+            // would otherwise route unrelated Bitmap allocations through the sentinel-gated
+            // shadow below.
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val decorView =
+                View(context).apply {
+                    layout(0, 0, ThrowingShadowBitmap.ALLOCATION_FAILURE_WIDTH, 10)
+                }
+            windowManager.addView(
+                decorView,
+                WindowManager.LayoutParams(WindowManager.LayoutParams.TYPE_APPLICATION),
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+            decorView.layout(0, 0, ThrowingShadowBitmap.ALLOCATION_FAILURE_WIDTH, 10)
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            repeat(3) {
+                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+            }
+
+            assertTrue(messages.any { it.contains("screenshot setup failed") })
             assertEquals(1, messages.count { it.contains("screenshots in a row") })
         } finally {
             fx.sut.uninstall()
