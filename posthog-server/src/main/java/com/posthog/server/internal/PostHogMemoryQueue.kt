@@ -132,9 +132,10 @@ internal class PostHogMemoryQueue(
 
     /**
      * Sends batch after batch until the queue is empty, the [deadlineNanos] budget is spent, or a
-     * pass makes no progress (a failed send requeues its batch, and a flush already in progress on
-     * another thread makes the pass a no-op) — a crashing process gets one straight-line attempt
-     * per batch, never a retry loop.
+     * send fails (a failed send requeues its batch; a crashing process gets one straight-line
+     * attempt per batch, never a retry loop). A flush already in progress on another thread (the
+     * periodic timer) is waited out within the budget instead of bailing, so a timer firing at
+     * crash time cannot make the fatal drain a silent no-op.
      */
     private fun drainUntilDeadline(deadlineNanos: Long) {
         while (System.nanoTime() < deadlineNanos) {
@@ -142,7 +143,19 @@ internal class PostHogMemoryQueue(
             if (before == 0) {
                 return
             }
-            flushIgnoringThreshold()
+            if (isFlushing.getAndSet(true)) {
+                config.logger.log("Queue is flushing.")
+                try {
+                    Thread.sleep(FATAL_DRAIN_POLL_MS)
+                } catch (e: InterruptedException) {
+                    // the executor is being shut down; an escaping exception on this thread would
+                    // land in the default uncaught handler — us
+                    Thread.currentThread().interrupt()
+                    return
+                }
+                continue
+            }
+            executeBatch()
             val after = synchronized(eventsLock) { events.size }
             if (after >= before) {
                 return
@@ -371,5 +384,8 @@ internal class PostHogMemoryQueue(
         // How long a crashing thread waits for the fatal enqueue + drain, mirroring the Rust SDK's
         // bounded panic-hook flush. Bounded so telemetry can never hang a dying process.
         internal const val FATAL_FLUSH_TIMEOUT_MS = 2_000L
+
+        // How often the fatal drain re-checks a flush held by another thread.
+        private const val FATAL_DRAIN_POLL_MS = 10L
     }
 }

@@ -13,12 +13,18 @@ import com.posthog.server.createMockHttp
 import com.posthog.server.generateEvent
 import com.posthog.server.shutdownAndAwaitTermination
 import com.posthog.server.unGzip
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 
 internal class PostHogMemoryQueueTest {
@@ -330,6 +336,61 @@ internal class PostHogMemoryQueueTest {
         val lastBody =
             (1..3).joinToString("\n") { http.takeRequest().body.unGzip() }
         assertTrue("The crash event must be part of the drained batches", lastBody.contains("\$exception"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `the fatal path waits out a flush already in progress instead of giving up`() {
+        // A periodic-timer flush racing the crash used to make the fatal drain a silent no-op: the
+        // drain saw no progress and returned with the crash event still queued.
+        val gate = CountDownLatch(1)
+        val firstRequestReceived = CountDownLatch(1)
+        val requestBodies = CopyOnWriteArrayList<String>()
+        val http = MockWebServer()
+        http.dispatcher =
+            object : Dispatcher() {
+                private val requests = AtomicInteger(0)
+
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    requestBodies.add(request.body.unGzip())
+                    if (requests.getAndIncrement() == 0) {
+                        firstRequestReceived.countDown()
+                        gate.await(5, TimeUnit.SECONDS)
+                    }
+                    return MockResponse().setBody("{}")
+                }
+            }
+        http.start()
+        val sut = getSut(http.url("/").toString(), flushAt = 100)
+
+        sut.add(generateEvent("pre_event"))
+        executor.awaitExecution()
+
+        // A stand-in for the periodic timer: flush() runs inline on this thread and parks in the
+        // gated request while holding the isFlushing flag.
+        val flusher = Thread { sut.flush() }
+        flusher.start()
+        assertTrue(
+            "Expected the concurrent flush to reach the server and hold the flag",
+            firstRequestReceived.await(5, TimeUnit.SECONDS),
+        )
+
+        val sender = Thread { sut.add(generateFatalEvent()) }
+        sender.start()
+        // Let the drain observe the held flag before the gate opens.
+        Thread.sleep(100)
+        gate.countDown()
+
+        sender.join(5_000)
+        flusher.join(5_000)
+        assertFalse("Expected the fatal add to return", sender.isAlive)
+
+        assertTrue(
+            "The crash event must be sent once the concurrent flush finished, got: $requestBodies",
+            requestBodies.any { it.contains("\$exception") },
+        )
 
         http.shutdown()
         executor.shutdownAndAwaitTermination()
