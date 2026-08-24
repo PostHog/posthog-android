@@ -538,7 +538,7 @@ internal class PostHogEvaluateFlagsTest {
             assertTrue(snapshot.isEnabled("gated"), "the unresolvable key must be filled from /flags")
             postHog.flush()
 
-            assertEquals(1, dispatcher.flagsCalls.get(), "one request, for the unresolved key only")
+            assertEquals(1, dispatcher.flagsCalls.get(), "one fallback request")
 
             val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
             val conclusive = assertNotNull(flagCalled["conclusive"])
@@ -635,7 +635,7 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
-    fun `a requested key with no local definition is absent and asks the server for nothing`() {
+    fun `a requested key with no local definition falls back to the server`() {
         val fixtures =
             listOf(
                 "all definitions conclusive" to createLocalEvaluationResponseFrom(conclusiveFlagDefinition("conclusive")),
@@ -645,14 +645,12 @@ internal class PostHogEvaluateFlagsTest {
         for ((caseName, definitions) in fixtures) {
             withLocalEvaluation(
                 definitions = definitions,
-                // The server could answer for this key — the point is that we never ask.
                 flagsResponse = { jsonResponse(createMultipleFlagsResponse("brand-new-flag" to true)) },
             ) { postHog, dispatcher, _ ->
                 val snapshot = postHog.evaluateFlags("user-1", flagKeys = listOf("brand-new-flag"))
 
-                assertTrue(snapshot.keys.isEmpty(), "case: $caseName")
-                assertFalse(snapshot.isEnabled("brand-new-flag"), "case: $caseName")
-                assertEquals(0, dispatcher.flagsCalls.get(), "case: $caseName")
+                assertTrue(snapshot.isEnabled("brand-new-flag"), "case: $caseName")
+                assertEquals(1, dispatcher.flagsCalls.get(), "case: $caseName")
             }
         }
     }
