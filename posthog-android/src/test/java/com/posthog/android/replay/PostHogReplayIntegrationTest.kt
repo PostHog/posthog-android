@@ -1527,6 +1527,12 @@ internal class PostHogReplayIntegrationTest {
     // treated as Compose-rooted.
     private class FakeAndroidComposeView(context: Context) : View(context)
 
+    private class ThrowingChildFrameLayout(context: Context) : FrameLayout(context) {
+        override fun getChildAt(index: Int): View? {
+            throw IllegalStateException("broken hierarchy")
+        }
+    }
+
     @Test
     fun `compose rooted window uses the verified path when verification is disabled`() {
         // A Compose redraw can never be classified as animation-only, so on the legacy path
@@ -1544,6 +1550,66 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.onDrawCallback(root, drawState)
 
             assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `compose rooted cache invalidates when layout changes`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                FrameLayout(activity).apply {
+                    addView(View(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+            assertTrue(drawState.isOnlyAnimationRedraw)
+
+            root.addView(FakeAndroidComposeView(activity))
+            drawState.recordLayout()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `compose detection failures fall back to the legacy classifier`() {
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        fx.config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    messages.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                ThrowingChildFrameLayout(activity).apply {
+                    addView(View(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertTrue(drawState.isOnlyAnimationRedraw)
+            assertTrue(messages.any { it.contains("Compose view detection failed") })
         } finally {
             fx.sut.uninstall()
         }
@@ -1589,14 +1655,21 @@ internal class PostHogReplayIntegrationTest {
             shadowOf(Looper.getMainLooper()).idle()
             val decorView = activity.window.decorView
             makeWindowVisible(decorView)
-            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+            val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+            fx.sut.decorViews[decorView] = status
 
             // A mock window has no decor, so PixelCopy throws and every capture is discarded.
+            repeat(2) {
+                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+            }
+            assertFalse(messages.any { it.contains("screenshots in a row") })
+
+            status.drawState.resetSnapshotState()
             repeat(3) {
                 fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
             }
 
-            assertTrue(messages.any { it.contains("screenshots in a row") })
+            assertEquals(1, messages.count { it.contains("screenshots in a row") })
         } finally {
             fx.sut.uninstall()
         }

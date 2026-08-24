@@ -73,6 +73,12 @@ internal class WindowDrawState {
     @Volatile
     var consecutiveScreenshotDiscards: Int = 0
 
+    fun resetSnapshotState() {
+        composeRooted = null
+        consecutiveScreenshotDiscards = 0
+        invalidateMaskCapture()
+    }
+
     private val captureLock = Any()
     private var nextCaptureId: Long = 0
     private var activeCapture: ActiveMaskCapture? = null
@@ -184,6 +190,7 @@ internal class WindowDrawState {
 
     fun recordLayout() {
         didLayoutSinceReset = true
+        composeRooted = null
         synchronized(captureLock) {
             activeCapture?.invalid = true
         }

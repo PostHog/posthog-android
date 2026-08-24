@@ -484,7 +484,7 @@ public class PostHogReplayIntegration(
         status.sentMetaEvent = false
         status.keyboardVisible = false
         status.lastSnapshot = null
-        status.drawState.invalidateMaskCapture()
+        status.drawState.resetSnapshotState()
     }
 
     private fun clearViewListeners(
@@ -1271,12 +1271,24 @@ public class PostHogReplayIntegration(
     }
 
     private fun View.containsComposeView(): Boolean {
+        return try {
+            containsComposeView(mutableSetOf())
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay Compose view detection failed: $e.")
+            false
+        }
+    }
+
+    private fun View.containsComposeView(visitedViews: MutableSet<Int>): Boolean {
+        if (!visitedViews.add(System.identityHashCode(this))) {
+            return false
+        }
         if (isComposeView()) {
             return true
         }
         if (this is ViewGroup) {
             for (i in 0 until childCount) {
-                if (getChildAt(i)?.containsComposeView() == true) {
+                if (getChildAt(i)?.containsComposeView(visitedViews) == true) {
                     return true
                 }
             }
