@@ -333,9 +333,31 @@ internal class PostHogMemoryQueueTest {
         sut.add(generateFatalEvent())
 
         assertEquals(3, http.requestCount)
-        val lastBody =
-            (1..3).joinToString("\n") { http.takeRequest().body.unGzip() }
-        assertTrue("The crash event must be part of the drained batches", lastBody.contains("\$exception"))
+        // Front-inserted, so the crash event rides the very first batch instead of trailing the
+        // backlog.
+        val firstBody = http.takeRequest().body.unGzip()
+        assertTrue("The crash event must be in the first drained batch", firstBody.contains("\$exception"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `the fatal event gets its wire attempt even when the first batch fails`() {
+        // A retriable failure requeues the batch and stops the drain (no retry loops on a crashing
+        // process). With the fatal event appended last it would never have reached the wire; front
+        // insertion puts it in that first, only attempt.
+        val http = createMockHttp(MockResponse().setResponseCode(500))
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxBatchSize = 2)
+
+        repeat(5) { sut.add(generateEvent("backlog_event_$it")) }
+        executor.awaitExecution()
+
+        sut.add(generateFatalEvent())
+
+        assertEquals(1, http.requestCount)
+        val body = http.takeRequest().body.unGzip()
+        assertTrue("The failed attempt must have carried the crash event", body.contains("\$exception"))
 
         http.shutdown()
         executor.shutdownAndAwaitTermination()

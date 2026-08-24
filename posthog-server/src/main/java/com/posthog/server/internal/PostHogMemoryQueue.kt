@@ -84,6 +84,28 @@ internal class PostHogMemoryQueue(
         config.logger.log("Event: ${record.event} was added to the queue.")
     }
 
+    // Front-inserts the fatal event so the FIRST drained batch carries it: a backlog batch that
+    // fails with a retriable error is requeued and stops the drain (no retry loops on a crashing
+    // process), which would otherwise consume the whole budget before the crash event ever reached
+    // the wire. Batch order does not matter to ingestion — events carry their own timestamps.
+    private fun enqueueFatalFirst(record: PostHogEvent) {
+        var removedEvent: PostHogEvent? = null
+
+        synchronized(eventsLock) {
+            if (events.size >= config.maxQueueSize) {
+                removedEvent = events.removeFirstOrNull()
+            }
+
+            events.addFirst(record)
+        }
+
+        if (removedEvent != null) {
+            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
+        }
+
+        config.logger.log("Event: ${record.event} was added to the front of the queue.")
+    }
+
     override fun flush() {
         // only flushes if the queue has events
         if (!isAboveThreshold(1)) {
@@ -100,9 +122,10 @@ internal class PostHogMemoryQueue(
      * The regular [add] path submits the enqueue asynchronously, so a crashing thread that flushed
      * inline could read the deque before its own event landed, send nothing, and let the event die
      * with the JVM. Running enqueue + drain as one task on the single-threaded executor makes the
-     * send happen-after the enqueue, and draining batch by batch (ignoring `flushAt`) until the
-     * queue is empty keeps a backlog of `maxBatchSize` or more from stranding the fatal event,
-     * which FIFO puts last.
+     * send happen-after the enqueue. The fatal event is front-inserted so the first drained batch
+     * carries it, and the drain then continues batch by batch (ignoring `flushAt`) until the queue
+     * is empty — a backlog of `maxBatchSize` or more can neither strand the fatal event nor eat the
+     * budget with a failing batch before the crash ever reaches the wire.
      *
      * Delivery stays best-effort: the caller stops waiting at the timeout (the drain keeps going on
      * the executor thread for whatever process lifetime remains), and each HTTP attempt can fail or
@@ -115,7 +138,7 @@ internal class PostHogMemoryQueue(
         try {
             executor.execute {
                 try {
-                    enqueue(record)
+                    enqueueFatalFirst(record)
                     drainUntilDeadline(deadlineNanos)
                 } finally {
                     done.countDown()
