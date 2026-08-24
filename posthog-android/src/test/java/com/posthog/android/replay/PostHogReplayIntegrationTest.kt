@@ -556,6 +556,47 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `trigger started replay does not resume on a session the trigger has not activated`() {
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { isSessionReplayFlagActive() } doReturn true
+                on { makeSamplingDecision(any()) } doReturn true
+                on { getEventTriggers() } doReturn setOf("checkout_started")
+                on { hasRemoteConfigFetched() } doReturn true
+            }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                remoteConfigHolder = remoteConfig
+                sessionReplay = false
+            }
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onEvent("checkout_started", null)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+
+            // Rotating into a session the trigger has not matched must stop recording, and the
+            // preserved manual intent must not let remote config resume it behind the trigger gate.
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive())
+
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
     fun `clears buffer when PostHogReplayIntegration is installed`() {
         val config = PostHogAndroidConfig(API_KEY)
         val replayQueue = createReplayQueue(config)
