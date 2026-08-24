@@ -1,5 +1,11 @@
 ## Next
 
+## 3.60.7
+
+### Patch Changes
+
+- e0827f0: Fix session replay started with `sessionReplay = false` staying stopped for the rest of the process after an internal stop, such as the session being cleared while the app is backgrounded.
+
 ## 3.60.6
 
 ### Patch Changes
