@@ -1,5 +1,11 @@
 ## Next
 
+## 2.15.2
+
+### Patch Changes
+
+- 7c203ff: Preserve existing group properties when adding bulk evaluate-flags options.
+
 ## 2.15.1
 
 ### Patch Changes
