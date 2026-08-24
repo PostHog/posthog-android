@@ -204,20 +204,24 @@ public open class PostHogConfig constructor(
      * Opt in to capturing uncaught exceptions for the whole JVM as `$exception` events.
      *
      * When true, [PostHog] installs a [Thread.defaultUncaughtExceptionHandler] on setup that
-     * captures the crashing exception (marked fatal, `handled=false`, mechanism
-     * `UncaughtExceptionHandler`), flushes, and then delegates to the previously registered
-     * handler. The handler is removed again on [PostHog.close].
+     * captures the crashing exception (`handled=false`, mechanism `onuncaughtexception`,
+     * `$exception_source: jvm.uncaught_exception_handler`), flushes, and then delegates to the
+     * previously registered handler. The handler is removed again on [PostHog.close].
+     *
+     * A main-thread crash is captured with `$exception_level` `fatal` (the process is expected to
+     * terminate); an uncaught exception on any other thread kills only that thread, so it is
+     * captured with level `error` and delivered like a regular event.
      *
      * Unlike the Android SDK, this is gated purely on this local flag — the server SDK never
      * fetches remote config, so no remote toggle is involved.
      *
-     * Delivery: the crash capture is enqueued asynchronously like any other event, and the crash path
-     * then performs a bounded blocking flush — ordered behind that pending enqueue and ignoring
-     * [flushAt] — so the event gets a network attempt before the JVM exits instead of waiting for the
-     * periodic flush, without ever blocking the crashing thread indefinitely. Delivery stays
-     * best-effort, the same guarantee class the Android SDK provides: the flush can hit its timeout,
-     * the HTTP attempt can fail, and an immediate hard exit can cut it short. See [PostHog] for
-     * details.
+     * Delivery for a fatal (main-thread) crash: the event takes a dedicated queue path that
+     * enqueues and sends in one ordered task, draining the queue batch by batch and ignoring
+     * [flushAt], while the crashing thread waits on it for a bounded timeout — so the crash gets a
+     * network attempt before the JVM exits without ever blocking the crashing thread indefinitely.
+     * Delivery stays best-effort, the same guarantee class the Android SDK provides: the drain can
+     * hit its timeout, the HTTP attempt can fail, and an immediate hard exit can cut it short. See
+     * [PostHog] for details.
      *
      * Docs https://posthog.com/docs/error-tracking
      * Defaults to false

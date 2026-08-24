@@ -59,7 +59,8 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             // is set up again. Server apps use one client per process, so we don't ref-count here.
             if (config.captureUncaughtExceptions) {
                 getConfig<com.posthog.PostHogConfig>()?.let { coreConfig ->
-                    val integration = PostHogErrorTrackingAutoCaptureIntegration(coreConfig) { true }
+                    val integration =
+                        PostHogErrorTrackingAutoCaptureIntegration(coreConfig, { true }, ::isProcessFatal)
                     // The uncaught Throwable is a PostHogThrowable carrying fatal/handled=false/mechanism;
                     // routing it through captureException preserves those via the shared coercer. A
                     // fatal-level event takes PostHogMemoryQueue's bounded blocking fatal path inside
@@ -89,6 +90,14 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             }
         }
     }
+
+    // The JVM cannot tell whether a thread's death will end the process, so this approximates the
+    // spec's "expected to terminate" boundary with the main thread: an uncaught exception there is
+    // fatal, while a worker thread's kills only that thread (level error) and the process lives on.
+    // Id 1 is the initial thread on mainstream JVMs and "main" its conventional name; either match
+    // counts, since a missed main thread would silently downgrade a real crash.
+    @Suppress("DEPRECATION") // Thread.getId is deprecated on JDK 19+ but stable while a thread lives
+    private fun isProcessFatal(thread: Thread): Boolean = thread.id == 1L || thread.name == "main"
 
     override fun close() {
         // Same lock as setup so the uninstall + field clear cannot race a concurrent setup() that is

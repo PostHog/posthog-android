@@ -20,6 +20,14 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
      */
     private val enabledGate: () -> Boolean
 
+    /**
+     * Whether an uncaught exception on [Thread] is expected to terminate the process (level
+     * `fatal`) or only that thread (level `error`). Defaults to always-fatal, which is correct on
+     * Android where any uncaught exception kills the app; layers where the process survives a
+     * worker-thread crash (e.g. the server SDK) supply their own policy.
+     */
+    private val fatalPolicy: (Thread) -> Boolean
+
     // @Volatile: read on the crashing thread in uncaughtException with no happens-before edge to
     // the install()/uninstall() writes; a pre-existing thread could otherwise see a stale null and
     // skip delegating to the app/system handler.
@@ -44,35 +52,42 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         this.config = config
         this.adapterExceptionHandler = UncaughtExceptionHandlerAdapter.Adapter.getInstance()
         this.enabledGate = { defaultGate() }
+        this.fatalPolicy = { true }
     }
 
     /**
-     * Internal constructor allowing a custom [enabledGate]. Used by SDK layers (e.g. the server SDK)
-     * that decide autocapture purely from local config without any remote-config round trip.
+     * Internal constructor allowing a custom [enabledGate] and [fatalPolicy]. Used by SDK layers
+     * (e.g. the server SDK) that decide autocapture purely from local config without any
+     * remote-config round trip, and where an uncaught exception does not always terminate the
+     * process.
      *
      * Not part of the public API; visible only because of the multi-module architecture.
      */
     @PostHogInternal
-    public constructor(config: PostHogConfig, enabledGate: () -> Boolean) {
+    public constructor(config: PostHogConfig, enabledGate: () -> Boolean, fatalPolicy: (Thread) -> Boolean) {
         this.config = config
         this.adapterExceptionHandler = UncaughtExceptionHandlerAdapter.Adapter.getInstance()
         this.enabledGate = enabledGate
+        this.fatalPolicy = fatalPolicy
     }
 
     internal constructor(config: PostHogConfig, adapterExceptionHandler: UncaughtExceptionHandlerAdapter) {
         this.config = config
         this.adapterExceptionHandler = adapterExceptionHandler
         this.enabledGate = { defaultGate() }
+        this.fatalPolicy = { true }
     }
 
     internal constructor(
         config: PostHogConfig,
         adapterExceptionHandler: UncaughtExceptionHandlerAdapter,
         enabledGate: () -> Boolean,
+        fatalPolicy: (Thread) -> Boolean = { true },
     ) {
         this.config = config
         this.adapterExceptionHandler = adapterExceptionHandler
         this.enabledGate = enabledGate
+        this.fatalPolicy = fatalPolicy
     }
 
     /**
@@ -241,7 +256,7 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
                 // flush throws, log and fall through to the delegation below instead of letting the
                 // failure escape this handler.
                 try {
-                    target.capture(PostHogThrowable(throwable, thread))
+                    target.capture(PostHogThrowable(throwable, thread, isFatal = fatalPolicy(thread)))
                     // Depending on the target's queue the capture above may only enqueue the event, so
                     // this flush is its last chance to reach the network before the process goes down.
                     // Delivery stays best-effort under an immediate hard exit.

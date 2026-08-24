@@ -290,7 +290,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         // local-only gate bypasses them entirely. This is the server SDK's path.
         currentHandler = null
 
-        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { true })
         integration.install(mockPostHog)
 
         verify(mockAdapter).setDefaultUncaughtExceptionHandler(integration)
@@ -300,7 +300,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
     @Test
     fun `local-only gate that is false does not install`() {
-        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { false }
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { false })
         integration.install(mockPostHog)
 
         verify(mockAdapter, never()).setDefaultUncaughtExceptionHandler(any())
@@ -622,7 +622,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         currentHandler = null
 
         val target = RecordingTarget()
-        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { true })
         integration.installWith(target)
 
         val originalErr = System.err
@@ -646,7 +646,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     @Test
     fun `uncaughtException captures and flushes for a fresh throwable`() {
         val target = RecordingTarget()
-        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        val integration = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { true })
         integration.installWith(target)
 
         integration.uncaughtException(Thread.currentThread(), RuntimeException("fresh"))
@@ -658,15 +658,36 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     }
 
     @Test
+    fun `uncaughtException applies the layer-supplied fatal policy per thread`() {
+        val target = RecordingTarget()
+        val integration =
+            PostHogErrorTrackingAutoCaptureIntegration(
+                mockConfig,
+                mockAdapter,
+                { true },
+                { thread -> thread.name == "process-owner" },
+            )
+        integration.installWith(target)
+
+        integration.uncaughtException(Thread("process-owner"), RuntimeException("boom"))
+        integration.uncaughtException(Thread("worker"), RuntimeException("boom"))
+
+        assertEquals(true, (target.captured[0] as PostHogThrowable).isFatal)
+        assertEquals(false, (target.captured[1] as PostHogThrowable).isFatal)
+
+        integration.uninstall()
+    }
+
+    @Test
     fun `uninstall by a non-installing instance does not tear down the installed handler`() {
         // First instance installs and owns the global handler.
         currentHandler = mockExceptionHandler
-        val first = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        val first = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { true })
         first.installWith(RecordingTarget())
         verify(mockAdapter).setDefaultUncaughtExceptionHandler(first)
 
         // Second instance's install is a process-wide no-op (a handler is already installed).
-        val second = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter) { true }
+        val second = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { true })
         second.installWith(RecordingTarget())
 
         // Closing the second must NOT restore/replace the handler — it never installed.

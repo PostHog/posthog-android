@@ -111,10 +111,10 @@ internal class PostHogUncaughtExceptionTest {
     }
 
     @Test
-    fun `uncaught exception is captured as a fatal, unhandled exception event`() {
+    fun `uncaught main-thread exception is captured as a fatal, unhandled exception event`() {
         val mockServer = startServer()
-        // Default flushAt (100) on purpose: the crash path's blocking flush is what delivers the
-        // event, so a low threshold would mask whether that flush works at all.
+        // Default flushAt (100) on purpose: the crash path's blocking fatal delivery is what sends
+        // the event, so a low threshold would mask whether that path works at all.
         val postHog =
             PostHog.with(
                 PostHogConfig.builder(TEST_API_KEY)
@@ -126,7 +126,9 @@ internal class PostHogUncaughtExceptionTest {
         val handler = Thread.getDefaultUncaughtExceptionHandler()
         assertTrue(handler is PostHogErrorTrackingAutoCaptureIntegration)
 
-        handler.uncaughtException(Thread.currentThread(), IllegalStateException("kaboom"))
+        // The thread argument is data to the handler, so a main-named stand-in exercises the
+        // process-fatal policy without crashing the suite's real main thread.
+        handler.uncaughtException(Thread("main"), IllegalStateException("kaboom"))
 
         // Already sent when the handler returned, so this should not have to wait.
         val request = mockServer.takeRequest(1, TimeUnit.SECONDS)
@@ -158,6 +160,50 @@ internal class PostHogUncaughtExceptionTest {
             props["\$exception_source"],
             "Uncaught exceptions must name the concrete runtime hook in \$exception_source",
         )
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `uncaught worker-thread exception is captured as an error, since the process survives it`() {
+        val mockServer = startServer()
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    // A worker-thread capture takes the regular async path, so a threshold of one
+                    // is what delivers it within the test.
+                    .flushAt(1)
+                    .captureUncaughtExceptions(true)
+                    .build(),
+            )
+
+        val handler = Thread.getDefaultUncaughtExceptionHandler()
+        assertTrue(handler is PostHogErrorTrackingAutoCaptureIntegration)
+
+        handler.uncaughtException(Thread("worker-7"), IllegalStateException("worker kaboom"))
+
+        val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+        assertNotNull(request, "Expected the worker crash event to be flushed")
+
+        val batch = request.parseBatch()
+        val props = batch.eventProperties("\$exception")
+        assertEquals(
+            "error",
+            props["\$exception_level"],
+            "A worker-thread uncaught exception only kills that thread, so it must not be fatal",
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val exceptionList = props["\$exception_list"] as? List<Map<String, Any?>>
+        assertNotNull(exceptionList)
+
+        @Suppress("UNCHECKED_CAST")
+        val mechanism = exceptionList.first()["mechanism"] as? Map<String, Any?>
+        assertNotNull(mechanism)
+        assertEquals(false, mechanism["handled"], "Escaping the thread still means handled=false")
+        assertEquals("onuncaughtexception", mechanism["type"])
 
         postHog.close()
         mockServer.shutdown()
@@ -316,7 +362,9 @@ internal class PostHogUncaughtExceptionTest {
         assertTrue(handler is PostHogErrorTrackingAutoCaptureIntegration)
         val crashThread =
             Thread {
-                handler.uncaughtException(Thread.currentThread(), IllegalStateException("kaboom"))
+                // A main-named stand-in: only a process-fatal crash takes the blocking fatal path
+                // whose ordering this test pins down.
+                handler.uncaughtException(Thread("main"), IllegalStateException("kaboom"))
             }.apply {
                 isDaemon = true
                 start()
