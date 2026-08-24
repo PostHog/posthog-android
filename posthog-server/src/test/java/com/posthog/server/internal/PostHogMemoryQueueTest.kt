@@ -419,6 +419,32 @@ internal class PostHogMemoryQueueTest {
     }
 
     @Test
+    fun `a fatal event parked at the head after a failed attempt is not evicted by capacity trimming`() {
+        // First attempt fails, requeueing the fatal event at the deque head; in a process that
+        // survived, later ordinary captures reaching maxQueueSize used to evict the head as the
+        // "oldest" event — discarding the crash before any retry could send it.
+        val http = createMockHttp(MockResponse().setResponseCode(500), MockResponse().setBody("{}"))
+        val sut = getSut(http.url("/").toString(), flushAt = 100, maxQueueSize = 2)
+
+        sut.add(generateFatalEvent())
+        assertEquals(1, http.requestCount)
+
+        // Two ordinary events on a full queue: eviction must take the non-fatal one.
+        sut.add(generateEvent("ordinary_1"))
+        sut.add(generateEvent("ordinary_2"))
+        executor.awaitExecution()
+
+        sut.flush()
+        assertEquals(2, http.requestCount)
+        http.takeRequest() // the failed first attempt
+        val retryBody = http.takeRequest().body.unGzip()
+        assertTrue("The retried batch must still contain the crash event", retryBody.contains("\$exception"))
+
+        http.shutdown()
+        executor.shutdownAndAwaitTermination()
+    }
+
+    @Test
     fun `the fatal path still flushes when the calling thread is already interrupted`() {
         val http = createMockHttp(MockResponse().setBody("{}"))
         val sut = getSut(http.url("/").toString(), flushAt = 100)

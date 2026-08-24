@@ -67,18 +67,15 @@ internal class PostHogMemoryQueue(
     }
 
     private fun enqueue(record: PostHogEvent) {
-        var removedEvent: PostHogEvent? = null
-
-        synchronized(eventsLock) {
-            if (events.size >= config.maxQueueSize) {
-                removedEvent = events.removeFirstOrNull()
+        val removedEvent =
+            synchronized(eventsLock) {
+                val removed = evictIfFullLocked()
+                events.addLast(record)
+                removed
             }
 
-            events.addLast(record)
-        }
-
         if (removedEvent != null) {
-            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
+            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
         }
 
         config.logger.log("Event: ${record.event} was added to the queue.")
@@ -89,21 +86,34 @@ internal class PostHogMemoryQueue(
     // process), which would otherwise consume the whole budget before the crash event ever reached
     // the wire. Batch order does not matter to ingestion — events carry their own timestamps.
     private fun enqueueFatalFirst(record: PostHogEvent) {
-        var removedEvent: PostHogEvent? = null
-
-        synchronized(eventsLock) {
-            if (events.size >= config.maxQueueSize) {
-                removedEvent = events.removeFirstOrNull()
+        val removedEvent =
+            synchronized(eventsLock) {
+                val removed = evictIfFullLocked()
+                events.addFirst(record)
+                removed
             }
 
-            events.addFirst(record)
-        }
-
         if (removedEvent != null) {
-            config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
+            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
         }
 
         config.logger.log("Event: ${record.event} was added to the front of the queue.")
+    }
+
+    // Must be called under eventsLock. Evicts the oldest NON-fatal event: front-inserting a fatal
+    // record breaks the head-is-oldest invariant, and a fatal event parked at the head after a
+    // failed attempt (in a process that survived) must not be displaced by ordinary traffic. In the
+    // common case the head is non-fatal, so this stays O(1). If every queued event is fatal, nothing
+    // is evicted — fatal adds drain synchronously, so they cannot accumulate at capacity.
+    private fun evictIfFullLocked(): PostHogEvent? {
+        if (events.size < config.maxQueueSize) {
+            return null
+        }
+        val victimIndex = events.indexOfFirst { !it.isFatalExceptionEvent() }
+        if (victimIndex < 0) {
+            return null
+        }
+        return events.removeAt(victimIndex)
     }
 
     override fun flush() {
