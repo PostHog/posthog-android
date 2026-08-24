@@ -257,7 +257,7 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         val previousHandler = defaultExceptionHandler
         if (previousHandler != null) {
             previousHandler.uncaughtException(thread, throwable)
-        } else if (throwable !is ThreadDeath) {
+        } else if (!isThreadDeath(throwable)) {
             // No previous default handler: reproduce the JVM's built-in crash output that
             // ThreadGroup would have printed had we not installed ourselves as the default handler,
             // so opting into capture never hides crashes from stderr log collection. ThreadDeath is
@@ -266,4 +266,11 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
             throwable.printStackTrace(System.err)
         }
     }
+
+    // ThreadDeath is deprecated (for removal) since JDK 20 and this project compiles with warnings
+    // as errors, so the check lives behind a narrowly scoped suppression (both names, since Kotlin
+    // reports for-removal deprecations as DEPRECATION_ERROR). It still matters on older JDKs, where
+    // Thread.stop can throw it and ThreadGroup stays silent for it.
+    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+    private fun isThreadDeath(throwable: Throwable): Boolean = throwable is ThreadDeath
 }
