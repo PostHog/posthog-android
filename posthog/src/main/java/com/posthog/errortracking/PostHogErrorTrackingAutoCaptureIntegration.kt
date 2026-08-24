@@ -238,18 +238,24 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
     ) {
         if (captureEnabled) {
             captureTarget?.let { target ->
-                // Mark the throwable so post-crash log mirrors of this exact instance (e.g. a
-                // shutdown hook logging the crash) don't re-report it — but never skip the capture
-                // itself: this is the authoritative fatal/unhandled record for the crash and must not
-                // be downgraded by an earlier handled capture of the same instance
-                // (`logger.error(..., e); throw e`).
-                PostHogCapturedThrowables.markAndCheck(throwable)
-                target.capture(PostHogThrowable(throwable, thread))
-                // Depending on the target's queue the capture above may only enqueue the event, so
-                // this flush is its last chance to reach the network before the process goes down.
-                // Targets whose enqueue is asynchronous make this a bounded blocking flush (see the
-                // server SDK's target). Delivery stays best-effort under an immediate hard exit.
-                target.flush()
+                // Telemetry must never replace the application's own crash handling: if capture or
+                // flush throws, log and fall through to the delegation below instead of letting the
+                // failure escape this handler.
+                try {
+                    // Mark the throwable so post-crash log mirrors of this exact instance (e.g. a
+                    // shutdown hook logging the crash) don't re-report it — but never skip the capture
+                    // itself: this is the authoritative fatal/unhandled record for the crash and must not
+                    // be downgraded by an earlier handled capture of the same instance
+                    // (`logger.error(..., e); throw e`).
+                    PostHogCapturedThrowables.markAndCheck(throwable)
+                    target.capture(PostHogThrowable(throwable, thread))
+                    // Depending on the target's queue the capture above may only enqueue the event, so
+                    // this flush is its last chance to reach the network before the process goes down.
+                    // Delivery stays best-effort under an immediate hard exit.
+                    target.flush()
+                } catch (e: Throwable) {
+                    config.logger.log("Capturing the uncaught exception failed: $e.")
+                }
             }
         }
 

@@ -189,6 +189,28 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     }
 
     @Test
+    fun `uncaughtException still delegates to the previous handler when capture itself throws`() {
+        whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
+        whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
+        currentHandler = mockExceptionHandler
+        whenever(mockPostHog.captureException(any(), anyOrNull())).thenThrow(IllegalStateException("telemetry broke"))
+
+        val thread = Thread.currentThread()
+        val throwable = RuntimeException("Test exception")
+
+        val integration = getSut()
+        integration.install(mockPostHog)
+
+        // Regression: a throwing capture/flush used to escape uncaughtException, so the previous
+        // handler (the app's own crash handling) never ran.
+        integration.uncaughtException(thread, throwable)
+
+        verify(mockExceptionHandler).uncaughtException(thread, throwable)
+
+        integration.uninstall()
+    }
+
+    @Test
     fun `onRemoteConfig does nothing when remoteConfigHolder is null`() {
         whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
         whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
