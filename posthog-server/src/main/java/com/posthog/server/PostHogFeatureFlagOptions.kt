@@ -134,9 +134,9 @@ public class PostHogFeatureFlagOptions private constructor(
         public fun build(): PostHogFeatureFlagOptions =
             PostHogFeatureFlagOptions(
                 defaultValue = defaultValue,
-                groups = groups,
-                personProperties = personProperties,
-                groupProperties = groupProperties,
+                groups = groups.toBuilderMapSnapshot(),
+                personProperties = personProperties.toBuilderMapSnapshot(),
+                groupProperties = groupProperties.toBuilderGroupPropertiesSnapshot(),
             )
     }
 

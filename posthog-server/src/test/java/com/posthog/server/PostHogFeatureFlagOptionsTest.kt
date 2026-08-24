@@ -398,6 +398,26 @@ internal class PostHogFeatureFlagOptionsTest {
     }
 
     @Test
+    fun `built options are isolated from later builder changes`() {
+        val builder =
+            PostHogFeatureFlagOptions.builder()
+                .group("organization", "original")
+                .personProperty("plan", "original")
+                .groupProperty("company", "size", "small")
+        val options = builder.build()
+
+        builder
+            .group("organization", "changed")
+            .personProperty("plan", "changed")
+            .groupProperty("company", "size", "large")
+        builder.groupProperties?.get("company")?.put("new", "value")
+
+        assertEquals(mapOf("organization" to "original"), options.groups)
+        assertEquals(mapOf("plan" to "original"), options.personProperties)
+        assertEquals(mapOf("company" to mapOf("size" to "small")), options.groupProperties)
+    }
+
+    @Test
     fun `overwriting defaultValue replaces value`() {
         val options =
             PostHogFeatureFlagOptions.builder()
