@@ -169,20 +169,28 @@ internal fun resolvePostHogReleaseMode(
 /**
  * Locates posthog-cli for builds whose environment lacks the shell PATH —
  * IDE-launched Gradle daemons don't source shell profiles, so a CLI installed
- * via nvm/npm is invisible to a plain PATH lookup. Mirrors the lookup order of
- * posthog-ios build-tools/upload-symbols.sh: an explicitly configured
- * executable is used verbatim, a PATH hit keeps the plain name, then
- * well-known install locations are probed.
+ * via nvm/npm is invisible to a plain PATH lookup. An explicitly configured
+ * executable is used verbatim. The existing PATH and global install lookup keeps
+ * its precedence, with project-local npm launchers added as the final fallback.
+ *
+ * [workingDirectory] is the Android Gradle root. Its parent is checked as well
+ * because React Native projects normally keep node_modules beside android/.
  */
 internal fun resolvePostHogCliExecutable(
     configured: String,
     logger: Logger,
     environment: Map<String, String> = System.getenv(),
     home: File = File(System.getProperty("user.home")),
+    workingDirectory: File? = null,
+    isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+    cliInstallLocations: List<File>? = null,
+    nodeInstallLocations: List<File>? = null,
 ): String {
-    if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE || Os.isFamily(Os.FAMILY_WINDOWS)) {
+    if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE || isWindows) {
         return configured
     }
+
+    val launcherName = configured
 
     // Resolve a PATH hit to an absolute path instead of keeping the bare name:
     // a bare name is resolved against the daemon process's own environment,
@@ -190,45 +198,111 @@ internal fun resolvePostHogCliExecutable(
     val onPathDir =
         environment["PATH"]
             ?.split(File.pathSeparator)
-            ?.firstOrNull { File(it, configured).isExecutableFile() }
+            ?.firstOrNull { File(it, launcherName).isRunnableFile(isWindows) }
     if (onPathDir != null) {
-        return File(onPathDir, configured).absolutePath
+        return File(onPathDir, launcherName).absolutePath
     }
 
-    val candidates =
-        buildList {
-            add(File(home, ".posthog/posthog-cli"))
-            addAll(nodeVersionBins(File(home, ".nvm/versions/node")))
-            File("/opt/homebrew/Cellar/nvm").listFilesSafe().forEach { cellar ->
-                addAll(nodeVersionBins(File(cellar, "versions/node")))
+    if (!isWindows) {
+        val candidates =
+            cliInstallLocations ?: buildList {
+                add(File(home, ".posthog/posthog-cli"))
+                addAll(nodeVersionBins(File(home, ".nvm/versions/node")))
+                File("/opt/homebrew/Cellar/nvm").listFilesSafe().forEach { cellar ->
+                    addAll(nodeVersionBins(File(cellar, "versions/node")))
+                }
+                add(File("/usr/local/bin/posthog-cli"))
+                add(File("/opt/homebrew/bin/posthog-cli"))
+                add(File(home, ".cargo/bin/posthog-cli"))
+                add(File(home, ".local/bin/posthog-cli"))
             }
-            add(File("/usr/local/bin/posthog-cli"))
-            add(File("/opt/homebrew/bin/posthog-cli"))
-            add(File(home, ".cargo/bin/posthog-cli"))
-            add(File(home, ".local/bin/posthog-cli"))
-        }
 
-    val found = candidates.firstOrNull { it.isExecutableFile() }
-    if (found != null) {
-        logger.info("posthog-cli not on PATH, using ${found.absolutePath}")
-        return found.absolutePath
+        val found = candidates.firstOrNull { it.isRunnableFile(isWindows = false) }
+        if (found != null) {
+            logger.info("posthog-cli not on PATH, using ${found.absolutePath}")
+            return found.absolutePath
+        }
     }
+
+    val localLauncher =
+        listOfNotNull(workingDirectory, workingDirectory?.parentFile)
+            .distinct()
+            .map { File(it, "node_modules/.bin/$launcherName") }
+            .firstOrNull { it.isRunnableFile(isWindows) }
+    val nodeExecutable = resolveNodeExecutable(environment, home, isWindows, nodeInstallLocations)
+    if (localLauncher != null && nodeExecutable != null) {
+        logger.info("using project-local posthog-cli at ${localLauncher.absolutePath}")
+        return localLauncher.absolutePath
+    }
+
     logger.warn(
-        "posthog-cli not found on PATH or in known install locations; " +
-            "install it (npm install -g @posthog/cli) or set postHogExecutable on the task.",
+        "posthog-cli not found in the project, on PATH, or in known install locations; " +
+            "install it (npm install --save-dev @posthog/cli or npm install -g @posthog/cli) " +
+            "or set postHogExecutable on the task.",
     )
     return configured
 }
 
-private fun File.isExecutableFile(): Boolean = isFile && canExecute()
+internal fun resolveNodeExecutable(
+    environment: Map<String, String> = System.getenv(),
+    home: File = File(System.getProperty("user.home")),
+    isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+    knownInstallLocations: List<File>? = null,
+): String? {
+    val executableName = if (isWindows) "node.exe" else "node"
+    val onPath =
+        pathValue(environment)
+            ?.split(File.pathSeparator)
+            ?.map { File(it, executableName) }
+            ?.firstOrNull { it.isRunnableFile(isWindows) }
+    if (onPath != null) {
+        return onPath.absolutePath
+    }
+    if (isWindows) {
+        return null
+    }
+
+    val candidates =
+        knownInstallLocations ?: buildList {
+            addAll(nodeVersionExecutables(File(home, ".nvm/versions/node"), executableName))
+            File("/opt/homebrew/Cellar/nvm").listFilesSafe().forEach { cellar ->
+                addAll(nodeVersionExecutables(File(cellar, "versions/node"), executableName))
+            }
+            add(File("/usr/local/bin/node"))
+            add(File("/opt/homebrew/bin/node"))
+            add(File(home, ".local/bin/node"))
+        }
+    return candidates.firstOrNull { it.isRunnableFile(isWindows = false) }?.absolutePath
+}
+
+internal fun prependExecutableDirectoriesToPath(
+    executables: List<String>,
+    environment: Map<String, String>,
+): Pair<String, String> {
+    val pathKey = environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
+    val path = environment[pathKey].orEmpty()
+    val binDirectories = executables.mapNotNull { File(it).parent }.distinct()
+    val entries = if (path.isEmpty()) binDirectories else binDirectories + path
+    return pathKey to entries.joinToString(File.pathSeparator)
+}
+
+private fun pathValue(environment: Map<String, String>): String? =
+    environment.entries.firstOrNull { it.key.equals("PATH", ignoreCase = true) }?.value
+
+private fun File.isRunnableFile(isWindows: Boolean): Boolean = isFile && (isWindows || canExecute())
 
 private fun File.listFilesSafe(): List<File> = listFiles()?.toList() ?: emptyList()
 
 /** `<root>/vX.Y.Z/bin/posthog-cli` candidates, newest node version first. */
-private fun nodeVersionBins(root: File): List<File> =
+private fun nodeVersionBins(root: File): List<File> = nodeVersionExecutables(root, "posthog-cli")
+
+private fun nodeVersionExecutables(
+    root: File,
+    executableName: String,
+): List<File> =
     root.listFilesSafe()
         .sortedWith(NODE_VERSION_DIR_ORDER.reversed())
-        .map { File(it, "bin/posthog-cli") }
+        .map { File(it, "bin/$executableName") }
 
 private val NODE_VERSION_DIR_ORDER =
     Comparator<File> { a, b ->

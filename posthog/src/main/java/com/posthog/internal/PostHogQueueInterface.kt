@@ -16,6 +16,10 @@ public interface PostHogQueueInterface<Record> {
 
     public fun flush()
 
+    public fun flushForShutdown() {
+        flush()
+    }
+
     public fun start()
 
     public fun stop()

@@ -1,5 +1,18 @@
 ## Next
 
+## 3.60.6
+
+### Patch Changes
+
+- 31b805f: Prevent malformed survey JSON from throwing while logging deserialization errors.
+
+## 3.60.5
+
+### Patch Changes
+
+- 42dcb3d: Prevent date arithmetic from overflowing for large second offsets.
+- 130ecd1: Fix manually started session replay being stopped by a queued session-rotation callback when automatic replay is disabled with `sessionReplay = false`.
+
 ## 3.60.4
 
 ### Patch Changes
