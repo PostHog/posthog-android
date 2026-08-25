@@ -9,8 +9,9 @@ package com.posthog.server
  * @property personProperties Person properties to use for flag evaluation.
  * @property groupProperties Group properties to use for flag evaluation, keyed by group type.
  * @property flagKeys Optional list of flag keys to evaluate, scoping both local evaluation and the
- *   remote request. When null, all matching flags are evaluated. Keys with no local definition are
- *   included in the `/flags` fallback. After a clean response also omits a key, later calls suppress
+ *   remote request. When null, all matching flags are evaluated. An empty list returns an empty
+ *   snapshot without consulting caches, local definitions, or `/flags`. Keys with no local
+ *   definition are included in the `/flags` fallback. After a clean response also omits a key, later calls suppress
  *   its fallback until the next successful definitions refresh, bounding deleted keys and typos to
  *   at most one clean probe per refresh interval.
  * @property onlyEvaluateLocally Whether the snapshot must hold exactly what local evaluation
@@ -134,7 +135,8 @@ public class PostHogEvaluateFlagsOptions private constructor(
          * This scopes what the server computes; the snapshot's `only(...)` helper, by contrast,
          * filters in memory.
          *
-         * @param flagKeys Feature flag keys to request.
+         * @param flagKeys Feature flag keys to request. An empty list returns an empty snapshot
+         *   without performing evaluation work.
          * @return This builder.
          */
         public fun flagKeys(flagKeys: List<String>): Builder {

@@ -278,6 +278,30 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `explicit empty flagKeys returns a valid empty snapshot without a flags request`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createFlagsResponse("unexpected", enabled = true)))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .build(),
+            )
+
+        val options = PostHogEvaluateFlagsOptions.builder().flagKeys(emptyList()).build()
+        val snapshot = postHog.evaluateFlags("user-1", options)
+
+        assertEquals("user-1", snapshot.distinctId)
+        assertTrue(snapshot.keys.isEmpty())
+        assertEquals(0, mockServer.requestCount, "an empty scope must not consult /flags")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `evaluateFlags uses request context distinctId when omitted or null`() {
         val cases =
             listOf<Pair<String, (PostHogInterface) -> PostHogFeatureFlagEvaluations>>(
