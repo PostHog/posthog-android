@@ -3,6 +3,10 @@ package com.posthog.android.replay.internal
 import android.graphics.Rect
 import android.view.ViewTreeObserver
 import com.posthog.internal.replay.RRWireframe
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+
+private const val CONSECUTIVE_DISCARD_WARNING_THRESHOLD: Int = 3
 
 // if you add any new property, remember to clear the state from resetViewSnapshotStates
 internal class ViewTreeSnapshotStatus(
@@ -68,14 +72,30 @@ internal class WindowDrawState {
     @Volatile
     var composeRooted: Boolean? = null
 
-    // Screenshots discarded in a row for mask safety. Written only on the capture thread. Drives a
-    // one-time warning so a silently blank recording becomes diagnosable.
-    @Volatile
-    var consecutiveScreenshotDiscards: Int = 0
+    // Screenshots discarded in a row for mask safety. Incremented from the capture executor
+    // thread and the PixelCopy callback thread, reset from the main thread — plain @Volatile
+    // doesn't make `+1` atomic across those writers, hence AtomicInteger.
+    private val consecutiveScreenshotDiscards = AtomicInteger(0)
+
+    // Cleared alongside the counter so the warning fires once per run of discards, not once
+    // per session and not on every discard past the threshold.
+    private val discardWarningFired = AtomicBoolean(false)
+
+    // Increments the discard streak and returns true exactly once per run — when the streak
+    // first reaches (or, after a lost increment, jumps past) the warning threshold.
+    fun recordScreenshotDiscard(): Boolean {
+        val discards = consecutiveScreenshotDiscards.incrementAndGet()
+        return discards >= CONSECUTIVE_DISCARD_WARNING_THRESHOLD && discardWarningFired.compareAndSet(false, true)
+    }
+
+    fun resetScreenshotDiscards() {
+        consecutiveScreenshotDiscards.set(0)
+        discardWarningFired.set(false)
+    }
 
     fun resetSnapshotState() {
         composeRooted = null
-        consecutiveScreenshotDiscards = 0
+        resetScreenshotDiscards()
         invalidateMaskCapture()
     }
 

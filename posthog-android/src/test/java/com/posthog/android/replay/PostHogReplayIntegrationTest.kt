@@ -70,6 +70,7 @@ import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.jvm.functions.Function0
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -2608,5 +2609,120 @@ internal class PostHogReplayIntegrationTest {
         } finally {
             h.fx.sut.uninstall()
         }
+    }
+
+    @Test
+    fun `a block that throws on the posted main-thread path does not crash and returns null`() {
+        // Production hops onto main from the capture executor thread, not from main itself, so
+        // this exercises the post-and-wait branch of runOnMainThreadBlocking, not the inline one.
+        val sut = getSut()
+        val throwingBlock: () -> String = { throw IllegalStateException("boom") }
+        val executor = Executors.newSingleThreadExecutor()
+
+        try {
+            val future =
+                executor.submit(
+                    Callable {
+                        ReflectionHelpers.callInstanceMethod<String?>(
+                            sut,
+                            "runOnMainThreadBlocking",
+                            ReflectionHelpers.ClassParameter.from(Function0::class.java, throwingBlock),
+                        )
+                    },
+                )
+            // Pump the shadow main looper until the posted block (and its throw) has run.
+            var idled = 0
+            while (!future.isDone && idled < 50) {
+                shadowOf(Looper.getMainLooper()).idle()
+                Thread.sleep(20)
+                idled++
+            }
+            assertEquals(
+                null,
+                future.get(3000, TimeUnit.MILLISECONDS),
+                "A throwing block must degrade to null, not propagate onto the main Looper",
+            )
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `a timed-out arming does not leave an orphaned active capture`() {
+        // On timeout the posted arming Runnable still finishes later; it must cancel its own
+        // token rather than leave WindowDrawState reporting an active capture nobody will read.
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        shadowOf(Looper.getMainLooper()).idle()
+        val view = View(activity)
+        val drawState = WindowDrawState()
+        val sut = getSut()
+        val executor = Executors.newSingleThreadExecutor()
+
+        try {
+            val future =
+                executor.submit(
+                    Callable {
+                        ReflectionHelpers.callInstanceMethod<Any?>(
+                            sut,
+                            "armMaskCapture",
+                            ReflectionHelpers.ClassParameter.from(View::class.java, view),
+                            ReflectionHelpers.ClassParameter.from(WindowDrawState::class.java, drawState),
+                        )
+                    },
+                )
+
+            // Do not idle() the main looper for over the 1000ms wait, so the waiter times out
+            // with the posted arming Runnable still sitting unexecuted in the shadow looper queue.
+            assertTrue(future.get(2000, TimeUnit.MILLISECONDS) == null, "Timed-out arming must return null")
+
+            // Now let the late Runnable finish arming and self-cancel.
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(
+                null,
+                drawState.beginDrawSample(),
+                "A timed-out arm must not leave an orphaned active capture behind",
+            )
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `discard warning fires exactly once per run of discards, even racing across threads`() {
+        // consecutiveScreenshotDiscards is incremented from the capture executor thread and the
+        // PixelCopy handler thread; the warning must still fire exactly once per run.
+        val drawState = WindowDrawState()
+        val threads = 4
+        val incrementsPerThread = 50
+        val warnings = AtomicInteger(0)
+        val ready = CountDownLatch(threads)
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(threads)
+
+        repeat(threads) {
+            Thread {
+                ready.countDown()
+                start.await()
+                repeat(incrementsPerThread) {
+                    if (drawState.recordScreenshotDiscard()) {
+                        warnings.incrementAndGet()
+                    }
+                }
+                done.countDown()
+            }.start()
+        }
+
+        assertTrue(ready.await(2000, TimeUnit.MILLISECONDS))
+        start.countDown()
+        assertTrue(done.await(5000, TimeUnit.MILLISECONDS))
+
+        assertEquals(1, warnings.get(), "The warning must fire exactly once for this run of discards")
+
+        drawState.resetScreenshotDiscards()
+        assertFalse(drawState.recordScreenshotDiscard()) // 1
+        assertFalse(drawState.recordScreenshotDiscard()) // 2
+        assertTrue(drawState.recordScreenshotDiscard()) // 3 - threshold reached, warns once
+        assertFalse(drawState.recordScreenshotDiscard(), "Past the threshold, further discards must not re-warn")
     }
 }

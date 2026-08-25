@@ -4,7 +4,6 @@
 
     <application
         android:allowBackup="true"
-        android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -42,7 +41,7 @@
 
         <activity
             android:name="com.posthog.android.sample.ComposeReplayActivity"
-            android:exported="true"
+            android:exported="false"
             android:theme="@style/Theme.PostHogAndroidSample" />
 
         <activity

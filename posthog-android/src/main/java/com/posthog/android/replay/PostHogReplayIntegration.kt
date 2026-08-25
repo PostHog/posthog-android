@@ -1134,19 +1134,32 @@ public class PostHogReplayIntegration(
     // post-and-wait. Returns null on timeout or throw -- callers must treat that as failure.
     private fun <T> runOnMainThreadBlocking(block: () -> T): T? {
         if (Looper.myLooper() == mainHandler.handler.looper) {
-            return block()
+            return try {
+                block()
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
+                null
+            }
         }
         val latch = CountDownLatch(1)
         var result: T? = null
         mainHandler.handler.post {
             try {
+                // Caught here too: an uncaught throw would otherwise escape onto the
+                // main Looper and crash the host app.
                 result = block()
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
             } finally {
                 latch.countDown()
             }
         }
         return try {
             if (latch.await(1000, TimeUnit.MILLISECONDS)) result else null
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
         } catch (e: Throwable) {
             config.logger.log("Session Replay main-thread hop failed: $e")
             null
@@ -1316,11 +1329,9 @@ public class PostHogReplayIntegration(
 
     // Warns once after a run of discards so a silently blank recording stops being invisible.
     private fun recordScreenshotDiscarded(drawState: WindowDrawState) {
-        val discards = drawState.consecutiveScreenshotDiscards + 1
-        drawState.consecutiveScreenshotDiscards = discards
-        if (discards == CONSECUTIVE_DISCARD_WARNING_THRESHOLD) {
+        if (drawState.recordScreenshotDiscard()) {
             config.logger.log(
-                "Session Replay discarded $discards screenshots in a row during capture; the " +
+                "Session Replay discarded several screenshots in a row during capture; the " +
                     "recording may be blank. This can be caused by the screen changing during " +
                     "capture, PixelCopy failing or timing out, or bitmap encoding failing.",
             )
@@ -1363,6 +1374,39 @@ public class PostHogReplayIntegration(
     // attempt is thrown away and re-walked from scratch under a fresh capture, bounded so
     // a screen that redraws during every attempt discards instead of looping. Layout,
     // poison, and external invalidation discard immediately.
+    private fun runArmMaskCaptureLoop(
+        view: View,
+        drawState: WindowDrawState,
+    ): ArmedMaskCapture? {
+        var armed: ArmedMaskCapture? = null
+        for (attempt in 0 until MAX_BASELINE_ARM_ATTEMPTS) {
+            val token = drawState.beginMaskCapture()
+            val preWalk = MaskWalk()
+            try {
+                findMaskableWidgets(view, preWalk)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay mask walk failed: $e.")
+                preWalk.poisoned = true
+            }
+            if (preWalk.poisoned) {
+                drawState.cancelMaskCapture(token)
+                break
+            }
+            when (drawState.setBaseline(token, preWalk.rects)) {
+                BaselineResult.ARMED -> {
+                    armed = ArmedMaskCapture(token, preWalk)
+                    break
+                }
+                BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
+                BaselineResult.UNKEEPABLE -> {
+                    drawState.cancelMaskCapture(token)
+                    break
+                }
+            }
+        }
+        return armed
+    }
+
     private fun armMaskCapture(
         view: View,
         drawState: WindowDrawState,
@@ -1371,34 +1415,58 @@ public class PostHogReplayIntegration(
         // beginMaskCapture() and setBaseline() -- drawCount can't move mid-walk, which also makes
         // TORN_BY_DRAW unreachable here; the retry stays as a guard if that ever changes. Nested
         // run-on-main calls from the pre-walk (e.g. a ComposeView) run inline, already on main.
-        return runOnMainThreadBlocking {
-            var armed: ArmedMaskCapture? = null
-            for (attempt in 0 until MAX_BASELINE_ARM_ATTEMPTS) {
-                val token = drawState.beginMaskCapture()
-                val preWalk = MaskWalk()
-                try {
-                    findMaskableWidgets(view, preWalk)
-                } catch (e: Throwable) {
-                    config.logger.log("Session Replay mask walk failed: $e.")
-                    preWalk.poisoned = true
-                }
-                if (preWalk.poisoned) {
-                    drawState.cancelMaskCapture(token)
-                    break
-                }
-                when (drawState.setBaseline(token, preWalk.rects)) {
-                    BaselineResult.ARMED -> {
-                        armed = ArmedMaskCapture(token, preWalk)
-                        break
-                    }
-                    BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
-                    BaselineResult.UNKEEPABLE -> {
-                        drawState.cancelMaskCapture(token)
-                        break
-                    }
-                }
+        if (Looper.myLooper() == mainHandler.handler.looper) {
+            return try {
+                runArmMaskCaptureLoop(view, drawState)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
+                null
             }
-            armed
+        }
+
+        // Not the generic runOnMainThreadBlocking: on timeout the posted Runnable below still
+        // runs later and must not leave an armed capture nobody will ever consume. `claimed`
+        // makes the result claimable exactly once -- whichever side (the posted block finishing,
+        // or this waiter giving up) gets there first wins; the loser either returns null (waiter)
+        // or cancels its own token (block), so activeCapture is never left orphaned.
+        val latch = CountDownLatch(1)
+        val claimed = AtomicBoolean(false)
+        var result: ArmedMaskCapture? = null
+        mainHandler.handler.post {
+            try {
+                val armed = runArmMaskCaptureLoop(view, drawState)
+                // Publish before the CAS, not after: on timeout the waiter reads `result` only
+                // once its own CAS fails, and it is the CAS's volatile write that makes this
+                // assignment visible. Writing after would let the waiter observe a claimed
+                // capture with a still-null result and orphan it.
+                result = armed
+                if (!claimed.compareAndSet(false, true)) {
+                    armed?.let { drawState.cancelMaskCapture(it.token) }
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
+            } finally {
+                latch.countDown()
+            }
+        }
+        return try {
+            if (latch.await(1000, TimeUnit.MILLISECONDS)) {
+                result
+            } else if (claimed.compareAndSet(false, true)) {
+                // We won the claim race; the block will see claimed == true and cancel.
+                null
+            } else {
+                // The block already claimed and published its result before we could -- safe to
+                // read after the failed CAS establishes happens-before.
+                result
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
         }
     }
 
@@ -1619,7 +1687,7 @@ public class PostHogReplayIntegration(
             recordScreenshotDiscarded(drawState)
             return null
         }
-        drawState.consecutiveScreenshotDiscards = 0
+        drawState.resetScreenshotDiscards()
 
         return RRWireframe(
             id = viewId,
@@ -2640,8 +2708,6 @@ public class PostHogReplayIntegration(
         private const val MAX_BASELINE_ARM_ATTEMPTS: Int = 3
 
         // Consecutive screenshot discards before warning that the recording may be blank.
-        private const val CONSECUTIVE_DISCARD_WARNING_THRESHOLD: Int = 3
-
         private val integrationInstalled = AtomicBoolean(false)
     }
 }
