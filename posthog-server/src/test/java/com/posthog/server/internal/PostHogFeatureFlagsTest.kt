@@ -1135,6 +1135,70 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `unscoped positive response clears retained omission`() {
+        val responseNumber = AtomicInteger(0)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()) },
+                {
+                    when (responseNumber.incrementAndGet()) {
+                        1 -> jsonResponse(createEmptyFlagsResponse())
+                        2 ->
+                            jsonResponse(
+                                createMultipleFlagsResponse(
+                                    "previously-missing" to true,
+                                    "needs-server" to true,
+                                ),
+                            )
+                        else -> jsonResponse(createFlagsResponse("previously-missing", enabled = false))
+                    }
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        featureFlags.evaluateFlags(
+            distinctId = "user-1",
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+            flagKeys = listOf("resolves-locally", "previously-missing"),
+            onlyEvaluateLocally = false,
+            disableGeoip = false,
+        )
+        val unscoped =
+            featureFlags.evaluateFlags(
+                distinctId = "user-2",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        val afterPositive =
+            featureFlags.evaluateFlags(
+                distinctId = "user-3",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("previously-missing"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(true, unscoped.flags["previously-missing"]?.enabled)
+        assertEquals(false, afterPositive.flags["previously-missing"]?.enabled)
+        assertEquals(3, dispatcher.flagsCalls.get(), "unscoped positive evidence must permit the next evaluation")
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `delayed non-owned omission does not overwrite newer positive evidence`() {
         val delayedProbeStarted = CountDownLatch(1)
         val releaseDelayedProbe = CountDownLatch(1)
@@ -1251,6 +1315,56 @@ internal class PostHogFeatureFlagsTest {
         assertFalse(sawDuplicate)
         assertTrue(errors.isEmpty(), "unexpected errors: $errors")
         assertTrue((waiters + owner).none { it.isAlive })
+        assertEquals(1, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `interrupted waiter does not start a duplicate probe`() {
+        val firstProbeStarted = CountDownLatch(1)
+        val releaseFirstProbe = CountDownLatch(1)
+        val duplicateProbe = CountDownLatch(1)
+        val responseNumber = AtomicInteger(0)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    if (responseNumber.incrementAndGet() == 1) {
+                        firstProbeStarted.countDown()
+                        releaseFirstProbe.await()
+                    } else {
+                        duplicateProbe.countDown()
+                    }
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val owner = Thread { evaluateMissingFlag(featureFlags, "owner") }.also { it.start() }
+        assertTrue(firstProbeStarted.await(5, TimeUnit.SECONDS))
+        val waiterEntered = CountDownLatch(1)
+        val waiter =
+            Thread {
+                waiterEntered.countDown()
+                evaluateMissingFlag(featureFlags, "waiter")
+            }.also { it.start() }
+        assertTrue(waiterEntered.await(5, TimeUnit.SECONDS))
+        Thread.sleep(100)
+
+        waiter.interrupt()
+        waiter.join(5_000)
+        val startedDuplicate = duplicateProbe.await(500, TimeUnit.MILLISECONDS)
+        releaseFirstProbe.countDown()
+        owner.join(5_000)
+
+        assertFalse(startedDuplicate)
+        assertFalse(waiter.isAlive)
+        assertFalse(owner.isAlive)
         assertEquals(1, dispatcher.flagsCalls.get())
         featureFlags.shutDown()
         mockServer.shutdown()
