@@ -1130,6 +1130,29 @@ public class PostHogReplayIntegration(
             !isViewStateStableForMatrixOperations()
     }
 
+    // Inline when already on the main thread (posting there would deadlock); otherwise
+    // post-and-wait. Returns null on timeout or throw -- callers must treat that as failure.
+    private fun <T> runOnMainThreadBlocking(block: () -> T): T? {
+        if (Looper.myLooper() == mainHandler.handler.looper) {
+            return block()
+        }
+        val latch = CountDownLatch(1)
+        var result: T? = null
+        mainHandler.handler.post {
+            try {
+                result = block()
+            } finally {
+                latch.countDown()
+            }
+        }
+        return try {
+            if (latch.await(1000, TimeUnit.MILLISECONDS)) result else null
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
+        }
+    }
+
     private fun findMaskableComposeWidgets(
         view: View,
         walk: MaskWalk,
@@ -1194,26 +1217,7 @@ public class PostHogReplayIntegration(
 
         // Compose requires main-thread access. Draw-time verification already runs on main, where
         // posting and waiting would deadlock, so execute inline in that case.
-        val completed =
-            if (Looper.myLooper() == mainHandler.handler.looper) {
-                traversal.run()
-                true
-            } else {
-                val latch = CountDownLatch(1)
-                mainHandler.handler.post {
-                    try {
-                        traversal.run()
-                    } finally {
-                        latch.countDown()
-                    }
-                }
-                try {
-                    latch.await(1000, TimeUnit.MILLISECONDS)
-                } catch (e: Throwable) {
-                    config.logger.log("Session Replay findMaskableComposeWidgets failed: $e")
-                    false
-                }
-            }
+        val completed = runOnMainThreadBlocking { traversal.run() } != null
 
         if (completed && traversalSucceeded) {
             // Feed through addRect on the walk's owner thread so compare mode also covers
@@ -1273,26 +1277,7 @@ public class PostHogReplayIntegration(
 
         // The View hierarchy is main-thread-owned, so detection must run there: inline when
         // already on it, otherwise post and wait, exactly like findMaskableComposeWidgets.
-        val rooted =
-            if (Looper.myLooper() == mainHandler.handler.looper) {
-                containsComposeView()
-            } else {
-                val latch = CountDownLatch(1)
-                var result: Boolean? = null
-                mainHandler.handler.post {
-                    try {
-                        result = containsComposeView()
-                    } finally {
-                        latch.countDown()
-                    }
-                }
-                try {
-                    if (latch.await(1000, TimeUnit.MILLISECONDS)) result else null
-                } catch (e: Throwable) {
-                    config.logger.log("Session Replay Compose view detection failed: $e.")
-                    null
-                }
-            }
+        val rooted = runOnMainThreadBlocking { containsComposeView() }
 
         // A swallowed failure cached as false would silently restore the every-frame-discard
         // bug, so only a definite verdict is cached; "unknown" retries on the next draw.
@@ -1382,29 +1367,39 @@ public class PostHogReplayIntegration(
         view: View,
         drawState: WindowDrawState,
     ): ArmedMaskCapture? {
-        repeat(MAX_BASELINE_ARM_ATTEMPTS) {
-            val token = drawState.beginMaskCapture()
-            val preWalk = MaskWalk()
-            try {
-                findMaskableWidgets(view, preWalk)
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay mask walk failed: $e.")
-                preWalk.poisoned = true
-            }
-            if (preWalk.poisoned) {
-                drawState.cancelMaskCapture(token)
-                return null
-            }
-            when (drawState.setBaseline(token, preWalk.rects)) {
-                BaselineResult.ARMED -> return ArmedMaskCapture(token, preWalk)
-                BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
-                BaselineResult.UNKEEPABLE -> {
+        // The whole loop runs in ONE main-thread message so a draw can't land between
+        // beginMaskCapture() and setBaseline() -- drawCount can't move mid-walk, which also makes
+        // TORN_BY_DRAW unreachable here; the retry stays as a guard if that ever changes. Nested
+        // run-on-main calls from the pre-walk (e.g. a ComposeView) run inline, already on main.
+        return runOnMainThreadBlocking {
+            var armed: ArmedMaskCapture? = null
+            for (attempt in 0 until MAX_BASELINE_ARM_ATTEMPTS) {
+                val token = drawState.beginMaskCapture()
+                val preWalk = MaskWalk()
+                try {
+                    findMaskableWidgets(view, preWalk)
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay mask walk failed: $e.")
+                    preWalk.poisoned = true
+                }
+                if (preWalk.poisoned) {
                     drawState.cancelMaskCapture(token)
-                    return null
+                    break
+                }
+                when (drawState.setBaseline(token, preWalk.rects)) {
+                    BaselineResult.ARMED -> {
+                        armed = ArmedMaskCapture(token, preWalk)
+                        break
+                    }
+                    BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
+                    BaselineResult.UNKEEPABLE -> {
+                        drawState.cancelMaskCapture(token)
+                        break
+                    }
                 }
             }
+            armed
         }
-        return null
     }
 
     private fun Bitmap.paintScreenshotMasks(rects: List<Rect>): Boolean {

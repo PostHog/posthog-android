@@ -66,6 +66,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -1913,7 +1914,7 @@ internal class PostHogReplayIntegrationTest {
                     )
                 }
             assertTrue(
-                guardedEntered.await(2, TimeUnit.SECONDS),
+                awaitDraining(guardedEntered, 3000),
                 "The delayed screenshot callback did not reach its guarded post-copy mask walk",
             )
 
@@ -1924,10 +1925,10 @@ internal class PostHogReplayIntegrationTest {
                         WeakReference(activity.window),
                     )
                 }
-            val callsOverlapped = wireframeEntered.await(1, TimeUnit.SECONDS)
+            val callsOverlapped = awaitDraining(wireframeEntered, 1500)
             releaseGuardedCall.countDown()
-            screenshotFuture.get(2, TimeUnit.SECONDS)
-            wireframeFuture.get(2, TimeUnit.SECONDS)
+            awaitDraining(screenshotFuture, 3000)
+            awaitDraining(wireframeFuture, 3000)
 
             assertFalse(guardedTimedOut.get(), "The guarded visibility hook timed out")
             val overlappingCallsWereSafe =
@@ -1947,6 +1948,38 @@ internal class PostHogReplayIntegrationTest {
             executor.shutdownNow()
             fx.sut.uninstall()
         }
+    }
+
+    // Robolectric's main looper only advances via idle() on the test thread. A bare
+    // latch/future wait would deadlock work that hops onto main (runOnMainThreadBlocking),
+    // so these alternate idle() with a short wait -- call only from the test thread.
+    private fun awaitDraining(
+        latch: CountDownLatch,
+        timeoutMs: Long,
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (latch.await(20, TimeUnit.MILLISECONDS)) return true
+        }
+        return latch.await(0, TimeUnit.MILLISECONDS)
+    }
+
+    private fun <T> awaitDraining(
+        future: Future<T>,
+        timeoutMs: Long,
+    ): T {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            try {
+                return future.get(20, TimeUnit.MILLISECONDS)
+            } catch (e: TimeoutException) {
+                // keep draining
+            }
+        }
+        // Loop already drained past the deadline, so this is a last-chance grab, not another wait.
+        return future.get(0, TimeUnit.MILLISECONDS)
     }
 
     private fun maskWalk(vararg rects: Rect): PostHogReplayIntegration.MaskWalk {
