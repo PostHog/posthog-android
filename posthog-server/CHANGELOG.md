@@ -1,5 +1,11 @@
 ## Next
 
+## 2.15.4
+
+### Patch Changes
+
+- 954bff7: Return an empty server flag snapshot when evaluation receives an explicit empty key scope.
+
 ## 2.15.3
 
 ### Patch Changes
