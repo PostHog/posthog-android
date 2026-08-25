@@ -194,8 +194,19 @@ public class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Th
         if (!integrationInstalled.compareAndSet(false, true)) {
             return
         }
+        try {
+            adapterExceptionHandler.setDefaultUncaughtExceptionHandler(this)
+        } catch (e: Throwable) {
+            // e.g. SecurityException under a SecurityManager. Roll the ownership state back so a
+            // denied install can neither capture nor permanently block a later installation, then
+            // rethrow for the caller (the core client catches and logs per integration; the server
+            // client catches around its install helper).
+            integrationInstalled.set(false)
+            ownsInstallation = false
+            defaultExceptionHandler = null
+            throw e
+        }
         ownsInstallation = true
-        adapterExceptionHandler.setDefaultUncaughtExceptionHandler(this)
         captureEnabled = true
         config.logger.log("Exception autocapture is enabled.")
     }

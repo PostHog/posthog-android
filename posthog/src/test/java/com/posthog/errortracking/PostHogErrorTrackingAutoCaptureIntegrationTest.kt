@@ -17,6 +17,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
     private val mockConfig = mock<PostHogConfig>()
@@ -655,6 +656,37 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         assertEquals(1, target.flushCount)
 
         integration.uninstall()
+    }
+
+    @Test
+    fun `a denied handler installation rolls back so a later install can still succeed`() {
+        // Thread.setDefaultUncaughtExceptionHandler can throw (SecurityException under a
+        // SecurityManager). The process-wide install flag used to be set before that call, so a
+        // denied install leaked it and no instance could ever install again.
+        whenever(mockAdapter.setDefaultUncaughtExceptionHandler(anyOrNull()))
+            .thenThrow(SecurityException("denied"))
+            .thenAnswer {
+                currentHandler = it.getArgument(0)
+                null
+            }
+
+        val first = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { true })
+        assertFailsWith<SecurityException> { first.installWith(RecordingTarget()) }
+
+        // The denied instance must not capture.
+        val target = RecordingTarget()
+        first.uncaughtException(Thread.currentThread(), RuntimeException("boom"))
+        assertEquals(0, target.captured.size)
+
+        // A later install (e.g. after the policy changed) must not be blocked by the failed one.
+        val second = PostHogErrorTrackingAutoCaptureIntegration(mockConfig, mockAdapter, enabledGate = { true })
+        second.installWith(target)
+        assertEquals(second, currentHandler)
+
+        second.uncaughtException(Thread.currentThread(), RuntimeException("boom"))
+        assertEquals(1, target.captured.size)
+
+        second.uninstall()
     }
 
     @Test
