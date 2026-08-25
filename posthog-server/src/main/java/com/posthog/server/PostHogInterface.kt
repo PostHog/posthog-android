@@ -658,9 +658,11 @@ public sealed interface PostHogInterface {
      * @param groups groups for group-based flags
      * @param personProperties person properties for flag evaluation
      * @param groupProperties group properties for flag evaluation
-     * @param flagKeys when non-empty, restricts both local evaluation and the underlying request to
-     *   the given keys, so a flag you did not ask for cannot force a request. Requested keys with no
-     *   local definition are logged and included in the `/flags` fallback, so a flag created since
+     * @param flagKeys when null, evaluates all flags. An empty list returns an empty snapshot
+     *   without consulting caches, local definitions, or `/flags`. Otherwise, restricts both local
+     *   evaluation and the underlying request to the given keys, so a flag you did not ask for
+     *   cannot force a request. Requested keys with no local definition are logged and included in
+     *   the `/flags` fallback, so a flag created since
      *   the last definitions poll still resolves. After a clean response also omits a key, later
      *   calls suppress that key's fallback until the next successful definitions refresh. A deleted
      *   flag or typo therefore costs at most one clean probe per refresh interval. This is distinct

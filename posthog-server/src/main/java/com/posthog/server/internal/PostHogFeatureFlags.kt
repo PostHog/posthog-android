@@ -1000,6 +1000,10 @@ internal class PostHogFeatureFlags(
         onlyEvaluateLocally: Boolean,
         disableGeoip: Boolean,
     ): EvaluateFlagsResult {
+        if (flagKeys?.isEmpty() == true) {
+            return EMPTY_EVALUATE_FLAGS_RESULT
+        }
+
         if (onlyEvaluateLocally && personalApiKey == null) {
             logMissingPersonalApiKey()
             return EMPTY_EVALUATE_FLAGS_RESULT
@@ -1014,10 +1018,6 @@ internal class PostHogFeatureFlags(
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
             )
-        // Only local scoping treats an empty list as "no scope"; the cache key and the `/flags` body
-        // take the raw list.
-        val requestedKeys = flagKeys?.takeIf { it.isNotEmpty() }
-
         // Without definitions there is nothing to evaluate locally, so an existing entry ends the
         // call. This keeps the cached-failure backoff, and caps the blocking `/local_evaluation`
         // attempt below: a personal API key that always fails never sets `definitionsLoaded`.
@@ -1045,7 +1045,7 @@ internal class PostHogFeatureFlags(
                 groups,
                 personProperties,
                 groupProperties,
-                requestedKeys,
+                flagKeys,
             )
 
         val localFlags = local?.flags ?: EMPTY_FLAGS

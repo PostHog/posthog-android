@@ -5,11 +5,13 @@ import com.posthog.server.CountingDispatcher
 import com.posthog.server.PostHogBlockingFlagDefinitionCacheProvider
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.TestLogger
+import com.posthog.server.conclusiveFlagDefinition
 import com.posthog.server.createEmptyFlagsResponse
 import com.posthog.server.createFlagsResponse
 import com.posthog.server.createFlagsResponseWithErrors
 import com.posthog.server.createFlagsResponseWithQuotaLimited
 import com.posthog.server.createLocalEvaluationResponse
+import com.posthog.server.createLocalEvaluationResponseFrom
 import com.posthog.server.createMockHttp
 import com.posthog.server.createMultipleFlagsResponse
 import com.posthog.server.createTestConfig
@@ -631,6 +633,92 @@ internal class PostHogFeatureFlagsTest {
             onlyEvaluateLocally = onlyEvaluateLocally,
             disableGeoip = false,
         )
+
+    @Test
+    fun `empty flagKeys skips caches local definitions and remote work while other scopes still evaluate`() {
+        val dispatcher =
+            CountingDispatcher(
+                {
+                    jsonResponse(
+                        createLocalEvaluationResponseFrom(
+                            conclusiveFlagDefinition("first-flag"),
+                            conclusiveFlagDefinition("second-flag"),
+                        ),
+                    )
+                },
+                { jsonResponse(createFlagsResponse("unexpected", enabled = true)) },
+            )
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        val definitionCache = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = definitionCache,
+            )
+
+        val empty =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = emptyList(),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertTrue(empty.flags.isEmpty())
+        assertTrue(empty.locallyEvaluated.isEmpty())
+        assertNull(empty.requestId)
+        assertNull(empty.evaluatedAt)
+        assertNull(empty.definitionsLoadedAt)
+        assertNull(empty.responseError)
+        assertEquals(0, definitionCache.shouldFetchCalls, "must not consult the definition cache")
+        assertEquals(0, definitionCache.getCalls, "must not read cached definitions")
+        assertEquals(0, dispatcher.localEvaluationCalls.get(), "must not load local definitions")
+        assertEquals(0, dispatcher.flagsCalls.get(), "must not consult /flags")
+        assertEquals(0, mockServer.requestCount, "must do no request-time network work")
+
+        val all =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        val scoped =
+            featureFlags.evaluateFlags(
+                distinctId = "user-2",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("second-flag"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("first-flag", "second-flag"), all.flags.keys, "null still evaluates all flags")
+        assertEquals(setOf("second-flag"), scoped.flags.keys, "a non-empty list remains exactly scoped")
+        assertEquals(1, definitionCache.shouldFetchCalls, "null uses the normal definition-cache path")
+        assertEquals(1, dispatcher.localEvaluationCalls.get(), "definitions load once through the normal path")
+        assertEquals(0, dispatcher.flagsCalls.get(), "both normal-path evaluations resolve locally")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
 
     @Test
     fun `evaluateFlags forwards the original scope and keeps locally resolved flags`() {
