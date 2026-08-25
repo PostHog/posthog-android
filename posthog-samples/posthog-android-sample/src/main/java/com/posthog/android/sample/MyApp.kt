@@ -19,8 +19,15 @@ class MyApp : Application() {
         // PaulKey
 //        val apiKey = "phc_GavhjwMwc75N4HsaLjMTEvH8Kpsz70rZ3N0E9ho89YJ"
 //        val config = PostHogAndroidConfig(apiKey, host = "https://3727-86-27-112-156.ngrok-free.app").apply {
+        val mockHost = BuildConfig.POSTHOG_HOST
         val config =
-            PostHogAndroidConfig(apiKey).apply {
+            (
+                if (mockHost.isNotEmpty()) {
+                    PostHogAndroidConfig("phc_MOCK", host = mockHost)
+                } else {
+                    PostHogAndroidConfig(apiKey)
+                }
+            ).apply {
                 debug = true
                 flushAt = 1
                 captureDeepLinks = false
