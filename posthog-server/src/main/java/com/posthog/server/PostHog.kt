@@ -6,6 +6,7 @@ import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
 import com.posthog.server.internal.PostHogFeatureFlags
+import com.posthog.server.internal.PostHogUncaughtExceptionCapture
 
 @Suppress("DEPRECATION")
 public class PostHog : PostHogStateless(), PostHogInterface {
@@ -51,61 +52,18 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             }
 
             // Core setup never installs integrations for the stateless base, so wire the uncaught
-            // handler explicitly. Gate purely on the local server flag — the server SDK never fetches
-            // remote config, so the remote-config gate the Android SDK uses can never fire here.
+            // handler explicitly (all mechanics live in PostHogUncaughtExceptionCapture).
             // Single-owner by design: the handler is process-wide, so only the first client that opts in
             // installs it. With several live clients all opting in, closing the owner restores the
             // previous handler and the remaining clients do not take over — capture stops until a client
             // is set up again. Server apps use one client per process, so we don't ref-count here.
             if (config.captureUncaughtExceptions) {
                 getConfig<com.posthog.PostHogConfig>()?.let { coreConfig ->
-                    val integration =
-                        PostHogErrorTrackingAutoCaptureIntegration(coreConfig, { true }, ::isProcessFatal)
-                    // The uncaught Throwable is a PostHogThrowable carrying fatal/handled=false/mechanism;
-                    // routing it through captureException preserves those via the shared coercer. A
-                    // fatal-level event takes PostHogMemoryQueue's bounded blocking fatal path inside
-                    // add() (same fatal-record marker the core queue keys on), so capture() itself
-                    // delivers the crash — and everything queued ahead of it — before returning.
-                    integration.installWith(
-                        object : PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget {
-                            override fun capture(throwable: Throwable) {
-                                // $exception_source names the concrete runtime hook per the sdk-specs
-                                // convention (<technology>.<stable_hook>); the mechanism category
-                                // (onuncaughtexception) rides on the PostHogThrowable.
-                                captureException(
-                                    throwable,
-                                    null,
-                                    mapOf(EXCEPTION_SOURCE_ATTRIBUTE to EXCEPTION_SOURCE_UNCAUGHT_HANDLER),
-                                )
-                            }
-
-                            override fun flush() {
-                                // Deliberately empty. The fatal path above already drains the queue
-                                // within its bounded budget; the public flush() would run another HTTP
-                                // batch inline on the crashing thread with no timeout (e.g. retrying a
-                                // batch a 5xx just requeued), stalling crash delegation past the
-                                // advertised bound. A worker-thread (non-fatal) capture leaves the
-                                // process alive, so the periodic flush delivers it.
-                            }
-                        },
-                    )
-                    uncaughtExceptionIntegration = integration
+                    uncaughtExceptionIntegration = PostHogUncaughtExceptionCapture.install(this, coreConfig)
                 }
             }
         }
     }
-
-    // The JVM cannot tell whether a thread's death will end the process, so this approximates the
-    // spec's "expected to terminate" boundary with the main thread: an uncaught exception there is
-    // fatal, while a worker thread's kills only that thread (level error) and the process lives on.
-    // Id 1 is the initial thread on mainstream JVMs and "main" its conventional name; either match
-    // counts, since a missed main thread would silently downgrade a real crash. Known approximation
-    // limits, accepted rather than censusing live threads inside a crash handler: a worker that
-    // happens to be the last non-daemon thread does end the process (its crash is still level
-    // error, async delivery), and a main-thread exception need not end it while other non-daemon
-    // threads keep running.
-    @Suppress("DEPRECATION") // Thread.getId is deprecated on JDK 19+ but stable while a thread lives
-    private fun isProcessFatal(thread: Thread): Boolean = thread.id == 1L || thread.name == "main"
 
     override fun close() {
         // Same lock as setup so the uninstall + field clear cannot race a concurrent setup() that is
@@ -488,11 +446,6 @@ public class PostHog : PostHogStateless(), PostHogInterface {
     }
 
     public companion object {
-        // Event-level capture-integration identity for the uncaught handler, following the
-        // sdk-specs lowercase <technology>.<stable_hook> convention.
-        private const val EXCEPTION_SOURCE_ATTRIBUTE = "\$exception_source"
-        private const val EXCEPTION_SOURCE_UNCAUGHT_HANDLER = "jvm.uncaught_exception_handler"
-
         /**
          * Sets up the SDK and returns an instance that you can hold and pass around.
          *
