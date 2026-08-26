@@ -1,5 +1,11 @@
 ## Next
 
+## 2.15.5
+
+### Patch Changes
+
+- cd99553: Bound repeated remote probes for missing flag keys until local definitions refresh.
+
 ## 2.15.4
 
 ### Patch Changes
