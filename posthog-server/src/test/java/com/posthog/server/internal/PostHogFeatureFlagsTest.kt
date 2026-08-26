@@ -609,6 +609,7 @@ internal class PostHogFeatureFlagsTest {
     private fun manuallyLoadedFeatureFlags(
         mockServer: MockWebServer,
         missingFlagKeysMaxSize: Int = 1_000,
+        missingFlagProbeWaitTimeoutMs: Long = 10_000,
     ): PostHogFeatureFlags {
         val config = createTestConfig(host = mockServer.url("/").toString())
         return PostHogFeatureFlags(
@@ -620,6 +621,7 @@ internal class PostHogFeatureFlagsTest {
             personalApiKey = "test-personal-key",
             pollerEnabled = false,
             missingFlagKeysMaxSize = missingFlagKeysMaxSize,
+            missingFlagProbeWaitTimeoutMs = missingFlagProbeWaitTimeoutMs,
         ).also { it.loadFeatureFlagDefinitions() }
     }
 
@@ -1365,6 +1367,58 @@ internal class PostHogFeatureFlagsTest {
         assertFalse(startedDuplicate)
         assertFalse(waiter.isAlive)
         assertFalse(owner.isAlive)
+        assertEquals(1, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `timed out waiter does not block indefinitely or start a duplicate probe`() {
+        val firstProbeStarted = CountDownLatch(1)
+        val releaseFirstProbe = CountDownLatch(1)
+        val duplicateProbe = CountDownLatch(1)
+        val responseNumber = AtomicInteger(0)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    if (responseNumber.incrementAndGet() == 1) {
+                        firstProbeStarted.countDown()
+                        releaseFirstProbe.await()
+                    } else {
+                        duplicateProbe.countDown()
+                    }
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer, missingFlagProbeWaitTimeoutMs = 100)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        val owner =
+            Thread {
+                runCatching { evaluateMissingFlag(featureFlags, "owner") }.exceptionOrNull()?.let(errors::add)
+            }.also { it.start() }
+        assertTrue(firstProbeStarted.await(5, TimeUnit.SECONDS))
+        val waiter =
+            Thread {
+                runCatching { evaluateMissingFlag(featureFlags, "waiter") }.exceptionOrNull()?.let(errors::add)
+            }.also { it.start() }
+
+        waiter.join(5_000)
+        val ownerWasStillInFlight = owner.isAlive
+        val startedDuplicate = duplicateProbe.await(500, TimeUnit.MILLISECONDS)
+        releaseFirstProbe.countDown()
+        owner.join(5_000)
+
+        assertFalse(waiter.isAlive)
+        assertTrue(ownerWasStillInFlight)
+        assertFalse(startedDuplicate)
+        assertFalse(owner.isAlive)
+        assertTrue(errors.isEmpty(), "unexpected errors: $errors")
         assertEquals(1, dispatcher.flagsCalls.get())
         featureFlags.shutDown()
         mockServer.shutdown()

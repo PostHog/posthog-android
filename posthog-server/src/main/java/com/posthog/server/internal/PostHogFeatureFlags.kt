@@ -36,6 +36,7 @@ internal class PostHogFeatureFlags(
     private val pollerEnabled: Boolean = true,
     private val flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null,
     private val missingFlagKeysMaxSize: Int = DEFAULT_MISSING_FLAG_KEYS_MAX_SIZE,
+    private val missingFlagProbeWaitTimeoutMs: Long = MISSING_FLAG_PROBE_WAIT_TIMEOUT_MS,
 ) : PostHogFeatureFlagsInterface {
     private val cache =
         PostHogFeatureFlagCache(
@@ -258,10 +259,9 @@ internal class PostHogFeatureFlags(
 
         fun complete() = done.countDown()
 
-        fun await(): Boolean =
+        fun await(timeoutMs: Long): Boolean =
             try {
-                done.await()
-                true
+                done.await(timeoutMs, TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 false
@@ -1139,7 +1139,7 @@ internal class PostHogFeatureFlags(
             val plan = planMissingFlagProbe(missingDefinitionKeys)
 
             if (plan.waiting.isNotEmpty()) {
-                if (!plan.waiting.all { it.await() }) return null to null
+                if (!plan.waiting.all { it.await(missingFlagProbeWaitTimeoutMs) }) return null to null
                 continue
             }
 
@@ -1322,6 +1322,7 @@ internal class PostHogFeatureFlags(
         internal const val LOCAL_EVALUATION_REASON_CODE: String = "local_evaluation"
         internal const val LOCAL_EVALUATION_REASON_DESCRIPTION: String = "Evaluated locally"
         private const val FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS: Long = 10_000
+        private const val MISSING_FLAG_PROBE_WAIT_TIMEOUT_MS: Long = 10_000
         private const val DEFAULT_MISSING_FLAG_KEYS_MAX_SIZE: Int = 1_000
 
         private val EMPTY_PROPERTIES: Map<String, Any?> = emptyMap()
