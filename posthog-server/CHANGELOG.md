@@ -1,5 +1,11 @@
 ## Next
 
+## 2.15.6
+
+### Patch Changes
+
+- 8ef048b: Align local `is_set` and `is_not_set` evaluation with partial property context.
+
 ## 2.15.5
 
 ### Patch Changes
