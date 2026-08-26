@@ -1699,6 +1699,77 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `group presence operators use properties for the matching group type`() {
+        for ((operator, expected) in mapOf("is_set" to true, "is_not_set" to false)) {
+            val flagKey = "group-$operator"
+            val localEvalResponse =
+                """
+                {
+                    "flags": [
+                        {
+                            "id": 1,
+                            "name": "$flagKey",
+                            "key": "$flagKey",
+                            "active": true,
+                            "filters": {
+                                "aggregation_group_type_index": 2,
+                                "groups": [
+                                    {
+                                        "properties": [
+                                            {
+                                                "key": "plan",
+                                                "value": "$operator",
+                                                "operator": "$operator",
+                                                "type": "person",
+                                                "negation": false
+                                            }
+                                        ],
+                                        "rollout_percentage": 100
+                                    }
+                                ]
+                            },
+                            "version": 1
+                        }
+                    ],
+                    "group_type_mapping": { "2": "organization" },
+                    "cohorts": {}
+                }
+                """.trimIndent()
+            val logger = TestLogger()
+            val mockServer =
+                createMockHttp(
+                    jsonResponse(localEvalResponse),
+                    jsonResponse(createEmptyFlagsResponse()),
+                )
+            val config = createTestConfig(logger, mockServer.url("/").toString())
+            val featureFlags =
+                PostHogFeatureFlags(
+                    config,
+                    PostHogApi(config),
+                    60000,
+                    100,
+                    localEvaluation = true,
+                    personalApiKey = "test-personal-key",
+                )
+
+            val result =
+                featureFlags.getFeatureFlag(
+                    key = flagKey,
+                    defaultValue = null,
+                    distinctId = "user-123",
+                    groups = mapOf("organization" to "org-456"),
+                    groupProperties = mapOf("organization" to mapOf("plan" to null)),
+                )
+
+            assertEquals(expected, result)
+            assertTrue(logger.containsLog("Local evaluation successful"))
+
+            featureFlags.shutDown()
+            mockServer.shutdown()
+        }
+    }
+
+    @Test
     fun `group-based flag returns false when required group is missing`() {
         val logger = TestLogger()
         val localEvalResponse =
