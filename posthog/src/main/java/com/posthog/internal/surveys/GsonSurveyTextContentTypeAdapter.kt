@@ -28,7 +28,7 @@ internal class GsonSurveyTextContentTypeAdapter(private val config: PostHogConfi
         return try {
             SurveyTextContentType.fromValue(json.asString)
         } catch (e: Throwable) {
-            config.logger.log("${json.asInt} isn't a known type: $e.")
+            config.logger.log("$json isn't a known type: $e.")
             null
         }
     }

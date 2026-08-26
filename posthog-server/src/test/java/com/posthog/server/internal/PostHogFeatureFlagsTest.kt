@@ -5,15 +5,21 @@ import com.posthog.server.CountingDispatcher
 import com.posthog.server.PostHogBlockingFlagDefinitionCacheProvider
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.TestLogger
+import com.posthog.server.conclusiveFlagDefinition
 import com.posthog.server.createEmptyFlagsResponse
 import com.posthog.server.createFlagsResponse
+import com.posthog.server.createFlagsResponseWithErrors
+import com.posthog.server.createFlagsResponseWithQuotaLimited
 import com.posthog.server.createLocalEvaluationResponse
+import com.posthog.server.createLocalEvaluationResponseFrom
 import com.posthog.server.createMockHttp
+import com.posthog.server.createMultipleFlagsResponse
 import com.posthog.server.createTestConfig
 import com.posthog.server.errorResponse
 import com.posthog.server.jsonResponse
 import com.posthog.server.jsonResponseWithEtag
 import com.posthog.server.notModifiedResponse
+import com.posthog.server.unGzip
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -24,6 +30,7 @@ import java.util.Collections
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -533,6 +540,358 @@ internal class PostHogFeatureFlagsTest {
         mockServer.shutdown()
     }
 
+    /**
+     * Local-evaluation definitions with one flag that resolves locally (no property filters) and one
+     * that is inconclusive locally (a person-property filter with no value supplied).
+     */
+    private fun localEvalResponseWithResolvableAndInconclusiveFlags(): String =
+        """
+        {
+            "flags": [
+                {
+                    "id": 1,
+                    "name": "resolves-locally",
+                    "key": "resolves-locally",
+                    "active": true,
+                    "filters": {
+                        "groups": [
+                            { "properties": [], "rollout_percentage": 100 }
+                        ]
+                    },
+                    "version": 1
+                },
+                {
+                    "id": 2,
+                    "name": "needs-server",
+                    "key": "needs-server",
+                    "active": true,
+                    "filters": {
+                        "groups": [
+                            {
+                                "properties": [
+                                    {
+                                        "key": "email",
+                                        "operator": "exact",
+                                        "value": "match@example.com",
+                                        "type": "person"
+                                    }
+                                ],
+                                "rollout_percentage": 100
+                            }
+                        ]
+                    },
+                    "version": 1
+                }
+            ],
+            "group_type_mapping": {},
+            "cohorts": {}
+        }
+        """.trimIndent()
+
+    private fun localEvalFeatureFlags(
+        mockServer: MockWebServer,
+        loadedLatch: CountDownLatch,
+    ): PostHogFeatureFlags {
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        return PostHogFeatureFlags(
+            config,
+            PostHogApi(config),
+            60000,
+            100,
+            localEvaluation = true,
+            personalApiKey = "test-personal-key",
+            pollIntervalSeconds = 3600,
+            onFeatureFlags = { loadedLatch.countDown() },
+        )
+    }
+
+    private fun manuallyLoadedFeatureFlags(mockServer: MockWebServer): PostHogFeatureFlags {
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        return PostHogFeatureFlags(
+            config,
+            PostHogApi(config),
+            60000,
+            100,
+            localEvaluation = true,
+            personalApiKey = "test-personal-key",
+            pollerEnabled = false,
+        ).also { it.loadFeatureFlagDefinitions() }
+    }
+
+    private fun evaluateMissingFlag(
+        featureFlags: PostHogFeatureFlags,
+        distinctId: String,
+        onlyEvaluateLocally: Boolean = false,
+        missingKey: String = "missing-flag",
+    ): EvaluateFlagsResult =
+        featureFlags.evaluateFlags(
+            distinctId = distinctId,
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+            flagKeys = listOf("known-flag", missingKey),
+            onlyEvaluateLocally = onlyEvaluateLocally,
+            disableGeoip = false,
+        )
+
+    @Test
+    fun `empty flagKeys skips caches local definitions and remote work while other scopes still evaluate`() {
+        val dispatcher =
+            CountingDispatcher(
+                {
+                    jsonResponse(
+                        createLocalEvaluationResponseFrom(
+                            conclusiveFlagDefinition("first-flag"),
+                            conclusiveFlagDefinition("second-flag"),
+                        ),
+                    )
+                },
+                { jsonResponse(createFlagsResponse("unexpected", enabled = true)) },
+            )
+        val mockServer = MockWebServer()
+        mockServer.dispatcher = dispatcher
+        mockServer.start()
+
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        val definitionCache = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = definitionCache,
+            )
+
+        val empty =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = emptyList(),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertTrue(empty.flags.isEmpty())
+        assertTrue(empty.locallyEvaluated.isEmpty())
+        assertNull(empty.requestId)
+        assertNull(empty.evaluatedAt)
+        assertNull(empty.definitionsLoadedAt)
+        assertNull(empty.responseError)
+        assertEquals(0, definitionCache.shouldFetchCalls, "must not consult the definition cache")
+        assertEquals(0, definitionCache.getCalls, "must not read cached definitions")
+        assertEquals(0, dispatcher.localEvaluationCalls.get(), "must not load local definitions")
+        assertEquals(0, dispatcher.flagsCalls.get(), "must not consult /flags")
+        assertEquals(0, mockServer.requestCount, "must do no request-time network work")
+
+        val all =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        val scoped =
+            featureFlags.evaluateFlags(
+                distinctId = "user-2",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("second-flag"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("first-flag", "second-flag"), all.flags.keys, "null still evaluates all flags")
+        assertEquals(setOf("second-flag"), scoped.flags.keys, "a non-empty list remains exactly scoped")
+        assertEquals(1, definitionCache.shouldFetchCalls, "null uses the normal definition-cache path")
+        assertEquals(1, dispatcher.localEvaluationCalls.get(), "definitions load once through the normal path")
+        assertEquals(0, dispatcher.flagsCalls.get(), "both normal-path evaluations resolve locally")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags forwards the original scope and keeps locally resolved flags`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                jsonResponse(createFlagsResponse("needs-server", enabled = true)),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("resolves-locally", "needs-server"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        // The flag that resolved in-process survives instead of being discarded on the first miss...
+        assertEquals(true, result.flags["resolves-locally"]?.enabled)
+        assertEquals(true, result.locallyEvaluated["resolves-locally"])
+        // ...and the inconclusive flag is filled in from the /flags response.
+        assertEquals(true, result.flags["needs-server"]?.enabled)
+        assertEquals(false, result.locallyEvaluated["needs-server"])
+
+        // A cached raw remote response is merged with a fresh local pass in the same way.
+        val cached =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("resolves-locally", "needs-server"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(true, cached.locallyEvaluated["resolves-locally"])
+        assertEquals(false, cached.locallyEvaluated["needs-server"])
+        assertEquals(2, mockServer.requestCount)
+
+        mockServer.takeRequest() // local_evaluation request
+        val flagsRequestBody = mockServer.takeRequest().body.unGzip()
+        assertTrue(flagsRequestBody.contains("\"needs-server\""))
+        assertTrue(flagsRequestBody.contains("\"resolves-locally\""))
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `evaluateFlags fetches requested keys missing from local definitions`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                jsonResponse(createFlagsResponse("remote-only", enabled = true)),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("resolves-locally", "remote-only"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(true, result.flags["resolves-locally"]?.enabled)
+        assertEquals(true, result.locallyEvaluated["resolves-locally"])
+        assertEquals(true, result.flags["remote-only"]?.enabled)
+        assertEquals(false, result.locallyEvaluated["remote-only"])
+
+        mockServer.takeRequest() // local_evaluation request
+        val flagsRequestBody = mockServer.takeRequest().body.unGzip()
+        assertTrue(flagsRequestBody.contains("\"remote-only\""))
+        assertTrue(flagsRequestBody.contains("\"resolves-locally\""))
+        assertFalse(flagsRequestBody.contains("\"needs-server\""))
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `a failed partial fallback does not suppress the legacy retry`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                errorResponse(500, "Internal Server Error"),
+                jsonResponse(createFlagsResponse("needs-server", enabled = true)),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val evaluation =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(setOf("resolves-locally"), evaluation.flags.keys)
+
+        val legacyFlags =
+            featureFlags.getFeatureFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+            )
+        assertEquals(setOf("needs-server"), legacyFlags?.keys)
+        assertEquals(3, mockServer.requestCount, "legacy evaluation must retry the failed fallback")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `successful partial fallback caches the raw remote response for legacy callers`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                jsonResponse(
+                    createMultipleFlagsResponse(
+                        "resolves-locally" to false,
+                        "needs-server" to true,
+                    ),
+                ),
+            )
+        val loadedLatch = CountDownLatch(1)
+        val featureFlags = localEvalFeatureFlags(mockServer, loadedLatch)
+        assertTrue(loadedLatch.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS))
+
+        val evaluation =
+            featureFlags.evaluateFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+        assertEquals(true, evaluation.flags["resolves-locally"]?.enabled)
+        assertEquals(true, evaluation.flags["needs-server"]?.enabled)
+
+        val legacyFlags =
+            featureFlags.getFeatureFlags(
+                distinctId = "user-1",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+            )
+        assertEquals(false, legacyFlags?.get("resolves-locally")?.enabled)
+        assertEquals(true, legacyFlags?.get("needs-server")?.enabled)
+        assertEquals(2, mockServer.requestCount, "legacy evaluation must reuse the raw remote entry")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
     @Test
     fun `poller does not start when pollerEnabled is false`() {
         val logger = TestLogger()
@@ -645,9 +1004,13 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `evaluateFlags warns about requested keys with no local definition`() {
+    fun `evaluateFlags falls back for requested keys with no local definition`() {
         val logger = TestLogger()
-        val mockServer = createMockHttp(jsonResponse(createLocalEvaluationResponse("known-flag")))
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createFlagsResponse("typo-flag", enabled = true)),
+            )
         val url = mockServer.url("/")
 
         val config = createTestConfig(logger, url.toString())
@@ -674,11 +1037,447 @@ internal class PostHogFeatureFlagsTest {
                 disableGeoip = false,
             )
 
-        // The undefined key is silently absent, so the log is the only signal a deleted or
-        // mistyped key produces.
-        assertEquals(setOf("known-flag"), result.flags.keys)
+        assertEquals(setOf("known-flag", "typo-flag"), result.flags.keys)
         assertTrue(logger.containsLog("No local definition for requested flag(s) typo-flag"))
-        assertEquals(1, mockServer.requestCount, "only the definitions load, no /flags request")
+        assertEquals(2, mockServer.requestCount, "the undefined key falls back to /flags")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `clean remote omission suppresses missing key probes across identities`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        assertEquals(setOf("known-flag"), evaluateMissingFlag(featureFlags, "user-1").flags.keys)
+        assertEquals(setOf("known-flag"), evaluateMissingFlag(featureFlags, "user-2").flags.keys)
+        assertEquals(2, mockServer.requestCount, "only the definitions load and first probe are allowed")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `concurrent missing key calls share one clean probe`() {
+        val firstProbeStarted = CountDownLatch(1)
+        val releaseProbe = CountDownLatch(1)
+        val duplicateProbe = CountDownLatch(1)
+        val responseNumber = AtomicInteger(0)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    if (responseNumber.incrementAndGet() == 1) {
+                        firstProbeStarted.countDown()
+                    } else {
+                        duplicateProbe.countDown()
+                    }
+                    releaseProbe.await()
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        val owner = Thread { runCatching { evaluateMissingFlag(featureFlags, "owner") }.exceptionOrNull()?.let(errors::add) }
+        owner.start()
+        assertTrue(firstProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+
+        val entered = CountDownLatch(10)
+        val waiters =
+            (1..10).map { index ->
+                Thread {
+                    entered.countDown()
+                    runCatching { evaluateMissingFlag(featureFlags, "waiter-$index") }.exceptionOrNull()?.let(errors::add)
+                }.also { it.start() }
+            }
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val sawDuplicate = duplicateProbe.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        releaseProbe.countDown()
+        (waiters + owner).forEach { it.join(5_000) }
+
+        assertFalse(sawDuplicate)
+        assertTrue(errors.isEmpty(), "unexpected errors: $errors")
+        assertTrue((waiters + owner).none { it.isAlive })
+        assertEquals(1, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `unrelated missing keys probe concurrently`() {
+        val probesStarted = CountDownLatch(2)
+        val releaseProbes = CountDownLatch(1)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    probesStarted.countDown()
+                    releaseProbes.await()
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val callers =
+            listOf("missing-a", "missing-b").map { key ->
+                Thread { evaluateMissingFlag(featureFlags, "user-$key", missingKey = key) }.also { it.start() }
+            }
+
+        val ranConcurrently = probesStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        releaseProbes.countDown()
+        callers.forEach { it.join(5_000) }
+
+        assertTrue(ranConcurrently)
+        assertTrue(callers.none { it.isAlive })
+        assertEquals(2, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `failed owner coalesces waiters behind one retry`() {
+        val firstProbeStarted = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val retryStarted = CountDownLatch(1)
+        val extraRetry = CountDownLatch(1)
+        val releaseRetry = CountDownLatch(1)
+        val responseNumber = AtomicInteger(0)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(createLocalEvaluationResponse("known-flag")) },
+                {
+                    when (responseNumber.incrementAndGet()) {
+                        1 -> {
+                            firstProbeStarted.countDown()
+                            releaseFirst.await()
+                            errorResponse(500, "Internal Server Error")
+                        }
+                        2 -> {
+                            retryStarted.countDown()
+                            releaseRetry.await()
+                            jsonResponse(createEmptyFlagsResponse())
+                        }
+                        else -> {
+                            extraRetry.countDown()
+                            jsonResponse(createEmptyFlagsResponse())
+                        }
+                    }
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val owner = Thread { evaluateMissingFlag(featureFlags, "failed-owner") }.also { it.start() }
+        assertTrue(firstProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val entered = CountDownLatch(8)
+        val waiters =
+            (1..8).map { index ->
+                Thread {
+                    entered.countDown()
+                    evaluateMissingFlag(featureFlags, "retry-waiter-$index")
+                }.also { it.start() }
+            }
+        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+
+        releaseFirst.countDown()
+        val retried = retryStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        val sawExtraRetry = extraRetry.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        releaseRetry.countDown()
+        (waiters + owner).forEach { it.join(5_000) }
+
+        assertTrue(retried)
+        assertFalse(sawExtraRetry)
+        assertTrue((waiters + owner).none { it.isAlive })
+        assertEquals(2, dispatcher.flagsCalls.get())
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `refresh invalidates an in-flight probe generation`() {
+        val oldProbeStarted = CountDownLatch(1)
+        val releaseOldProbe = CountDownLatch(1)
+        val newProbeStarted = CountDownLatch(1)
+        val releaseNewProbe = CountDownLatch(1)
+        val flagsCalls = AtomicInteger(0)
+        val definitions = createLocalEvaluationResponse("known-flag")
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(definitions) },
+                {
+                    if (flagsCalls.incrementAndGet() == 1) {
+                        oldProbeStarted.countDown()
+                        releaseOldProbe.await()
+                    } else {
+                        newProbeStarted.countDown()
+                        releaseNewProbe.await()
+                    }
+                    jsonResponse(createEmptyFlagsResponse())
+                },
+            )
+        val mockServer =
+            MockWebServer().apply {
+                this.dispatcher = dispatcher
+                start()
+            }
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        val owner = Thread { evaluateMissingFlag(featureFlags, "old-owner") }.also { it.start() }
+        assertTrue(oldProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val waiter = Thread { evaluateMissingFlag(featureFlags, "new-waiter") }.also { it.start() }
+
+        featureFlags.loadFeatureFlagDefinitions()
+        val newGenerationProbed = newProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        releaseNewProbe.countDown()
+        releaseOldProbe.countDown()
+        owner.join(5_000)
+        waiter.join(5_000)
+
+        assertTrue(newGenerationProbed)
+        assertTrue(owner.isAlive.not() && waiter.isAlive.not())
+        assertEquals(2, flagsCalls.get())
+        evaluateMissingFlag(featureFlags, "after-refresh")
+        assertEquals(2, flagsCalls.get(), "the new generation should retain its clean omission")
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `modified definitions refresh clears missing key suppression and bypasses identity cache`() {
+        val definitions = createLocalEvaluationResponse("known-flag")
+        val mockServer =
+            createMockHttp(
+                jsonResponse(definitions),
+                jsonResponse(createEmptyFlagsResponse()),
+                jsonResponse(definitions),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
+
+        assertEquals(4, mockServer.requestCount, "the first call after refresh must make a new probe")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `not modified definitions refresh clears missing key suppression`() {
+        val definitions = createLocalEvaluationResponse("known-flag")
+        val mockServer =
+            createMockHttp(
+                jsonResponseWithEtag(definitions, "\"etag-v1\""),
+                jsonResponse(createEmptyFlagsResponse()),
+                notModifiedResponse("\"etag-v1\""),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
+
+        assertEquals(4, mockServer.requestCount, "a 304 must permit a new probe")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `failed definitions refresh preserves missing key suppression`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createEmptyFlagsResponse()),
+                errorResponse(500, "Internal Server Error"),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        val first = evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-2")
+
+        assertEquals(setOf("known-flag"), first.flags.keys)
+        assertEquals(3, mockServer.requestCount, "a failed refresh must not permit another probe")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `failed and inconclusive responses allow the same identity to retry`() {
+        val responses =
+            listOf(
+                "HTTP failure" to errorResponse(500, "Internal Server Error"),
+                "quota limit" to jsonResponse(createFlagsResponseWithQuotaLimited()),
+                "computation error" to jsonResponse(createFlagsResponseWithErrors()),
+            )
+
+        for ((name, firstResponse) in responses) {
+            val mockServer =
+                createMockHttp(
+                    jsonResponse(createLocalEvaluationResponse("known-flag")),
+                    firstResponse,
+                    jsonResponse(createFlagsResponse("missing-flag", enabled = true)),
+                )
+            val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+            val first = evaluateMissingFlag(featureFlags, "user-1")
+            val retried = evaluateMissingFlag(featureFlags, "user-1")
+
+            assertFalse(first.flags.containsKey("missing-flag"))
+            assertEquals(true, retried.flags["missing-flag"]?.enabled, "$name must not suppress the retry")
+            assertEquals(3, mockServer.requestCount, "$name must allow the same identity to retry")
+            featureFlags.shutDown()
+            mockServer.shutdown()
+        }
+    }
+
+    @Test
+    fun `remotely returned key uses the identity cache until a clean response omits it`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createFlagsResponse("remote-only", enabled = true)),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+
+        val first = evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
+        val cached = evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
+        assertEquals(2, mockServer.requestCount, "the same identity should reuse the returned flag")
+
+        val second = evaluateMissingFlag(featureFlags, "user-2", missingKey = "remote-only")
+        val suppressed = evaluateMissingFlag(featureFlags, "user-3", missingKey = "remote-only")
+
+        assertEquals(true, first.flags["remote-only"]?.enabled)
+        assertEquals(true, cached.flags["remote-only"]?.enabled)
+        assertFalse(second.flags.containsKey("remote-only"))
+        assertFalse(suppressed.flags.containsKey("remote-only"))
+        assertEquals(3, mockServer.requestCount, "the clean omission should suppress later probes")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `known remote and brand new keys share one scoped fallback`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponse("known-flag")),
+                jsonResponse(createFlagsResponse("remote-only", enabled = true)),
+                jsonResponse(
+                    createMultipleFlagsResponse(
+                        "remote-only" to true,
+                        "brand-new" to true,
+                    ),
+                ),
+            )
+        val featureFlags = manuallyLoadedFeatureFlags(mockServer)
+        evaluateMissingFlag(featureFlags, "user-1", missingKey = "remote-only")
+
+        val mixed =
+            featureFlags.evaluateFlags(
+                distinctId = "user-2",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("known-flag", "remote-only", "brand-new"),
+                onlyEvaluateLocally = false,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("known-flag", "remote-only", "brand-new"), mixed.flags.keys)
+        assertEquals(3, mockServer.requestCount, "both missing keys should share one fallback")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `shared definition cache refresh clears missing key suppression`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createEmptyFlagsResponse()),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "known-flag"),
+                shouldFetch = false,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
+        featureFlags.loadFeatureFlagDefinitions()
+        evaluateMissingFlag(featureFlags, "user-1")
+
+        assertEquals(2, mockServer.requestCount, "a shared-cache refresh must permit a new probe")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `local only evaluation omits missing requested keys without remote fallback`() {
+        val mockServer = createMockHttp(jsonResponse(createLocalEvaluationResponse("known-flag")))
+        val config = createTestConfig(host = mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = listOf("known-flag", "typo-flag"),
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("known-flag"), result.flags.keys)
+        assertEquals(1, mockServer.requestCount, "only the definitions load is allowed")
 
         featureFlags.shutDown()
         mockServer.shutdown()

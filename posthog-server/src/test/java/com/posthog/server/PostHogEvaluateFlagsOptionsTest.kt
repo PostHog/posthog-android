@@ -62,6 +62,52 @@ internal class PostHogEvaluateFlagsOptionsTest {
     }
 
     @Test
+    fun `groupProperties merges with existing group properties without mutating input maps`() {
+        val companyProperties = mapOf<String, Any?>("size" to "large", "plan" to "premium")
+        val input = mapOf("company" to companyProperties, "project" to mapOf("tier" to 2))
+
+        val options =
+            PostHogEvaluateFlagsOptions.builder()
+                .groupProperty("company", "industry", "tech")
+                .groupProperty("company", "size", "small")
+                .groupProperties(input)
+                .build()
+
+        assertEquals(
+            mapOf(
+                "company" to mapOf("industry" to "tech", "size" to "large", "plan" to "premium"),
+                "project" to mapOf("tier" to 2),
+            ),
+            options.groupProperties,
+        )
+        assertEquals(mapOf("size" to "large", "plan" to "premium"), companyProperties)
+    }
+
+    @Test
+    fun `built options are isolated from later builder changes`() {
+        val companyProperties = mutableMapOf<String, Any?>("size" to "small")
+        val builder =
+            PostHogEvaluateFlagsOptions.builder()
+                .group("organization", "original")
+                .personProperty("plan", "original")
+                .flagKeys(listOf("original"))
+        builder.groupProperties = mutableMapOf("company" to companyProperties)
+        val options = builder.build()
+
+        builder
+            .group("organization", "changed")
+            .personProperty("plan", "changed")
+            .groupProperty("company", "plan", "enterprise")
+            .flagKeys(listOf("changed"))
+        companyProperties["size"] = "large"
+
+        assertEquals(mapOf("organization" to "original"), options.groups)
+        assertEquals(mapOf("plan" to "original"), options.personProperties)
+        assertEquals(mapOf("company" to mapOf("size" to "small")), options.groupProperties)
+        assertEquals(listOf("original"), options.flagKeys)
+    }
+
+    @Test
     fun `later values replace earlier values for matching keys`() {
         val options =
             PostHogEvaluateFlagsOptions.builder()

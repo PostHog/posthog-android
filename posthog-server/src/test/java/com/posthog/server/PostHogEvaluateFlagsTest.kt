@@ -278,6 +278,30 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `explicit empty flagKeys returns a valid empty snapshot without a flags request`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(jsonResponse(createFlagsResponse("unexpected", enabled = true)))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .build(),
+            )
+
+        val options = PostHogEvaluateFlagsOptions.builder().flagKeys(emptyList()).build()
+        val snapshot = postHog.evaluateFlags("user-1", options)
+
+        assertEquals("user-1", snapshot.distinctId)
+        assertTrue(snapshot.keys.isEmpty())
+        assertEquals(0, mockServer.requestCount, "an empty scope must not consult /flags")
+
+        postHog.close()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `evaluateFlags uses request context distinctId when omitted or null`() {
         val cases =
             listOf<Pair<String, (PostHogInterface) -> PostHogFeatureFlagEvaluations>>(
@@ -538,7 +562,7 @@ internal class PostHogEvaluateFlagsTest {
             assertTrue(snapshot.isEnabled("gated"), "the unresolvable key must be filled from /flags")
             postHog.flush()
 
-            assertEquals(1, dispatcher.flagsCalls.get(), "one request, for the unresolved key only")
+            assertEquals(1, dispatcher.flagsCalls.get(), "one fallback request")
 
             val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
             val conclusive = assertNotNull(flagCalled["conclusive"])
@@ -635,7 +659,7 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
-    fun `a requested key with no local definition is absent and asks the server for nothing`() {
+    fun `a requested key with no local definition falls back to the server`() {
         val fixtures =
             listOf(
                 "all definitions conclusive" to createLocalEvaluationResponseFrom(conclusiveFlagDefinition("conclusive")),
@@ -645,14 +669,12 @@ internal class PostHogEvaluateFlagsTest {
         for ((caseName, definitions) in fixtures) {
             withLocalEvaluation(
                 definitions = definitions,
-                // The server could answer for this key — the point is that we never ask.
                 flagsResponse = { jsonResponse(createMultipleFlagsResponse("brand-new-flag" to true)) },
             ) { postHog, dispatcher, _ ->
                 val snapshot = postHog.evaluateFlags("user-1", flagKeys = listOf("brand-new-flag"))
 
-                assertTrue(snapshot.keys.isEmpty(), "case: $caseName")
-                assertFalse(snapshot.isEnabled("brand-new-flag"), "case: $caseName")
-                assertEquals(0, dispatcher.flagsCalls.get(), "case: $caseName")
+                assertTrue(snapshot.isEnabled("brand-new-flag"), "case: $caseName")
+                assertEquals(1, dispatcher.flagsCalls.get(), "case: $caseName")
             }
         }
     }

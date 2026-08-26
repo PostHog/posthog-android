@@ -112,7 +112,7 @@ public open class PostHogStateless protected constructor(
                 }
 
                 // flush pending events before tearing down so queued data isn't lost
-                queue?.flush()
+                queue?.flushForShutdown()
 
                 enabled = false
 

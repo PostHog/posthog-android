@@ -195,6 +195,7 @@ dependencies {
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${versions["kotlinVersion"]}")
 }
 
 // Functional tests run the plugin through Gradle TestKit against real AGP

@@ -1,5 +1,44 @@
 ## Next
 
+## 2.15.4
+
+### Patch Changes
+
+- 954bff7: Return an empty server flag snapshot when evaluation receives an explicit empty key scope.
+
+## 2.15.3
+
+### Patch Changes
+
+- 35969a5: Keep built server options unchanged when their builders are reused.
+
+## 2.15.2
+
+### Patch Changes
+
+- 7c203ff: Preserve existing group properties when adding bulk evaluate-flags options.
+
+## 2.15.1
+
+### Patch Changes
+
+- ad23727: Respect network availability and retry pauses during explicit queue flushes while allowing shutdown to retry pending events immediately.
+
+## 2.15.0
+
+### Minor Changes
+
+- f995305: fix(server): remotely evaluate requested flags missing from local definitions
+
+  Scoped `evaluateFlags` calls now fall back to `/flags` when a requested key is absent from the
+  currently loaded local definitions, allowing newly created or stale keys to resolve remotely. The
+  fallback forwards the caller's original `flagKeys` scope while locally resolved values remain
+  authoritative when the response is merged. When a clean remote response also omits the key, later
+  calls suppress that key's fallback until the next successful definitions refresh, bounding deleted
+  keys and typos to one clean probe per refresh interval. Failed, quota-limited, or computation-error
+  responses do not establish suppression. This reverses the 2.12.0 behavior where such a key was absent
+  from the snapshot and forced no request.
+
 ## 2.14.2
 
 ### Patch Changes

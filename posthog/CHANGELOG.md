@@ -1,5 +1,17 @@
 ## Next
 
+## 6.33.7
+
+### Patch Changes
+
+- 31b805f: Prevent malformed survey JSON from throwing while logging deserialization errors.
+
+## 6.33.6
+
+### Patch Changes
+
+- ad23727: Respect network availability and retry pauses during explicit queue flushes while allowing shutdown to retry pending events immediately.
+
 ## 6.33.5
 
 ### Patch Changes

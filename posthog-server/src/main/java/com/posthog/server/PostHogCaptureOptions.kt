@@ -237,10 +237,10 @@ public class PostHogCaptureOptions private constructor(
          */
         public fun build(): PostHogCaptureOptions =
             PostHogCaptureOptions(
-                properties,
-                userProperties,
-                userPropertiesSetOnce,
-                groups,
+                properties.toBuilderMapSnapshot(),
+                userProperties.toBuilderMapSnapshot(),
+                userPropertiesSetOnce.toBuilderMapSnapshot(),
+                groups.toBuilderMapSnapshot(),
                 timestamp,
                 appendFeatureFlags,
                 flags,

@@ -46,7 +46,7 @@ internal class PostHogAndroidDateProvider(
     }
 
     override fun addSecondsToCurrentDate(seconds: Int): Date {
-        return Date(currentTimeMillis() + seconds * 1000)
+        return Date(currentTimeMillis() + seconds * 1000L)
     }
 
     override fun currentTimeMillis(): Long {

@@ -29,7 +29,7 @@ internal abstract class GsonSurveyEnumAdapter<T>(
         return try {
             fromValue(json.asString)
         } catch (e: Throwable) {
-            config.logger.log("${json.asString} isn't a known type: $e.")
+            config.logger.log("$json isn't a known type: $e.")
             null
         }
     }

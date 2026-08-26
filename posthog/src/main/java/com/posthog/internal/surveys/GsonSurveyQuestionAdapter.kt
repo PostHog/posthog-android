@@ -42,7 +42,7 @@ internal class GsonSurveyQuestionAdapter(private val config: PostHogConfig) :
                 else -> null
             }
         } catch (e: Throwable) {
-            config.logger.log("${json.asString} isn't a known type: $e.")
+            config.logger.log("$json isn't a known type: $e.")
             null
         }
     }

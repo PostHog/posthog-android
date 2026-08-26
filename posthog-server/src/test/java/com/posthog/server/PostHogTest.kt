@@ -374,6 +374,32 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `close retries pending events despite retry pause`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(500))
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val postHog =
+            PostHog.with(
+                PostHogConfig.builder(TEST_API_KEY)
+                    .host(mockServer.url("/").toString())
+                    .build(),
+            )
+
+        postHog.capture("user123", "test_event")
+        postHog.flush()
+
+        assertEquals(1, mockServer.requestCount)
+
+        postHog.close()
+
+        assertEquals(2, mockServer.requestCount, "Expected close() to bypass the retry pause")
+
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `capture with appendFeatureFlags false does not enrich properties`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(MockResponse().setResponseCode(200))

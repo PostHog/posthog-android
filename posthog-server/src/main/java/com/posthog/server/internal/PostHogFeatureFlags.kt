@@ -19,6 +19,7 @@ import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.CompletionStage
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -40,6 +41,12 @@ internal class PostHogFeatureFlags(
             maxSize = cacheMaxSize,
             maxAgeMs = cacheMaxAgeMs,
         )
+
+    private val missingFlagKeysLock = Object()
+    private val knownMissingFlagKeys = mutableSetOf<String>()
+    private val knownRemoteFlagKeys = mutableSetOf<String>()
+    private val inFlightMissingFlagProbes = mutableMapOf<String, MissingFlagProbe>()
+    private var missingFlagKeysGeneration: Long = 0
 
     @Volatile
     private var featureFlags: List<FlagDefinition>? = null
@@ -241,6 +248,30 @@ internal class PostHogFeatureFlags(
     private data class LocalEvaluationOutcome(
         val flags: Map<String, FeatureFlag>,
         val needsRemote: Boolean,
+        val missingDefinitionKeys: Set<String>,
+    )
+
+    private class MissingFlagProbe {
+        private val done = CountDownLatch(1)
+
+        fun complete() = done.countDown()
+
+        fun await(): Boolean =
+            try {
+                done.await(MISSING_FLAG_PROBE_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+    }
+
+    private data class MissingFlagProbePlan(
+        val generation: Long,
+        val currentlyMissing: Set<String>,
+        val knownRemote: Set<String>,
+        val owned: Set<String>,
+        val waiting: List<MissingFlagProbe>,
+        val probe: MissingFlagProbe?,
     )
 
     /**
@@ -303,22 +334,21 @@ internal class PostHogFeatureFlags(
             }
         }
 
-        // A requested key with no local definition is absent rather than fetched: posthog-python
-        // filters the definitions by `flag_keys_to_evaluate` before its evaluation loop, so an
-        // undefined key never sets `fallback_to_flags` there either. Log it, don't buy a request.
-        if (flagKeys != null) {
-            val undefined = flagKeys.filterNot { currentFlagDefinitions.containsKey(it) }
-            if (undefined.isNotEmpty()) {
-                config.logger.log(
-                    "No local definition for requested flag(s) ${undefined.joinToString(", ")} - " +
-                        "they will be absent from locally-evaluated snapshots; " +
-                        "check for deleted flags, typos, or a flag created since the last definitions poll",
-                )
-            }
+        val missingDefinitionKeys =
+            flagKeys
+                ?.distinct()
+                ?.filterNot { currentFlagDefinitions.containsKey(it) }
+                ?.toSet()
+                .orEmpty()
+        if (missingDefinitionKeys.isNotEmpty()) {
+            config.logger.log(
+                "No local definition for requested flag(s) ${missingDefinitionKeys.joinToString(", ")} - " +
+                    "eligible for remote fallback",
+            )
         }
 
         config.logger.log("Local evaluation resolved ${localFlags.size} flags, needsRemote=$needsRemote")
-        return LocalEvaluationOutcome(localFlags, needsRemote)
+        return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys)
     }
 
     /**
@@ -359,6 +389,8 @@ internal class PostHogFeatureFlags(
         groupProperties: Map<String, Map<String, Any?>>?,
         flagKeys: List<String>? = null,
         disableGeoip: Boolean = false,
+        bypassCache: Boolean = false,
+        onResponse: ((PostHogFlagsResponse) -> Unit)? = null,
     ): Map<String, FeatureFlag>? {
         val cacheKey =
             FeatureFlagCacheKey(
@@ -370,9 +402,11 @@ internal class PostHogFeatureFlags(
                 disableGeoip = disableGeoip,
             )
 
-        val cachedFlags = cache.get(cacheKey)
-        if (cachedFlags != null) {
-            return cachedFlags
+        if (!bypassCache) {
+            val cachedFlags = cache.get(cacheKey)
+            if (cachedFlags != null) {
+                return cachedFlags
+            }
         }
 
         return try {
@@ -395,6 +429,9 @@ internal class PostHogFeatureFlags(
                 response?.evaluatedAt,
                 computeResponseError(response),
             )
+            if (response != null) {
+                onResponse?.invoke(response)
+            }
             flags
         } catch (e: SocketTimeoutException) {
             config.logger.log("Loading remote feature flags timed out: $e")
@@ -468,6 +505,7 @@ internal class PostHogFeatureFlags(
 
     override fun clear() {
         cache.clear()
+        clearKnownMissingFlagKeys()
         etag = null
         config.logger.log("Feature flags cache cleared")
     }
@@ -537,6 +575,7 @@ internal class PostHogFeatureFlags(
             // If 304 Not Modified, keep using cached data (update ETag if server sent a new one)
             if (!response.wasModified) {
                 etag = response.etag ?: etag
+                clearKnownMissingFlagKeys()
                 config.logger.log("Feature flags not modified, using cached definitions")
                 return
             }
@@ -685,14 +724,31 @@ internal class PostHogFeatureFlags(
         groupTypeMapping: Map<String, String>?,
         cohorts: Map<String, PropertyGroup>?,
     ) {
-        synchronized(loadLock) {
-            featureFlags = flags
-            flagDefinitions = flags?.associateBy { it.key }
-            this.cohorts = cohorts
-            this.groupTypeMapping = groupTypeMapping
-            definitionsLoaded = true
-            definitionsLoadedAt = System.currentTimeMillis()
-        }
+        val invalidated =
+            synchronized(missingFlagKeysLock) {
+                synchronized(loadLock) {
+                    featureFlags = flags
+                    flagDefinitions = flags?.associateBy { it.key }
+                    this.cohorts = cohorts
+                    this.groupTypeMapping = groupTypeMapping
+                    definitionsLoaded = true
+                    definitionsLoadedAt = System.currentTimeMillis()
+                }
+                invalidateMissingFlagStateLocked()
+            }
+        invalidated.forEach { it.complete() }
+    }
+
+    private fun clearKnownMissingFlagKeys() {
+        val invalidated = synchronized(missingFlagKeysLock) { invalidateMissingFlagStateLocked() }
+        invalidated.forEach { it.complete() }
+    }
+
+    private fun invalidateMissingFlagStateLocked(): List<MissingFlagProbe> {
+        knownMissingFlagKeys.clear()
+        knownRemoteFlagKeys.clear()
+        missingFlagKeysGeneration++
+        return inFlightMissingFlagProbes.values.distinct().also { inFlightMissingFlagProbes.clear() }
     }
 
     private fun notifyFeatureFlagsLoaded() {
@@ -931,8 +987,9 @@ internal class PostHogFeatureFlags(
      * Resolve every flag for the given identity in a single pass, returning the rich envelope used
      * by the [com.posthog.server.PostHogFeatureFlagEvaluations] snapshot.
      *
-     * Local evaluation runs first and wins: whatever the definitions in memory resolve is kept, and
-     * `/flags` is asked only for the keys that stayed unresolved.
+     * Local evaluation runs first and wins: whatever the definitions in memory resolve is kept.
+     * Unresolved requested keys trigger `/flags`, which receives the caller's original [flagKeys]
+     * scope, including keys that resolved locally.
      */
     internal fun evaluateFlags(
         distinctId: String,
@@ -943,6 +1000,10 @@ internal class PostHogFeatureFlags(
         onlyEvaluateLocally: Boolean,
         disableGeoip: Boolean,
     ): EvaluateFlagsResult {
+        if (flagKeys?.isEmpty() == true) {
+            return EMPTY_EVALUATE_FLAGS_RESULT
+        }
+
         if (onlyEvaluateLocally && personalApiKey == null) {
             logMissingPersonalApiKey()
             return EMPTY_EVALUATE_FLAGS_RESULT
@@ -957,10 +1018,6 @@ internal class PostHogFeatureFlags(
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
             )
-        // Only local scoping treats an empty list as "no scope"; the cache key and the `/flags` body
-        // take the raw list.
-        val requestedKeys = flagKeys?.takeIf { it.isNotEmpty() }
-
         // Without definitions there is nothing to evaluate locally, so an existing entry ends the
         // call. This keeps the cached-failure backoff, and caps the blocking `/local_evaluation`
         // attempt below: a personal API key that always fails never sets `definitionsLoaded`.
@@ -988,13 +1045,22 @@ internal class PostHogFeatureFlags(
                 groups,
                 personProperties,
                 groupProperties,
-                requestedKeys,
+                flagKeys,
             )
 
-        if (local != null && (!local.needsRemote || onlyEvaluateLocally)) {
+        val localFlags = local?.flags ?: EMPTY_FLAGS
+        val missingDefinitionKeys = local?.missingDefinitionKeys.orEmpty()
+        val hasMissingKeyToProbe =
+            synchronized(missingFlagKeysLock) {
+                missingDefinitionKeys.any {
+                    it !in knownMissingFlagKeys || flagDefinitions?.containsKey(it) == true
+                }
+            }
+
+        if (local != null && ((!local.needsRemote && !hasMissingKeyToProbe) || onlyEvaluateLocally)) {
             return EvaluateFlagsResult(
-                flags = local.flags,
-                locallyEvaluated = local.flags.mapValues { true },
+                flags = localFlags,
+                locallyEvaluated = localFlags.mapValues { true },
                 requestId = null,
                 evaluatedAt = null,
                 definitionsLoadedAt = definitionsLoadedAt,
@@ -1006,24 +1072,38 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        // Read the entry, not the flags: a cached failure holds null flags, and honoring it is what
-        // keeps an outage from being re-requested on every call within the window.
-        var entry = cache.getEntry(cacheKey)
-        val remoteFlags =
-            if (entry != null) {
-                entry.flags
-            } else {
-                getFeatureFlagsFromRemote(
+        val (remoteFlags, entry) =
+            if (missingDefinitionKeys.isNotEmpty()) {
+                evaluateMissingFlagsRemotely(
+                    cacheKey,
                     distinctId,
                     groups,
                     personProperties,
                     groupProperties,
                     flagKeys,
                     disableGeoip,
-                ).also { entry = cache.getEntry(cacheKey) }
+                    missingDefinitionKeys,
+                    local?.needsRemote == true,
+                )
+            } else {
+                var cached = cache.getEntry(cacheKey)
+                val flags =
+                    if (cached != null) {
+                        cached.flags
+                    } else {
+                        getFeatureFlagsFromRemote(
+                            distinctId,
+                            groups,
+                            personProperties,
+                            groupProperties,
+                            flagKeys,
+                            disableGeoip,
+                        ).also { cached = cache.getEntry(cacheKey) }
+                    }
+                flags to cached
             }
 
-        val localFlags = local?.flags ?: EMPTY_FLAGS
+        // Forward the caller's original scope to `/flags`; locally resolved values win below.
         // Local wins: `/flags` fills the gaps, it never overwrites a key local evaluation resolved.
         // Same precedence as posthog-python, which skips remote keys already in
         // `locally_evaluated_keys`. Note a group flag evaluated without `groups` resolves locally to
@@ -1038,6 +1118,167 @@ internal class PostHogFeatureFlags(
             responseError = entry?.error,
         )
     }
+
+    private fun evaluateMissingFlagsRemotely(
+        cacheKey: FeatureFlagCacheKey,
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        flagKeys: List<String>?,
+        disableGeoip: Boolean,
+        missingDefinitionKeys: Set<String>,
+        localNeedsRemote: Boolean,
+    ): Pair<Map<String, FeatureFlag>?, FeatureFlagCacheEntry?> {
+        while (true) {
+            val plan = planMissingFlagProbe(missingDefinitionKeys)
+
+            if (plan.waiting.isNotEmpty()) {
+                val completed = plan.waiting.all { it.await() }
+                if (!completed) {
+                    return fetchUncoordinatedFlags(
+                        cacheKey,
+                        distinctId,
+                        groups,
+                        personProperties,
+                        groupProperties,
+                        flagKeys,
+                        disableGeoip,
+                    )
+                }
+                continue
+            }
+
+            val refreshMadeKeysLocal = plan.currentlyMissing.size < missingDefinitionKeys.size
+            val needsRemote =
+                localNeedsRemote || refreshMadeKeysLocal || plan.knownRemote.isNotEmpty() || plan.owned.isNotEmpty()
+            if (!needsRemote) return null to null
+
+            var entry = cache.getEntry(cacheKey)
+            val bypassCache = shouldBypassCacheFor(plan, refreshMadeKeysLocal, entry)
+            if (bypassCache) entry = null
+            var response: PostHogFlagsResponse? = null
+            val flags =
+                try {
+                    if (entry != null) {
+                        entry.flags
+                    } else {
+                        getFeatureFlagsFromRemote(
+                            distinctId,
+                            groups,
+                            personProperties,
+                            groupProperties,
+                            flagKeys,
+                            disableGeoip,
+                            bypassCache = bypassCache,
+                            onResponse = { response = it },
+                        ).also { entry = cache.getEntry(cacheKey) }
+                    }
+                } finally {
+                    plan.probe?.let { completeMissingFlagProbe(plan, it, response) }
+                }
+            reconcileKnownRemoteFlagKeys(plan, response)
+            return flags to entry
+        }
+    }
+
+    private fun planMissingFlagProbe(missingDefinitionKeys: Set<String>): MissingFlagProbePlan =
+        synchronized(missingFlagKeysLock) {
+            val current = missingDefinitionKeys.filterNot { flagDefinitions?.containsKey(it) == true }.toSet()
+            val remote = current.filterTo(mutableSetOf()) { it in knownRemoteFlagKeys }
+            val unknown =
+                current.filterNotTo(mutableSetOf()) {
+                    it in knownMissingFlagKeys || it in knownRemoteFlagKeys
+                }
+            val waiting = unknown.mapNotNull { inFlightMissingFlagProbes[it] }.distinct()
+            val probe = if (unknown.isNotEmpty() && waiting.isEmpty()) MissingFlagProbe() else null
+            if (probe != null) unknown.forEach { inFlightMissingFlagProbes[it] = probe }
+            MissingFlagProbePlan(
+                missingFlagKeysGeneration,
+                current,
+                remote,
+                if (probe == null) emptySet() else unknown,
+                waiting,
+                probe,
+            )
+        }
+
+    private fun shouldBypassCacheFor(
+        plan: MissingFlagProbePlan,
+        refreshMadeKeysLocal: Boolean,
+        entry: FeatureFlagCacheEntry?,
+    ): Boolean =
+        plan.owned.isNotEmpty() ||
+            refreshMadeKeysLocal ||
+            plan.knownRemote.any { entry?.flags?.containsKey(it) != true }
+
+    private fun fetchUncoordinatedFlags(
+        cacheKey: FeatureFlagCacheKey,
+        distinctId: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        flagKeys: List<String>?,
+        disableGeoip: Boolean,
+    ): Pair<Map<String, FeatureFlag>?, FeatureFlagCacheEntry?> {
+        val flags =
+            getFeatureFlagsFromRemote(
+                distinctId,
+                groups,
+                personProperties,
+                groupProperties,
+                flagKeys,
+                disableGeoip,
+                bypassCache = true,
+            )
+        return flags to cache.getEntry(cacheKey)
+    }
+
+    private fun completeMissingFlagProbe(
+        plan: MissingFlagProbePlan,
+        probe: MissingFlagProbe,
+        response: PostHogFlagsResponse?,
+    ) {
+        val returned = response?.flags.orEmpty().keys
+        synchronized(missingFlagKeysLock) {
+            if (response?.isCleanForSuppression() == true && missingFlagKeysGeneration == plan.generation) {
+                for (key in plan.owned) {
+                    if (key in returned) {
+                        knownRemoteFlagKeys.add(key)
+                    } else {
+                        knownMissingFlagKeys.add(key)
+                    }
+                }
+            }
+            plan.owned.forEach {
+                if (inFlightMissingFlagProbes[it] === probe) inFlightMissingFlagProbes.remove(it)
+            }
+        }
+        probe.complete()
+    }
+
+    private fun reconcileKnownRemoteFlagKeys(
+        plan: MissingFlagProbePlan,
+        response: PostHogFlagsResponse?,
+    ) {
+        if (plan.knownRemote.isEmpty()) return
+        val cleanResponse = response?.takeIf { it.isCleanForSuppression() } ?: return
+
+        val returned = cleanResponse.flags.orEmpty().keys
+        synchronized(missingFlagKeysLock) {
+            if (missingFlagKeysGeneration != plan.generation) return
+            for (key in plan.knownRemote) {
+                if (key !in returned) {
+                    knownRemoteFlagKeys.remove(key)
+                    knownMissingFlagKeys.add(key)
+                }
+            }
+        }
+    }
+
+    private fun PostHogFlagsResponse.isCleanForSuppression(): Boolean =
+        !errorsWhileComputingFlags &&
+            quotaLimited?.contains("feature_flags") != true
 
     private fun isLocallyEvaluated(flag: FeatureFlag): Boolean {
         return flag.reason?.code == LOCAL_EVALUATION_REASON_CODE
@@ -1084,6 +1325,7 @@ internal class PostHogFeatureFlags(
         internal const val LOCAL_EVALUATION_REASON_CODE: String = "local_evaluation"
         internal const val LOCAL_EVALUATION_REASON_DESCRIPTION: String = "Evaluated locally"
         private const val FLAG_DEFINITION_CACHE_PROVIDER_TIMEOUT_MS: Long = 10_000
+        private const val MISSING_FLAG_PROBE_WAIT_TIMEOUT_MS: Long = 10_000
 
         private val EMPTY_PROPERTIES: Map<String, Any?> = emptyMap()
         private val EMPTY_COHORT_PROPERTIES: Map<String, PropertyGroup> = emptyMap()
