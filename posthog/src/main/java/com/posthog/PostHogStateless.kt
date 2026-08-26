@@ -665,21 +665,20 @@ public open class PostHogStateless protected constructor(
      * Subclasses that need event fields [captureExceptionStateless] cannot carry (groups, an
      * explicit timestamp) must go through here rather than coercing the throwable and calling
      * [captureStateless] themselves, so the `ignoredExceptionTypes` prefilter, the
-     * caller-properties-win merge order and the personless fallback stay in one place instead of
+     * canonical exception metadata precedence and the personless fallback stay in one place instead of
      * being re-implemented (and drifting) per capture path.
      *
      * [properties] is a provider invoked only once the enabled/opt-out state and the
      * `ignoredExceptionTypes` prefilter have all passed, so callers can build expensive enrichment
      * (e.g. a feature-flag evaluation that hits `/flags`) inside it without paying for an event
-     * that is about to be dropped. Its result is merged AFTER the coerced exception properties, so
-     * callers can override reserved keys such as `$exception_level`.
+     * that is about to be dropped. Generic caller properties cannot override SDK- or
+     * processor-owned exception metadata; `$exception_fingerprint` remains the documented generic
+     * override.
      *
      * This route never adds `$set`/`$set_once` of its own: `$exception` events are ingested by a
      * separate error-tracking pipeline with no ordering guarantee against the person pipeline, so
      * person updates are dropped server-side. Person properties therefore have no parameter here —
-     * send them with a regular [captureStateless] call or `identify`. (A caller that writes the
-     * reserved keys straight into [properties] still gets them serialized, same as any other
-     * reserved key it chooses to override; they simply have no effect.)
+     * send them with a regular [captureStateless] call or `identify`.
      */
     @PostHogInternal
     protected fun captureExceptionEvent(
@@ -713,8 +712,8 @@ public open class PostHogStateless protected constructor(
                     releaseIdentifier = config?.releaseIdentifier,
                 )
 
-            properties()?.let {
-                exceptionProperties.putAll(it)
+            properties()?.let { supplied ->
+                exceptionProperties.putAll(supplied.filterKeys { it !in RESERVED_EXCEPTION_PROPERTIES })
             }
 
             var id = distinctId
@@ -742,6 +741,24 @@ public open class PostHogStateless protected constructor(
         private var defaultSharedInstance = shared
 
         private const val GROUP_IDENTIFY = "\$groupidentify"
+
+        private val RESERVED_EXCEPTION_PROPERTIES =
+            setOf(
+                "\$exception_list",
+                "\$exception_level",
+                "\$exception_source",
+                "\$debug_images",
+                "\$exception_handled",
+                "\$exception_types",
+                "\$exception_values",
+                "\$exception_sources",
+                "\$exception_functions",
+                "\$exception_fingerprint_version",
+                "\$exception_fingerprint_record",
+                "\$exception_issue_id",
+                "\$exception_release",
+                "\$cymbal_errors",
+            )
 
         // Strict allowlist for minimal $feature_flag_called events, defined by the cross-SDK
         // contract: everything not listed is stripped, including registered super properties, the

@@ -827,8 +827,8 @@ public sealed interface PostHogInterface {
      * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
      *   distinct ID is used; if none exists, a personless UUID is generated.
      * @param options capture options containing properties, groups, timestamp, and feature flag
-     *   snapshot settings. Reserved exception properties such as `$exception_level` can be
-     *   overridden via the options properties.
+     *   snapshot settings. Generic properties cannot override SDK- or processor-owned exception
+     *   metadata; `$exception_fingerprint` remains the documented generic override.
      *
      * `$exception` events do not perform person updates: they are ingested by a separate
      * error-tracking pipeline with no ordering guarantee against the person pipeline, so

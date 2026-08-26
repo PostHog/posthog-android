@@ -283,8 +283,8 @@ public class PostHog : PostHogStateless(), PostHogInterface {
 
             // captureExceptionStateless cannot carry groups/timestamp, so this overload takes the
             // shared core route instead: it runs the same enabled/opt-out and ignoredExceptionTypes
-            // gates and merges the provided properties AFTER the coerced exception properties (so
-            // options can still override reserved keys like $exception_level). The merge is passed
+            // gates and merges non-reserved provided properties into the coerced exception properties.
+            // The merge is passed
             // as a provider so `appendFeatureFlags` cannot fire a /flags request for an event the
             // gates then drop; options.userProperties feeds flag evaluation only — $exception
             // events do not perform person updates.

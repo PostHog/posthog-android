@@ -194,8 +194,9 @@ public class ThrowableCoercer {
         throwable: Throwable,
         exceptionId: Int?,
         parentId: Int?,
-        handled: Boolean,
+        handled: Boolean?,
         mechanismType: String,
+        relationshipSource: String?,
         threadId: Long,
         inAppIncludes: List<String>,
         inAppExcludes: List<String>,
@@ -208,10 +209,11 @@ public class ThrowableCoercer {
 
         val mechanism =
             mutableMapOf<String, Any>(
-                "handled" to handled,
                 "synthetic" to false,
                 "type" to mechanismType,
             )
+        handled?.let { mechanism["handled"] = it }
+        relationshipSource?.let { mechanism["source"] = it }
         if (exceptionId != null) {
             mechanism["exception_id"] = exceptionId
         }
@@ -222,15 +224,10 @@ public class ThrowableCoercer {
         val exception =
             mutableMapOf<String, Any>(
                 "type" to className,
+                "value" to throwable.message.orEmpty(),
                 "mechanism" to mechanism,
                 "thread_id" to threadId,
             )
-
-        throwable.message?.let {
-            if (it.isNotEmpty()) {
-                exception["value"] = it
-            }
-        }
 
         if (exceptionPackage?.isNotEmpty() == true) {
             exception["module"] = exceptionPackage
@@ -259,6 +256,7 @@ public class ThrowableCoercer {
         var handled = true
         var isFatal = false
         var mechanismType = "generic"
+        var exceptionSource: String? = null
 
         var currentThrowable: Throwable? = throwable
         val threadId: Long
@@ -267,6 +265,7 @@ public class ThrowableCoercer {
             handled = throwable.handled
             isFatal = throwable.isFatal
             mechanismType = throwable.mechanism
+            exceptionSource = throwable.source
             currentThrowable = throwable.cause
             threadId = getThreadId(throwable.thread)
         } else {
@@ -291,6 +290,7 @@ public class ThrowableCoercer {
                     throwable = link,
                     parentId = if (index == 0) null else index - 1,
                     mechanismType = if (index == 0) mechanismType else "chained",
+                    relationshipSource = if (index == 0) null else "cause",
                 ),
             )
         }
@@ -308,25 +308,23 @@ public class ThrowableCoercer {
                         ExceptionRef(
                             throwable = suppressed,
                             parentId = holderId,
-                            mechanismType = "suppressed",
+                            mechanismType = "chained",
+                            relationshipSource = "suppressed",
                         ),
                     )
                 }
             }
         }
 
-        // A single-item list needs no chain ids at all (parity with the other SDKs, which only link
-        // a chain when there is more than one exception).
-        val linkChain = items.size > 1
-
         val cappedExceptions =
             items.mapIndexed { index, ref ->
                 buildExceptionItem(
                     throwable = ref.throwable,
-                    exceptionId = if (linkChain) index else null,
-                    parentId = if (linkChain) ref.parentId else null,
-                    handled = handled,
+                    exceptionId = index,
+                    parentId = ref.parentId,
+                    handled = if (index == 0) handled else null,
                     mechanismType = ref.mechanismType,
+                    relationshipSource = ref.relationshipSource,
                     threadId = threadId,
                     inAppIncludes = inAppIncludes,
                     inAppExcludes = inAppExcludes,
@@ -342,6 +340,7 @@ public class ThrowableCoercer {
         if (cappedExceptions.isNotEmpty()) {
             exceptionProperties["\$exception_list"] = cappedExceptions
         }
+        exceptionSource?.let { exceptionProperties["\$exception_source"] = it }
 
         return exceptionProperties
     }
@@ -351,6 +350,7 @@ public class ThrowableCoercer {
         val throwable: Throwable,
         val parentId: Int?,
         val mechanismType: String,
+        val relationshipSource: String?,
     )
 
     internal companion object {

@@ -71,6 +71,7 @@ internal class NativeCrashEventCoercer(
                 "handled" to false,
                 "synthetic" to false,
                 "type" to "signal",
+                "exception_id" to 0,
             )
         tombstone.tid?.let { exception["thread_id"] = it }
         if (frames.isNotEmpty()) {
@@ -84,6 +85,7 @@ internal class NativeCrashEventCoercer(
         val properties = mutableMapOf<String, Any>()
         properties["\$exception_list"] = listOf(exception)
         properties["\$exception_level"] = "fatal"
+        properties["\$exception_source"] = "android.native_crash_reporter"
         if (debugImages.isNotEmpty()) {
             properties["\$debug_images"] = debugImages.values.toList()
         }
