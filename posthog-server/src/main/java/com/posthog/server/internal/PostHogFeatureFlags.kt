@@ -889,7 +889,7 @@ internal class PostHogFeatureFlags(
                 }
 
                 // Use group's key and properties for evaluation
-                Pair(groupKey, groupProperties)
+                Pair(groupKey, groupProperties?.get(groupTypeName))
             } else {
                 // Person-based flag - use person's ID and properties
                 Pair(distinctId, personProperties)

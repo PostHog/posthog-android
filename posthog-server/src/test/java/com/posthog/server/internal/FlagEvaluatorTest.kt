@@ -159,15 +159,58 @@ internal class FlagEvaluatorTest {
                 negation = false,
                 dependencyChain = null,
             )
-        val properties = mapOf("email" to "test@example.com")
-        assertTrue(evaluator.matchProperty(property, properties))
-
         val propertiesWithout = mapOf("name" to "Test")
         try {
             evaluator.matchProperty(property, propertiesWithout)
             assertTrue("Should have thrown InconclusiveMatchException", false)
         } catch (e: InconclusiveMatchException) {
             // Expected
+        }
+
+        val presentValues =
+            listOf(
+                null,
+                false,
+                0,
+                "",
+                emptyList<Any?>(),
+                emptyMap<String, Any?>(),
+            )
+        for (value in presentValues) {
+            assertTrue(evaluator.matchProperty(property, mapOf("email" to value)))
+        }
+    }
+
+    @Test
+    internal fun testMatchPropertyIsNotSet() {
+        val property =
+            FlagProperty(
+                key = "email",
+                propertyValue = null,
+                propertyOperator = PropertyOperator.IS_NOT_SET,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        val propertiesWithout = mapOf("name" to "Test")
+        try {
+            evaluator.matchProperty(property, propertiesWithout)
+            assertTrue("Should have thrown InconclusiveMatchException", false)
+        } catch (e: InconclusiveMatchException) {
+            // Expected
+        }
+
+        val presentValues =
+            listOf(
+                null,
+                false,
+                0,
+                "",
+                emptyList<Any?>(),
+                emptyMap<String, Any?>(),
+            )
+        for (value in presentValues) {
+            assertFalse(evaluator.matchProperty(property, mapOf("email" to value)))
         }
     }
 
