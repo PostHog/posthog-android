@@ -139,9 +139,8 @@ internal class FlagEvaluator(
             throw InconclusiveMatchException("Can't match properties without a given property value")
         }
 
-        // is_not_set operator can't be evaluated locally
-        if (propertyOperator == PropertyOperator.IS_NOT_SET) {
-            throw InconclusiveMatchException("Can't match properties with operator is_not_set")
+        if (propertyOperator == PropertyOperator.IS_SET || propertyOperator == PropertyOperator.IS_NOT_SET) {
+            return propertyOperator == PropertyOperator.IS_SET
         }
 
         val overrideValue = propertyValues[key]
@@ -157,7 +156,6 @@ internal class FlagEvaluator(
                 if (propertyOperator == PropertyOperator.EXACT) matches else !matches
             }
 
-            PropertyOperator.IS_SET -> propertyValues.containsKey(key)
             PropertyOperator.ICONTAINS ->
                 stringContains(
                     overrideValue.toString(),
