@@ -10,7 +10,6 @@ import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
 import com.posthog.internal.PropertyValue
 import java.security.MessageDigest
-import java.text.Normalizer
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -29,7 +28,6 @@ internal class FlagEvaluator(
     companion object {
         private const val LONG_SCALE = 0xFFFFFFFFFFFFFFF.toDouble()
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.IS_NOT)
-        private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
         private val REGEX_SEMVER =
             Regex("""^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.\d+)*(?:[-+].*)?$""")
@@ -40,10 +38,7 @@ internal class FlagEvaluator(
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX")
         private val DATE_FORMATTER_NO_TZ = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
-        private fun casefold(input: String): String {
-            val normalized = Normalizer.normalize(input, Normalizer.Form.NFD)
-            return REGEX_COMBINING_MARKS.replace(normalized, "").uppercase().lowercase()
-        }
+        private fun unicodeLowercase(input: String): String = input.lowercase()
 
         private fun asciiCasefold(input: String): String =
             buildString(input.length) {
@@ -244,23 +239,19 @@ internal class FlagEvaluator(
         propertyValue: Any?,
         overrideValue: Any?,
     ): Boolean {
-        // Lowercase to uppercase to normalize locale (e.g., Turkish i, German ß)
-        // String.equals apparently does this when ignoreCase=true, but it doesn't seem to work.
-        // https://kotlinlang.org/api/core/1.3/kotlin-stdlib/kotlin.text/equals.html
-        val expectedValue = overrideValue?.let { casefold(it.toString()) }
-        return when {
-            propertyValue is List<*> -> {
-                propertyValue.any { v ->
-                    v == expectedValue || (v != null && casefold(v.toString()) == expectedValue)
-                }
-            }
+        if (overrideValue == null) {
+            return if (propertyValue is List<*>) propertyValue.any { it == null } else propertyValue == null
+        }
 
-            else ->
-                propertyValue == expectedValue || (
-                    propertyValue != null && casefold(
-                        propertyValue.toString(),
-                    ) == expectedValue
-                )
+        val expectedValue = unicodeLowercase(overrideValue.toString())
+        return when (propertyValue) {
+            is List<*> ->
+                propertyValue.any { value ->
+                    value != null && unicodeLowercase(value.toString()) == expectedValue
+                }
+
+            null -> false
+            else -> unicodeLowercase(propertyValue.toString()) == expectedValue
         }
     }
 
@@ -270,7 +261,7 @@ internal class FlagEvaluator(
         ignoreCase: Boolean,
     ): Boolean {
         if (ignoreCase) {
-            return casefold(haystack).contains(casefold(needle), ignoreCase = true)
+            return asciiCasefold(haystack).contains(asciiCasefold(needle))
         }
         return haystack.contains(needle)
     }
