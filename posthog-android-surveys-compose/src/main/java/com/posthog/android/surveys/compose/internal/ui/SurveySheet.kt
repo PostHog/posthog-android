@@ -95,6 +95,16 @@ internal fun SurveySheet(
 
     var currentQuestionIndex by rememberSaveable { mutableStateOf(0) }
     var showingConfirmation by rememberSaveable { mutableStateOf(false) }
+    // Advancing past the intro is a pure UI transition: no response is recorded and no
+    // survey event is sent. The X button keeps dismissing the whole survey as usual.
+    // The intro has no default header, so an intro with no copy at all is skipped instead
+    // of drawing an empty sheet with a lone button (resolve() normalizes blank copy to null).
+    var showingIntroScreen by rememberSaveable {
+        mutableStateOf(
+            appearance.displayIntroScreen &&
+                (appearance.introScreenHeader != null || appearance.introScreenDescription != null),
+        )
+    }
     val question = survey.questions.getOrNull(currentQuestionIndex)
 
     LaunchedEffect(survey.id) {
@@ -172,6 +182,8 @@ internal fun SurveySheet(
                 ) {
                     if (showingConfirmation || question == null) {
                         ConfirmationScreen(onClose = dismissSheet)
+                    } else if (showingIntroScreen) {
+                        IntroScreen(onStart = { showingIntroScreen = false })
                     } else {
                         QuestionContent(
                             question = question,

@@ -29,4 +29,10 @@ public data class SurveyAppearance(
     val widgetSelector: String?,
     val widgetLabel: String?,
     val widgetColor: String?,
+    // New fields go last so existing positional copy()/componentN() usages stay compatible.
+    val displayIntroScreen: Boolean? = null,
+    val introScreenHeader: String? = null,
+    val introScreenDescription: String? = null,
+    val introScreenDescriptionContentType: SurveyTextContentType? = null,
+    val introScreenButtonText: String? = null,
 )
