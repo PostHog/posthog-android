@@ -191,6 +191,16 @@ public class PostHogSurveysIntegration(
     }
 
     /**
+     * Returns whether a survey has CSS selector or URL conditions that cannot be
+     * evaluated outside a browser DOM. These surveys are excluded from native
+     * matching even when they also have device-type or event conditions.
+     */
+    private fun hasWebConditions(survey: Survey): Boolean {
+        val conditions = survey.conditions ?: return false
+        return !conditions.url.isNullOrEmpty() || !conditions.selector.isNullOrEmpty()
+    }
+
+    /**
      * Get surveys enabled for the current user.
      * Uses the cached surveys pushed from remote config and filters for active matching surveys.
      *
@@ -232,6 +242,10 @@ public class PostHogSurveysIntegration(
 
             // 2. Filter out surveys that don't match device type
             if (!doesSurveyDeviceTypesMatch(survey)) return@filter false
+
+            // 2.5. Filter out surveys with CSS selector / URL conditions that
+            // cannot be evaluated natively, so they must never display on Android
+            if (hasWebConditions(survey)) return@filter false
 
             // 3. Filter out seen surveys (unless they can activate repeatedly)
             if (getSurveySeen(survey)) return@filter false
