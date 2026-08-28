@@ -190,12 +190,41 @@ signing {
     sign(publishing.publications)
 }
 
+// Anything published from this block reaches the buildscript classpath that resolves this plugin,
+// where Gradle takes the highest version — so a library declared here can raise the version the
+// consumer's own build compiles with. compileOnly keeps it out of the published metadata.
 dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${versions["kotlinVersion"]}")
+}
+
+val checkNoPublishedDependencies =
+    tasks.register("checkNoPublishedDependencies") {
+        description = "Fails if the plugin publishes dependencies."
+        group = "verification"
+        // apiElements and runtimeElements are the variants that get published, and constraints on them
+        // raise a consumer's resolved version just as dependencies do. Only module dependencies carry
+        // coordinates into the metadata; gradleApi() sits in apiElements as a file collection.
+        // Reading at configuration time keeps the task configuration-cache compatible.
+        val published =
+            listOf("apiElements", "runtimeElements").flatMap { name ->
+                val variant = configurations.getByName(name)
+                variant.allDependencies.filterIsInstance<ExternalModuleDependency>()
+                    .map { "${it.group}:${it.name}:${it.version}" } +
+                    variant.allDependencyConstraints.map { "${it.group}:${it.name}:${it.version}" }
+            }.distinct()
+        doLast {
+            check(published.isEmpty()) {
+                "The plugin must publish no dependencies, found: " + published.joinToString() +
+                    ". Declare them compileOnly instead."
+            }
+        }
+    }
+
+tasks.named("check") {
+    dependsOn(checkNoPublishedDependencies)
 }
 
 // Functional tests run the plugin through Gradle TestKit against real AGP
