@@ -205,12 +205,17 @@ val checkNoPublishedRuntimeDependencies =
     tasks.register("checkNoPublishedRuntimeDependencies") {
         description = "Fails if the plugin publishes runtime dependencies."
         group = "verification"
-        val runtimeClasspath = configurations.named("runtimeClasspath")
+        // runtimeElements is the variant that gets published, and constraints on it raise a consumer's
+        // resolved version just as dependencies do. Read at configuration time: resolving inside the
+        // task action would capture the configuration itself, which the configuration cache rejects.
+        val published =
+            configurations.named("runtimeElements").map { runtimeElements ->
+                runtimeElements.allDependencies.map { "${it.group}:${it.name}:${it.version}" } +
+                    runtimeElements.allDependencyConstraints.map { "${it.group}:${it.name}:${it.version}" }
+            }.get()
         doLast {
-            val published = runtimeClasspath.get().incoming.resolutionResult.allDependencies
             check(published.isEmpty()) {
-                "The plugin must publish no runtime dependencies, found: " +
-                    published.joinToString { it.requested.displayName }
+                "The plugin must publish no runtime dependencies, found: " + published.joinToString()
             }
         }
     }
