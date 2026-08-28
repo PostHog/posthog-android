@@ -190,16 +190,33 @@ signing {
     sign(publishing.publications)
 }
 
+// A dependency published here lands on the consumer's root buildscript classpath, which every module
+// of their build shares and where Gradle resolves conflicts by taking the highest version — so it sets
+// the version their whole build compiles against, not just ours. The plugin therefore publishes none,
+// and checkNoPublishedRuntimeDependencies holds it to that.
 dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
-    // compileOnly: a published runtime dependency lands on the consumer's buildscript classpath, which
-    // every module of their build shares. Gradle resolves conflicts there by taking the highest version,
-    // so it would raise the Kotlin version the whole build compiles with — breaking builds that pin an
-    // older one and resolve Kotlin compiler plugins by coordinates that embed that version.
-    compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:${versions["kotlinVersion"]}")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${versions["kotlinVersion"]}")
+}
+
+val checkNoPublishedRuntimeDependencies =
+    tasks.register("checkNoPublishedRuntimeDependencies") {
+        description = "Fails if the plugin publishes runtime dependencies."
+        group = "verification"
+        val runtimeClasspath = configurations.named("runtimeClasspath")
+        doLast {
+            val published = runtimeClasspath.get().incoming.resolutionResult.allDependencies
+            check(published.isEmpty()) {
+                "The plugin must publish no runtime dependencies, found: " +
+                    published.joinToString { it.requested.displayName }
+            }
+        }
+    }
+
+tasks.named("check") {
+    dependsOn(checkNoPublishedRuntimeDependencies)
 }
 
 // Functional tests run the plugin through Gradle TestKit against real AGP
