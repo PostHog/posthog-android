@@ -191,9 +191,8 @@ signing {
 }
 
 // A dependency published here lands on the consumer's root buildscript classpath, which every module
-// of their build shares and where Gradle resolves conflicts by taking the highest version — so it sets
-// the version their whole build compiles against, not just ours. The plugin therefore publishes none,
-// and checkNoPublishedRuntimeDependencies holds it to that.
+// of their build shares and where Gradle takes the highest version — setting the Kotlin version their
+// whole build compiles against, not just ours.
 dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
@@ -205,9 +204,8 @@ val checkNoPublishedRuntimeDependencies =
     tasks.register("checkNoPublishedRuntimeDependencies") {
         description = "Fails if the plugin publishes runtime dependencies."
         group = "verification"
-        // runtimeElements is the variant that gets published, and constraints on it raise a consumer's
-        // resolved version just as dependencies do. Read at configuration time: resolving inside the
-        // task action would capture the configuration itself, which the configuration cache rejects.
+        // Constraints raise a consumer's resolved version just as dependencies do, so both count.
+        // Reading at configuration time keeps the task configuration-cache compatible.
         val published =
             configurations.named("runtimeElements").map { runtimeElements ->
                 runtimeElements.allDependencies.map { "${it.group}:${it.name}:${it.version}" } +
