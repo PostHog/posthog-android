@@ -190,9 +190,9 @@ signing {
     sign(publishing.publications)
 }
 
-// A dependency published here lands on the consumer's root buildscript classpath, which every module
-// of their build shares and where Gradle takes the highest version — setting the Kotlin version their
-// whole build compiles against, not just ours.
+// Anything published from this block reaches the buildscript classpath that resolves this plugin,
+// where Gradle takes the highest version — so a library declared here can raise the version the
+// consumer's own build compiles with. compileOnly keeps it out of the published metadata.
 dependencies {
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
@@ -200,26 +200,31 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${versions["kotlinVersion"]}")
 }
 
-val checkNoPublishedRuntimeDependencies =
-    tasks.register("checkNoPublishedRuntimeDependencies") {
-        description = "Fails if the plugin publishes runtime dependencies."
+val checkNoPublishedDependencies =
+    tasks.register("checkNoPublishedDependencies") {
+        description = "Fails if the plugin publishes dependencies."
         group = "verification"
-        // Constraints raise a consumer's resolved version just as dependencies do, so both count.
+        // apiElements and runtimeElements are the variants that get published, and constraints on them
+        // raise a consumer's resolved version just as dependencies do. Only module dependencies carry
+        // coordinates into the metadata; gradleApi() sits in apiElements as a file collection.
         // Reading at configuration time keeps the task configuration-cache compatible.
         val published =
-            configurations.named("runtimeElements").map { runtimeElements ->
-                runtimeElements.allDependencies.map { "${it.group}:${it.name}:${it.version}" } +
-                    runtimeElements.allDependencyConstraints.map { "${it.group}:${it.name}:${it.version}" }
-            }.get()
+            listOf("apiElements", "runtimeElements").flatMap { name ->
+                val variant = configurations.getByName(name)
+                variant.allDependencies.filterIsInstance<ExternalModuleDependency>()
+                    .map { "${it.group}:${it.name}:${it.version}" } +
+                    variant.allDependencyConstraints.map { "${it.group}:${it.name}:${it.version}" }
+            }.distinct()
         doLast {
             check(published.isEmpty()) {
-                "The plugin must publish no runtime dependencies, found: " + published.joinToString()
+                "The plugin must publish no dependencies, found: " + published.joinToString() +
+                    ". Declare them compileOnly instead."
             }
         }
     }
 
 tasks.named("check") {
-    dependsOn(checkNoPublishedRuntimeDependencies)
+    dependsOn(checkNoPublishedDependencies)
 }
 
 // Functional tests run the plugin through Gradle TestKit against real AGP
