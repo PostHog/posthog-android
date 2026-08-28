@@ -88,6 +88,12 @@ internal class FlagEvaluatorTest {
                 Triple("É", "e", false),
                 Triple("ß", "ss", false),
                 Triple("Σ", "ς", false),
+                Triple("ΟΣ", "ος", true),
+                Triple("ΟΣ", "οσ", false),
+                Triple("ΟΔΟΣ", "οδος", true),
+                Triple("ΟΔΟΣ", "οδοσ", false),
+                Triple("İ", "i\u0307", true),
+                Triple("İ", "i", false),
             )
         for ((filterValue, propertyValue, expected) in comparisons) {
             assertEquals(expected, match(PropertyOperator.EXACT, filterValue, propertyValue))
@@ -114,18 +120,157 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
-    internal fun testMatchPropertyExactPreservesIntegralDoubleRepresentation() {
-        val property =
+    internal fun testMatchPropertyExactUsesBackendBooleanCoercion() {
+        val comparisons =
+            listOf(
+                Triple(false, "banana", true),
+                Triple("false", 0, true),
+                Triple("FaLsE", false, true),
+                Triple("falſe", "banana", false),
+                Triple(listOf("false"), "pro", true),
+                Triple(listOf("true", "false"), "true", false),
+                Triple(emptyList<String>(), true, true),
+                Triple(emptyList<String>(), emptyList<String>(), true),
+            )
+
+        for ((filterValue, propertyValue, expected) in comparisons) {
+            for (operator in listOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)) {
+                val property =
+                    FlagProperty(
+                        key = "value",
+                        propertyValue = filterValue,
+                        propertyOperator = operator,
+                        type = PropertyType.PERSON,
+                        negation = false,
+                        dependencyChain = null,
+                    )
+                val actual = evaluator.matchProperty(property, mapOf("value" to propertyValue))
+                assertEquals(if (operator == PropertyOperator.EXACT) expected else !expected, actual)
+            }
+        }
+
+        val falseFilter =
             FlagProperty(
-                key = "number",
-                propertyValue = "323.0",
+                key = "value",
+                propertyValue = false,
                 propertyOperator = PropertyOperator.EXACT,
                 type = PropertyType.PERSON,
                 negation = false,
                 dependencyChain = null,
             )
+        assertTrue(evaluator.matchProperty(falseFilter, mapOf("value" to null)))
+    }
 
-        assertTrue(evaluator.matchProperty(property, mapOf("number" to 323.0)))
+    @Test
+    internal fun testMatchPropertyExactUsesBackendJsonStringification() {
+        val comparisons =
+            listOf(
+                Triple("[1,2]", listOf(1, 2), true),
+                Triple("[1, 2]", listOf(1, 2), false),
+                Triple("[\"<script>\",\"line\u2028separator\"]", listOf("<script>", "line\u2028separator"), true),
+                Triple("{\"a\":2,\"b\":1}", linkedMapOf("b" to 1, "a" to 2), true),
+                Triple("{\"\uE000\":1,\"\uD800\uDC00\":2}", linkedMapOf("\uD800\uDC00" to 2, "\uE000" to 1), true),
+                Triple("{\"b\":1,\"a\":2}", linkedMapOf("b" to 1, "a" to 2), false),
+                Triple("{\"a\":null}", mapOf("a" to null), true),
+                Triple(
+                    "{\"a\":{\"c\":3,\"d\":4},\"z\":[{\"a\":2,\"b\":1}]}",
+                    linkedMapOf(
+                        "z" to listOf(linkedMapOf("b" to 1, "a" to 2)),
+                        "a" to linkedMapOf("d" to 4, "c" to 3),
+                    ),
+                    true,
+                ),
+                Triple("323", 323, true),
+                Triple("9223372036854775807", Long.MAX_VALUE, true),
+            )
+
+        for ((filterValue, propertyValue, expected) in comparisons) {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = filterValue,
+                    propertyOperator = PropertyOperator.EXACT,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            assertEquals(
+                "filter=$filterValue property=$propertyValue",
+                expected,
+                evaluator.matchProperty(property, mapOf("value" to propertyValue)),
+            )
+        }
+    }
+
+    @Test
+    internal fun testMatchPropertyFloatingPointStringificationFallsBackToServer() {
+        for (
+        number in
+        listOf(
+            323.0,
+            -0.0,
+            1e-7,
+            1e16,
+            1e-5,
+            9.9e-5,
+            Double.MIN_VALUE,
+        )
+        ) {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = number.toString(),
+                    propertyOperator = PropertyOperator.EXACT,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            try {
+                evaluator.matchProperty(property, mapOf("value" to number))
+                throw AssertionError("Expected floating-point exact matching to be inconclusive for $number")
+            } catch (_: InconclusiveMatchException) {
+                // The JVM formatter does not match serde_json for every finite double.
+            }
+        }
+
+        val nestedNonFinite =
+            FlagProperty(
+                key = "value",
+                propertyValue = "[NaN]",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        try {
+            evaluator.matchProperty(nestedNonFinite, mapOf("value" to listOf(Double.NaN)))
+            throw AssertionError("Expected nested non-finite matching to be inconclusive")
+        } catch (_: InconclusiveMatchException) {
+            // Non-finite numbers cannot be represented by serde_json.
+        }
+    }
+
+    @Test
+    internal fun testMatchPropertyStringOperatorsUseBackendJsonStringification() {
+        val comparisons =
+            listOf(
+                Triple(PropertyOperator.ICONTAINS, "\"a\":2", linkedMapOf("b" to 1, "a" to 2)),
+                Triple(PropertyOperator.STARTS_WITH, "922", Long.MAX_VALUE),
+                Triple(PropertyOperator.ENDS_WITH, "2]", listOf(1, 2)),
+            )
+
+        for ((operator, filterValue, propertyValue) in comparisons) {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = filterValue,
+                    propertyOperator = operator,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            assertTrue(evaluator.matchProperty(property, mapOf("value" to propertyValue)))
+        }
     }
 
     @Test
