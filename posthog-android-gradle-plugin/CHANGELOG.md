@@ -1,5 +1,11 @@
 ## Next
 
+## 1.5.2
+
+### Patch Changes
+
+- e5ffc0b: Stop publishing `org.jetbrains.kotlin:kotlin-gradle-plugin`, so your build compiles with the Kotlin version it declares — a build that relied on this plugin to supply it must now declare it itself.
+
 ## 1.5.1
 
 ### Patch Changes
