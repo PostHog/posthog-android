@@ -145,7 +145,7 @@ internal enum class PostHogReleaseMode(val cliValue: String) {
 /**
  * Release mode for this build: the `posthog.releaseMode` gradle property, then the
  * `POSTHOG_RELEASE_MODE` environment variable posthog-cli and the bundler plugins already read,
- * then [PostHogReleaseMode.SYMBOL_SET].
+ * then [PostHogReleaseMode.EVENT].
  *
  * An unrecognized value fails the build rather than falling back, so a typo can't silently leave
  * a build binding its mapping to a release it meant to keep independent.
@@ -157,7 +157,7 @@ internal fun resolvePostHogReleaseMode(
     val value =
         project.findProperty(POSTHOG_RELEASE_MODE_PROPERTY)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
             ?: environment[POSTHOG_RELEASE_MODE_ENV]?.trim()?.takeIf { it.isNotEmpty() }
-            ?: return PostHogReleaseMode.SYMBOL_SET
+            ?: return PostHogReleaseMode.EVENT
 
     return PostHogReleaseMode.from(value)
         ?: error(

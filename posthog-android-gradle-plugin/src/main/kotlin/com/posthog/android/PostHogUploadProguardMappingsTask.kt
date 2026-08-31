@@ -105,8 +105,9 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             args.add("--build")
             args.add(it.toString())
         }
-        // Passed only outside the default mode, so a symbol-set build keeps working against a
-        // posthog-cli predating the flag.
+        // Passed only outside symbol-set mode, so a symbol-set build keeps working against a
+        // posthog-cli predating the flag. The environment variable set above pins the mode for
+        // binaries that do know it.
         releaseMode.orNull?.takeIf { it != PostHogReleaseMode.SYMBOL_SET.cliValue }?.let {
             args.add("--release-mode")
             args.add(it)
@@ -122,7 +123,7 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             releaseName: Provider<String>? = null,
             releaseVersion: Provider<String>? = null,
             build: Provider<Int>? = null,
-            releaseMode: PostHogReleaseMode = PostHogReleaseMode.SYMBOL_SET,
+            releaseMode: PostHogReleaseMode = PostHogReleaseMode.EVENT,
         ): TaskProvider<PostHogUploadProguardMappingsTask> {
             val uploadPostHogProguardMappingsTask =
                 project.tasks.register(
