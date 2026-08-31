@@ -200,6 +200,40 @@ public open class PostHogConfig constructor(
      */
     public var inAppExcludes: List<String> = DEFAULT_IN_APP_EXCLUDES
 
+    /**
+     * Opt in to capturing uncaught exceptions for the whole JVM as `$exception` events.
+     *
+     * When true, [PostHog] installs a [Thread.defaultUncaughtExceptionHandler] on setup that
+     * captures the crashing exception (`handled=false`, mechanism `onuncaughtexception`,
+     * `$exception_source: jvm.uncaught_exception_handler`), flushes, and then delegates to the
+     * previously registered handler. The handler is removed again on [PostHog.close].
+     *
+     * A main-thread crash is captured with `$exception_level` `fatal` (the process is expected to
+     * terminate); an uncaught exception on any other thread kills only that thread, so it is
+     * captured with level `error` and delivered like a regular event.
+     *
+     * Unlike the Android SDK, this is gated purely on this local flag — the server SDK never
+     * fetches remote config, so no remote toggle is involved.
+     *
+     * The JVM has a single process-wide default handler, so capture is single-owner: the first
+     * client that opts in installs the handler, later opted-in clients do not. Closing the owner
+     * restores the previous handler — other still-open clients do not take over; capture resumes
+     * with the next client that is set up with this flag enabled. Server apps normally run one
+     * client per process, where none of this matters.
+     *
+     * Delivery for a fatal (main-thread) crash: the event takes a dedicated queue path that
+     * enqueues and sends in one ordered task, draining the queue batch by batch and ignoring
+     * [flushAt], while the crashing thread waits on it for a bounded timeout — so the crash gets a
+     * network attempt before the JVM exits without ever blocking the crashing thread indefinitely.
+     * Delivery stays best-effort, the same guarantee class the Android SDK provides: the drain can
+     * hit its timeout, the HTTP attempt can fail, and an immediate hard exit can cut it short. See
+     * [PostHog] for details.
+     *
+     * Docs https://posthog.com/docs/error-tracking
+     * Defaults to false
+     */
+    public var captureUncaughtExceptions: Boolean = false
+
     private val beforeSendCallbacks = mutableListOf<PostHogBeforeSend>()
     private val integrations = mutableListOf<PostHogIntegration>()
 
@@ -382,6 +416,7 @@ public open class PostHogConfig constructor(
         private var releaseIdentifier: String? = null
         private var inAppIncludes: List<String> = emptyList()
         private var inAppExcludes: List<String> = DEFAULT_IN_APP_EXCLUDES
+        private var captureUncaughtExceptions: Boolean = false
 
         /**
          * Sets the PostHog ingestion host.
@@ -595,6 +630,15 @@ public open class PostHogConfig constructor(
         public fun inAppExcludes(inAppExcludes: List<String>): Builder = apply { this.inAppExcludes = inAppExcludes.toList() }
 
         /**
+         * Opts in to capturing uncaught JVM exceptions as `$exception` events.
+         *
+         * @param captureUncaughtExceptions true to install a global uncaught-exception handler on setup.
+         * @return This builder.
+         */
+        public fun captureUncaughtExceptions(captureUncaughtExceptions: Boolean): Builder =
+            apply { this.captureUncaughtExceptions = captureUncaughtExceptions }
+
+        /**
          * Builds a [PostHogConfig] from the accumulated values.
          *
          * @return The configured server SDK config.
@@ -628,6 +672,7 @@ public open class PostHogConfig constructor(
             config.releaseIdentifier = releaseIdentifier
             config.inAppIncludes = inAppIncludes
             config.inAppExcludes = inAppExcludes
+            config.captureUncaughtExceptions = captureUncaughtExceptions
             return config
         }
     }

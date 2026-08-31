@@ -13,7 +13,10 @@ import java.io.IOException
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.math.min
@@ -32,6 +35,7 @@ internal class PostHogMemoryQueue(
     private val executor: ExecutorService,
     private val retryDelaySeconds: Int = DEFAULT_RETRY_DELAY_SECONDS,
     private val maxRetryDelaySeconds: Int = DEFAULT_MAX_RETRY_DELAY_SECONDS,
+    private val fatalFlushTimeoutMs: Long = FATAL_FLUSH_TIMEOUT_MS,
 ) : PostHogQueueInterface<PostHogEvent> {
     private val events: ArrayDeque<PostHogEvent> = ArrayDeque()
     private val eventsLock = Any()
@@ -50,26 +54,87 @@ internal class PostHogMemoryQueue(
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
     override fun add(record: PostHogEvent) {
+        // Same fatal-record marker the core PostHogQueue keys on: a fatal $exception event is about
+        // to take the process down with it, so it must not take the regular async path.
+        if (record.isFatalExceptionEvent()) {
+            addFatalBlocking(record)
+            return
+        }
+
         executor.executeSafely {
-            var removedEvent: PostHogEvent? = null
-
-            synchronized(eventsLock) {
-                if (events.size >= config.maxQueueSize) {
-                    removedEvent = events.removeFirstOrNull()
-                }
-
-                events.addLast(record)
-            }
-
-            if (removedEvent != null) {
-                config.logger.log("Queue is full, the oldest event ${removedEvent?.event} was discarded.")
-            }
-
-            config.logger.log("Event: ${record.event} was added to the queue.")
-
+            enqueue(record)
             flushIfOverThreshold()
         }
     }
+
+    private fun enqueue(record: PostHogEvent) {
+        var removedEvent: PostHogEvent? = null
+        var dropped = false
+
+        synchronized(eventsLock) {
+            if (events.size >= config.maxQueueSize) {
+                val victimIndex = nonFatalVictimIndexLocked()
+                if (victimIndex < 0) {
+                    // Every queued event is a fatal record awaiting retry; ordinary traffic must
+                    // not displace a crash report, so the incoming event is dropped instead.
+                    dropped = true
+                } else {
+                    removedEvent = events.removeAt(victimIndex)
+                }
+            }
+            if (!dropped) {
+                events.addLast(record)
+            }
+        }
+
+        if (dropped) {
+            config.logger.log("Queue is full of fatal events awaiting retry, ${record.event} was dropped.")
+            return
+        }
+        if (removedEvent != null) {
+            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
+        }
+
+        config.logger.log("Event: ${record.event} was added to the queue.")
+    }
+
+    // Front-inserts the fatal event so the FIRST drained batch carries it: a backlog batch that
+    // fails with a retriable error is requeued and stops the drain (no retry loops on a crashing
+    // process), which would otherwise consume the whole budget before the crash event ever reached
+    // the wire. Batch order does not matter to ingestion — events carry their own timestamps.
+    private fun enqueueFatalFirst(record: PostHogEvent) {
+        var removedEvent: PostHogEvent? = null
+
+        synchronized(eventsLock) {
+            if (events.size >= config.maxQueueSize) {
+                val victimIndex = nonFatalVictimIndexLocked()
+                removedEvent =
+                    if (victimIndex >= 0) {
+                        events.removeAt(victimIndex)
+                    } else {
+                        // All-fatal contents were front-inserted, so the tail is normally the
+                        // oldest and the newest crash reports win; maxQueueSize stays a hard bound.
+                        // (Approximate: a concurrent failed flush requeues its batch at the head,
+                        // which can reorder parked fatal events — which of several parked crash
+                        // reports gets trimmed is deliberately best-effort, not age-tracked.)
+                        events.removeLastOrNull()
+                    }
+            }
+            events.addFirst(record)
+        }
+
+        if (removedEvent != null) {
+            config.logger.log("Queue is full, the oldest event ${removedEvent.event} was discarded.")
+        }
+
+        config.logger.log("Event: ${record.event} was added to the front of the queue.")
+    }
+
+    // Must be called under eventsLock. The preferred eviction victim is the oldest NON-fatal event:
+    // front-inserting fatal records breaks the head-is-oldest invariant, and a fatal event parked
+    // after a failed attempt (in a process that survived) must not be displaced by ordinary
+    // traffic. In the common case the head is non-fatal, so callers stay O(1).
+    private fun nonFatalVictimIndexLocked(): Int = events.indexOfFirst { !it.isFatalExceptionEvent() }
 
     override fun flush() {
         flush(ignoreRetryPause = false)
@@ -98,11 +163,126 @@ internal class PostHogMemoryQueue(
         }
     }
 
+    /**
+     * Crash path for fatal `$exception` events: enqueue and drain in one ordered task on the queue
+     * executor, blocking the calling (crashing) thread for at most [fatalFlushTimeoutMs].
+     *
+     * The regular [add] path submits the enqueue asynchronously, so a crashing thread that flushed
+     * inline could read the deque before its own event landed, send nothing, and let the event die
+     * with the JVM. Running enqueue + drain as one task on the single-threaded executor makes the
+     * send happen-after the enqueue. The fatal event is front-inserted so the first drained batch
+     * carries it, and the drain then continues batch by batch (ignoring `flushAt`) until the queue
+     * is empty — a backlog of `maxBatchSize` or more can neither strand the fatal event nor eat the
+     * budget with a failing batch before the crash ever reaches the wire.
+     *
+     * Delivery stays best-effort: the caller stops waiting at the timeout (the drain keeps going on
+     * the executor thread for whatever process lifetime remains), and each HTTP attempt can fail or
+     * be cut short by process exit.
+     */
+    private fun addFatalBlocking(record: PostHogEvent) {
+        val done = CountDownLatch(1)
+        val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(fatalFlushTimeoutMs)
+
+        try {
+            executor.execute {
+                try {
+                    enqueueFatalFirst(record)
+                    drainUntilDeadline(deadlineNanos)
+                } finally {
+                    done.countDown()
+                }
+            }
+        } catch (e: RejectedExecutionException) {
+            // the executor is gone (client closed mid-crash); there is nothing to await
+            config.logger.log("The fatal event flush could not be scheduled: $e.")
+            return
+        }
+
+        awaitUninterruptibly(done, fatalFlushTimeoutMs)
+    }
+
+    /**
+     * Sends batch after batch until the queue is empty, the [deadlineNanos] budget is spent, or a
+     * send fails (a failed send requeues its batch; a crashing process gets one straight-line
+     * attempt per batch, never a retry loop). A flush already holding the [isFlushing] flag is
+     * polled within the budget instead of bailing, so a periodic-timer flush racing the crash
+     * cannot make the fatal drain a silent no-op. (A public [flush] caller that set the flag but
+     * whose executor task is queued BEHIND this one cannot release it while we poll — the poll then
+     * just runs out and that flush's own drain delivers whatever is left.)
+     */
+    private fun drainUntilDeadline(deadlineNanos: Long) {
+        while (System.nanoTime() < deadlineNanos) {
+            val before = synchronized(eventsLock) { events.size }
+            if (before == 0) {
+                return
+            }
+            if (isFlushing.getAndSet(true)) {
+                config.logger.log("Queue is flushing.")
+                try {
+                    Thread.sleep(FATAL_DRAIN_POLL_MS)
+                } catch (e: InterruptedException) {
+                    // the executor is being shut down; an escaping exception on this thread would
+                    // land in the default uncaught handler — us
+                    Thread.currentThread().interrupt()
+                    return
+                }
+                continue
+            }
+            try {
+                executeBatch()
+            } finally {
+                isFlushing.set(false)
+            }
+            val after = synchronized(eventsLock) { events.size }
+            if (after >= before) {
+                return
+            }
+        }
+    }
+
+    /**
+     * Waits out the whole [timeoutMs] even when the calling thread is already interrupted or gets
+     * interrupted while waiting — a crash on a thread some shutdown just interrupted must still get
+     * its flush attempt instead of returning on the spot with the budget unspent. The interrupt flag
+     * is restored before returning so the caller's own handling still sees it.
+     */
+    private fun awaitUninterruptibly(
+        latch: CountDownLatch,
+        timeoutMs: Long,
+    ): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        var interrupted = false
+        try {
+            while (true) {
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0) {
+                    config.logger.log("Blocking flush timed out after $timeoutMs ms.")
+                    return false
+                }
+                try {
+                    if (latch.await(remaining, TimeUnit.NANOSECONDS)) {
+                        return true
+                    }
+                } catch (e: InterruptedException) {
+                    // await clears the interrupt status when it throws, so the next wait really waits.
+                    interrupted = true
+                }
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt()
+            }
+        }
+    }
+
     override fun start() {
         executor.executeSafely {
             synchronized(timerLock) {
                 if (timer == null) {
-                    timer = Timer()
+                    // Daemon, matching the core PostHogQueue's Timer(true) and the executor's
+                    // daemon threads: a background flush timer must never keep a finished (or
+                    // crashed) JVM alive until close() is called.
+                    timer = Timer(true)
                     startTimer(delay)
                     config.logger.log("Queue timer started.")
                 }
@@ -271,5 +451,12 @@ internal class PostHogMemoryQueue(
     public companion object {
         private const val DEFAULT_RETRY_DELAY_SECONDS = 5
         private const val DEFAULT_MAX_RETRY_DELAY_SECONDS = 60
+
+        // How long a crashing thread waits for the fatal enqueue + drain, mirroring the Rust SDK's
+        // bounded panic-hook flush. Bounded so telemetry can never hang a dying process.
+        internal const val FATAL_FLUSH_TIMEOUT_MS = 2_000L
+
+        // How often the fatal drain re-checks a flush held by another thread.
+        private const val FATAL_DRAIN_POLL_MS = 10L
     }
 }
