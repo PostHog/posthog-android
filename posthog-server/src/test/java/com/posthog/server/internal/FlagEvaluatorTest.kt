@@ -64,45 +64,45 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
-    internal fun testMatchPropertyExactUnicodeNormalization() {
-        // Test German ß (eszett) - should match "ss" after casefold
-        val propertyStrasse =
-            FlagProperty(
-                key = "location",
-                propertyValue = "Straße",
-                propertyOperator = PropertyOperator.EXACT,
-                type = PropertyType.PERSON,
-                negation = false,
-                dependencyChain = null,
+    internal fun testMatchPropertyExactUsesUnicodeLowercase() {
+        fun match(
+            operator: PropertyOperator,
+            filterValue: String,
+            propertyValue: String,
+        ): Boolean {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = filterValue,
+                    propertyOperator = operator,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            return evaluator.matchProperty(property, mapOf("value" to propertyValue))
+        }
+
+        val comparisons =
+            listOf(
+                Triple("Ä", "ä", true),
+                Triple("É", "e", false),
+                Triple("ß", "ss", false),
+                Triple("Σ", "ς", false),
+                Triple("ΟΣ", "ος", true),
+                Triple("ΟΣ", "οσ", false),
+                Triple("ΟΔΟΣ", "οδος", true),
+                Triple("ΟΔΟΣ", "οδοσ", false),
+                Triple("İ", "i\u0307", true),
+                Triple("İ", "i", false),
             )
-
-        // Should match lowercase ß
-        assertTrue(evaluator.matchProperty(propertyStrasse, mapOf("location" to "straße")))
-
-        // Should match "ss" (casefold normalization)
-        assertTrue(evaluator.matchProperty(propertyStrasse, mapOf("location" to "strasse")))
-
-        // Test long s (ſ) - should match regular s after casefold
-        val propertyLongS =
-            FlagProperty(
-                key = "star",
-                propertyValue = "ſun",
-                propertyOperator = PropertyOperator.EXACT,
-                type = PropertyType.PERSON,
-                negation = false,
-                dependencyChain = null,
-            )
-
-        // Should match regular s (casefold normalization)
-        assertTrue(evaluator.matchProperty(propertyLongS, mapOf("star" to "sun")))
-
-        // Should match exact long s
-        assertTrue(evaluator.matchProperty(propertyLongS, mapOf("star" to "ſun")))
+        for ((filterValue, propertyValue, expected) in comparisons) {
+            assertEquals(expected, match(PropertyOperator.EXACT, filterValue, propertyValue))
+            assertEquals(!expected, match(PropertyOperator.IS_NOT, filterValue, propertyValue))
+        }
     }
 
     @Test
-    internal fun testMatchPropertyExactUnicodeNormalizationWithList() {
-        // Test with list values
+    internal fun testMatchPropertyExactUnicodeLowercaseWithList() {
         val property =
             FlagProperty(
                 key = "location",
@@ -113,9 +113,164 @@ internal class FlagEvaluatorTest {
                 dependencyChain = null,
             )
 
-        // Should match with casefold normalization
-        assertTrue(evaluator.matchProperty(property, mapOf("location" to "strasse")))
-        assertTrue(evaluator.matchProperty(property, mapOf("location" to "munchen")))
+        assertTrue(evaluator.matchProperty(property, mapOf("location" to "straße")))
+        assertTrue(evaluator.matchProperty(property, mapOf("location" to "münchen")))
+        assertFalse(evaluator.matchProperty(property, mapOf("location" to "strasse")))
+        assertFalse(evaluator.matchProperty(property, mapOf("location" to "munchen")))
+    }
+
+    @Test
+    internal fun testMatchPropertyExactUsesBackendBooleanCoercion() {
+        val comparisons =
+            listOf(
+                Triple(false, "banana", true),
+                Triple("false", 0, true),
+                Triple("FaLsE", false, true),
+                Triple("falſe", "banana", false),
+                Triple(listOf("false"), "pro", true),
+                Triple(listOf("true", "false"), "true", false),
+                Triple(emptyList<String>(), true, true),
+                Triple(emptyList<String>(), emptyList<String>(), true),
+            )
+
+        for ((filterValue, propertyValue, expected) in comparisons) {
+            for (operator in listOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)) {
+                val property =
+                    FlagProperty(
+                        key = "value",
+                        propertyValue = filterValue,
+                        propertyOperator = operator,
+                        type = PropertyType.PERSON,
+                        negation = false,
+                        dependencyChain = null,
+                    )
+                val actual = evaluator.matchProperty(property, mapOf("value" to propertyValue))
+                assertEquals(if (operator == PropertyOperator.EXACT) expected else !expected, actual)
+            }
+        }
+
+        val falseFilter =
+            FlagProperty(
+                key = "value",
+                propertyValue = false,
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        assertTrue(evaluator.matchProperty(falseFilter, mapOf("value" to null)))
+    }
+
+    @Test
+    internal fun testMatchPropertyExactUsesBackendJsonStringification() {
+        val comparisons =
+            listOf(
+                Triple("[1,2]", listOf(1, 2), true),
+                Triple("[1, 2]", listOf(1, 2), false),
+                Triple("[\"<script>\",\"line\u2028separator\"]", listOf("<script>", "line\u2028separator"), true),
+                Triple("{\"a\":2,\"b\":1}", linkedMapOf("b" to 1, "a" to 2), true),
+                Triple("{\"\uE000\":1,\"\uD800\uDC00\":2}", linkedMapOf("\uD800\uDC00" to 2, "\uE000" to 1), true),
+                Triple("{\"b\":1,\"a\":2}", linkedMapOf("b" to 1, "a" to 2), false),
+                Triple("{\"a\":null}", mapOf("a" to null), true),
+                Triple(
+                    "{\"a\":{\"c\":3,\"d\":4},\"z\":[{\"a\":2,\"b\":1}]}",
+                    linkedMapOf(
+                        "z" to listOf(linkedMapOf("b" to 1, "a" to 2)),
+                        "a" to linkedMapOf("d" to 4, "c" to 3),
+                    ),
+                    true,
+                ),
+                Triple("323", 323, true),
+                Triple("9223372036854775807", Long.MAX_VALUE, true),
+            )
+
+        for ((filterValue, propertyValue, expected) in comparisons) {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = filterValue,
+                    propertyOperator = PropertyOperator.EXACT,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            assertEquals(
+                "filter=$filterValue property=$propertyValue",
+                expected,
+                evaluator.matchProperty(property, mapOf("value" to propertyValue)),
+            )
+        }
+    }
+
+    @Test
+    internal fun testMatchPropertyFloatingPointStringificationFallsBackToServer() {
+        for (
+        number in
+        listOf(
+            323.0,
+            -0.0,
+            1e-7,
+            1e16,
+            1e-5,
+            9.9e-5,
+            Double.MIN_VALUE,
+        )
+        ) {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = number.toString(),
+                    propertyOperator = PropertyOperator.EXACT,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            try {
+                evaluator.matchProperty(property, mapOf("value" to number))
+                throw AssertionError("Expected floating-point exact matching to be inconclusive for $number")
+            } catch (_: InconclusiveMatchException) {
+                // The JVM formatter does not match serde_json for every finite double.
+            }
+        }
+
+        val nestedNonFinite =
+            FlagProperty(
+                key = "value",
+                propertyValue = "[NaN]",
+                propertyOperator = PropertyOperator.EXACT,
+                type = PropertyType.PERSON,
+                negation = false,
+                dependencyChain = null,
+            )
+        try {
+            evaluator.matchProperty(nestedNonFinite, mapOf("value" to listOf(Double.NaN)))
+            throw AssertionError("Expected nested non-finite matching to be inconclusive")
+        } catch (_: InconclusiveMatchException) {
+            // Non-finite numbers cannot be represented by serde_json.
+        }
+    }
+
+    @Test
+    internal fun testMatchPropertyStringOperatorsUseBackendJsonStringification() {
+        val comparisons =
+            listOf(
+                Triple(PropertyOperator.ICONTAINS, "\"a\":2", linkedMapOf("b" to 1, "a" to 2)),
+                Triple(PropertyOperator.STARTS_WITH, "922", Long.MAX_VALUE),
+                Triple(PropertyOperator.ENDS_WITH, "2]", listOf(1, 2)),
+            )
+
+        for ((operator, filterValue, propertyValue) in comparisons) {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = filterValue,
+                    propertyOperator = operator,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            assertTrue(evaluator.matchProperty(property, mapOf("value" to propertyValue)))
+        }
     }
 
     @Test
@@ -230,10 +385,7 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
-    internal fun testMatchPropertyIcontainsTurkishI() {
-        // Test Turkish i normalization
-        // In Turkish locale, uppercase I → ı (dotless i) and lowercase i → İ (dotted I)
-        // The uppercase().lowercase() normalization should handle this
+    internal fun testMatchPropertyIcontainsUsesAsciiCaseFolding() {
         val property =
             FlagProperty(
                 key = "city",
@@ -244,10 +396,9 @@ internal class FlagEvaluatorTest {
                 dependencyChain = null,
             )
 
-        // Should match with different casing
         assertTrue(evaluator.matchProperty(property, mapOf("city" to "istanbul")))
         assertTrue(evaluator.matchProperty(property, mapOf("city" to "ISTANBUL")))
-        assertTrue(evaluator.matchProperty(property, mapOf("city" to "İstanbul")))
+        assertFalse(evaluator.matchProperty(property, mapOf("city" to "İstanbul")))
     }
 
     @Test
@@ -329,6 +480,32 @@ internal class FlagEvaluatorTest {
         // Case-insensitive suffix match
         assertTrue(evaluator.matchProperty(property, mapOf("email" to "test@example.com")))
         assertFalse(evaluator.matchProperty(property, mapOf("email" to "test@example.org")))
+    }
+
+    @Test
+    internal fun testMatchPropertyStringOperatorsUseAsciiCaseFolding() {
+        val operators =
+            mapOf(
+                PropertyOperator.ICONTAINS to false,
+                PropertyOperator.NOT_ICONTAINS to true,
+                PropertyOperator.STARTS_WITH to false,
+                PropertyOperator.NOT_STARTS_WITH to true,
+                PropertyOperator.ENDS_WITH to false,
+                PropertyOperator.NOT_ENDS_WITH to true,
+            )
+
+        for ((operator, expected) in operators) {
+            val property =
+                FlagProperty(
+                    key = "value",
+                    propertyValue = "ä",
+                    propertyOperator = operator,
+                    type = PropertyType.PERSON,
+                    negation = false,
+                    dependencyChain = null,
+                )
+            assertEquals(expected, evaluator.matchProperty(property, mapOf("value" to "Ä")))
+        }
     }
 
     @Test

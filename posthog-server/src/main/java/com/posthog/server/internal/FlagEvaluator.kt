@@ -1,5 +1,7 @@
 package com.posthog.server.internal
 
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
 import com.posthog.PostHogConfig
 import com.posthog.internal.FlagConditionGroup
 import com.posthog.internal.FlagDefinition
@@ -10,7 +12,6 @@ import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
 import com.posthog.internal.PropertyValue
 import java.security.MessageDigest
-import java.text.Normalizer
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -28,8 +29,8 @@ internal class FlagEvaluator(
 ) {
     companion object {
         private const val LONG_SCALE = 0xFFFFFFFFFFFFFFF.toDouble()
-        private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.IS_NOT)
-        private val REGEX_COMBINING_MARKS = "\\p{M}+".toRegex()
+        private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)
+        private val JSON = GsonBuilder().disableHtmlEscaping().serializeNulls().create()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
         private val REGEX_SEMVER =
             Regex("""^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.\d+)*(?:[-+].*)?$""")
@@ -40,10 +41,7 @@ internal class FlagEvaluator(
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX")
         private val DATE_FORMATTER_NO_TZ = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
-        private fun casefold(input: String): String {
-            val normalized = Normalizer.normalize(input, Normalizer.Form.NFD)
-            return REGEX_COMBINING_MARKS.replace(normalized, "").uppercase().lowercase()
-        }
+        private fun unicodeLowercase(input: String): String = input.lowercase()
 
         private fun asciiCasefold(input: String): String =
             buildString(input.length) {
@@ -158,40 +156,38 @@ internal class FlagEvaluator(
 
             PropertyOperator.ICONTAINS ->
                 stringContains(
-                    overrideValue.toString(),
-                    propertyValue.toString(),
-                    ignoreCase = true,
+                    valueToString(overrideValue),
+                    valueToString(propertyValue),
                 )
 
             PropertyOperator.NOT_ICONTAINS ->
                 !stringContains(
-                    overrideValue.toString(),
-                    propertyValue.toString(),
-                    ignoreCase = true,
+                    valueToString(overrideValue),
+                    valueToString(propertyValue),
                 )
 
             PropertyOperator.STARTS_WITH ->
                 stringStartsWith(
-                    overrideValue.toString(),
-                    propertyValue.toString(),
+                    valueToString(overrideValue),
+                    valueToString(propertyValue),
                 )
 
             PropertyOperator.NOT_STARTS_WITH ->
                 !stringStartsWith(
-                    overrideValue.toString(),
-                    propertyValue.toString(),
+                    valueToString(overrideValue),
+                    valueToString(propertyValue),
                 )
 
             PropertyOperator.ENDS_WITH ->
                 stringEndsWith(
-                    overrideValue.toString(),
-                    propertyValue.toString(),
+                    valueToString(overrideValue),
+                    valueToString(propertyValue),
                 )
 
             PropertyOperator.NOT_ENDS_WITH ->
                 !stringEndsWith(
-                    overrideValue.toString(),
-                    propertyValue.toString(),
+                    valueToString(overrideValue),
+                    valueToString(propertyValue),
                 )
 
             PropertyOperator.REGEX ->
@@ -244,36 +240,130 @@ internal class FlagEvaluator(
         propertyValue: Any?,
         overrideValue: Any?,
     ): Boolean {
-        // Lowercase to uppercase to normalize locale (e.g., Turkish i, German ß)
-        // String.equals apparently does this when ignoreCase=true, but it doesn't seem to work.
-        // https://kotlinlang.org/api/core/1.3/kotlin-stdlib/kotlin.text/equals.html
-        val expectedValue = overrideValue?.let { casefold(it.toString()) }
-        return when {
-            propertyValue is List<*> -> {
-                propertyValue.any { v ->
-                    v == expectedValue || (v != null && casefold(v.toString()) == expectedValue)
-                }
-            }
+        if (isTruthyOrFalsyPropertyValue(propertyValue)) {
+            return isTruthyPropertyValue(propertyValue) == isTruthyPropertyValue(overrideValue)
+        }
 
-            else ->
-                propertyValue == expectedValue || (
-                    propertyValue != null && casefold(
-                        propertyValue.toString(),
-                    ) == expectedValue
-                )
+        val expectedValue = unicodeLowercase(valueToString(overrideValue))
+        return when (propertyValue) {
+            is List<*> ->
+                propertyValue.any { value ->
+                    unicodeLowercase(valueToString(value)) == expectedValue
+                }
+
+            else -> unicodeLowercase(valueToString(propertyValue)) == expectedValue
         }
     }
+
+    private fun isTruthyOrFalsyPropertyValue(value: Any?): Boolean =
+        when (value) {
+            is Boolean -> true
+            is String -> unicodeLowercase(value).let { it == "true" || it == "false" }
+            is List<*> -> value.all(::isTruthyOrFalsyPropertyValue)
+            else -> false
+        }
+
+    private fun isTruthyPropertyValue(value: Any?): Boolean =
+        when (value) {
+            is Boolean -> value
+            is String -> unicodeLowercase(value) == "true"
+            is List<*> -> value.all(::isTruthyPropertyValue)
+            else -> false
+        }
+
+    private fun valueToString(value: Any?): String {
+        if (value is String) {
+            return value
+        }
+        if (value is Number) {
+            return numberToString(value)
+        }
+        val jsonValue =
+            try {
+                JSON.toJsonTree(value)
+            } catch (error: IllegalArgumentException) {
+                throw InconclusiveMatchException("Cannot stringify JSON value locally: ${error.message}")
+            }
+        return canonicalJson(jsonValue)
+    }
+
+    private fun canonicalJson(value: JsonElement): String =
+        when {
+            value.isJsonNull -> "null"
+            value.isJsonArray ->
+                value.asJsonArray.joinToString(separator = ",", prefix = "[", postfix = "]") { canonicalJson(it) }
+            value.isJsonObject ->
+                value.asJsonObject
+                    .entrySet()
+                    .sortedWith { left, right -> compareJsonKeys(left.key, right.key) }
+                    .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, child) ->
+                        "${quoteJsonString(key)}:${canonicalJson(child)}"
+                    }
+            value.asJsonPrimitive.isString -> quoteJsonString(value.asString)
+            value.asJsonPrimitive.isBoolean -> value.asBoolean.toString()
+            else -> numberToString(value.asNumber)
+        }
+
+    private fun numberToString(value: Number): String {
+        val rawValue = value.toString()
+        if (rawValue.matches(Regex("-?\\d+"))) {
+            return rawValue
+        }
+        throw InconclusiveMatchException("Cannot stringify floating-point JSON number locally: $rawValue")
+    }
+
+    private fun compareJsonKeys(
+        left: String,
+        right: String,
+    ): Int {
+        val leftBytes = left.toByteArray(Charsets.UTF_8)
+        val rightBytes = right.toByteArray(Charsets.UTF_8)
+        for (index in 0 until minOf(leftBytes.size, rightBytes.size)) {
+            val comparison = (leftBytes[index].toInt() and 0xFF) - (rightBytes[index].toInt() and 0xFF)
+            if (comparison != 0) {
+                return comparison
+            }
+        }
+        return leftBytes.size - rightBytes.size
+    }
+
+    private fun quoteJsonString(value: String): String =
+        buildString(value.length + 2) {
+            append('"')
+            value.forEachIndexed { index, character ->
+                when (character) {
+                    '"' -> append("\\\"")
+                    '\\' -> append("\\\\")
+                    '\u0008' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    in '\u0000'..'\u001F' -> append("\\u%04x".format(character.code))
+                    in '\uD800'..'\uDBFF' -> {
+                        val next = value.getOrNull(index + 1)
+                        if (next == null || next !in '\uDC00'..'\uDFFF') {
+                            throw InconclusiveMatchException("Cannot stringify an unpaired Unicode surrogate")
+                        }
+                        append(character)
+                    }
+                    in '\uDC00'..'\uDFFF' -> {
+                        val previous = value.getOrNull(index - 1)
+                        if (previous == null || previous !in '\uD800'..'\uDBFF') {
+                            throw InconclusiveMatchException("Cannot stringify an unpaired Unicode surrogate")
+                        }
+                        append(character)
+                    }
+                    else -> append(character)
+                }
+            }
+            append('"')
+        }
 
     private fun stringContains(
         haystack: String,
         needle: String,
-        ignoreCase: Boolean,
-    ): Boolean {
-        if (ignoreCase) {
-            return casefold(haystack).contains(casefold(needle), ignoreCase = true)
-        }
-        return haystack.contains(needle)
-    }
+    ): Boolean = asciiCasefold(haystack).contains(asciiCasefold(needle))
 
     private fun stringStartsWith(
         value: String,
