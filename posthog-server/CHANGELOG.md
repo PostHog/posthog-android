@@ -1,5 +1,11 @@
 ## Next
 
+## 2.16.0
+
+### Minor Changes
+
+- 7e6bbc5: Add `captureUncaughtExceptions`: opt in to capturing uncaught JVM exceptions as error tracking events, with a best-effort flush before the process exits. The SDK's flush timer is now a daemon thread and no longer keeps a finished JVM alive until `close()`.
+
 ## 2.15.7
 
 ### Patch Changes

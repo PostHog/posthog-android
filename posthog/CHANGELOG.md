@@ -1,5 +1,11 @@
 ## Next
 
+## 6.34.1
+
+### Patch Changes
+
+- 7e6bbc5: Uncaught-exception events now use the canonical `onuncaughtexception` mechanism type.
+
 ## 6.34.0
 
 ### Minor Changes
