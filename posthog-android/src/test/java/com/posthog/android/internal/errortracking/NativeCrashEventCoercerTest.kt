@@ -82,10 +82,11 @@ internal class NativeCrashEventCoercerTest {
         assertEquals("SEGV_MAPERR at 0xdead", exception["value"])
         assertEquals(4343L, exception["thread_id"])
         assertEquals(
-            mapOf("handled" to false, "synthetic" to false, "type" to "signal"),
+            mapOf("handled" to false, "synthetic" to false, "type" to "signal", "exception_id" to 0),
             exception["mechanism"],
         )
         assertEquals("fatal", properties["\$exception_level"])
+        assertEquals("android.native_crash_reporter", properties["\$exception_source"])
     }
 
     @Suppress("UNCHECKED_CAST")

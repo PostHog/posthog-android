@@ -37,15 +37,14 @@ internal class ThrowableCoercerTest {
         (this["stacktrace"] as Map<String, Any>)["frames"] as List<Map<String, Any>>
 
     @Test
-    fun `omits chain ids for a single exception`() {
+    fun `emits required linkage for a single exception`() {
         val t = throwableWith("boom", arrayOf(frame("com.app.Only", "only")))
 
         val list = coercer.fromThrowableToPostHogProperties(t).exceptionList()
         assertEquals(1, list.size)
 
-        // nothing to link: no exception_id, no parent_id
         val mechanism = list[0].mechanism()
-        assertFalse(mechanism.containsKey("exception_id"))
+        assertEquals(0, (mechanism["exception_id"] as Number).toInt())
         assertFalse(mechanism.containsKey("parent_id"))
         assertEquals("generic", mechanism["type"])
     }
@@ -69,12 +68,15 @@ internal class ThrowableCoercerTest {
         assertEquals("middle", list[1]["value"])
         assertEquals(1, (list[1].mechanism()["exception_id"] as Number).toInt())
         assertEquals("chained", list[1].mechanism()["type"])
+        assertEquals("cause", list[1].mechanism()["source"])
         assertEquals(0, (list[1].mechanism()["parent_id"] as Number).toInt())
+        assertFalse(list[1].mechanism().containsKey("handled"))
 
         // item 2: cause of item 1
         assertEquals("root", list[2]["value"])
         assertEquals(2, (list[2].mechanism()["exception_id"] as Number).toInt())
         assertEquals("chained", list[2].mechanism()["type"])
+        assertEquals("cause", list[2].mechanism()["source"])
         assertEquals(1, (list[2].mechanism()["parent_id"] as Number).toInt())
     }
 
@@ -89,7 +91,8 @@ internal class ThrowableCoercerTest {
 
         // suppressed item is appended after the chain, attributed to its holder (id 0)
         assertEquals("suppressed", list[1]["value"])
-        assertEquals("suppressed", list[1].mechanism()["type"])
+        assertEquals("chained", list[1].mechanism()["type"])
+        assertEquals("suppressed", list[1].mechanism()["source"])
         assertEquals(1, (list[1].mechanism()["exception_id"] as Number).toInt())
         assertEquals(0, (list[1].mechanism()["parent_id"] as Number).toInt())
     }
@@ -104,8 +107,8 @@ internal class ThrowableCoercerTest {
 
         val list = coercer.fromThrowableToPostHogProperties(top).exceptionList()
         assertEquals(3, list.size)
-        assertEquals("suppressed", list[1].mechanism()["type"])
-        assertEquals("suppressed", list[2].mechanism()["type"])
+        assertEquals("suppressed", list[1].mechanism()["source"])
+        assertEquals("suppressed", list[2].mechanism()["source"])
     }
 
     @Test
@@ -155,9 +158,9 @@ internal class ThrowableCoercerTest {
         // 2 chain items first, then suppressed items attributed to the holder (id 0) fill the rest
         assertEquals("generic", list[0].mechanism()["type"])
         assertEquals("chained", list[1].mechanism()["type"])
-        assertEquals("suppressed", list[2].mechanism()["type"])
+        assertEquals("suppressed", list[2].mechanism()["source"])
         assertEquals(0, (list[2].mechanism()["parent_id"] as Number).toInt())
-        assertEquals("suppressed", list.last().mechanism()["type"])
+        assertEquals("suppressed", list.last().mechanism()["source"])
         assertEquals(
             ThrowableCoercer.MAX_EXCEPTION_LIST_SIZE - 1,
             (list.last().mechanism()["exception_id"] as Number).toInt(),

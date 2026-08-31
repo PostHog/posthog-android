@@ -865,7 +865,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `captureException with options allows overriding exception level via properties`() {
+    fun `captureException with options protects canonical metadata and preserves fingerprint`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(MockResponse().setResponseCode(200))
         mockServer.start()
@@ -892,7 +892,7 @@ internal class PostHogTest {
         assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
 
         val props = batchRequest.parseBatch().eventProperties("\$exception")
-        assertEquals("warning", props["\$exception_level"])
+        assertEquals("error", props["\$exception_level"])
         assertEquals("custom-fingerprint", props["\$exception_fingerprint"])
 
         postHog.close()
@@ -1053,7 +1053,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `captureException with options merges options for types outside ignoredExceptionTypes`() {
+    fun `captureException with options merges non-reserved options for types outside ignoredExceptionTypes`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(MockResponse().setResponseCode(200))
         mockServer.start()
@@ -1077,7 +1077,7 @@ internal class PostHogTest {
 
         val props = batchRequest.parseBatch().eventProperties("\$exception")
         assertEquals("value", props["custom"])
-        assertEquals("warning", props["\$exception_level"])
+        assertEquals("error", props["\$exception_level"])
         assertNotNull(props["\$exception_list"], "The coerced exception properties should still be present")
 
         @Suppress("UNCHECKED_CAST")
