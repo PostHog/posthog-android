@@ -1,5 +1,11 @@
 ## Next
 
+## 2.15.7
+
+### Patch Changes
+
+- 02172d5: Match local feature flag string operators using the flags service's boolean coercion, JSON stringification, and case rules.
+
 ## 2.15.6
 
 ### Patch Changes
