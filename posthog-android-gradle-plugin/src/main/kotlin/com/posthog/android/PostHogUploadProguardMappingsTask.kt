@@ -57,6 +57,11 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
             error("[PostHog] Mapping files are missing!")
         }
+        // The mapping always binds to the release this build creates. posthog-cli reads
+        // POSTHOG_RELEASE_MODE for `proguard upload`, and an Exec task inherits the daemon
+        // environment, so a value set for another tool would otherwise leave the mapping
+        // release-independent. Pin it. A posthog-cli that has no such flag ignores the variable.
+        environment("POSTHOG_RELEASE_MODE", "symbol-set")
         super.exec()
     }
 
