@@ -6,6 +6,6 @@
         "changeset": "changeset"
     },
     "devDependencies": {
-        "@changesets/cli": "^3.0.0"
+        "@changesets/cli": "^3.0.1"
     }
 }
