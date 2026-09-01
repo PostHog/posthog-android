@@ -50,7 +50,9 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  *
  * Selected emojis are tinted
  * [com.posthog.android.surveys.compose.internal.theme.ResolvedSurveyAppearance.ratingButtonActiveColor],
- * unselected use `ratingButtonColor`.
+ * unselected use
+ * [com.posthog.android.surveys.compose.internal.theme.ResolvedSurveyAppearance.inputTextColor]
+ * at 50% alpha.
  */
 @Composable
 internal fun EmojiRating(
