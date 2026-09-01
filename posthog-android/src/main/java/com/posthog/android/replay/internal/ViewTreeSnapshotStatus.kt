@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val CONSECUTIVE_DISCARD_WARNING_THRESHOLD: Int = 3
+private const val COMPOSE_ROOT_RECHECK_INTERVAL_NANOS: Long = 1_000_000_000
 
 // if you add any new property, remember to clear the state from resetViewSnapshotStates
 internal class ViewTreeSnapshotStatus(
@@ -72,6 +73,28 @@ internal class WindowDrawState {
     @Volatile
     var composeRooted: Boolean? = null
 
+    @Volatile
+    private var lastComposeRootCheckNanos: Long = 0
+
+    // A "not Compose" verdict is cleared by every layout pass so lazily mounted Compose is still
+    // picked up, but the check walks the whole view tree, so rate-limit it rather than re-walking
+    // on the first draw after every layout.
+    fun shouldRecheckComposeRoot(nowNanos: Long): Boolean {
+        if (lastComposeRootCheckNanos != 0L &&
+            nowNanos - lastComposeRootCheckNanos < COMPOSE_ROOT_RECHECK_INTERVAL_NANOS
+        ) {
+            return false
+        }
+        lastComposeRootCheckNanos = nowNanos
+        return true
+    }
+
+    // An indefinite verdict must not spend the re-check budget: it stays uncached and retries on
+    // the next draw.
+    fun clearComposeRootCheck() {
+        lastComposeRootCheckNanos = 0
+    }
+
     // Screenshots discarded in a row for mask safety. Incremented from the capture executor
     // thread and the PixelCopy callback thread, reset from the main thread — plain @Volatile
     // doesn't make `+1` atomic across those writers, hence AtomicInteger.
@@ -95,6 +118,7 @@ internal class WindowDrawState {
 
     fun resetSnapshotState() {
         composeRooted = null
+        lastComposeRootCheckNanos = 0
         resetScreenshotDiscards()
         invalidateMaskCapture()
     }

@@ -1921,6 +1921,36 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `negative compose verdict is not re-walked on the first draw after every layout`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                CountingChildFrameLayout(activity).apply {
+                    addView(View(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+            val walkCountAfterFirstDraw = root.childWalkCount
+            assertTrue(walkCountAfterFirstDraw > 0)
+
+            // A layout clears the "not Compose" verdict so lazily mounted Compose is still picked
+            // up, but the re-check is rate-limited, so the next draw must not re-walk the tree.
+            drawState.recordLayout()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertEquals(walkCountAfterFirstDraw, root.childWalkCount)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
     fun `non compose window keeps the legacy classifier when verification is disabled`() {
         // Control for the Compose routing test: a plain View window still runs the legacy
         // animation-redraw classifier.

@@ -1295,6 +1295,10 @@ public class PostHogReplayIntegration(
             return false
         }
 
+        if (!drawState.shouldRecheckComposeRoot(config.dateProvider.nanoTime())) {
+            return false
+        }
+
         // The View hierarchy is main-thread-owned, so detection must run there: inline when
         // already on it, otherwise post and wait, exactly like findMaskableComposeWidgets.
         val rooted = runOnMainThreadBlocking { containsComposeView() }
@@ -1302,22 +1306,27 @@ public class PostHogReplayIntegration(
         // A swallowed failure cached as false would silently restore the every-frame-discard
         // bug, so only a definite verdict is cached; "unknown" retries on the next draw.
         if (rooted == null) {
+            drawState.clearComposeRootCheck()
             return false
         }
         drawState.composeRooted = rooted
         return rooted
     }
 
+    // Scratch for the Compose-root walk; like the mask walks, it only runs on the main thread.
+    private val composeRootVisitedViews = IntHashSet()
+
     private fun View.containsComposeView(): Boolean? {
         return try {
-            containsComposeView(mutableSetOf())
+            composeRootVisitedViews.clear()
+            containsComposeView(composeRootVisitedViews)
         } catch (e: Throwable) {
             config.logger.log("Session Replay Compose view detection failed: $e.")
             null
         }
     }
 
-    private fun View.containsComposeView(visitedViews: MutableSet<Int>): Boolean {
+    private fun View.containsComposeView(visitedViews: IntHashSet): Boolean {
         if (!visitedViews.add(System.identityHashCode(this))) {
             return false
         }
