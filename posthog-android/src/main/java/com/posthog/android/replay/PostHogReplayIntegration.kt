@@ -2729,7 +2729,6 @@ public class PostHogReplayIntegration(
         // discards this tick and retries at the next scheduled snapshot.
         private const val MAX_BASELINE_ARM_ATTEMPTS: Int = 3
 
-        // Consecutive screenshot discards before warning that the recording may be blank.
         private val integrationInstalled = AtomicBoolean(false)
     }
 }

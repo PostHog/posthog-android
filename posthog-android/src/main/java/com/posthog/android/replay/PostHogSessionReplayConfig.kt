@@ -66,7 +66,8 @@ public class PostHogSessionReplayConfig
          * Verifies mask alignment for session replay screenshots.
          * This can preserve screenshots during pixel-only redraws, including continuously animated
          * content, but performs additional view hierarchy walks while a screenshot is captured.
-         * Defaults to false.
+         * Defaults to false. Windows with a Compose root always use the verified path regardless
+         * of this flag, so setting it to false does not disable verification for them.
          */
         @PostHogExperimental
         public var verifyScreenshotMaskAlignment: Boolean = false
