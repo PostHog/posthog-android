@@ -98,6 +98,25 @@ internal fun DirectoryProperty.getAndDelete(): File {
 
 internal const val POSTHOG_CLI_DEFAULT_EXECUTABLE = "posthog-cli"
 
+internal const val POSTHOG_RELEASE_MODE_PROPERTY = "posthog.releaseMode"
+
+/**
+ * The property no longer does anything: the mapping always binds to the release the build creates.
+ * The POSTHOG_RELEASE_MODE environment variable stays silent here on purpose, because it still
+ * steers the sourcemap and hermes uploads of other PostHog tools, so a warning about it would not
+ * be actionable.
+ */
+internal fun warnIfDeprecatedReleaseModeSet(project: Project) {
+    val value = project.findProperty(POSTHOG_RELEASE_MODE_PROPERTY)?.toString()?.trim()
+    if (value.isNullOrEmpty()) {
+        return
+    }
+    project.logger.warn(
+        "[PostHog] $POSTHOG_RELEASE_MODE_PROPERTY is deprecated and ignored. The proguard " +
+            "mapping uploads bound to the release this build creates. Remove the property.",
+    )
+}
+
 internal const val POSTHOG_DOTENV_FILE_PROPERTY = "posthog.dotenvFile"
 
 /**

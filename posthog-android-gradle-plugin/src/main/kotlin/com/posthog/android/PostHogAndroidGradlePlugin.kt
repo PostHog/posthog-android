@@ -38,6 +38,8 @@ internal abstract class PostHogAndroidGradlePlugin
             extension.uploadNativeSymbols.convention(false)
             extension.includeNativeSymbolSources.convention(false)
 
+            warnIfDeprecatedReleaseModeSet(project)
+
             val failureTracker =
                 project.gradle.sharedServices.registerIfAbsent(
                     PostHogTaskFailureTracker.NAME,

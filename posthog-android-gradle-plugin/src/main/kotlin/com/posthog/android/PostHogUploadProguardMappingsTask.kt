@@ -53,10 +53,25 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
     @get:Optional
     public abstract val build: Property<Int>
 
+    @Deprecated("The value is ignored. The mapping always binds to the release the build creates.")
+    @get:Input
+    @get:Optional
+    public abstract val releaseMode: Property<String>
+
     override fun exec() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
             error("[PostHog] Mapping files are missing!")
         }
+
+        @Suppress("DEPRECATION")
+        val deprecatedReleaseMode = releaseMode
+        if (deprecatedReleaseMode.isPresent) {
+            logger.warn(
+                "[PostHog] releaseMode is deprecated and ignored. The mapping uploads bound to " +
+                    "the release this build creates. Remove the assignment.",
+            )
+        }
+
         // The mapping always binds to the release this build creates. posthog-cli reads
         // POSTHOG_RELEASE_MODE for `proguard upload`, and an Exec task inherits the daemon
         // environment, so a value set for another tool would otherwise leave the mapping
