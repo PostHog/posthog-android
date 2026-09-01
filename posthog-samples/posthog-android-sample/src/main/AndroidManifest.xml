@@ -40,6 +40,11 @@
         </activity>
 
         <activity
+            android:name="com.posthog.android.sample.ComposeReplayActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PostHogAndroidSample" />
+
+        <activity
             android:name="com.posthog.android.sample.SessionReplayActivity"
             android:exported="false"
             android:theme="@style/Theme.PostHogAndroidSample" />

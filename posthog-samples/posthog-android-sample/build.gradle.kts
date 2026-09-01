@@ -22,6 +22,14 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Point the sample at a local mock PostHog server when POSTHOG_HOST is set
+        // (e.g. http://10.0.2.2:9999 for the emulator). Empty = normal cloud behaviour.
+        buildConfigField(
+            "String",
+            "POSTHOG_HOST",
+            "\"${System.getenv("POSTHOG_HOST") ?: ""}\"",
+        )
     }
 
     buildTypes {

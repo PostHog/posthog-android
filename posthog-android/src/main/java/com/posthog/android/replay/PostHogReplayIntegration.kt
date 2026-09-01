@@ -249,7 +249,7 @@ public class PostHogReplayIntegration(
         drawState.recordDraw()
 
         val classifyLegacyDraw =
-            !config.sessionReplayConfig.verifyScreenshotMaskAlignment ||
+            !shouldVerifyMaskAlignment(view, drawState) ||
                 drawState.isLegacyCaptureActive
         if (classifyLegacyDraw) {
             val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
@@ -490,7 +490,7 @@ public class PostHogReplayIntegration(
         status.sentMetaEvent = false
         status.keyboardVisible = false
         status.lastSnapshot = null
-        status.drawState.invalidateMaskCapture()
+        status.drawState.resetSnapshotState()
     }
 
     private fun clearViewListeners(
@@ -1137,6 +1137,42 @@ public class PostHogReplayIntegration(
             !isViewStateStableForMatrixOperations()
     }
 
+    // Inline when already on the main thread (posting there would deadlock); otherwise
+    // post-and-wait. Returns null on timeout or throw -- callers must treat that as failure.
+    private fun <T> runOnMainThreadBlocking(block: () -> T): T? {
+        if (Looper.myLooper() == mainHandler.handler.looper) {
+            return try {
+                block()
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
+                null
+            }
+        }
+        val latch = CountDownLatch(1)
+        var result: T? = null
+        mainHandler.handler.post {
+            try {
+                // Caught here too: an uncaught throw would otherwise escape onto the
+                // main Looper and crash the host app.
+                result = block()
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
+            } finally {
+                latch.countDown()
+            }
+        }
+        return try {
+            if (latch.await(1000, TimeUnit.MILLISECONDS)) result else null
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
+        }
+    }
+
     private fun findMaskableComposeWidgets(
         view: View,
         walk: MaskWalk,
@@ -1201,26 +1237,7 @@ public class PostHogReplayIntegration(
 
         // Compose requires main-thread access. Draw-time verification already runs on main, where
         // posting and waiting would deadlock, so execute inline in that case.
-        val completed =
-            if (Looper.myLooper() == mainHandler.handler.looper) {
-                traversal.run()
-                true
-            } else {
-                val latch = CountDownLatch(1)
-                mainHandler.handler.post {
-                    try {
-                        traversal.run()
-                    } finally {
-                        latch.countDown()
-                    }
-                }
-                try {
-                    latch.await(1000, TimeUnit.MILLISECONDS)
-                } catch (e: Throwable) {
-                    config.logger.log("Session Replay findMaskableComposeWidgets failed: $e")
-                    false
-                }
-            }
+        val completed = runOnMainThreadBlocking { traversal.run() } != null
 
         if (completed && traversalSucceeded) {
             // Feed through addRect on the walk's owner thread so compare mode also covers
@@ -1256,6 +1273,85 @@ public class PostHogReplayIntegration(
 
     private fun View.isComposeView(): Boolean {
         return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)
+    }
+
+    // Compose recomposes on almost every frame, and the legacy redraw classifier can never treat a
+    // Compose redraw as animation-only, so the legacy path discards every frame and the recording
+    // stays blank. Route Compose-rooted windows onto the verified path, which compares real mask
+    // geometry, so pixel-only redraws survive.
+    private fun shouldVerifyMaskAlignment(
+        view: View,
+        drawState: WindowDrawState,
+    ): Boolean {
+        return config.sessionReplayConfig.verifyScreenshotMaskAlignment ||
+            view.isComposeRooted(drawState)
+    }
+
+    private fun View.isComposeRooted(drawState: WindowDrawState): Boolean {
+        drawState.composeRooted?.let { return it }
+        if (!isComposeAvailable) {
+            // Can never become true, so skip the main-thread hop entirely.
+            drawState.composeRooted = false
+            return false
+        }
+
+        if (!drawState.shouldRecheckComposeRoot(config.dateProvider.nanoTime())) {
+            return false
+        }
+
+        // The View hierarchy is main-thread-owned, so detection must run there: inline when
+        // already on it, otherwise post and wait, exactly like findMaskableComposeWidgets.
+        val rooted = runOnMainThreadBlocking { containsComposeView() }
+
+        // A swallowed failure cached as false would silently restore the every-frame-discard
+        // bug, so only a definite verdict is cached; "unknown" retries on the next draw.
+        if (rooted == null) {
+            drawState.clearComposeRootCheck()
+            return false
+        }
+        drawState.composeRooted = rooted
+        return rooted
+    }
+
+    // Scratch for the Compose-root walk; like the mask walks, it only runs on the main thread.
+    private val composeRootVisitedViews = IntHashSet()
+
+    private fun View.containsComposeView(): Boolean? {
+        return try {
+            composeRootVisitedViews.clear()
+            containsComposeView(composeRootVisitedViews)
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay Compose view detection failed: $e.")
+            null
+        }
+    }
+
+    private fun View.containsComposeView(visitedViews: IntHashSet): Boolean {
+        if (!visitedViews.add(System.identityHashCode(this))) {
+            return false
+        }
+        if (isComposeView()) {
+            return true
+        }
+        if (this is ViewGroup) {
+            for (i in 0 until childCount) {
+                if (getChildAt(i)?.containsComposeView(visitedViews) == true) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // Warns once after a run of discards so a silently blank recording stops being invisible.
+    private fun recordScreenshotDiscarded(drawState: WindowDrawState) {
+        if (drawState.recordScreenshotDiscard()) {
+            config.logger.log(
+                "Session Replay discarded several screenshots in a row during capture; the " +
+                    "recording may be blank. This can be caused by the screen changing during " +
+                    "capture, PixelCopy failing or timing out, or bitmap encoding failing.",
+            )
+        }
     }
 
     private val isComposeAvailable by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -1294,11 +1390,12 @@ public class PostHogReplayIntegration(
     // attempt is thrown away and re-walked from scratch under a fresh capture, bounded so
     // a screen that redraws during every attempt discards instead of looping. Layout,
     // poison, and external invalidation discard immediately.
-    private fun armMaskCapture(
+    private fun runArmMaskCaptureLoop(
         view: View,
         drawState: WindowDrawState,
     ): ArmedMaskCapture? {
-        repeat(MAX_BASELINE_ARM_ATTEMPTS) {
+        var armed: ArmedMaskCapture? = null
+        for (attempt in 0 until MAX_BASELINE_ARM_ATTEMPTS) {
             val token = drawState.beginMaskCapture()
             val preWalk = MaskWalk()
             try {
@@ -1309,18 +1406,84 @@ public class PostHogReplayIntegration(
             }
             if (preWalk.poisoned) {
                 drawState.cancelMaskCapture(token)
-                return null
+                break
             }
             when (drawState.setBaseline(token, preWalk.rects)) {
-                BaselineResult.ARMED -> return ArmedMaskCapture(token, preWalk)
+                BaselineResult.ARMED -> {
+                    armed = ArmedMaskCapture(token, preWalk)
+                    break
+                }
                 BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
                 BaselineResult.UNKEEPABLE -> {
                     drawState.cancelMaskCapture(token)
-                    return null
+                    break
                 }
             }
         }
-        return null
+        return armed
+    }
+
+    private fun armMaskCapture(
+        view: View,
+        drawState: WindowDrawState,
+    ): ArmedMaskCapture? {
+        // The whole loop runs in ONE main-thread message so a draw can't land between
+        // beginMaskCapture() and setBaseline() -- drawCount can't move mid-walk, which also makes
+        // TORN_BY_DRAW unreachable here; the retry stays as a guard if that ever changes. Nested
+        // run-on-main calls from the pre-walk (e.g. a ComposeView) run inline, already on main.
+        if (Looper.myLooper() == mainHandler.handler.looper) {
+            return try {
+                runArmMaskCaptureLoop(view, drawState)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
+                null
+            }
+        }
+
+        // Not the generic runOnMainThreadBlocking: on timeout the posted Runnable below still
+        // runs later and must not leave an armed capture nobody will ever consume. `claimed`
+        // makes the result claimable exactly once -- whichever side (the posted block finishing,
+        // or this waiter giving up) gets there first wins; the loser either returns null (waiter)
+        // or cancels its own token (block), so activeCapture is never left orphaned.
+        val latch = CountDownLatch(1)
+        val claimed = AtomicBoolean(false)
+        var result: ArmedMaskCapture? = null
+        mainHandler.handler.post {
+            try {
+                val armed = runArmMaskCaptureLoop(view, drawState)
+                // Publish before the CAS, not after: on timeout the waiter reads `result` only
+                // once its own CAS fails, and it is the CAS's volatile write that makes this
+                // assignment visible. Writing after would let the waiter observe a claimed
+                // capture with a still-null result and orphan it.
+                result = armed
+                if (!claimed.compareAndSet(false, true)) {
+                    armed?.let { drawState.cancelMaskCapture(it.token) }
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay main-thread hop failed: $e")
+            } finally {
+                latch.countDown()
+            }
+        }
+        return try {
+            if (latch.await(1000, TimeUnit.MILLISECONDS)) {
+                result
+            } else if (claimed.compareAndSet(false, true)) {
+                // We won the claim race; the block will see claimed == true and cancel.
+                null
+            } else {
+                // The block already claimed and published its result before we could -- safe to
+                // read after the failed CAS establishes happens-before.
+                result
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay main-thread hop failed: $e")
+            null
+        }
     }
 
     private fun Bitmap.paintScreenshotMasks(rects: List<Rect>): Boolean {
@@ -1439,7 +1602,7 @@ public class PostHogReplayIntegration(
         val height = view.height.densityValue(screenDensity)
         var base64: String? = null
 
-        val verifyMaskAlignment = config.sessionReplayConfig.verifyScreenshotMaskAlignment
+        val verifyMaskAlignment = shouldVerifyMaskAlignment(view, drawState)
         val armedCapture =
             if (verifyMaskAlignment) {
                 drawState.reset()
@@ -1452,6 +1615,7 @@ public class PostHogReplayIntegration(
             }
         if (verifyMaskAlignment && armedCapture == null) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            recordScreenshotDiscarded(drawState)
             return null
         }
         val bitmap: Bitmap
@@ -1467,6 +1631,7 @@ public class PostHogReplayIntegration(
                 drawState.finishLegacyCapture()
             }
             config.logger.log("Session Replay screenshot setup failed: $e.")
+            recordScreenshotDiscarded(drawState)
             return null
         }
 
@@ -1535,8 +1700,10 @@ public class PostHogReplayIntegration(
         // renders as its placeholder tile — a visible flash. Skip the frame
         // instead; the caller retries on the next capture.
         if (base64 == null) {
+            recordScreenshotDiscarded(drawState)
             return null
         }
+        drawState.resetScreenshotDiscards()
 
         return RRWireframe(
             id = viewId,

@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
 import android.view.Window
+import android.view.WindowManager
 import android.view.animation.Animation
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -52,8 +53,11 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
+import org.robolectric.shadows.ShadowLegacyBitmap
 import org.robolectric.shadows.ShadowPixelCopy
+import org.robolectric.util.ReflectionHelpers
 import java.lang.ref.WeakReference
+import java.util.Collections
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.Callable
@@ -62,9 +66,11 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.jvm.functions.Function0
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -1745,6 +1751,341 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    // A class name the production Compose-view heuristic accepts, so a window containing it is
+    // treated as Compose-rooted.
+    private class FakeAndroidComposeView(context: Context) : View(context)
+
+    private class ThrowingChildFrameLayout(context: Context) : FrameLayout(context) {
+        override fun getChildAt(index: Int): View? {
+            throw IllegalStateException("broken hierarchy")
+        }
+    }
+
+    @Test
+    fun `compose rooted window uses the verified path when verification is disabled`() {
+        // A Compose redraw can never be classified as animation-only, so on the legacy path
+        // every frame is discarded. Compose-rooted windows must use the verified path instead,
+        // so the legacy animation-redraw classifier never runs for them.
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root = FrameLayout(activity).apply { addView(FakeAndroidComposeView(activity)) }
+            root.setHasTransientState(true)
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `compose rooted cache invalidates when layout changes`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                FrameLayout(activity).apply {
+                    addView(View(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+            assertTrue(drawState.isOnlyAnimationRedraw)
+
+            root.addView(FakeAndroidComposeView(activity))
+            drawState.recordLayout()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `compose detection failures fall back to the legacy classifier`() {
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        fx.config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    messages.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                ThrowingChildFrameLayout(activity).apply {
+                    addView(View(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertTrue(drawState.isOnlyAnimationRedraw)
+            assertTrue(messages.any { it.contains("Compose view detection failed") })
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    private class OnceThrowingChildFrameLayout(context: Context) : FrameLayout(context) {
+        private var thrown = false
+
+        override fun getChildAt(index: Int): View? {
+            if (!thrown) {
+                thrown = true
+                throw IllegalStateException("broken hierarchy")
+            }
+            return super.getChildAt(index)
+        }
+    }
+
+    @Test
+    fun `compose detection failure is not cached and re-runs on the next draw`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                OnceThrowingChildFrameLayout(activity).apply {
+                    addView(FakeAndroidComposeView(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+            assertTrue(drawState.isOnlyAnimationRedraw)
+
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    private class CountingChildFrameLayout(context: Context) : FrameLayout(context) {
+        var childWalkCount = 0
+
+        override fun getChildAt(index: Int): View? {
+            childWalkCount++
+            return super.getChildAt(index)
+        }
+    }
+
+    @Test
+    fun `positive compose verdict survives a layout without re-walking the tree`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                CountingChildFrameLayout(activity).apply {
+                    addView(FakeAndroidComposeView(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+            assertFalse(drawState.isOnlyAnimationRedraw)
+            val walkCountAfterFirstDraw = root.childWalkCount
+            assertTrue(walkCountAfterFirstDraw > 0)
+
+            drawState.recordLayout()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertEquals(walkCountAfterFirstDraw, root.childWalkCount)
+            assertFalse(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `negative compose verdict is not re-walked on the first draw after every layout`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root =
+                CountingChildFrameLayout(activity).apply {
+                    addView(View(activity))
+                    setHasTransientState(true)
+                }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+            val walkCountAfterFirstDraw = root.childWalkCount
+            assertTrue(walkCountAfterFirstDraw > 0)
+
+            // A layout clears the "not Compose" verdict so lazily mounted Compose is still picked
+            // up, but the re-check is rate-limited, so the next draw must not re-walk the tree.
+            drawState.recordLayout()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertEquals(walkCountAfterFirstDraw, root.childWalkCount)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `non compose window keeps the legacy classifier when verification is disabled`() {
+        // Control for the Compose routing test: a plain View window still runs the legacy
+        // animation-redraw classifier.
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root = FrameLayout(activity).apply { addView(View(activity)) }
+            root.setHasTransientState(true)
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertTrue(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `warns after consecutive screenshot discards`() {
+        // A blank recording is silent: each discard logs a debug line, but nothing tells the
+        // customer the recording is empty. A run of discards must raise one warning.
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val (fx, _) = screenshotFixture()
+        fx.config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    messages.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+            fx.sut.decorViews[decorView] = status
+
+            // A mock window has no decor, so PixelCopy throws and every capture is discarded.
+            repeat(2) {
+                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+            }
+            assertFalse(messages.any { it.contains("screenshots in a row") })
+
+            status.drawState.resetSnapshotState()
+            repeat(3) {
+                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+            }
+
+            assertEquals(1, messages.count { it.contains("screenshots in a row") })
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    // Bitmap.createBitmap only throws for a degenerate size, but a zero/negative-size view is
+    // already filtered out earlier by isVisible(), before this code is reached (getWidth/
+    // getHeight are final so a call-counting View can't fake that out either). Shadowing
+    // Bitmap.createBitmap directly, gated on a sentinel width so unrelated bitmap allocation
+    // (e.g. theme inflation) still goes through the real implementation, is the actual lever
+    // for exercising this catch block.
+    @Implements(Bitmap::class)
+    class ThrowingShadowBitmap {
+        companion object {
+            const val ALLOCATION_FAILURE_WIDTH = 823476
+
+            @JvmStatic
+            @Implementation
+            fun createBitmap(
+                width: Int,
+                height: Int,
+                config: Bitmap.Config,
+            ): Bitmap {
+                if (width == ALLOCATION_FAILURE_WIDTH) {
+                    throw IllegalArgumentException("width and height must be > 0")
+                }
+                return ReflectionHelpers.callStaticMethod(
+                    ShadowLegacyBitmap::class.java,
+                    "createBitmap",
+                    ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType, width),
+                    ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType, height),
+                    ReflectionHelpers.ClassParameter.from(Bitmap.Config::class.java, config),
+                )
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ThrowingShadowBitmap::class])
+    fun `bitmap allocation failure feeds the discard counter`() {
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val (fx, _) = screenshotFixture()
+        fx.config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    messages.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+        try {
+            // Attach via WindowManager (not an Activity's themed decor) so isVisible() sees a
+            // real attached, visible view without going through theme drawable inflation, which
+            // would otherwise route unrelated Bitmap allocations through the sentinel-gated
+            // shadow below.
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val decorView =
+                View(context).apply {
+                    layout(0, 0, ThrowingShadowBitmap.ALLOCATION_FAILURE_WIDTH, 10)
+                }
+            windowManager.addView(
+                decorView,
+                WindowManager.LayoutParams(WindowManager.LayoutParams.TYPE_APPLICATION),
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+            decorView.layout(0, 0, ThrowingShadowBitmap.ALLOCATION_FAILURE_WIDTH, 10)
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            repeat(3) {
+                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+            }
+
+            assertTrue(messages.any { it.contains("screenshot setup failed") })
+            assertEquals(1, messages.count { it.contains("screenshots in a row") })
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
     @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
     fun `wireframe visibility does not race a delayed screenshot mask walk's shared scratch objects`() {
@@ -1827,7 +2168,7 @@ internal class PostHogReplayIntegrationTest {
                     )
                 }
             assertTrue(
-                guardedEntered.await(2, TimeUnit.SECONDS),
+                awaitDraining(guardedEntered, 3000),
                 "The delayed screenshot callback did not reach its guarded post-copy mask walk",
             )
 
@@ -1838,10 +2179,10 @@ internal class PostHogReplayIntegrationTest {
                         WeakReference(activity.window),
                     )
                 }
-            val callsOverlapped = wireframeEntered.await(1, TimeUnit.SECONDS)
+            val callsOverlapped = awaitDraining(wireframeEntered, 1500)
             releaseGuardedCall.countDown()
-            screenshotFuture.get(2, TimeUnit.SECONDS)
-            wireframeFuture.get(2, TimeUnit.SECONDS)
+            awaitDraining(screenshotFuture, 3000)
+            awaitDraining(wireframeFuture, 3000)
 
             assertFalse(guardedTimedOut.get(), "The guarded visibility hook timed out")
             val overlappingCallsWereSafe =
@@ -1861,6 +2202,38 @@ internal class PostHogReplayIntegrationTest {
             executor.shutdownNow()
             fx.sut.uninstall()
         }
+    }
+
+    // Robolectric's main looper only advances via idle() on the test thread. A bare
+    // latch/future wait would deadlock work that hops onto main (runOnMainThreadBlocking),
+    // so these alternate idle() with a short wait -- call only from the test thread.
+    private fun awaitDraining(
+        latch: CountDownLatch,
+        timeoutMs: Long,
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (latch.await(20, TimeUnit.MILLISECONDS)) return true
+        }
+        return latch.await(0, TimeUnit.MILLISECONDS)
+    }
+
+    private fun <T> awaitDraining(
+        future: Future<T>,
+        timeoutMs: Long,
+    ): T {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            try {
+                return future.get(20, TimeUnit.MILLISECONDS)
+            } catch (e: TimeoutException) {
+                // keep draining
+            }
+        }
+        // Loop already drained past the deadline, so this is a last-chance grab, not another wait.
+        return future.get(0, TimeUnit.MILLISECONDS)
     }
 
     private fun maskWalk(vararg rects: Rect): PostHogReplayIntegration.MaskWalk {
@@ -2489,5 +2862,120 @@ internal class PostHogReplayIntegrationTest {
         } finally {
             h.fx.sut.uninstall()
         }
+    }
+
+    @Test
+    fun `a block that throws on the posted main-thread path does not crash and returns null`() {
+        // Production hops onto main from the capture executor thread, not from main itself, so
+        // this exercises the post-and-wait branch of runOnMainThreadBlocking, not the inline one.
+        val sut = getSut()
+        val throwingBlock: () -> String = { throw IllegalStateException("boom") }
+        val executor = Executors.newSingleThreadExecutor()
+
+        try {
+            val future =
+                executor.submit(
+                    Callable {
+                        ReflectionHelpers.callInstanceMethod<String?>(
+                            sut,
+                            "runOnMainThreadBlocking",
+                            ReflectionHelpers.ClassParameter.from(Function0::class.java, throwingBlock),
+                        )
+                    },
+                )
+            // Pump the shadow main looper until the posted block (and its throw) has run.
+            var idled = 0
+            while (!future.isDone && idled < 50) {
+                shadowOf(Looper.getMainLooper()).idle()
+                Thread.sleep(20)
+                idled++
+            }
+            assertEquals(
+                null,
+                future.get(3000, TimeUnit.MILLISECONDS),
+                "A throwing block must degrade to null, not propagate onto the main Looper",
+            )
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `a timed-out arming does not leave an orphaned active capture`() {
+        // On timeout the posted arming Runnable still finishes later; it must cancel its own
+        // token rather than leave WindowDrawState reporting an active capture nobody will read.
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        shadowOf(Looper.getMainLooper()).idle()
+        val view = View(activity)
+        val drawState = WindowDrawState()
+        val sut = getSut()
+        val executor = Executors.newSingleThreadExecutor()
+
+        try {
+            val future =
+                executor.submit(
+                    Callable {
+                        ReflectionHelpers.callInstanceMethod<Any?>(
+                            sut,
+                            "armMaskCapture",
+                            ReflectionHelpers.ClassParameter.from(View::class.java, view),
+                            ReflectionHelpers.ClassParameter.from(WindowDrawState::class.java, drawState),
+                        )
+                    },
+                )
+
+            // Do not idle() the main looper for over the 1000ms wait, so the waiter times out
+            // with the posted arming Runnable still sitting unexecuted in the shadow looper queue.
+            assertTrue(future.get(2000, TimeUnit.MILLISECONDS) == null, "Timed-out arming must return null")
+
+            // Now let the late Runnable finish arming and self-cancel.
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(
+                null,
+                drawState.beginDrawSample(),
+                "A timed-out arm must not leave an orphaned active capture behind",
+            )
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `discard warning fires exactly once per run of discards, even racing across threads`() {
+        // consecutiveScreenshotDiscards is incremented from the capture executor thread and the
+        // PixelCopy handler thread; the warning must still fire exactly once per run.
+        val drawState = WindowDrawState()
+        val threads = 4
+        val incrementsPerThread = 50
+        val warnings = AtomicInteger(0)
+        val ready = CountDownLatch(threads)
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(threads)
+
+        repeat(threads) {
+            Thread {
+                ready.countDown()
+                start.await()
+                repeat(incrementsPerThread) {
+                    if (drawState.recordScreenshotDiscard()) {
+                        warnings.incrementAndGet()
+                    }
+                }
+                done.countDown()
+            }.start()
+        }
+
+        assertTrue(ready.await(2000, TimeUnit.MILLISECONDS))
+        start.countDown()
+        assertTrue(done.await(5000, TimeUnit.MILLISECONDS))
+
+        assertEquals(1, warnings.get(), "The warning must fire exactly once for this run of discards")
+
+        drawState.resetScreenshotDiscards()
+        assertFalse(drawState.recordScreenshotDiscard()) // 1
+        assertFalse(drawState.recordScreenshotDiscard()) // 2
+        assertTrue(drawState.recordScreenshotDiscard()) // 3 - threshold reached, warns once
+        assertFalse(drawState.recordScreenshotDiscard(), "Past the threshold, further discards must not re-warn")
     }
 }
