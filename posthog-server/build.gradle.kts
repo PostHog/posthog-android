@@ -90,6 +90,8 @@ animalsniffer {
 }
 
 dependencies {
+    add("dokkaJavadocPlugin", "org.jetbrains.dokka:javadoc-plugin:${properties["dokkaVersion"]}")
+
     // Depend on posthog-core module (not posthog-android)
     api(project(":posthog"))
 

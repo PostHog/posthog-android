@@ -98,6 +98,8 @@ animalsniffer {
 }
 
 dependencies {
+    add("dokkaJavadocPlugin", "org.jetbrains.dokka:javadoc-plugin:${properties["dokkaVersion"]}")
+
     implementation(kotlin("stdlib-jdk8", PosthogBuildConfig.Kotlin.KOTLIN))
 
     implementation("com.google.code.gson:gson:${PosthogBuildConfig.Dependencies.GSON}")
