@@ -116,56 +116,6 @@ internal fun resolvePostHogDotenvFile(project: Project): String? {
     return if (file.isAbsolute) file.path else File(project.rootDir, value).path
 }
 
-internal const val POSTHOG_RELEASE_MODE_PROPERTY = "posthog.releaseMode"
-
-internal const val POSTHOG_RELEASE_MODE_ENV = "POSTHOG_RELEASE_MODE"
-
-/** How the release a build belongs to gets associated with the exceptions it reports. */
-internal enum class PostHogReleaseMode(val cliValue: String) {
-    /**
-     * posthog-cli stamps the release onto the uploaded mapping file, and exceptions inherit it
-     * from the mapping their frames resolved against. The behavior before event mode existed.
-     */
-    SYMBOL_SET("symbol-set"),
-
-    /**
-     * The mapping is uploaded release-independent, and each event resolves its own release from
-     * the `$app_namespace` / `$app_version` / `$app_build` the SDK already sends. Nothing is
-     * injected into the app. A map id is derived from the mapping's content, so two releases
-     * sharing a mapping would otherwise both report whichever release uploaded it first.
-     */
-    EVENT("event"),
-    ;
-
-    internal companion object {
-        fun from(value: String): PostHogReleaseMode? = values().firstOrNull { it.cliValue == value }
-    }
-}
-
-/**
- * Release mode for this build: the `posthog.releaseMode` gradle property, then the
- * `POSTHOG_RELEASE_MODE` environment variable posthog-cli and the bundler plugins already read,
- * then [PostHogReleaseMode.SYMBOL_SET].
- *
- * An unrecognized value fails the build rather than falling back, so a typo can't silently leave
- * a build binding its mapping to a release it meant to keep independent.
- */
-internal fun resolvePostHogReleaseMode(
-    project: Project,
-    environment: Map<String, String> = System.getenv(),
-): PostHogReleaseMode {
-    val value =
-        project.findProperty(POSTHOG_RELEASE_MODE_PROPERTY)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-            ?: environment[POSTHOG_RELEASE_MODE_ENV]?.trim()?.takeIf { it.isNotEmpty() }
-            ?: return PostHogReleaseMode.SYMBOL_SET
-
-    return PostHogReleaseMode.from(value)
-        ?: error(
-            "$POSTHOG_RELEASE_MODE_PROPERTY must be one of " +
-                "${PostHogReleaseMode.values().joinToString { it.cliValue }}, was '$value'",
-        )
-}
-
 /**
  * Locates posthog-cli for builds whose environment lacks the shell PATH —
  * IDE-launched Gradle daemons don't source shell profiles, so a CLI installed
