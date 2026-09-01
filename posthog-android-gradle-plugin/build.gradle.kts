@@ -194,6 +194,8 @@ signing {
 // where Gradle takes the highest version — so a library declared here can raise the version the
 // consumer's own build compiles with. compileOnly keeps it out of the published metadata.
 dependencies {
+    add("dokkaJavadocPlugin", "org.jetbrains.dokka:javadoc-plugin:${versions.getProperty("dokkaVersion")}")
+
     compileOnly(gradleApi())
     // pinned to 8.0.x so we compile against the min. supported version.
     compileOnly("com.android.tools.build:gradle:8.0.2")
