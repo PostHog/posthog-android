@@ -116,7 +116,6 @@ public fun mockContextAppStart(
         }
     whenever(context.applicationContext).thenReturn(app)
     whenever(app.applicationInfo).thenReturn(appInfo)
-    whenever(app.getDir(any(), any())).thenReturn(tmpDir.newFolder())
     whenever(app.cacheDir).thenReturn(tmpDir.newFolder())
     val sharedPreferences = mock<SharedPreferences>()
     whenever(app.getSharedPreferences(any(), any())).thenReturn(sharedPreferences)

@@ -2,4 +2,4 @@
 'posthog-android': patch
 ---
 
-Avoid synchronous disk access while resolving the legacy event queue during SDK setup.
+Move Android storage initialization off the SDK setup thread.

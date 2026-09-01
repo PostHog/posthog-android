@@ -38,11 +38,7 @@ internal class PostHogReplayBufferQueue(
                 maxOf(newestTs - oldestTs, 0)
             }
 
-    init {
-        setup()
-    }
-
-    private fun setup() {
+    internal fun setup() {
         // Clear any leftover buffer from previous sessions — if they're still here,
         // they didn't meet the minimum duration threshold and should be discarded.
         deleteDirectorySafely(bufferDir)

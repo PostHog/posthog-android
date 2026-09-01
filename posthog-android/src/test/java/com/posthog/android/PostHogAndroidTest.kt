@@ -1,6 +1,8 @@
 package com.posthog.android
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.content.res.AssetManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.android.errortracking.PostHogNativeCrashIntegration
@@ -21,8 +23,12 @@ import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.FileNotFoundException
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -99,14 +105,59 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `sets storage path`() {
+    fun `sets storage paths from one cache directory resolution`() {
         val config = PostHogAndroidConfig(API_KEY)
-
-        mockContextAppStart(context, tmpDir)
+        val cacheDir = tmpDir.newFolder()
+        val app = mockContextAppStart(context, tmpDir)
+        whenever(app.cacheDir).thenReturn(cacheDir)
 
         PostHogAndroid.setup(context, config)
 
-        assertNotNull(config.storagePrefix)
+        verify(app, times(1)).cacheDir
+        assertEquals(File(cacheDir, "posthog-disk-queue").absolutePath, config.storagePrefix)
+        assertEquals(File(cacheDir, "posthog-disk-replay-queue").absolutePath, config.replayStoragePrefix)
+        assertEquals(File(cacheDir, "posthog-disk-logs-queue").absolutePath, config.logsStoragePrefix)
+    }
+
+    @Test
+    fun `resolves Android storage off the setup thread`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        val app = mockContextAppStart(context, tmpDir)
+        val setupThread = Thread.currentThread()
+        val cacheThread = AtomicReference<Thread>()
+        val preferencesThread = AtomicReference<Thread>()
+        val preferencesLoadThread = AtomicReference<Thread>()
+        val assetsThread = AtomicReference<Thread>()
+        val sharedPreferences = mock<SharedPreferences>()
+        val assets = mock<AssetManager>()
+        whenever(sharedPreferences.all).thenAnswer {
+            preferencesLoadThread.compareAndSet(null, Thread.currentThread())
+            emptyMap<String, Any>()
+        }
+        whenever(app.cacheDir).thenAnswer {
+            cacheThread.set(Thread.currentThread())
+            tmpDir.newFolder()
+        }
+        whenever(app.getSharedPreferences(any(), any())).thenAnswer {
+            preferencesThread.set(Thread.currentThread())
+            sharedPreferences
+        }
+        whenever(app.assets).thenReturn(assets)
+        whenever(assets.open(any<String>())).thenAnswer {
+            assetsThread.set(Thread.currentThread())
+            throw FileNotFoundException()
+        }
+
+        PostHogAndroid.setup(context, config)
+
+        assertNotNull(cacheThread.get())
+        assertNotNull(preferencesThread.get())
+        assertNotNull(preferencesLoadThread.get())
+        assertNotNull(assetsThread.get())
+        assertTrue(cacheThread.get() !== setupThread)
+        assertTrue(preferencesThread.get() !== setupThread)
+        assertTrue(preferencesLoadThread.get() !== setupThread)
+        assertTrue(assetsThread.get() !== setupThread)
     }
 
     @Test

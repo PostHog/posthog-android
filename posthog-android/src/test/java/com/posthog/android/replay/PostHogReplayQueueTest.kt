@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 internal class PostHogReplayQueueTest {
@@ -78,13 +79,21 @@ internal class PostHogReplayQueueTest {
 
         @Volatile
         private var shutdown = false
+        private var executeNextInline = true
 
         val queuedTaskCount: Int
             get() = tasks.size
 
         override fun execute(command: Runnable) {
             if (!shutdown) {
-                tasks.add(command)
+                // Queue construction synchronously submits buffer setup. Complete that first task
+                // inline, then pause the operations each test controls explicitly.
+                if (executeNextInline) {
+                    executeNextInline = false
+                    command.run()
+                } else {
+                    tasks.add(command)
+                }
             }
         }
 
@@ -188,6 +197,20 @@ internal class PostHogReplayQueueTest {
             properties = mutableMapOf("test" to "value"),
             uuid = UUID.randomUUID(),
         )
+    }
+
+    @Test
+    fun `initializes replay buffer before returning`() {
+        val storagePrefix = File(tmpDir.newFolder(), "replay").absolutePath
+        val bufferDir = File("$storagePrefix-buffer", API_KEY)
+        bufferDir.mkdirs()
+        val leftover = File(bufferDir, "leftover.event").apply { writeText("old data") }
+
+        val queue = createReplayQueue(createFakeQueue(), storagePrefix)
+
+        assertFalse(leftover.exists())
+        assertTrue(bufferDir.exists())
+        assertEquals(0, queue.bufferDepth)
     }
 
     @Test

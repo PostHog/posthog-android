@@ -8,6 +8,8 @@ import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
 
 /**
  * Reads and writes to the SDKs shared preferences
@@ -22,11 +24,13 @@ import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
  * @property context the App Context
  * @property config the Config
  * @param sharedPreferences The SharedPreferences, defaults to context.getSharedPreferences(...)
+ * @param executor Executor used to resolve and load SharedPreferences without filesystem access on the caller's thread.
  */
 internal class PostHogSharedPreferences(
     private val context: Context,
     private val config: PostHogAndroidConfig,
     sharedPreferences: SharedPreferences? = null,
+    private val executor: ExecutorService? = null,
 ) :
     PostHogPreferences {
     private val lock = Any()
@@ -47,13 +51,7 @@ internal class PostHogSharedPreferences(
         sharedPreferences?.let { return it }
         synchronized(lock) {
             sharedPreferences?.let { return it }
-            val prefs =
-                try {
-                    context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)
-                } catch (e: IllegalStateException) {
-                    config.logger.log("Shared preferences are not available until the device is unlocked (Direct Boot): $e.")
-                    return null
-                } ?: return null
+            val prefs = resolveSharedPreferences() ?: return null
             sharedPreferences = prefs
             val clearExcept = pendingClearExcept
             pendingClearExcept = null
@@ -67,6 +65,32 @@ internal class PostHogSharedPreferences(
                 setValue(key, value)
             }
             return prefs
+        }
+    }
+
+    private fun resolveSharedPreferences(): SharedPreferences? {
+        return try {
+            if (executor != null) {
+                executor.submit<SharedPreferences?> { loadSharedPreferences() }.get()
+            } else {
+                loadSharedPreferences()
+            }
+        } catch (e: Throwable) {
+            val cause = if (e is ExecutionException) e.cause ?: e else e
+            if (cause is IllegalStateException) {
+                config.logger.log("Shared preferences are not available until the device is unlocked (Direct Boot): $cause.")
+                null
+            } else {
+                throw cause
+            }
+        }
+    }
+
+    private fun loadSharedPreferences(): SharedPreferences? {
+        return context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)?.also {
+            // SharedPreferences loads its file asynchronously. Force that load to finish on the
+            // storage executor so the first read on the setup thread only accesses memory.
+            it.all
         }
     }
 

@@ -28,8 +28,11 @@ import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.PostHogThreadFactory
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 // Previously accessed via `Context.getDir`, which prefixes names with "app_".
 private const val LEGACY_STORAGE_DIRECTORY = "app_app_posthog-disk-queue"
@@ -43,6 +46,8 @@ private const val LEGACY_STORAGE_DIRECTORY = "app_app_posthog-disk-queue"
 public class PostHogAndroid private constructor() {
     public companion object {
         private val lock = Any()
+        private val storageExecutor: ExecutorService =
+            Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogStorageThread"))
 
         /**
          * Sets up the SDK and stores it as the global singleton.
@@ -118,14 +123,15 @@ public class PostHogAndroid private constructor() {
             }
 
             val legacyPath = File(context.applicationInfo.dataDir, LEGACY_STORAGE_DIRECTORY)
-            val path = File(context.cacheDir, "posthog-disk-queue")
-            val replayPath = File(context.cacheDir, "posthog-disk-replay-queue")
-            val logsPath = File(context.cacheDir, "posthog-disk-logs-queue")
             config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
-            config.storagePrefix = config.storagePrefix ?: path.absolutePath
-            config.replayStoragePrefix = config.replayStoragePrefix ?: replayPath.absolutePath
-            config.logsStoragePrefix = config.logsStoragePrefix ?: logsPath.absolutePath
-            val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
+            if (config.storagePrefix == null || config.replayStoragePrefix == null || config.logsStoragePrefix == null) {
+                val cacheDir = storageExecutor.submit<File> { context.cacheDir }.get()
+                config.storagePrefix = config.storagePrefix ?: File(cacheDir, "posthog-disk-queue").absolutePath
+                config.replayStoragePrefix =
+                    config.replayStoragePrefix ?: File(cacheDir, "posthog-disk-replay-queue").absolutePath
+                config.logsStoragePrefix = config.logsStoragePrefix ?: File(cacheDir, "posthog-disk-logs-queue").absolutePath
+            }
+            val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config, executor = storageExecutor)
             config.cachePreferences = preferences
             // Defaults to PostHogDeviceDateProvider when api < 33
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -156,7 +162,9 @@ public class PostHogAndroid private constructor() {
 
             val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
             val metaPropertiesApplier = PostHogMetaPropertiesApplier()
-            metaPropertiesApplier.applyToConfig(context, config, releaseIdentifierFallback)
+            storageExecutor.submit {
+                metaPropertiesApplier.applyToConfig(context, config, releaseIdentifierFallback)
+            }.get()
 
             // Wire session replay sample rate provider so the core SDK can read the local value
             config.sampleRateProvider = { config.sessionReplayConfig.sampleRate }

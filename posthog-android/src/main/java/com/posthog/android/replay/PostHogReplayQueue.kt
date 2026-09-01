@@ -4,6 +4,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.executeSafely
+import com.posthog.internal.submitSyncSafely
 import java.io.File
 import java.util.concurrent.ExecutorService
 
@@ -33,6 +34,10 @@ internal class PostHogReplayQueue internal constructor(
                 File(System.getProperty("java.io.tmpdir"), "posthog-replay-buffer/${config.apiKey}")
             },
         )
+
+    init {
+        executor.submitSyncSafely { bufferQueue.setup() }
+    }
 
     internal var bufferDelegate: PostHogReplayBufferDelegate? = null
 

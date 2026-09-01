@@ -113,7 +113,7 @@ internal class PostHogReplayBufferQueueTest {
         config: PostHogConfig = PostHogConfig(API_KEY),
     ): PostHogReplayBufferQueue {
         val dir = bufferDir ?: File(tmpDir.newFolder(), "buffer")
-        return PostHogReplayBufferQueue(config, dir)
+        return PostHogReplayBufferQueue(config, dir).also { it.setup() }
     }
 
     private fun createExecutor(): ExecutorService {
