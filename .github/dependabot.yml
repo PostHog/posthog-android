@@ -6,6 +6,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "androidx.compose:compose-bom"
     groups:
       gradle-dependencies:
         patterns:
