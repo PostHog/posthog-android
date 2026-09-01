@@ -18,7 +18,11 @@ import com.posthog.internal.PostHogNetworkStatus
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -82,14 +86,16 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `sets legacy storage path`() {
+    fun `sets legacy storage path without resolving the directory`() {
         val config = PostHogAndroidConfig(API_KEY)
 
-        mockContextAppStart(context, tmpDir)
+        val app = mockContextAppStart(context, tmpDir)
 
         PostHogAndroid.setup(context, config)
 
-        assertNotNull(config.legacyStoragePrefix)
+        verify(app, never()).getDir(any(), any())
+        val expectedPath = File(app.applicationInfo.dataDir, "app_app_posthog-disk-queue")
+        assertEquals(expectedPath.absolutePath, config.legacyStoragePrefix)
     }
 
     @Test

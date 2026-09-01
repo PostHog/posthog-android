@@ -31,6 +31,9 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
 
+// Previously accessed via `Context.getDir`, which prefixes names with "app_".
+private const val LEGACY_STORAGE_DIRECTORY = "app_app_posthog-disk-queue"
+
 /**
  * Main entry point for the Android SDK.
  *
@@ -114,7 +117,7 @@ public class PostHogAndroid private constructor() {
                 config.networkStatus = PostHogAndroidNetworkStatus(context)
             }
 
-            val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
+            val legacyPath = File(context.applicationInfo.dataDir, LEGACY_STORAGE_DIRECTORY)
             val path = File(context.cacheDir, "posthog-disk-queue")
             val replayPath = File(context.cacheDir, "posthog-disk-replay-queue")
             val logsPath = File(context.cacheDir, "posthog-disk-logs-queue")
