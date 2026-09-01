@@ -25,6 +25,11 @@ class NormalActivity : ComponentActivity() {
             startActivity(Intent(this, SessionReplayActivity::class.java))
         }
 
+        findViewById<Button>(R.id.composeReplayButton).setOnClickListener {
+            // Compose-rooted screen for reproducing replay frame discards.
+            startActivity(Intent(this, ComposeReplayActivity::class.java))
+        }
+
         findViewById<Button>(R.id.logsButton).setOnClickListener {
             startActivity(Intent(this, LogsActivity::class.java))
         }
