@@ -12,6 +12,8 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockActivityUri
 import com.posthog.android.mockScreenTitle
+import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
@@ -33,15 +35,24 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         captureDeepLinks: Boolean = true,
         captureScreenViews: Boolean = true,
         capturePushNotificationOpened: Boolean = true,
+        cachePreferences: PostHogMemoryPreferences? = null,
     ): PostHogActivityLifecycleCallbackIntegration {
-        val config =
-            PostHogAndroidConfig(API_KEY).apply {
-                this.captureDeepLinks = captureDeepLinks
-                this.captureScreenViews = captureScreenViews
-                this.capturePushNotificationOpened = capturePushNotificationOpened
-            }
+        val config = buildConfig(captureDeepLinks, captureScreenViews, capturePushNotificationOpened, cachePreferences)
         return PostHogActivityLifecycleCallbackIntegration(application, config)
     }
+
+    private fun buildConfig(
+        captureDeepLinks: Boolean = true,
+        captureScreenViews: Boolean = true,
+        capturePushNotificationOpened: Boolean = true,
+        cachePreferences: PostHogMemoryPreferences? = null,
+    ): PostHogAndroidConfig =
+        PostHogAndroidConfig(API_KEY).apply {
+            this.captureDeepLinks = captureDeepLinks
+            this.captureScreenViews = captureScreenViews
+            this.capturePushNotificationOpened = capturePushNotificationOpened
+            this.cachePreferences = cachePreferences
+        }
 
     private fun mockActivityWithExtras(vararg extras: Pair<String, String>): Activity {
         val activity = mock<Activity>()
@@ -55,6 +66,7 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
     @BeforeTest
     fun `set up`() {
+        PostHogActivityLifecycleCallbackIntegration.resetPushDedupe()
         PostHog.resetSharedInstance()
     }
 
@@ -371,6 +383,155 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         sut.uninstall()
 
         assertEquals(2, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `captures a launch intent handed over after the Activity was already created`() {
+        val fake = createPostHogFake()
+        val config = buildConfig()
+
+        // No install(): a host that reaches setup() from Dart or JS installs after the launch
+        // Activity has created, started and resumed, so no lifecycle callback ever fires for it.
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "late").intent,
+            fake,
+            config,
+        )
+
+        assertEquals(1, fake.pushOpenedCaptures)
+        assertEquals("late", fake.pushOpenedPayload?.get("google.message_id"))
+    }
+
+    @Test
+    fun `a handed-over intent does not double count against the automatic path`() {
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.onActivityCreated(mockActivityWithExtras("google.message_id" to "both"), null)
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "both").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+
+        // The hand-over must persist the id even though it deduped, or a later restore — where the
+        // automatic path is gated by savedInstanceState — captures the same tap again.
+        PostHogActivityLifecycleCallbackIntegration.resetPushDedupe()
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "both").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+        sut.uninstall()
+
+        assertEquals(1, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `the automatic path still captures a genuine re-tap in a new process`() {
+        val preferences = PostHogMemoryPreferences()
+        val fake = createPostHogFake()
+
+        val first = getSut(cachePreferences = preferences)
+        first.install(fake)
+        first.onActivityCreated(mockActivityWithExtras("google.message_id" to "retap"), null)
+        first.uninstall()
+
+        // savedInstanceState is null, so this is a fresh launch rather than a restore.
+        PostHogActivityLifecycleCallbackIntegration.resetPushDedupe()
+        val second = getSut(cachePreferences = preferences)
+        second.install(fake)
+        second.onActivityCreated(mockActivityWithExtras("google.message_id" to "retap"), null)
+        second.uninstall()
+
+        assertEquals(2, fake.pushOpenedCaptures)
+        // The automatic path must never write the persisted key — that is what keeps a pure-native
+        // app's stored state unchanged by this feature.
+        assertNull(preferences.getValue(PUSH_OPENED_MESSAGE_IDS))
+    }
+
+    @Test
+    fun `a warm tap does not displace the launch id, so a restore is still deduped`() {
+        val preferences = PostHogMemoryPreferences()
+        val fake = createPostHogFake()
+
+        // Cold launch from notification A, then a tap of notification B while the app is running.
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "A").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "B").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+        assertEquals(2, fake.pushOpenedCaptures)
+
+        // Process dies; the Activity is restored with its original launch intent A.
+        PostHogActivityLifecycleCallbackIntegration.resetPushDedupe()
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "A").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+
+        assertEquals(2, fake.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `an opted-out instance neither captures nor burns the message id`() {
+        val preferences = PostHogMemoryPreferences()
+        val optedOut = createPostHogFake().also { it.optOut() }
+
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "optedout").intent,
+            optedOut,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+        assertEquals(0, optedOut.pushOpenedCaptures)
+
+        val optedIn = createPostHogFake()
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "optedout").intent,
+            optedIn,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+
+        assertEquals(1, optedIn.pushOpenedCaptures)
+    }
+
+    @Test
+    fun `a persisted message id survives process death so a restore is not a second tap`() {
+        val preferences = PostHogMemoryPreferences()
+        val fake = createPostHogFake()
+
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "restored").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+        // A process-kill restore hands the Activity back its original intent with the in-memory
+        // guard gone; only the persisted id can tell that apart from a fresh tap.
+        PostHogActivityLifecycleCallbackIntegration.resetPushDedupe()
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "restored").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+
+        assertEquals(1, fake.pushOpenedCaptures)
     }
 
     @Test

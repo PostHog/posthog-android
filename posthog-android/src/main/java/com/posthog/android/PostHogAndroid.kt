@@ -2,9 +2,11 @@ package com.posthog.android
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.errortracking.PostHogNativeCrashIntegration
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
@@ -42,6 +44,54 @@ public class PostHogAndroid private constructor() {
         private val lock = Any()
 
         /**
+         * Retained so a host can hand the SDK a launch intent after setup; see
+         * [capturePushNotificationOpened]. Never cleared in production — a `close()` leaves the last
+         * config here.
+         */
+        @Volatile
+        private var androidConfig: PostHogAndroidConfig? = null
+
+        @PostHogVisibleForTesting
+        internal fun resetAndroidConfig() {
+            androidConfig = null
+        }
+
+        /**
+         * Captures `$push_notification_opened` for a notification tap carried on [intent].
+         *
+         * The SDK reads the tray intent when the launch Activity is created. A host that configures
+         * PostHog from its own runtime — Flutter and React Native reach `setup()` from Dart/JS, after
+         * the launch Activity has already created, started and resumed — installs too late to see that
+         * callback, and should pass the Activity's intent here instead.
+         *
+         * Deduped by `google.message_id`, so calling it alongside the automatic path cannot
+         * double-count, including across a process-death restore: on this path recently opened ids are
+         * remembered on disk, because a caller with no `savedInstanceState` cannot otherwise tell a
+         * restore — which hands the Activity back its original intent — from a real second tap. The
+         * cost of that trade is that a genuine second tap of the *same* notification after a process
+         * restart reads as a restore and is dropped, until that id ages out of the remembered set.
+         *
+         * No-op when [intent] is null or carries no push id, when `capturePushNotificationOpened` is
+         * disabled, or before [setup]. Events go to the shared instance, so a host that only called
+         * [with] is not served.
+         *
+         * Covers launch intents only. A warm-start tap arrives through `Activity.onNewIntent`, which
+         * nothing here observes — pass that intent in yourself.
+         */
+        public fun capturePushNotificationOpened(intent: Intent?) {
+            val config = androidConfig ?: return
+            if (!config.capturePushNotificationOpened) return
+            val pushIntent = intent ?: return
+
+            PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+                intent = pushIntent,
+                postHog = PostHog,
+                config = config,
+                usePersistedDedupe = true,
+            )
+        }
+
+        /**
          * Sets up the SDK and stores it as the global singleton.
          *
          * @param context Android context; the application context is retained internally.
@@ -55,6 +105,11 @@ public class PostHogAndroid private constructor() {
                 setAndroidConfig(context.appContext(), config)
 
                 PostHog.setup(config)
+
+                // Only setup() arms the manual entry point: with() builds a secondary instance whose
+                // config must not decide the gate, or the preferences file, for events that are
+                // delivered to the shared one.
+                androidConfig = config
             }
         }
 
