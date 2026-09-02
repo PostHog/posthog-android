@@ -988,6 +988,51 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `onSessionReplayConfigChanged does not resume when replay is disabled again before the queued resume runs`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, sessionReplay = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            assertFalse(fx.sut.isActive())
+
+            // Enabling posts a resume to the main thread. Disabling again before the looper drains
+            // must win: the stale resume must not start recording for the excluded user.
+            fx.config.sessionReplay = true
+            fx.sut.onSessionReplayConfigChanged()
+            fx.config.sessionReplay = false
+            fx.sut.onSessionReplayConfigChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onSessionReplayConfigChanged does not resume when the integration is uninstalled before the queued resume runs`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, sessionReplay = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            assertFalse(fx.sut.isActive())
+
+            // Enabling posts a resume to the main thread. Uninstalling before the looper drains
+            // must win: the stale resume must not reactivate a torn-down integration.
+            fx.config.sessionReplay = true
+            fx.sut.onSessionReplayConfigChanged()
+            fx.sut.uninstall()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
     fun `onRemoteConfig resumes recording when flag turns on and recording inactive`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
         val postHog = mock<PostHogInterface>()

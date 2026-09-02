@@ -2655,7 +2655,11 @@ public class PostHogReplayIntegration(
         if (!isSessionReplayActive) {
             config.logger.log("[Session Replay] Remote config enabled recording. Resuming.")
             mainHandler.handler.post {
-                if (!isSessionReplayActive) {
+                // Re-check live permission on the main thread. config.sessionReplay may have
+                // been written false (or the integration uninstalled) between posting this task
+                // and running it, and start() never re-reads it — without this recheck a stale
+                // resume would record an excluded user with no config-driven way to stop.
+                if (!isSessionReplayActive && isRecordingPermittedForCurrentSession()) {
                     // Force a fresh keyframe for the resumed segment. While stopped, per-view snapshot
                     // state is frozen and can reference a full snapshot that was never delivered (e.g. a
                     // first-config-off opening window that was dropped), so resuming against it would emit
