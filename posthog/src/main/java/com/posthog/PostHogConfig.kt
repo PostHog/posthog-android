@@ -406,9 +406,15 @@ public open class PostHogConfig(
      * Requires Record user sessions to be enabled in the PostHog Project Settings
      * Defaults to false
      *
-     * Writes after setup take effect right away. Set it to false to stop recording, for example
-     * when your own feature flag turns off for this user. Set it to true to start recording, if
-     * the project settings, the linked flag, the event triggers, and sampling also allow it.
+     * Writes after setup take effect right away. Set it to false to stop automatic recording,
+     * for example when your own feature flag turns off for this user. Set it to true to start
+     * recording, if the project settings, the linked flag, the event triggers, and sampling
+     * also allow it.
+     *
+     * This governs automatic replay only, so it is not an unconditional kill switch. A
+     * recording that started while it was already false — through [PostHog.startSessionReplay]
+     * or an event trigger — is deliberately preserved, so a false write does not stop it. Call
+     * [PostHog.stopSessionReplay] to stop those recordings.
      */
     @Volatile
     public var sessionReplay: Boolean = sessionReplay
