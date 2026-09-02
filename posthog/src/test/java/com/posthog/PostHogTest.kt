@@ -16,6 +16,7 @@ import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_LAST_OPENED_MESSAGE_ID
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPrintLogger
@@ -2383,6 +2384,24 @@ internal class PostHogTest {
 
         val theEvent = batch.batch.first()
         assertNull(theEvent.properties!!["prop"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset preserves the push dedupe id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        preferences.setValue(PUSH_LAST_OPENED_MESSAGE_ID, "0:1700000000%abcdef")
+
+        sut.reset()
+
+        // Device state, not user data: clearing it would let a process-death restore be counted as a
+        // second tap of the same notification.
+        assertEquals("0:1700000000%abcdef", preferences.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
 
         sut.close()
     }
