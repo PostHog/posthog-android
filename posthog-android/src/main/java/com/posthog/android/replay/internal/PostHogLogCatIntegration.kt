@@ -5,8 +5,10 @@ import com.posthog.PostHogInterface
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.interruptSafely
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.replay.RRPluginEvent
 import com.posthog.internal.replay.capture
+import com.posthog.internal.replay.captureInWindow
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig) : PostHogIntegration {
@@ -17,6 +19,13 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
 
     private val isSessionReplayActive: Boolean
         get() = postHog?.isSessionReplayActive() ?: false
+
+    private val currentReplayWindowId: String?
+        get() =
+            config.integrations
+                .filterIsInstance<PostHogSessionReplayHandler>()
+                .firstOrNull()
+                ?.getCurrentWindowId()
 
     private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
@@ -73,9 +82,8 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                                     val content = log.text?.trim() ?: ""
                                     props["payload"] = listOf("$tag: $content")
                                     val time = log.time?.time?.time ?: config.dateProvider.currentTimeMillis()
-                                    val event = RRPluginEvent("rrweb/console@1", props, time)
                                     // TODO: batch events
-                                    listOf(event).capture(postHog)
+                                    captureEvent(RRPluginEvent("rrweb/console@1", props, time))
                                 }
                             } catch (e: Throwable) {
                                 // ignore
@@ -89,6 +97,14 @@ internal class PostHogLogCatIntegration(private val config: PostHogAndroidConfig
                 }
             }
         logcatThread?.start()
+    }
+
+    @PostHogVisibleForTesting
+    internal fun captureEvent(event: RRPluginEvent) {
+        val events = listOf(event)
+        currentReplayWindowId?.let { windowId ->
+            events.captureInWindow(windowId, postHog)
+        } ?: events.capture(postHog)
     }
 
     override fun onRemoteConfig(loaded: Boolean) {

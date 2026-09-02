@@ -1,6 +1,7 @@
 package com.posthog.android.replay
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Point
@@ -41,6 +42,7 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
 import curtains.DispatchState
+import curtains.touchEventInterceptors
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -78,6 +80,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -258,7 +261,7 @@ internal class PostHogReplayIntegrationTest {
             assertFalse(sut.isActive())
 
             val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
-            val state = sut.onTouchEventListener.intercept(event) { DispatchState.Consumed }
+            val state = sut.createTouchEventListener("test-window").intercept(event) { DispatchState.Consumed }
             event.recycle()
             awaitReplayExecutors()
 
@@ -287,13 +290,123 @@ internal class PostHogReplayIntegrationTest {
             assertTrue(sut.isActive())
 
             val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
-            val state = sut.onTouchEventListener.intercept(event) { DispatchState.Consumed }
+            val state = sut.createTouchEventListener("test-window").intercept(event) { DispatchState.Consumed }
             event.recycle()
             awaitReplayExecutors()
 
             assertEquals(DispatchState.Consumed, state)
             assertTrue(submits.get() >= 1)
             assertTrue(dateCalls.get() >= 1)
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `touch replay uses the owning window id`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val sut =
+            PostHogReplayIntegration(
+                ApplicationProvider.getApplicationContext(),
+                config,
+                MainHandler(),
+                createReplayExecutor(),
+            )
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            val activityTouch = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 1f, 1f, 0)
+            sut.createTouchEventListener("activity-window").intercept(activityTouch) { DispatchState.Consumed }
+            activityTouch.recycle()
+            awaitReplayExecutors()
+            assertEquals("activity-window", fake.properties?.get("\$window_id"))
+            assertEquals("activity-window", sut.getCurrentWindowId())
+
+            val dialogTouch = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 2f, 2f, 0)
+            sut.createTouchEventListener("dialog-window").intercept(dialogTouch) { DispatchState.Consumed }
+            dialogTouch.recycle()
+            awaitReplayExecutors()
+            assertEquals("dialog-window", fake.properties?.get("\$window_id"))
+            assertEquals("dialog-window", sut.getCurrentWindowId())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `window removal during touch dispatch wins foreground routing`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val sut = PostHogReplayIntegration(appContext, config, MainHandler(), createReplayExecutor())
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            val activityView = View(appContext)
+            val dialogView = View(appContext)
+            sut.decorViews[activityView] =
+                ViewTreeSnapshotStatus(mock<NextDrawListener>(), windowId = "activity-window")
+            sut.decorViews[dialogView] =
+                ViewTreeSnapshotStatus(mock<NextDrawListener>(), windowId = "dialog-window")
+
+            val activityTouch = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 1f, 1f, 0)
+            sut.createTouchEventListener("activity-window").intercept(activityTouch) { DispatchState.Consumed }
+            activityTouch.recycle()
+            awaitReplayExecutors()
+
+            val dialogTouch = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_UP, 2f, 2f, 0)
+            sut.createTouchEventListener("dialog-window").intercept(dialogTouch) {
+                notifyRootView(sut, dialogView, added = false)
+                DispatchState.Consumed
+            }
+            dialogTouch.recycle()
+            awaitReplayExecutors()
+
+            assertEquals("dialog-window", fake.properties?.get("\$window_id"))
+            assertEquals("activity-window", sut.getCurrentWindowId())
+            assertNull(sut.decorViews[dialogView])
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `flutter touch replay keeps the session window fallback`() {
+        val config =
+            configWithSampling(flagActive = true, samplingPasses = true).apply {
+                sdkName = "posthog-flutter"
+            }
+        val sut =
+            PostHogReplayIntegration(
+                ApplicationProvider.getApplicationContext(),
+                config,
+                MainHandler(),
+                createReplayExecutor(),
+            )
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            val touch = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 1f, 1f, 0)
+            sut.createTouchEventListener("native-window").intercept(touch) { DispatchState.Consumed }
+            touch.recycle()
+            awaitReplayExecutors()
+
+            assertFalse(fake.properties.orEmpty().containsKey("\$window_id"))
+            assertNull(sut.getCurrentWindowId())
         } finally {
             sut.uninstall()
         }
@@ -1362,6 +1475,7 @@ internal class PostHogReplayIntegrationTest {
                     sentFullSnapshot = true,
                     sentMetaEvent = true,
                 )
+            val windowId = status.windowId
             fx.sut.decorViews[view] = status
 
             // Flag turns off mid-session -> stop. stop() intentionally does NOT clear per-view state.
@@ -1379,6 +1493,7 @@ internal class PostHogReplayIntegrationTest {
             assertTrue(fx.sut.isActive())
             assertFalse(status.sentFullSnapshot)
             assertFalse(status.sentMetaEvent)
+            assertEquals(windowId, status.windowId)
         } finally {
             fx.sut.uninstall()
         }
@@ -1631,6 +1746,19 @@ internal class PostHogReplayIntegrationTest {
     // Robolectric never runs the ViewRootImpl traversal that copies the window's
     // visibility into AttachInfo, so getWindowVisibility() stays GONE and the
     // integration treats the decor view as invisible. Set it directly.
+    private fun notifyRootView(
+        sut: PostHogReplayIntegration,
+        view: View,
+        added: Boolean,
+    ) {
+        ReflectionHelpers.callInstanceMethod<Unit>(
+            sut,
+            "addView",
+            ReflectionHelpers.ClassParameter.from(View::class.java, view),
+            ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, added),
+        )
+    }
+
     private fun makeWindowVisible(decorView: View) {
         val attachInfo =
             View::class.java.getDeclaredField("mAttachInfo")
@@ -1654,6 +1782,118 @@ internal class PostHogReplayIntegrationTest {
         fx.sut.install(fake)
         fx.sut.start(resumeCurrent = true)
         return fx to fake
+    }
+
+    @Test
+    fun `activity and dialog register distinct stable replay windows`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = appContext,
+            )
+        val fake = PostHogFake()
+        fx.sut.install(fake)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val activityDecor = activity.window.decorView
+            notifyRootView(fx.sut, activityDecor, added = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitCondition { fx.sut.decorViews[activityDecor] != null }
+            val activityStatus = assertNotNull(fx.sut.decorViews[activityDecor])
+            assertTrue(activityStatus.touchEventInterceptor in activity.window.touchEventInterceptors)
+
+            val dialog = AlertDialog.Builder(activity).setTitle("Dialog").setMessage("Content").create()
+            dialog.show()
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialogDecor = dialog.window?.decorView ?: error("Dialog has no decor view")
+            notifyRootView(fx.sut, dialogDecor, added = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitCondition { fx.sut.decorViews[dialogDecor] != null }
+            val dialogStatus = assertNotNull(fx.sut.decorViews[dialogDecor])
+
+            assertNotEquals(activityStatus.windowId, dialogStatus.windowId)
+            assertEquals(dialogStatus.windowId, fx.sut.getCurrentWindowId())
+            assertTrue(dialogStatus.touchEventInterceptor in dialog.window?.touchEventInterceptors.orEmpty())
+
+            dialog.dismiss()
+            shadowOf(Looper.getMainLooper()).idle()
+            notifyRootView(fx.sut, dialogDecor, added = false)
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitCondition { fx.sut.decorViews[dialogDecor] == null }
+
+            assertEquals(activityStatus.windowId, fx.sut.decorViews[activityDecor]?.windowId)
+            assertEquals(activityStatus.windowId, fx.sut.getCurrentWindowId())
+            assertFalse(dialogStatus.touchEventInterceptor in dialog.window?.touchEventInterceptors.orEmpty())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `new decor snapshot states have unique window ids`() {
+        val first = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        val second = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+        assertTrue(first.windowId.isNotBlank())
+        assertTrue(second.windowId.isNotBlank())
+        assertNotEquals(first.windowId, second.windowId)
+    }
+
+    @Test
+    fun `separate decor snapshot streams retain their window ids`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = appContext,
+            )
+        fx.config.sessionReplayConfig.screenshot = false
+        val fake = PostHogFake()
+        fx.sut.install(fake)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activityContent = FrameLayout(activity).apply { addView(TextView(activity).apply { text = "Activity" }) }
+            activity.setContentView(activityContent)
+            val activityDecor = activity.window.decorView
+
+            val dialogActivity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val dialogContent = FrameLayout(dialogActivity).apply { addView(TextView(dialogActivity).apply { text = "Dialog" }) }
+            dialogActivity.setContentView(dialogContent)
+            val dialogDecor = dialogActivity.window.decorView
+
+            shadowOf(Looper.getMainLooper()).idle()
+            makeWindowVisible(activityDecor)
+            makeWindowVisible(dialogDecor)
+
+            fx.sut.decorViews[activityDecor] =
+                ViewTreeSnapshotStatus(mock<NextDrawListener>(), windowId = "activity-window")
+            fx.sut.decorViews[dialogDecor] =
+                ViewTreeSnapshotStatus(mock<NextDrawListener>(), windowId = "dialog-window")
+
+            val emittedWindowIds = mutableListOf<String>()
+            assertTrue(fx.sut.generateSnapshot(WeakReference(activityDecor), WeakReference(activity.window)))
+            emittedWindowIds.add(fake.properties?.get("\$window_id") as String)
+
+            assertTrue(fx.sut.generateSnapshot(WeakReference(dialogDecor), WeakReference(dialogActivity.window)))
+            emittedWindowIds.add(fake.properties?.get("\$window_id") as String)
+
+            activityContent.addView(TextView(activity).apply { text = "Added after dialog" })
+            shadowOf(Looper.getMainLooper()).idle()
+            makeWindowVisible(activityDecor)
+            assertTrue(fx.sut.generateSnapshot(WeakReference(activityDecor), WeakReference(activity.window)))
+            emittedWindowIds.add(fake.properties?.get("\$window_id") as String)
+
+            assertEquals(listOf("activity-window", "dialog-window", "activity-window"), emittedWindowIds)
+            assertEquals(3, fake.captures)
+        } finally {
+            fx.sut.uninstall()
+        }
     }
 
     @Test
@@ -1684,6 +1924,32 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
 
             assertEquals(0, fake.captures)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `flutter bridge snapshot uses the native decor window id`() {
+        val (fx, fake) = screenshotFixture()
+        fx.config.sdkName = "posthog-flutter"
+        fx.config.sessionReplayConfig.screenshot = false
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            fx.sut.decorViews[decorView] =
+                ViewTreeSnapshotStatus(mock<NextDrawListener>(), windowId = "native-window")
+
+            fx.sut.generateSnapshot(
+                WeakReference(decorView),
+                WeakReference(activity.window),
+                forceScreenshot = true,
+            )
+
+            assertEquals("native-window", fake.properties?.get("\$window_id"))
         } finally {
             fx.sut.uninstall()
         }

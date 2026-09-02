@@ -5,17 +5,25 @@ import com.posthog.internal.PostHogThreadFactory
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.net.InetAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 internal class PostHogOkHttpInterceptorTest {
     private data class ExpectedHeaders(
@@ -103,6 +111,77 @@ internal class PostHogOkHttpInterceptorTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `network replay event uses the foreground window at response emission`() {
+        val replayHandler = PostHogSessionReplayHandlerFake(isActive = true).apply { replayWindowId = "activity-window" }
+        val config = PostHogConfig(API_KEY, "http://localhost").apply { addIntegration(replayHandler) }
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.distinctId()).thenReturn("test-user")
+        whenever(postHog.isSessionReplayActive()).thenReturn(true)
+        whenever(postHog.getConfig<PostHogConfig>()).thenReturn(config)
+
+        withServer { server ->
+            server.dispatcher =
+                object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        replayHandler.replayWindowId = "dialog-window"
+                        return MockResponse().setBody("ok")
+                    }
+                }
+
+            val client = newClient(postHog, captureNetworkTelemetry = true)
+            try {
+                executeRequest(client, server, PRIMARY_HOST)
+            } finally {
+                client.shutdown()
+            }
+        }
+
+        val properties = argumentCaptor<Map<String, Any>>()
+        verify(postHog).capture(
+            eq("\$snapshot"),
+            anyOrNull(),
+            properties.capture(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        assertEquals("dialog-window", properties.firstValue["\$window_id"])
+    }
+
+    @Test
+    fun `network replay event keeps the session fallback without a foreground window`() {
+        val replayHandler = PostHogSessionReplayHandlerFake(isActive = true)
+        val config = PostHogConfig(API_KEY, "http://localhost").apply { addIntegration(replayHandler) }
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.distinctId()).thenReturn("test-user")
+        whenever(postHog.isSessionReplayActive()).thenReturn(true)
+        whenever(postHog.getConfig<PostHogConfig>()).thenReturn(config)
+
+        withServer { server ->
+            server.enqueue(MockResponse().setBody("ok"))
+            val client = newClient(postHog, captureNetworkTelemetry = true)
+            try {
+                executeRequest(client, server, PRIMARY_HOST)
+            } finally {
+                client.shutdown()
+            }
+        }
+
+        val properties = argumentCaptor<Map<String, Any>>()
+        verify(postHog).capture(
+            eq("\$snapshot"),
+            anyOrNull(),
+            properties.capture(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        assertFalse(properties.firstValue.containsKey("\$window_id"))
     }
 
     private fun assertHeaders(

@@ -10,6 +10,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var lastEventName: String? = null
     public var lastEventProperties: Map<String, Any>? = null
     public var onSessionIdChangedCalled: Boolean = false
+    public var replayWindowId: String? = null
 
     public fun reset() {
         stopCalled = false
@@ -19,6 +20,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         lastEventName = null
         lastEventProperties = null
         onSessionIdChangedCalled = false
+        replayWindowId = null
     }
 
     override fun start(resumeCurrent: Boolean) {
@@ -34,6 +36,10 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
 
     override fun isActive(): Boolean {
         return isActive
+    }
+
+    override fun getCurrentWindowId(): String? {
+        return replayWindowId
     }
 
     override fun onEvent(

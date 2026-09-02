@@ -2,14 +2,19 @@ package com.posthog.android.replay.internal
 
 import android.graphics.Rect
 import android.view.ViewTreeObserver
+import android.view.Window
 import com.posthog.internal.replay.RRWireframe
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
+import curtains.TouchEventInterceptor
+import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val CONSECUTIVE_DISCARD_WARNING_THRESHOLD: Int = 3
 private const val COMPOSE_ROOT_RECHECK_INTERVAL_NANOS: Long = 1_000_000_000
 
-// if you add any new property, remember to clear the state from resetViewSnapshotStates
+// Snapshot fields are cleared by resetViewSnapshotStates. Window identity and listener ownership
+// last for the lifetime of the tracked decor view.
 internal class ViewTreeSnapshotStatus(
     val listener: NextDrawListener,
     val layoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null,
@@ -18,6 +23,9 @@ internal class ViewTreeSnapshotStatus(
     var keyboardVisible: Boolean = false,
     var lastSnapshot: RRWireframe? = null,
     val drawState: WindowDrawState = WindowDrawState(),
+    val windowId: String = TimeBasedEpochGenerator.generate().toString(),
+    val touchEventInterceptor: TouchEventInterceptor? = null,
+    val windowRef: WeakReference<Window>? = null,
 )
 
 internal data class MaskCaptureToken(

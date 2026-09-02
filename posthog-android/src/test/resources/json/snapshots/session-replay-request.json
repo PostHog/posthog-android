@@ -15,7 +15,7 @@
         "$lib": "posthog-android",
         "$lib_version": "<sdk-version>",
         "$session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
-        "$window_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+        "$window_id": "018bcfe5-687b-7abc-8def-0123456789ac",
         "$snapshot_data": [
           {
             "type": 2,

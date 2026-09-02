@@ -58,6 +58,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogInternal
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.densityValue
@@ -92,6 +93,8 @@ import com.posthog.internal.replay.RRRemovedNode
 import com.posthog.internal.replay.RRStyle
 import com.posthog.internal.replay.RRWireframe
 import com.posthog.internal.replay.capture
+import com.posthog.internal.replay.captureInWindow
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import curtains.Curtains
 import curtains.OnRootViewsChangedListener
 import curtains.TouchEventInterceptor
@@ -203,6 +206,12 @@ public class PostHogReplayIntegration(
     @Volatile
     private var replaySessionId: String? = null
 
+    private val foregroundWindowsLock = Any()
+    private val foregroundWindowIds = mutableListOf<String>()
+
+    @Volatile
+    private var foregroundWindowId: String? = null
+
     // Minimum duration buffering state
     private val bufferingLock = Any()
 
@@ -303,69 +312,112 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun markWindowForeground(windowId: String) {
+        synchronized(foregroundWindowsLock) {
+            foregroundWindowIds.remove(windowId)
+            foregroundWindowIds.add(windowId)
+            foregroundWindowId = windowId
+        }
+    }
+
+    private fun forgetWindow(windowId: String) {
+        synchronized(foregroundWindowsLock) {
+            foregroundWindowIds.remove(windowId)
+            if (foregroundWindowId == windowId) {
+                foregroundWindowId = foregroundWindowIds.lastOrNull()
+            }
+        }
+    }
+
+    private fun clearForegroundWindows() {
+        synchronized(foregroundWindowsLock) {
+            foregroundWindowIds.clear()
+            foregroundWindowId = null
+        }
+    }
+
+    private fun findTrackedDecorView(view: View): Pair<View, ViewTreeSnapshotStatus>? {
+        val window = view.phoneWindow
+        val candidates = listOfNotNull(view, view.rootView, window?.peekDecorView())
+        return synchronized(decorViews) {
+            candidates.firstNotNullOfOrNull { decorView ->
+                decorViews[decorView]?.let { decorView to it }
+            } ?: window?.let { target ->
+                decorViews.entries.firstOrNull { it.value.windowRef?.get() === target }?.toPair()
+            }
+        }
+    }
+
     private fun addView(
         view: View,
         added: Boolean = true,
     ) {
         try {
-            view.phoneWindow?.let { window ->
-                var hasDecorView = false
-
-                // react native already has the window attached
-                // so we check if the decor view exists otherwise we need the onDecorViewReady anyways
-                window.peekDecorView()?.let { decorView ->
-                    hasDecorView = decorViews[decorView] != null
+            if (!added) {
+                findTrackedDecorView(view)?.let { (decorView, status) ->
+                    clearViewListeners(decorView, status)
                 }
-                if (added) {
-                    if (view.windowAttachCount == 0 || !hasDecorView) {
-                        window.onDecorViewReady { decorView ->
-                            try {
-                                // Captured by the listeners directly so no draw can be missed
-                                // before the decorViews map insertion.
-                                val drawState = WindowDrawState()
-                                val listener =
-                                    decorView.onNextDraw(
-                                        mainHandler,
-                                        config.dateProvider,
-                                        config.sessionReplayConfig.throttleDelayMs,
-                                        { onDrawCallback(decorView, drawState) },
-                                    ) {
-                                        if (!isActive() || !isNativeSdk) {
-                                            return@onNextDraw
-                                        }
+                return
+            }
 
-                                        executor.submit {
-                                            try {
-                                                generateSnapshot(WeakReference(decorView), WeakReference(window))
-                                            } catch (e: Throwable) {
-                                                config.logger.log("Session Replay generateSnapshot failed: $e.")
-                                            }
-                                        }
-                                    }
+            val window = view.phoneWindow ?: return
+            val hasDecorView = window.peekDecorView()?.let { decorViews[it] != null } == true
 
-                                val layoutListener =
-                                    ViewTreeObserver.OnGlobalLayoutListener { drawState.recordLayout() }
-                                decorView.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
+            // React Native can attach the window before replay is installed. In that case we still
+            // need onDecorViewReady when its decor view has not been registered yet.
+            if (view.windowAttachCount != 0 && hasDecorView) {
+                config.logger.log("Session Replay already has onDecorViewReady.")
+                return
+            }
 
-                                val status = ViewTreeSnapshotStatus(listener, layoutListener, drawState = drawState)
-                                decorViews[decorView] = status
-                            } catch (e: Throwable) {
-                                config.logger.log("Session Replay onDecorViewReady failed: $e.")
+            window.onDecorViewReady { decorView ->
+                try {
+                    if (decorViews[decorView] != null) {
+                        return@onDecorViewReady
+                    }
+
+                    val windowId = TimeBasedEpochGenerator.generate().toString()
+                    val touchEventInterceptor = createTouchEventListener(windowId)
+                    // Captured by the listeners directly so no draw can be missed before the
+                    // decorViews map insertion.
+                    val drawState = WindowDrawState()
+                    val listener =
+                        decorView.onNextDraw(
+                            mainHandler,
+                            config.dateProvider,
+                            config.sessionReplayConfig.throttleDelayMs,
+                            { onDrawCallback(decorView, drawState) },
+                        ) {
+                            if (!isActive() || !isNativeSdk) {
+                                return@onNextDraw
+                            }
+
+                            executor.submit {
+                                try {
+                                    generateSnapshot(WeakReference(decorView), WeakReference(window))
+                                } catch (e: Throwable) {
+                                    config.logger.log("Session Replay generateSnapshot failed: $e.")
+                                }
                             }
                         }
 
-                        window.touchEventInterceptors += onTouchEventListener
-                        // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
-                        // window.keyEventInterceptors
-                    } else {
-                        config.logger.log("Session Replay already has onDecorViewReady.")
-                    }
-                } else {
-                    window.peekDecorView()?.let { decorView ->
-                        decorViews[decorView]?.let { status ->
-                            clearViewListeners(decorView, status)
-                        }
-                    }
+                    val layoutListener = ViewTreeObserver.OnGlobalLayoutListener { drawState.recordLayout() }
+                    decorView.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
+
+                    val status =
+                        ViewTreeSnapshotStatus(
+                            listener,
+                            layoutListener,
+                            drawState = drawState,
+                            windowId = windowId,
+                            touchEventInterceptor = touchEventInterceptor,
+                            windowRef = WeakReference(window),
+                        )
+                    decorViews[decorView] = status
+                    window.touchEventInterceptors += touchEventInterceptor
+                    markWindowForeground(windowId)
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay onDecorViewReady failed: $e.")
                 }
             }
         } catch (e: Throwable) {
@@ -407,9 +459,12 @@ public class PostHogReplayIntegration(
         return Pair(imeVisible, event)
     }
 
-    internal val onTouchEventListener =
+    internal fun createTouchEventListener(windowId: String): TouchEventInterceptor =
         TouchEventInterceptor { motionEvent, dispatch ->
             try {
+                if (isActive()) {
+                    markWindowForeground(windowId)
+                }
                 val state = dispatch(motionEvent)
                 try {
                     if (!isActive()) {
@@ -425,12 +480,23 @@ public class PostHogReplayIntegration(
                             if (!isActive()) {
                                 return@submit
                             }
+                            val replayWindowId = windowId.takeIf { isNativeSdk }
                             when (safeMotionEvent.action.and(MotionEvent.ACTION_MASK)) {
                                 MotionEvent.ACTION_DOWN -> {
-                                    generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchStart)
+                                    generateMouseInteractions(
+                                        timestamp,
+                                        safeMotionEvent,
+                                        RRMouseInteraction.TouchStart,
+                                        replayWindowId,
+                                    )
                                 }
                                 MotionEvent.ACTION_UP -> {
-                                    generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchEnd)
+                                    generateMouseInteractions(
+                                        timestamp,
+                                        safeMotionEvent,
+                                        RRMouseInteraction.TouchEnd,
+                                        replayWindowId,
+                                    )
                                 }
                             }
                         } catch (e: Throwable) {
@@ -453,6 +519,7 @@ public class PostHogReplayIntegration(
         timestamp: Long,
         motionEvent: MotionEvent,
         type: RRMouseInteraction,
+        windowId: String?,
     ) {
         val mouseInteractions = mutableListOf<RRIncrementalMouseInteractionEvent>()
         for (index in 0 until motionEvent.pointerCount) {
@@ -481,7 +548,8 @@ public class PostHogReplayIntegration(
             // if we batch them, we need to be aware that the order of the events matters
             // also because if we send a mouse interaction later, it might be attached to the wrong
             // screen
-            mouseInteractions.capture(postHog)
+            windowId?.let { mouseInteractions.captureInWindow(it, postHog) }
+                ?: mouseInteractions.capture(postHog)
         }
     }
 
@@ -497,6 +565,9 @@ public class PostHogReplayIntegration(
         view: View,
         status: ViewTreeSnapshotStatus,
     ) {
+        decorViews.remove(view)
+        forgetWindow(status.windowId)
+
         if (view.isAliveAndAttachedToWindow()) {
             mainHandler.handler.post {
                 // 2nd check to avoid:
@@ -514,11 +585,9 @@ public class PostHogReplayIntegration(
             }
         }
 
-        view.phoneWindow?.let { window ->
-            window.touchEventInterceptors -= onTouchEventListener
+        status.windowRef?.get()?.let { window ->
+            status.touchEventInterceptor?.let { window.touchEventInterceptors -= it }
         }
-
-        decorViews.remove(view)
     }
 
     @Synchronized
@@ -592,6 +661,7 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             config.logger.log("Session Replay uninstall failed: $e.")
         } finally {
+            clearForegroundWindows()
             ownsInstallation = false
             integrationInstalled.set(false)
         }
@@ -826,7 +896,7 @@ public class PostHogReplayIntegration(
         }
 
         if (events.isNotEmpty()) {
-            events.capture(postHog)
+            events.captureInWindow(status.windowId, postHog)
         }
 
         status.lastSnapshot = wireframe
@@ -2302,6 +2372,11 @@ public class PostHogReplayIntegration(
 
     override fun isActive(): Boolean {
         return isSessionReplayActive
+    }
+
+    @PostHogInternal
+    override fun getCurrentWindowId(): String? {
+        return foregroundWindowId.takeIf { isNativeSdk }
     }
 
     /**

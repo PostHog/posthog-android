@@ -8,26 +8,33 @@ import com.posthog.PostHogInternal
 // used by react native and flutter with the static instance
 @PostHogInternal
 public fun List<RREvent>.capture() {
-    val properties =
-        mutableMapOf(
-            "\$snapshot_data" to this,
-            "\$snapshot_source" to "mobile",
-        )
-    PostHog.capture(PostHogEventName.SNAPSHOT.event, properties = properties)
+    captureReplayEvents()
 }
 
 @PostHogInternal
 public fun List<RREvent>.capture(postHog: PostHogInterface? = null) {
+    captureReplayEvents(postHog)
+}
+
+@PostHogInternal
+public fun List<RREvent>.captureInWindow(
+    windowId: String,
+    postHog: PostHogInterface? = null,
+) {
+    captureReplayEvents(postHog, windowId.takeIf { it.isNotBlank() })
+}
+
+private fun List<RREvent>.captureReplayEvents(
+    postHog: PostHogInterface? = null,
+    windowId: String? = null,
+) {
     val properties =
-        mutableMapOf(
+        mutableMapOf<String, Any>(
             "\$snapshot_data" to this,
             "\$snapshot_source" to "mobile",
         )
+    windowId?.let { properties["\$window_id"] = it }
 
     // its not guaranteed that the posthog instance is set
-    if (postHog != null) {
-        postHog.capture(PostHogEventName.SNAPSHOT.event, properties = properties)
-    } else {
-        this.capture()
-    }
+    (postHog ?: PostHog).capture(PostHogEventName.SNAPSHOT.event, properties = properties)
 }

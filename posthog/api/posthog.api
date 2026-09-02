@@ -1194,6 +1194,7 @@ public final class com/posthog/internal/errortracking/ThrowableCoercer {
 }
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
+	public abstract fun getCurrentWindowId ()Ljava/lang/String;
 	public abstract fun isActive ()Z
 	public abstract fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun onSessionIdChanged ()V
@@ -1433,6 +1434,8 @@ public final class com/posthog/internal/replay/RRUtilsKt {
 	public static final fun capture (Ljava/util/List;)V
 	public static final fun capture (Ljava/util/List;Lcom/posthog/PostHogInterface;)V
 	public static synthetic fun capture$default (Ljava/util/List;Lcom/posthog/PostHogInterface;ILjava/lang/Object;)V
+	public static final fun captureInWindow (Ljava/util/List;Ljava/lang/String;Lcom/posthog/PostHogInterface;)V
+	public static synthetic fun captureInWindow$default (Ljava/util/List;Ljava/lang/String;Lcom/posthog/PostHogInterface;ILjava/lang/Object;)V
 }
 
 public final class com/posthog/internal/replay/RRWireframe {

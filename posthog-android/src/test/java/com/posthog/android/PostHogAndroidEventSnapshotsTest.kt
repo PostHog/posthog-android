@@ -130,7 +130,7 @@ internal class PostHogAndroidEventSnapshotsTest {
             properties =
                 linkedMapOf(
                     "\$session_id" to SESSION_ID.toString(),
-                    "\$window_id" to SESSION_ID.toString(),
+                    "\$window_id" to WINDOW_ID.toString(),
                     "\$snapshot_data" to
                         listOf(
                             linkedMapOf(
@@ -394,6 +394,7 @@ internal class PostHogAndroidEventSnapshotsTest {
         private const val FIXED_MILLIS = 1_700_000_000_123L
         private val FIXED_DATE = Date(FIXED_MILLIS)
         private val SESSION_ID = UUID.fromString("018bcfe5-687b-7abc-8def-0123456789ab")
+        private val WINDOW_ID = UUID.fromString("018bcfe5-687b-7abc-8def-0123456789ac")
         private const val FIXED_TIMESTAMP = "2023-11-14T22:13:20.123Z"
         private const val FLAGS_RESPONSE =
             """{

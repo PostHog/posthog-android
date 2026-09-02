@@ -1,7 +1,9 @@
 package com.posthog
 
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.replay.RRPluginEvent
 import com.posthog.internal.replay.capture
+import com.posthog.internal.replay.captureInWindow
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
@@ -29,6 +31,14 @@ public class PostHogOkHttpInterceptor(
 
     private val isSessionReplayActive: Boolean
         get() = postHog?.isSessionReplayActive() ?: PostHog.isSessionReplayActive()
+
+    private val currentReplayWindowId: String?
+        get() =
+            currentPostHog.getConfig<PostHogConfig>()
+                ?.integrations
+                ?.filterIsInstance<PostHogSessionReplayHandler>()
+                ?.firstOrNull()
+                ?.getCurrentWindowId()
 
     private val isNetworkCaptureEnabled: Boolean
         get() {
@@ -101,8 +111,11 @@ public class PostHogOkHttpInterceptor(
 
         val events = listOf(RRPluginEvent("rrweb/network@1", payload, end))
 
-        // its not guaranteed that the posthog instance is set
-        events.capture(postHog)
+        // Attribute session-wide telemetry to the foreground window at response emission time.
+        // This is playback correlation, not the window that initiated the request.
+        currentReplayWindowId?.let { windowId ->
+            events.captureInWindow(windowId, postHog)
+        } ?: events.capture(postHog)
     }
 }
 

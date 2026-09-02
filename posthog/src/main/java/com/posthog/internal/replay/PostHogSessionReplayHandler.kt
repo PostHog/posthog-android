@@ -11,6 +11,12 @@ public interface PostHogSessionReplayHandler {
     public fun isActive(): Boolean
 
     /**
+     * Returns the replay window currently in the foreground, or null when replay events should
+     * use the session ID fallback.
+     */
+    public fun getCurrentWindowId(): String?
+
+    /**
      * Called when an event is captured.
      * Used for event trigger matching to start session recording.
      */

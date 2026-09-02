@@ -1,12 +1,19 @@
 package com.posthog.android.replay.internal
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogRemoteConfig
+import com.posthog.internal.replay.PostHogSessionReplayHandler
+import com.posthog.internal.replay.RRPluginEvent
 import org.junit.runner.RunWith
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.annotation.Config
 import kotlin.test.BeforeTest
@@ -20,6 +27,23 @@ import kotlin.test.assertTrue
 internal class PostHogLogCatIntegrationTest {
     private val mockPostHog = mock<PostHogInterface>()
     private val mockRemoteConfig = mock<PostHogRemoteConfig>()
+
+    private class WindowReplayHandler(var windowId: String?) : PostHogIntegration, PostHogSessionReplayHandler {
+        override fun start(resumeCurrent: Boolean) = Unit
+
+        override fun stop() = Unit
+
+        override fun isActive(): Boolean = true
+
+        override fun getCurrentWindowId(): String? = windowId
+
+        override fun onEvent(
+            event: String,
+            properties: Map<String, Any>?,
+        ) = Unit
+
+        override fun onSessionIdChanged() = Unit
+    }
 
     private fun createConfig(captureLogcat: Boolean = true): PostHogAndroidConfig {
         return PostHogAndroidConfig(API_KEY).apply {
@@ -143,6 +167,50 @@ internal class PostHogLogCatIntegrationTest {
         sut.onRemoteConfig()
 
         assertFalse(sut.isInstalled())
+    }
+
+    @Test
+    fun `console replay event uses the foreground window`() {
+        val config = createConfig(captureLogcat = false)
+        config.addIntegration(WindowReplayHandler("dialog-window"))
+        val sut = getSut(config)
+        sut.install(mockPostHog)
+
+        sut.captureEvent(RRPluginEvent("rrweb/console@1", emptyMap<String, Any>(), 1L))
+
+        val properties = argumentCaptor<Map<String, Any>>()
+        verify(mockPostHog).capture(
+            eq("\$snapshot"),
+            anyOrNull(),
+            properties.capture(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        assertEquals("dialog-window", properties.firstValue["\$window_id"])
+    }
+
+    @Test
+    fun `console replay event keeps the session fallback without a foreground window`() {
+        val config = createConfig(captureLogcat = false)
+        config.addIntegration(WindowReplayHandler(null))
+        val sut = getSut(config)
+        sut.install(mockPostHog)
+
+        sut.captureEvent(RRPluginEvent("rrweb/console@1", emptyMap<String, Any>(), 1L))
+
+        val properties = argumentCaptor<Map<String, Any>>()
+        verify(mockPostHog).capture(
+            eq("\$snapshot"),
+            anyOrNull(),
+            properties.capture(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+        assertFalse(properties.firstValue.containsKey("\$window_id"))
     }
 
     @Test
