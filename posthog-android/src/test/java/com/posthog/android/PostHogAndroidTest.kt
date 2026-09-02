@@ -17,7 +17,7 @@ import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
-import com.posthog.internal.PostHogPreferences.Companion.PUSH_LAST_OPENED_MESSAGE_ID
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -78,7 +78,7 @@ internal class PostHogAndroidTest {
         // Armed now, but the feature is disabled, so still nothing.
         PostHogAndroid.capturePushNotificationOpened(intent)
 
-        assertNull(config.cachePreferences?.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
+        assertNull(config.cachePreferences?.getValue(PUSH_OPENED_MESSAGE_IDS))
     }
 
     @Test
@@ -94,8 +94,8 @@ internal class PostHogAndroidTest {
 
         // The event goes to the shared instance, so the dedupe id must land in its preferences —
         // never in the secondary project's file.
-        assertEquals("probe", primaryPrefs.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
-        assertNull(secondaryPrefs.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
+        assertEquals("probe", primaryPrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
+        assertNull(secondaryPrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
     }
 
     @Test

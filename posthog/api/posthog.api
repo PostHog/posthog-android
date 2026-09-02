@@ -914,7 +914,7 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
-	public static final field PUSH_LAST_OPENED_MESSAGE_ID Ljava/lang/String;
+	public static final field PUSH_OPENED_MESSAGE_IDS Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
@@ -933,7 +933,7 @@ public final class com/posthog/internal/PostHogPreferences$Companion {
 	public static final field DISTINCT_ID Ljava/lang/String;
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
-	public static final field PUSH_LAST_OPENED_MESSAGE_ID Ljava/lang/String;
+	public static final field PUSH_OPENED_MESSAGE_IDS Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;

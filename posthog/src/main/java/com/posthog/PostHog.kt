@@ -19,7 +19,7 @@ import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
-import com.posthog.internal.PostHogPreferences.Companion.PUSH_LAST_OPENED_MESSAGE_ID
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
@@ -1928,7 +1928,7 @@ public class PostHog private constructor(
         // stable feature flag bucketing across identity changes.
         // Preserve SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, and SURVEYS (project-level config
         // from /config, not user data) so each survives an identity change without an app restart.
-        // Preserve PUSH_LAST_OPENED_MESSAGE_ID for the same reason: it is device state that stops one
+        // Preserve PUSH_OPENED_MESSAGE_IDS for the same reason: it is device state that stops one
         // notification tap being counted twice, so clearing it would re-enable a duplicate.
         val except =
             mutableListOf(
@@ -1939,7 +1939,7 @@ public class PostHog private constructor(
                 ERROR_TRACKING,
                 CAPTURE_PERFORMANCE,
                 SURVEYS,
-                PUSH_LAST_OPENED_MESSAGE_ID,
+                PUSH_OPENED_MESSAGE_IDS,
             )
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
