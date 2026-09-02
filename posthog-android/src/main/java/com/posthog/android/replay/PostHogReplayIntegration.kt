@@ -2401,6 +2401,10 @@ public class PostHogReplayIntegration(
         }
     }
 
+    override fun onSessionReplayConfigChanged() {
+        reevaluateRecordingState()
+    }
+
     /**
      * Returns true if event triggers are configured and the current session has not been activated yet.
      */

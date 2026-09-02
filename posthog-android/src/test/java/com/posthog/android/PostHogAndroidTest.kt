@@ -14,15 +14,18 @@ import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogPushSubscriptionIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import org.robolectric.annotation.Config
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -372,6 +375,35 @@ internal class PostHogAndroidTest {
         val postHog = PostHogAndroid.with(context, config)
 
         assertTrue(config.logger is PostHogAndroidLogger)
+
+        postHog.close()
+    }
+
+    @Test
+    @Config(sdk = [26]) // the replay integration only installs on API >= O
+    fun `turning sessionReplay off after setup stops recording`() {
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                sessionReplay = true
+                // keeps this test from installing the logcat capturer, whose installed flag is static
+                sessionReplayConfig.captureLogcat = false
+                // PostHogPreferences.SESSION_REPLAY is internal to the core module. An empty map
+                // means the project records sessions and no linked flag gates them.
+                cachePreferences =
+                    PostHogMemoryPreferences().apply {
+                        setValue("sessionReplay", emptyMap<String, Any>())
+                    }
+            }
+
+        mockContextAppStart(context, tmpDir)
+
+        val postHog = PostHogAndroid.with(context, config)
+
+        assertTrue(postHog.isSessionReplayActive())
+
+        config.sessionReplay = false
+
+        assertFalse(postHog.isSessionReplayActive())
 
         postHog.close()
     }
