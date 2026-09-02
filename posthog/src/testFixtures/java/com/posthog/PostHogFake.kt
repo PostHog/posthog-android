@@ -165,9 +165,13 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun optIn() {
+        optedOut = false
     }
 
+    public var optedOut: Boolean = false
+
     override fun optOut() {
+        optedOut = true
     }
 
     override fun group(
@@ -188,7 +192,7 @@ public class PostHogFake : PostHogInterface {
     }
 
     override fun isOptOut(): Boolean {
-        return false
+        return optedOut
     }
 
     override fun register(
