@@ -3,10 +3,13 @@ package com.posthog.android.internal
 import android.app.Activity
 import android.app.Application
 import android.app.Application.ActivityLifecycleCallbacks
+import android.content.Intent
 import android.os.Bundle
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
+import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_LAST_OPENED_MESSAGE_ID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -21,13 +24,101 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
 
-    @Volatile
-    private var lastHandledPushMessageId: String? = null
-
-    private companion object {
+    internal companion object {
         private val integrationInstalled = AtomicBoolean(false)
 
         private const val GOOGLE_MESSAGE_ID = "google.message_id"
+
+        private val pushDedupeLock = Any()
+
+        /**
+         * Process-wide on purpose: a tap must not be re-captured after a `close()`/`setup()` cycle,
+         * and the static entry point has no integration instance to hang this on.
+         */
+        private var lastHandledPushMessageId: String? = null
+
+        @PostHogVisibleForTesting
+        internal fun resetPushDedupe() {
+            synchronized(pushDedupeLock) { lastHandledPushMessageId = null }
+        }
+
+        /**
+         * Captures `$push_notification_opened` for a tray tap carried on [intent], deduped by
+         * `google.message_id`. Title/body aren't in the tray intent (only the `posthog` JSON extra is).
+         *
+         * [usePersistedDedupe] additionally remembers the id on disk, so the dedupe outlives the
+         * process. Only callers with no restore signal need that: `onActivityCreated` has
+         * `savedInstanceState`, which is strictly better because it separates a restore from a genuine
+         * second tap of the same notification — a persisted id cannot tell those apart, and would drop
+         * the real one. Keeping the write behind the same flag means only hosts that opt in ever
+         * write this key.
+         */
+        internal fun capturePushNotificationOpened(
+            intent: Intent,
+            postHog: PostHogInterface?,
+            config: PostHogAndroidConfig,
+            usePersistedDedupe: Boolean = false,
+        ) {
+            // Reading extras unmarshals the whole Bundle; a launch intent carrying a
+            // Serializable/Parcelable extra whose class isn't on this app's classloader throws
+            // BadParcelableException here. An uncaught throw would surface in a framework callback or
+            // in host code, either way crashing the app.
+            try {
+                val target = postHog ?: return
+                // Marking an id the SDK will refuse to send would burn it for good, and an opt-in later
+                // in the session could never recover it.
+                if (target.isOptOut()) return
+
+                val messageId = intent.getStringExtra(GOOGLE_MESSAGE_ID) ?: return
+
+                // Check and mark under one lock: a second caller for the same id must not slip
+                // through while this one is still delivering.
+                val payload =
+                    synchronized(pushDedupeLock) {
+                        val persistedId =
+                            if (usePersistedDedupe) {
+                                config.cachePreferences?.getValue(PUSH_LAST_OPENED_MESSAGE_ID)
+                            } else {
+                                null
+                            }
+                        if (messageId == lastHandledPushMessageId || messageId == persistedId) {
+                            lastHandledPushMessageId = messageId
+                            // The automatic path marks memory only. Persisting on the way out of a hit
+                            // keeps a later restore — where that path is gated by savedInstanceState —
+                            // from capturing the same tap a second time.
+                            if (usePersistedDedupe && messageId != persistedId) {
+                                config.cachePreferences?.setValue(PUSH_LAST_OPENED_MESSAGE_ID, messageId)
+                            }
+                            return
+                        }
+                        // Read the risky full Bundle first: if toMap() throws, the id stays unmarked so
+                        // a later activity (e.g. a trampoline) with a clean Bundle can retry.
+                        val extras = intent.extras?.toMap()
+                        lastHandledPushMessageId = messageId
+                        if (usePersistedDedupe) {
+                            config.cachePreferences?.setValue(PUSH_LAST_OPENED_MESSAGE_ID, messageId)
+                        }
+                        extras
+                    }
+
+                target.capturePushNotificationOpened(
+                    title = null,
+                    body = null,
+                    payload = payload,
+                )
+            } catch (e: Throwable) {
+                config.logger.log("Failed to capture push notification opened: $e.")
+            }
+        }
+
+        private fun Bundle.toMap(): Map<String, Any?> {
+            val map = mutableMapOf<String, Any?>()
+            for (key in keySet()) {
+                @Suppress("DEPRECATION")
+                map[key] = get(key)
+            }
+            return map
+        }
     }
 
     override fun onActivityCreated(
@@ -66,45 +157,9 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         }
     }
 
-    /**
-     * Captures `$push_notification_opened` for a cold-start tray tap, detected via the launch intent's
-     * `google.message_id`. Title/body aren't in the tray intent (only the `posthog` JSON extra is);
-     * warm-start `onNewIntent` and foreground data messages need the manual API. The message-id guard
-     * dedupes repeat reads within a process; the caller gates on a fresh launch to skip recreations.
-     */
     private fun capturePushNotificationOpenedIfNeeded(activity: Activity) {
         val intent = activity.intent ?: return
-        // Reading extras unmarshals the whole Bundle; a launch intent carrying a Serializable/Parcelable
-        // extra whose class isn't on this app's classloader throws BadParcelableException here. This runs
-        // inside the framework onActivityCreated callback, so an uncaught throw crashes the host app.
-        try {
-            val messageId = intent.getStringExtra(GOOGLE_MESSAGE_ID) ?: return
-
-            if (messageId == lastHandledPushMessageId) {
-                return
-            }
-            // Read the risky full Bundle before marking handled: if toMap() throws, the id must
-            // stay unmarked so a later activity (e.g. a trampoline) with a clean Bundle can retry.
-            val payload = intent.extras?.toMap()
-            lastHandledPushMessageId = messageId
-
-            postHog?.capturePushNotificationOpened(
-                title = null,
-                body = null,
-                payload = payload,
-            )
-        } catch (e: Throwable) {
-            config.logger.log("Failed to capture push notification opened: $e.")
-        }
-    }
-
-    private fun Bundle.toMap(): Map<String, Any?> {
-        val map = mutableMapOf<String, Any?>()
-        for (key in keySet()) {
-            @Suppress("DEPRECATION")
-            map[key] = get(key)
-        }
-        return map
+        capturePushNotificationOpened(intent, postHog, config)
     }
 
     override fun onActivityStarted(activity: Activity) {

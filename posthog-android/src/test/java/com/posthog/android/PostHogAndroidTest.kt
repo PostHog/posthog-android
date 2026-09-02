@@ -1,6 +1,7 @@
 package com.posthog.android
 
 import android.content.Context
+import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.android.errortracking.PostHogNativeCrashIntegration
@@ -14,7 +15,9 @@ import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogPushSubscriptionIntegration
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogLogger
+import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_LAST_OPENED_MESSAGE_ID
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -38,6 +41,9 @@ internal class PostHogAndroidTest {
     @BeforeTest
     fun `set up`() {
         PostHog.close()
+        // androidConfig is a never-cleared process-wide static; without this the manual push entry
+        // stays armed from whichever test ran last.
+        PostHogAndroid.resetAndroidConfig()
     }
 
     @AfterTest
@@ -57,6 +63,39 @@ internal class PostHogAndroidTest {
 
         assertTrue(PostHog.isOptOut())
         assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
+    }
+
+    @Test
+    fun `the manual entry is inert before setup and while the feature is disabled`() {
+        mockContextAppStart(context, tmpDir)
+        val intent = Intent().putExtra("google.message_id", "manual-entry")
+
+        // Before setup(): no config, so nothing is armed and nothing is persisted.
+        PostHogAndroid.capturePushNotificationOpened(intent)
+
+        val config = PostHogAndroidConfig(API_KEY).apply { capturePushNotificationOpened = false }
+        PostHogAndroid.setup(context, config)
+        // Armed now, but the feature is disabled, so still nothing.
+        PostHogAndroid.capturePushNotificationOpened(intent)
+
+        assertNull(config.cachePreferences?.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
+    }
+
+    @Test
+    fun `with after setup must not redirect the manual entry to the secondary project`() {
+        mockContextAppStart(context, tmpDir)
+        val primaryPrefs = PostHogMemoryPreferences()
+        val secondaryPrefs = PostHogMemoryPreferences()
+
+        PostHogAndroid.setup(context, PostHogAndroidConfig(API_KEY).apply { cachePreferences = primaryPrefs })
+        PostHogAndroid.with(context, PostHogAndroidConfig(API_KEY_2).apply { cachePreferences = secondaryPrefs })
+
+        PostHogAndroid.capturePushNotificationOpened(Intent().putExtra("google.message_id", "probe"))
+
+        // The event goes to the shared instance, so the dedupe id must land in its preferences —
+        // never in the secondary project's file.
+        assertEquals("probe", primaryPrefs.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
+        assertNull(secondaryPrefs.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
     }
 
     @Test
