@@ -98,6 +98,25 @@ internal fun DirectoryProperty.getAndDelete(): File {
 
 internal const val POSTHOG_CLI_DEFAULT_EXECUTABLE = "posthog-cli"
 
+internal const val POSTHOG_RELEASE_MODE_PROPERTY = "posthog.releaseMode"
+
+/**
+ * The property no longer does anything: the mapping always binds to the release the build creates.
+ * The POSTHOG_RELEASE_MODE environment variable stays silent here on purpose, because it still
+ * steers the sourcemap and hermes uploads of other PostHog tools, so a warning about it would not
+ * be actionable.
+ */
+internal fun warnIfDeprecatedReleaseModeSet(project: Project) {
+    val value = project.findProperty(POSTHOG_RELEASE_MODE_PROPERTY)?.toString()?.trim()
+    if (value.isNullOrEmpty()) {
+        return
+    }
+    project.logger.warn(
+        "[PostHog] $POSTHOG_RELEASE_MODE_PROPERTY is deprecated and ignored. The proguard " +
+            "mapping uploads bound to the release this build creates. Remove the property.",
+    )
+}
+
 internal const val POSTHOG_DOTENV_FILE_PROPERTY = "posthog.dotenvFile"
 
 /**
@@ -114,56 +133,6 @@ internal fun resolvePostHogDotenvFile(project: Project): String? {
     }
     val file = File(value)
     return if (file.isAbsolute) file.path else File(project.rootDir, value).path
-}
-
-internal const val POSTHOG_RELEASE_MODE_PROPERTY = "posthog.releaseMode"
-
-internal const val POSTHOG_RELEASE_MODE_ENV = "POSTHOG_RELEASE_MODE"
-
-/** How the release a build belongs to gets associated with the exceptions it reports. */
-internal enum class PostHogReleaseMode(val cliValue: String) {
-    /**
-     * posthog-cli stamps the release onto the uploaded mapping file, and exceptions inherit it
-     * from the mapping their frames resolved against. The behavior before event mode existed.
-     */
-    SYMBOL_SET("symbol-set"),
-
-    /**
-     * The mapping is uploaded release-independent, and each event resolves its own release from
-     * the `$app_namespace` / `$app_version` / `$app_build` the SDK already sends. Nothing is
-     * injected into the app. A map id is derived from the mapping's content, so two releases
-     * sharing a mapping would otherwise both report whichever release uploaded it first.
-     */
-    EVENT("event"),
-    ;
-
-    internal companion object {
-        fun from(value: String): PostHogReleaseMode? = values().firstOrNull { it.cliValue == value }
-    }
-}
-
-/**
- * Release mode for this build: the `posthog.releaseMode` gradle property, then the
- * `POSTHOG_RELEASE_MODE` environment variable posthog-cli and the bundler plugins already read,
- * then [PostHogReleaseMode.SYMBOL_SET].
- *
- * An unrecognized value fails the build rather than falling back, so a typo can't silently leave
- * a build binding its mapping to a release it meant to keep independent.
- */
-internal fun resolvePostHogReleaseMode(
-    project: Project,
-    environment: Map<String, String> = System.getenv(),
-): PostHogReleaseMode {
-    val value =
-        project.findProperty(POSTHOG_RELEASE_MODE_PROPERTY)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-            ?: environment[POSTHOG_RELEASE_MODE_ENV]?.trim()?.takeIf { it.isNotEmpty() }
-            ?: return PostHogReleaseMode.SYMBOL_SET
-
-    return PostHogReleaseMode.from(value)
-        ?: error(
-            "$POSTHOG_RELEASE_MODE_PROPERTY must be one of " +
-                "${PostHogReleaseMode.values().joinToString { it.cliValue }}, was '$value'",
-        )
 }
 
 /**

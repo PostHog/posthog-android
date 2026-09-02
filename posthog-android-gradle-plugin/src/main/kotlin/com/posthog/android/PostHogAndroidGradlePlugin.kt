@@ -38,14 +38,14 @@ internal abstract class PostHogAndroidGradlePlugin
             extension.uploadNativeSymbols.convention(false)
             extension.includeNativeSymbolSources.convention(false)
 
+            warnIfDeprecatedReleaseModeSet(project)
+
             val failureTracker =
                 project.gradle.sharedServices.registerIfAbsent(
                     PostHogTaskFailureTracker.NAME,
                     PostHogTaskFailureTracker::class.java,
                 ) {}
             buildEventsListenerRegistry.onTaskCompletion(failureTracker)
-
-            val releaseMode = resolvePostHogReleaseMode(project)
 
             project.pluginManager.withPlugin("com.android.application") {
                 val androidComponentsExt =
@@ -66,7 +66,7 @@ internal abstract class PostHogAndroidGradlePlugin
                     // TODO: skip variants, skip autoUpload, release info, allow failure, debug mode
 
                     val paths = OutputPaths(project, variant.name)
-                    val generateMapIdTask = generateMapIdTask(project, variant, paths, failureTracker, releaseMode)
+                    val generateMapIdTask = generateMapIdTask(project, variant, paths, failureTracker)
                     tasksGeneratingProperties.add(generateMapIdTask)
 
                     variant.apply {
@@ -158,7 +158,6 @@ internal abstract class PostHogAndroidGradlePlugin
             variant: ApplicationVariant,
             paths: OutputPaths,
             failureTracker: Provider<PostHogTaskFailureTracker>,
-            releaseMode: PostHogReleaseMode,
         ): TaskProvider<PostHogGenerateMapIdTask> {
             val generateMapIdTask =
                 PostHogGenerateMapIdTask.register(
@@ -174,7 +173,6 @@ internal abstract class PostHogAndroidGradlePlugin
                     generateMapIdTask = generateMapIdTask,
                     variant = variant,
                     mappingFiles = variant.mappingFileProvider(project),
-                    releaseMode = releaseMode,
                 )
 
             generateMapIdTask.hookWithMinifyTasks(project, variant.name, generateMapIdTask)
@@ -189,7 +187,6 @@ internal abstract class PostHogAndroidGradlePlugin
             generateMapIdTask: Provider<PostHogGenerateMapIdTask>,
             variant: ApplicationVariant,
             mappingFiles: Provider<FileCollection>,
-            releaseMode: PostHogReleaseMode,
         ): TaskProvider<PostHogUploadProguardMappingsTask> {
             val primaryOutput = variant.outputs.firstOrNull()
             val uploadMapIdTask =
@@ -201,7 +198,6 @@ internal abstract class PostHogAndroidGradlePlugin
                     releaseName = variant.applicationId,
                     releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
                     build = primaryOutput?.versionCode?.map { it ?: 0 },
-                    releaseMode = releaseMode,
                 )
             return uploadMapIdTask
         }

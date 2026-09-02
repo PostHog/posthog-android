@@ -53,7 +53,7 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
     @get:Optional
     public abstract val build: Property<Int>
 
-    /** [PostHogReleaseMode.cliValue], as the enum itself is internal to the plugin. */
+    @Deprecated("The value is ignored. The mapping always binds to the release the build creates.")
     @get:Input
     @get:Optional
     public abstract val releaseMode: Property<String>
@@ -62,12 +62,37 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
             error("[PostHog] Mapping files are missing!")
         }
-        // posthog-cli reads POSTHOG_RELEASE_MODE itself when --release-mode is absent, and the
-        // Gradle daemon's environment may carry one that contradicts the mode resolved here —
-        // where the gradle property is supposed to win. Pin the resolved mode in the child's
-        // environment so it cannot be overridden by inheritance. A posthog-cli predating the flag
-        // has no such argument and ignores the variable, so this stays safe for old CLIs.
-        releaseMode.orNull?.let { environment(POSTHOG_RELEASE_MODE_ENV, it) }
+
+        // Warns at execution time on purpose: a configuration-time warning goes silent on a reused
+        // configuration cache entry, and the plugin wires the posthog.releaseMode gradle property
+        // into this input so it lands here on every executed upload.
+        @Suppress("DEPRECATION")
+        val deprecatedReleaseMode = releaseMode
+        if (deprecatedReleaseMode.isPresent) {
+            logger.warn(
+                "[PostHog] releaseMode is deprecated and ignored. The mapping uploads bound to " +
+                    "the release this build creates. Remove posthog.releaseMode, or the " +
+                    "releaseMode assignment on this task.",
+            )
+        }
+
+        // POSTHOG_RELEASE_MODE=event used to select event mode here too, so a build that still
+        // carries it gets told that the mapping binds again. The variable keeps steering the
+        // PostHog sourcemap and hermes uploads, so the message does not ask to remove it.
+        val inheritedReleaseMode = System.getenv("POSTHOG_RELEASE_MODE")?.trim()
+        if (!inheritedReleaseMode.isNullOrEmpty() && inheritedReleaseMode != "symbol-set") {
+            logger.warn(
+                "[PostHog] POSTHOG_RELEASE_MODE no longer affects the proguard mapping upload. " +
+                    "The mapping uploads bound to the release this build creates.",
+            )
+        }
+
+        // The mapping always binds to the release this build creates. posthog-cli 0.13.0 up to
+        // the release that carries PostHog/posthog#92401 reads POSTHOG_RELEASE_MODE on `proguard
+        // upload`, and an Exec task inherits the daemon environment, so a value set for another
+        // tool would leave the mapping release-independent on those versions. Pin it. Older and
+        // newer CLIs ignore the variable, so the pin can go once that range has aged out.
+        environment("POSTHOG_RELEASE_MODE", "symbol-set")
         super.exec()
     }
 
@@ -105,12 +130,6 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             args.add("--build")
             args.add(it.toString())
         }
-        // Passed only outside the default mode, so a symbol-set build keeps working against a
-        // posthog-cli predating the flag.
-        releaseMode.orNull?.takeIf { it != PostHogReleaseMode.SYMBOL_SET.cliValue }?.let {
-            args.add("--release-mode")
-            args.add(it)
-        }
     }
 
     internal companion object {
@@ -122,7 +141,6 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             releaseName: Provider<String>? = null,
             releaseVersion: Provider<String>? = null,
             build: Provider<Int>? = null,
-            releaseMode: PostHogReleaseMode = PostHogReleaseMode.SYMBOL_SET,
         ): TaskProvider<PostHogUploadProguardMappingsTask> {
             val uploadPostHogProguardMappingsTask =
                 project.tasks.register(
@@ -136,7 +154,10 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
                     releaseName?.let { this.releaseName.set(it) }
                     releaseVersion?.let { this.releaseVersion.set(it) }
                     build?.let { this.build.set(it) }
-                    this.releaseMode.set(releaseMode.cliValue)
+                    // Feeds the deprecated property into the execution-time warning above.
+                    // gradleProperty is the configuration-cache-safe read.
+                    @Suppress("DEPRECATION")
+                    this.releaseMode.set(project.providers.gradleProperty(POSTHOG_RELEASE_MODE_PROPERTY))
                     resolvePostHogDotenvFile(project)?.let { this.postHogDotenvFile.set(it) }
                 }
             return uploadPostHogProguardMappingsTask

@@ -60,6 +60,7 @@ internal class NativeSymbolsUploadFunctionalTest(
     private fun setUpProject(
         uploadNativeSymbols: Boolean,
         includeNativeSymbolSources: Boolean = false,
+        minifyEnabled: Boolean = false,
     ): File {
         val fakeCliLog = File(projectDir.root, "fake-cli-args.txt")
         val fakeCli = File(projectDir.root, "fake-posthog-cli")
@@ -102,6 +103,36 @@ internal class NativeSymbolsUploadFunctionalTest(
         File(app, "src/main/jniLibs/arm64-v8a").mkdirs()
         File(app, "src/main/jniLibs/arm64-v8a/libfake.so").writeBytes(byteArrayOf(0x7f, 0x45, 0x4c, 0x46))
 
+        var minifyBlock = ""
+        if (minifyEnabled) {
+            // A kept-but-obfuscated class makes R8 write a non-empty mapping, so the
+            // mapping upload task has something to run on.
+            File(app, "src/main/java/com/posthog/test").mkdirs()
+            File(app, "src/main/java/com/posthog/test/Placeholder.java").writeText(
+                """
+                package com.posthog.test;
+
+                public class Placeholder {
+                    public static String tag() {
+                        return "placeholder";
+                    }
+                }
+                """.trimIndent(),
+            )
+            File(app, "proguard-rules.pro").writeText(
+                "-keep,allowobfuscation class com.posthog.test.** { *; }\n",
+            )
+            minifyBlock =
+                """
+                |    buildTypes {
+                |        release {
+                |            minifyEnabled true
+                |            proguardFiles 'proguard-rules.pro'
+                |        }
+                |    }
+                """.trimMargin()
+        }
+
         File(app, "build.gradle").writeText(
             """
             apply plugin: 'com.android.application'
@@ -115,6 +146,7 @@ internal class NativeSymbolsUploadFunctionalTest(
                     versionCode 1
                     versionName '1.0'
                 }
+            $minifyBlock
             }
 
             posthog {
@@ -234,5 +266,35 @@ internal class NativeSymbolsUploadFunctionalTest(
         setUpProject(uploadNativeSymbols = true)
         val scheduled = runner(":app:assembleDebug", "--dry-run").build()
         assertFalse(scheduled.output.contains(":app:uploadPostHogNativeSymbolsDebug"), scheduled.output)
+    }
+
+    @Test
+    fun `warns about the deprecated release mode on configuration-cache-reused builds`() {
+        setUpProject(uploadNativeSymbols = false, minifyEnabled = true)
+        // a non-cache warm-up stabilizes AGP's TestKit android.lock creation,
+        // which can otherwise invalidate the first stored entry
+        runner(":app:tasks").build()
+
+        // --rerun-tasks on both runs keeps the cache key identical while forcing the upload task
+        // to execute on the reused entry, where a configuration-time warning cannot fire.
+        val arguments =
+            arrayOf(
+                ":app:uploadPostHogProguardMappingsRelease",
+                "--rerun-tasks",
+                "--configuration-cache",
+                "--configuration-cache-problems=fail",
+                "-Pposthog.releaseMode=event",
+            )
+        val warning = "is deprecated and ignored"
+
+        val first = runner(*arguments).build()
+        assertTrue(first.output.contains("Configuration cache entry stored"), first.output)
+        assertEquals(TaskOutcome.SUCCESS, first.task(":app:uploadPostHogProguardMappingsRelease")?.outcome)
+        assertTrue(first.output.contains(warning), first.output)
+
+        val second = runner(*arguments).build()
+        assertTrue(second.output.contains("Reusing configuration cache"), second.output)
+        assertEquals(TaskOutcome.SUCCESS, second.task(":app:uploadPostHogProguardMappingsRelease")?.outcome)
+        assertTrue(second.output.contains(warning), second.output)
     }
 }
