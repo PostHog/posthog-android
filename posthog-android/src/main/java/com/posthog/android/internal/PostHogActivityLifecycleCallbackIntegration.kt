@@ -29,11 +29,8 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 
         private const val GOOGLE_MESSAGE_ID = "google.message_id"
 
-        /**
-         * A launch intent and a warm-start intent are deduped against the same store, and only the
-         * launch one is redelivered after a process death — so remembering just the newest id would
-         * let a warm tap displace it and a later restore re-capture the launch tap.
-         */
+        /** Only the launch intent is redelivered after a process death, so a warm tap must not
+         * displace it. */
         private const val PUSH_ID_HISTORY = 5
         private const val PUSH_ID_SEPARATOR = "\n"
 
