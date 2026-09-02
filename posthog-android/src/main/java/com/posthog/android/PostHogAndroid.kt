@@ -65,11 +65,11 @@ public class PostHogAndroid private constructor() {
          * callback, and should pass the Activity's intent here instead.
          *
          * Deduped by `google.message_id`, so calling it alongside the automatic path cannot
-         * double-count, including across a process-death restore: on this path the id is remembered on
-         * disk, because a caller with no `savedInstanceState` cannot otherwise tell a restore — which
-         * hands the Activity back its original intent — from a real second tap. The cost of that trade
-         * is that a genuine second tap of the *same* notification after a process restart reads as a
-         * restore and is dropped; the persisted id is never cleared.
+         * double-count, including across a process-death restore: on this path recently opened ids are
+         * remembered on disk, because a caller with no `savedInstanceState` cannot otherwise tell a
+         * restore — which hands the Activity back its original intent — from a real second tap. The
+         * cost of that trade is that a genuine second tap of the *same* notification after a process
+         * restart reads as a restore and is dropped, until that id ages out of the remembered set.
          *
          * No-op when [intent] is null or carries no push id, when `capturePushNotificationOpened` is
          * disabled, or before [setup]. Events go to the shared instance, so a host that only called
