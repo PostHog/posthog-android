@@ -9,7 +9,7 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.internal.PostHogPreferences.Companion.PUSH_LAST_OPENED_MESSAGE_ID
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -28,6 +28,14 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         private val integrationInstalled = AtomicBoolean(false)
 
         private const val GOOGLE_MESSAGE_ID = "google.message_id"
+
+        /**
+         * A launch intent and a warm-start intent are deduped against the same store, and only the
+         * launch one is redelivered after a process death — so remembering just the newest id would
+         * let a warm tap displace it and a later restore re-capture the launch tap.
+         */
+        private const val PUSH_ID_HISTORY = 5
+        private const val PUSH_ID_SEPARATOR = "\n"
 
         private val pushDedupeLock = Any()
 
@@ -75,19 +83,15 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                 // through while this one is still delivering.
                 val payload =
                     synchronized(pushDedupeLock) {
-                        val persistedId =
-                            if (usePersistedDedupe) {
-                                config.cachePreferences?.getValue(PUSH_LAST_OPENED_MESSAGE_ID)
-                            } else {
-                                null
-                            }
-                        if (messageId == lastHandledPushMessageId || messageId == persistedId) {
+                        val persistedIds =
+                            if (usePersistedDedupe) persistedPushIds(config) else emptyList()
+                        if (messageId == lastHandledPushMessageId || messageId in persistedIds) {
                             lastHandledPushMessageId = messageId
                             // The automatic path marks memory only. Persisting on the way out of a hit
                             // keeps a later restore — where that path is gated by savedInstanceState —
                             // from capturing the same tap a second time.
-                            if (usePersistedDedupe && messageId != persistedId) {
-                                config.cachePreferences?.setValue(PUSH_LAST_OPENED_MESSAGE_ID, messageId)
+                            if (usePersistedDedupe && messageId !in persistedIds) {
+                                rememberPushId(config, messageId)
                             }
                             return
                         }
@@ -96,7 +100,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
                         val extras = intent.extras?.toMap()
                         lastHandledPushMessageId = messageId
                         if (usePersistedDedupe) {
-                            config.cachePreferences?.setValue(PUSH_LAST_OPENED_MESSAGE_ID, messageId)
+                            rememberPushId(config, messageId)
                         }
                         extras
                     }
@@ -109,6 +113,20 @@ internal class PostHogActivityLifecycleCallbackIntegration(
             } catch (e: Throwable) {
                 config.logger.log("Failed to capture push notification opened: $e.")
             }
+        }
+
+        private fun persistedPushIds(config: PostHogAndroidConfig): List<String> =
+            (config.cachePreferences?.getValue(PUSH_OPENED_MESSAGE_IDS) as? String)
+                ?.split(PUSH_ID_SEPARATOR)
+                ?.filter { it.isNotEmpty() }
+                ?: emptyList()
+
+        private fun rememberPushId(
+            config: PostHogAndroidConfig,
+            messageId: String,
+        ) {
+            val ids = (listOf(messageId) + persistedPushIds(config)).distinct().take(PUSH_ID_HISTORY)
+            config.cachePreferences?.setValue(PUSH_OPENED_MESSAGE_IDS, ids.joinToString(PUSH_ID_SEPARATOR))
         }
 
         private fun Bundle.toMap(): Map<String, Any?> {

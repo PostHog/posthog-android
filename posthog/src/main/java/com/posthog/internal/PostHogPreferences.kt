@@ -54,7 +54,7 @@ public interface PostHogPreferences {
         internal const val PUSH = "push"
 
         @PostHogInternal
-        public const val PUSH_LAST_OPENED_MESSAGE_ID: String = "pushLastOpenedMessageId"
+        public const val PUSH_OPENED_MESSAGE_IDS: String = "pushOpenedMessageIds"
         internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
         internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
         public const val SURVEY_SEEN: String = "surveySeen"
@@ -66,7 +66,7 @@ public interface PostHogPreferences {
 
         public val ALL_INTERNAL_KEYS: Set<String> =
             setOf(
-                PUSH_LAST_OPENED_MESSAGE_ID,
+                PUSH_OPENED_MESSAGE_IDS,
                 GROUPS,
                 ANONYMOUS_ID,
                 DISTINCT_ID,

@@ -13,7 +13,7 @@ import com.posthog.android.createPostHogFake
 import com.posthog.android.mockActivityUri
 import com.posthog.android.mockScreenTitle
 import com.posthog.internal.PostHogMemoryPreferences
-import com.posthog.internal.PostHogPreferences.Companion.PUSH_LAST_OPENED_MESSAGE_ID
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
@@ -451,7 +451,39 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         assertEquals(2, fake.pushOpenedCaptures)
         // The automatic path must never write the persisted key — that is what keeps a pure-native
         // app's stored state unchanged by this feature.
-        assertNull(preferences.getValue(PUSH_LAST_OPENED_MESSAGE_ID))
+        assertNull(preferences.getValue(PUSH_OPENED_MESSAGE_IDS))
+    }
+
+    @Test
+    fun `a warm tap does not displace the launch id, so a restore is still deduped`() {
+        val preferences = PostHogMemoryPreferences()
+        val fake = createPostHogFake()
+
+        // Cold launch from notification A, then a tap of notification B while the app is running.
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "A").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "B").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+        assertEquals(2, fake.pushOpenedCaptures)
+
+        // Process dies; the Activity is restored with its original launch intent A.
+        PostHogActivityLifecycleCallbackIntegration.resetPushDedupe()
+        PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+            mockActivityWithExtras("google.message_id" to "A").intent,
+            fake,
+            buildConfig(cachePreferences = preferences),
+            usePersistedDedupe = true,
+        )
+
+        assertEquals(2, fake.pushOpenedCaptures)
     }
 
     @Test
