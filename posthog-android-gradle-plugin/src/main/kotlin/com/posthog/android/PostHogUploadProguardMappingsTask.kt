@@ -63,19 +63,35 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             error("[PostHog] Mapping files are missing!")
         }
 
+        // Warns at execution time on purpose: a configuration-time warning goes silent on a reused
+        // configuration cache entry, and the plugin wires the posthog.releaseMode gradle property
+        // into this input so it lands here on every executed upload.
         @Suppress("DEPRECATION")
         val deprecatedReleaseMode = releaseMode
         if (deprecatedReleaseMode.isPresent) {
             logger.warn(
                 "[PostHog] releaseMode is deprecated and ignored. The mapping uploads bound to " +
-                    "the release this build creates. Remove the assignment.",
+                    "the release this build creates. Remove posthog.releaseMode, or the " +
+                    "releaseMode assignment on this task.",
             )
         }
 
-        // The mapping always binds to the release this build creates. posthog-cli reads
-        // POSTHOG_RELEASE_MODE for `proguard upload`, and an Exec task inherits the daemon
-        // environment, so a value set for another tool would otherwise leave the mapping
-        // release-independent. Pin it. A posthog-cli that has no such flag ignores the variable.
+        // POSTHOG_RELEASE_MODE=event used to select event mode here too, so a build that still
+        // carries it gets told that the mapping binds again. The variable keeps steering the
+        // PostHog sourcemap and hermes uploads, so the message does not ask to remove it.
+        val inheritedReleaseMode = System.getenv("POSTHOG_RELEASE_MODE")?.trim()
+        if (!inheritedReleaseMode.isNullOrEmpty() && inheritedReleaseMode != "symbol-set") {
+            logger.warn(
+                "[PostHog] POSTHOG_RELEASE_MODE no longer affects the proguard mapping upload. " +
+                    "The mapping uploads bound to the release this build creates.",
+            )
+        }
+
+        // The mapping always binds to the release this build creates. posthog-cli 0.13.0 up to
+        // the release that carries PostHog/posthog#92401 reads POSTHOG_RELEASE_MODE on `proguard
+        // upload`, and an Exec task inherits the daemon environment, so a value set for another
+        // tool would leave the mapping release-independent on those versions. Pin it. Older and
+        // newer CLIs ignore the variable, so the pin can go once that range has aged out.
         environment("POSTHOG_RELEASE_MODE", "symbol-set")
         super.exec()
     }
@@ -138,6 +154,10 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
                     releaseName?.let { this.releaseName.set(it) }
                     releaseVersion?.let { this.releaseVersion.set(it) }
                     build?.let { this.build.set(it) }
+                    // Feeds the deprecated property into the execution-time warning above.
+                    // gradleProperty is the configuration-cache-safe read.
+                    @Suppress("DEPRECATION")
+                    this.releaseMode.set(project.providers.gradleProperty(POSTHOG_RELEASE_MODE_PROPERTY))
                     resolvePostHogDotenvFile(project)?.let { this.postHogDotenvFile.set(it) }
                 }
             return uploadPostHogProguardMappingsTask
