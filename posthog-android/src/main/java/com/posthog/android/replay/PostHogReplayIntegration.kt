@@ -206,6 +206,7 @@ public class PostHogReplayIntegration(
     @Volatile
     private var replaySessionId: String? = null
 
+    // Acquire decorViews before this lock when an operation needs both.
     private val foregroundWindowsLock = Any()
     private val foregroundWindowIds = mutableListOf<String>()
 
@@ -336,6 +337,23 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun updateWindowFocus(
+        decorView: View,
+        windowId: String,
+        hasFocus: Boolean,
+    ) {
+        synchronized(decorViews) {
+            if (decorViews[decorView]?.windowId != windowId) {
+                return
+            }
+            if (hasFocus) {
+                markWindowForeground(windowId)
+            } else {
+                forgetWindow(windowId)
+            }
+        }
+    }
+
     private fun findTrackedDecorView(view: View): Pair<View, ViewTreeSnapshotStatus>? {
         val window = view.phoneWindow
         val candidates = listOfNotNull(view, view.rootView, window?.peekDecorView())
@@ -402,7 +420,14 @@ public class PostHogReplayIntegration(
                         }
 
                     val layoutListener = ViewTreeObserver.OnGlobalLayoutListener { drawState.recordLayout() }
-                    decorView.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
+                    val windowFocusListener =
+                        ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+                            updateWindowFocus(decorView, windowId, hasFocus)
+                        }
+                    decorView.viewTreeObserver?.apply {
+                        addOnGlobalLayoutListener(layoutListener)
+                        addOnWindowFocusChangeListener(windowFocusListener)
+                    }
 
                     val status =
                         ViewTreeSnapshotStatus(
@@ -411,11 +436,14 @@ public class PostHogReplayIntegration(
                             drawState = drawState,
                             windowId = windowId,
                             touchEventInterceptor = touchEventInterceptor,
+                            windowFocusListener = windowFocusListener,
                             windowRef = WeakReference(window),
                         )
                     decorViews[decorView] = status
                     window.touchEventInterceptors += touchEventInterceptor
-                    markWindowForeground(windowId)
+                    if (decorView.hasWindowFocus()) {
+                        updateWindowFocus(decorView, windowId, hasFocus = true)
+                    }
                 } catch (e: Throwable) {
                     config.logger.log("Session Replay onDecorViewReady failed: $e.")
                 }
@@ -565,8 +593,10 @@ public class PostHogReplayIntegration(
         view: View,
         status: ViewTreeSnapshotStatus,
     ) {
-        decorViews.remove(view)
-        forgetWindow(status.windowId)
+        synchronized(decorViews) {
+            decorViews.remove(view)
+            forgetWindow(status.windowId)
+        }
 
         if (view.isAliveAndAttachedToWindow()) {
             mainHandler.handler.post {
@@ -576,8 +606,11 @@ public class PostHogReplayIntegration(
                 if (view.isAliveAndAttachedToWindow()) {
                     try {
                         // swallow the exception because we still wanna remove it from the decorViews
-                        view.viewTreeObserver?.removeOnDrawListener(status.listener)
-                        status.layoutListener?.let { view.viewTreeObserver?.removeOnGlobalLayoutListener(it) }
+                        view.viewTreeObserver?.apply {
+                            removeOnDrawListener(status.listener)
+                            status.layoutListener?.let { removeOnGlobalLayoutListener(it) }
+                            status.windowFocusListener?.let { removeOnWindowFocusChangeListener(it) }
+                        }
                     } catch (e: Throwable) {
                         config.logger.log("Removing the viewTreeObserver failed: $e.")
                     }

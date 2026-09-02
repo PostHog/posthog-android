@@ -25,6 +25,7 @@ internal class ViewTreeSnapshotStatus(
     val drawState: WindowDrawState = WindowDrawState(),
     val windowId: String = TimeBasedEpochGenerator.generate().toString(),
     val touchEventInterceptor: TouchEventInterceptor? = null,
+    val windowFocusListener: ViewTreeObserver.OnWindowFocusChangeListener? = null,
     val windowRef: WeakReference<Window>? = null,
 )
 

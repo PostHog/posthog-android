@@ -1785,7 +1785,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `activity and dialog register distinct stable replay windows`() {
+    fun `activity and dialog keep stable replay windows through focus and removal`() {
         val appContext = ApplicationProvider.getApplicationContext<Context>()
         val fx =
             createIntegrationWithRealQueue(
@@ -1804,6 +1804,8 @@ internal class PostHogReplayIntegrationTest {
             shadowOf(Looper.getMainLooper()).idle()
             awaitCondition { fx.sut.decorViews[activityDecor] != null }
             val activityStatus = assertNotNull(fx.sut.decorViews[activityDecor])
+            val activityFocusListener = assertNotNull(activityStatus.windowFocusListener)
+            activityFocusListener.onWindowFocusChanged(true)
             assertTrue(activityStatus.touchEventInterceptor in activity.window.touchEventInterceptors)
 
             val dialog = AlertDialog.Builder(activity).setTitle("Dialog").setMessage("Content").create()
@@ -1814,10 +1816,19 @@ internal class PostHogReplayIntegrationTest {
             shadowOf(Looper.getMainLooper()).idle()
             awaitCondition { fx.sut.decorViews[dialogDecor] != null }
             val dialogStatus = assertNotNull(fx.sut.decorViews[dialogDecor])
+            val dialogFocusListener = assertNotNull(dialogStatus.windowFocusListener)
 
             assertNotEquals(activityStatus.windowId, dialogStatus.windowId)
+            activityFocusListener.onWindowFocusChanged(false)
+            dialogFocusListener.onWindowFocusChanged(true)
             assertEquals(dialogStatus.windowId, fx.sut.getCurrentWindowId())
             assertTrue(dialogStatus.touchEventInterceptor in dialog.window?.touchEventInterceptors.orEmpty())
+
+            // A Dialog can lose focus while it stays tracked, so focus must restore the Activity.
+            dialogFocusListener.onWindowFocusChanged(false)
+            activityFocusListener.onWindowFocusChanged(true)
+            assertEquals(activityStatus.windowId, fx.sut.getCurrentWindowId())
+            assertNotNull(fx.sut.decorViews[dialogDecor])
 
             dialog.dismiss()
             shadowOf(Looper.getMainLooper()).idle()
@@ -1828,6 +1839,10 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(activityStatus.windowId, fx.sut.decorViews[activityDecor]?.windowId)
             assertEquals(activityStatus.windowId, fx.sut.getCurrentWindowId())
             assertFalse(dialogStatus.touchEventInterceptor in dialog.window?.touchEventInterceptors.orEmpty())
+
+            // A focus callback queued before cleanup must not restore a removed window.
+            dialogFocusListener.onWindowFocusChanged(true)
+            assertEquals(activityStatus.windowId, fx.sut.getCurrentWindowId())
         } finally {
             fx.sut.uninstall()
         }
