@@ -90,6 +90,7 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public fun onRemoteConfig (Z)V
 	public fun onSessionIdChanged ()V
+	public fun onSessionReplayConfigChanged ()V
 	public fun start (Z)V
 	public fun stop ()V
 	public fun uninstall ()V

@@ -158,7 +158,7 @@ public open class PostHogConfig(
      * Requires Record user sessions to be enabled in the PostHog Project Settings
      * Defaults to false
      */
-    public var sessionReplay: Boolean = false,
+    sessionReplay: Boolean = false,
     /**
      * Hook that allows to sanitize the event properties
      * The hook is called before the event is cached or sent over the wire
@@ -400,6 +400,42 @@ public open class PostHogConfig(
      */
     @Volatile
     public var requestHeaders: Map<String, String> = emptyMap()
+
+    /**
+     * Enable Recording of Session Replays for Android
+     * Requires Record user sessions to be enabled in the PostHog Project Settings
+     * Defaults to false
+     *
+     * Writes after setup take effect right away. Set it to false to stop automatic recording,
+     * for example when your own feature flag turns off for this user. Set it to true to start
+     * recording, if the project settings, the linked flag, the event triggers, and sampling
+     * also allow it.
+     *
+     * This governs automatic replay only, so it is not an unconditional kill switch. A
+     * recording that started while it was already false — through [PostHog.startSessionReplay]
+     * or an event trigger — is deliberately preserved, so a false write does not stop it. Call
+     * [PostHog.stopSessionReplay] to stop those recordings.
+     */
+    @Volatile
+    public var sessionReplay: Boolean = sessionReplay
+        set(value) {
+            if (field == value) {
+                return
+            }
+            field = value
+            try {
+                onSessionReplayChanged?.invoke()
+            } catch (e: Throwable) {
+                logger.log("Reacting to a sessionReplay change failed: $e.")
+            }
+        }
+
+    /**
+     * Called when [sessionReplay] is written after setup, so the recording state follows the
+     * master switch instead of waiting for the next session rotation or remote config delivery.
+     */
+    @PostHogInternal
+    public var onSessionReplayChanged: (() -> Unit)? = null
 
     /**
      * The PostHog project API key, trimmed of leading and trailing whitespace.

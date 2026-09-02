@@ -182,6 +182,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getMaxRetries ()I
 	public final fun getNetworkStatus ()Lcom/posthog/internal/PostHogNetworkStatus;
 	public final fun getOnFeatureFlags ()Lcom/posthog/PostHogOnFeatureFlags;
+	public final fun getOnSessionReplayChanged ()Lkotlin/jvm/functions/Function0;
 	public final fun getOptOut ()Z
 	public final fun getPersonProfiles ()Lcom/posthog/PersonProfiles;
 	public final fun getPreloadFeatureFlags ()Z
@@ -233,6 +234,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setMaxRetries (I)V
 	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
 	public final fun setOnFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
+	public final fun setOnSessionReplayChanged (Lkotlin/jvm/functions/Function0;)V
 	public final fun setOptOut (Z)V
 	public final fun setPersonProfiles (Lcom/posthog/PersonProfiles;)V
 	public final fun setPreloadFeatureFlags (Z)V
@@ -1197,12 +1199,14 @@ public abstract interface class com/posthog/internal/replay/PostHogSessionReplay
 	public abstract fun isActive ()Z
 	public abstract fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun onSessionIdChanged ()V
+	public abstract fun onSessionReplayConfigChanged ()V
 	public abstract fun start (Z)V
 	public abstract fun stop ()V
 }
 
 public final class com/posthog/internal/replay/PostHogSessionReplayHandler$DefaultImpls {
 	public static synthetic fun onEvent$default (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+	public static fun onSessionReplayConfigChanged (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;)V
 }
 
 public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {
