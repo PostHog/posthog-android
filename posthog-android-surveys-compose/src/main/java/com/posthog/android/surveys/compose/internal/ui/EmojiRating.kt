@@ -40,8 +40,9 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * [PostHogDisplayRatingQuestion.ratingType] equal to
  * [PostHogDisplaySurveyRatingType.EMOJI].
  *
- * Renders 3 or 5 face shapes (Dissatisfied / Neutral / Satisfied for scale 3,
- * VeryDissatisfied → VerySatisfied for scale 5). The face artwork is the same
+ * Renders 2, 3, or 5 shapes (thumbs up / thumbs down for scale 2,
+ * Dissatisfied / Neutral / Satisfied for scale 3, VeryDissatisfied →
+ * VerySatisfied for scale 5). The artwork is the same
  * SVG used by the web product (posthog-js
  * `packages/browser/src/extensions/surveys/icons.tsx`) — the exact `d` path
  * strings are embedded verbatim in [PostHogEmoji] and parsed at draw time by
@@ -50,7 +51,9 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  *
  * Selected emojis are tinted
  * [com.posthog.android.surveys.compose.internal.theme.ResolvedSurveyAppearance.ratingButtonActiveColor],
- * unselected use `ratingButtonColor`.
+ * unselected ones use
+ * [com.posthog.android.surveys.compose.internal.theme.ResolvedSurveyAppearance.inputTextColor]
+ * at 50% alpha.
  */
 @Composable
 internal fun EmojiRating(
