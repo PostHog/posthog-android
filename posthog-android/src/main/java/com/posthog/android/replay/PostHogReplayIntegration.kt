@@ -1300,7 +1300,13 @@ public class PostHogReplayIntegration(
         view: View,
         drawState: WindowDrawState,
     ) {
-        if (composeWireframeWarningFired.get() || !view.isComposeRooted(drawState)) {
+        // The logger drops the message while debug logging is off, and PostHog.debug(true) can
+        // turn it on at any point, so the once-per-process budget must not be spent on a line
+        // nobody receives. Reading it up front also skips the Compose check while debug is off.
+        if (composeWireframeWarningFired.get() ||
+            !config.logger.isEnabled() ||
+            !view.isComposeRooted(drawState)
+        ) {
             return
         }
         if (composeWireframeWarningFired.compareAndSet(false, true)) {
