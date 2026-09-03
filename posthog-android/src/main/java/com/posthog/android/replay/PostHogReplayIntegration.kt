@@ -1293,9 +1293,10 @@ public class PostHogReplayIntegration(
     // Compose check too, so a warned process never pays for the tree walk again.
     private val composeWireframeWarningFired = AtomicBoolean(false)
 
-    // Wireframes are built from classic Android View types only, so a Compose-rooted window
-    // produces an almost empty tree that plays back as a blank screen. Say so, because the
-    // capture itself keeps succeeding and the developer gets no other signal.
+    // Wireframes are built from classic Android View types only, so whatever Compose draws
+    // comes back as an empty box that plays back blank, up to the whole screen when Compose
+    // draws all of it. Say so, because the capture itself keeps succeeding and the developer
+    // gets no other signal.
     private fun warnIfComposeWireframe(
         view: View,
         drawState: WindowDrawState,
@@ -1311,9 +1312,10 @@ public class PostHogReplayIntegration(
         }
         if (composeWireframeWarningFired.compareAndSet(false, true)) {
             config.logger.log(
-                "Session Replay found a Jetpack Compose window, but wireframe capture is on. " +
-                    "Wireframes only cover classic Android Views, so the recording will be blank. " +
-                    "Set sessionReplayConfig.screenshot = true to record Compose screens.",
+                "Session Replay found Jetpack Compose content, but wireframe capture is on. " +
+                    "Wireframes only cover classic Android Views, so Compose content records " +
+                    "blank; on a fully Compose screen that is the whole recording. " +
+                    "Set sessionReplayConfig.screenshot = true to record Compose content.",
             )
         }
     }
