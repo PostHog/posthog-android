@@ -2254,6 +2254,12 @@ public class PostHogReplayIntegration(
     override fun start(resumeCurrent: Boolean) {
         // Check if we should wait for event triggers before starting
         if (shouldWaitForEventTriggers()) {
+            // Remember an explicit start asked for while automatic replay is off. The trigger
+            // gate defers it, so without this the manual intent is lost and the deferred
+            // recording is refused as an automatic one once the trigger matches.
+            if (!config.sessionReplay) {
+                startedWithAutomaticDisabled = true
+            }
             val triggers = config.remoteConfigHolder?.getEventTriggers()
             config.logger.log(
                 "[Session Replay] Event triggers configured. Integration will not start until any of these events are captured: $triggers",
@@ -2306,7 +2312,7 @@ public class PostHogReplayIntegration(
 
     /**
      * Called when an event is captured. Checks if the event matches any configured triggers
-     * and starts session recording if so.
+     * and starts session recording if so, provided the other gates permit the session.
      */
     override fun onEvent(
         event: String,
@@ -2333,6 +2339,16 @@ public class PostHogReplayIntegration(
         if (triggers.contains(event)) {
             synchronized(eventTriggersLock) {
                 triggerActivatedSessionId = currentSessionId
+            }
+            // A matched trigger only lifts the event-trigger gate. The master switch, the project
+            // flag and the sampling decision still decide, as on every other start path. Without
+            // this, an app that turns replay off records the users it excludes, and start() marks
+            // the recording as manually started, so no later check stops it.
+            if (!isRecordingPermittedForCurrentSession()) {
+                config.logger.log(
+                    "[Session Replay] Event trigger matched: $event, but recording is not permitted for session $currentSessionId.",
+                )
+                return
             }
             config.logger.log("[Session Replay] Event trigger matched: $event. Starting replay for session $currentSessionId.")
             // Start the integration now that a trigger has matched
