@@ -12,13 +12,15 @@ public class PostHogSessionReplayConfig
     @JvmOverloads
     constructor(
         /**
-         * Enable masking of all text and text input fields
-         * Defaults to true
+         * Enable masking of all text and text input fields.
+         * The mask applies to wireframe capture and to screenshot capture.
+         * Defaults to true.
          */
         public var maskAllTextInputs: Boolean = true,
         /**
-         * Enable masking of all images to a placeholder
-         * Defaults to true
+         * Enable masking of all images to a placeholder.
+         * The mask applies to wireframe capture and to screenshot capture.
+         * Defaults to true.
          */
         public var maskAllImages: Boolean = true,
         /**
@@ -33,9 +35,12 @@ public class PostHogSessionReplayConfig
          */
         public var drawableConverter: PostHogDrawableConverter? = null,
         /**
-         * By default Session replay will capture all the views on the screen as a wireframe,
-         * By enabling this option, PostHog will capture the screenshot of the screen.
-         * The screenshot may contain sensitive information, use with caution.
+         * Capture each frame as a masked screenshot instead of a wireframe.
+         * Defaults to false, which captures the views on the screen as a wireframe.
+         * A wireframe only covers classic Android View types, so a screen that Jetpack Compose
+         * draws records as a blank screen. Set this option to true for Jetpack Compose apps.
+         * The mask options still apply to a screenshot, but a screenshot can show sensitive
+         * information that the mask options do not cover. Use with caution.
          */
         public var screenshot: Boolean = false,
         /**

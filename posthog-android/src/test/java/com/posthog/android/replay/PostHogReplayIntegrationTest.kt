@@ -1843,6 +1843,76 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private fun wireframeFixture(messages: MutableList<String>): RealQueueFixture {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = ApplicationProvider.getApplicationContext(),
+            )
+        fx.config.sessionReplayConfig.screenshot = false
+        fx.config.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    messages.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+        fx.sut.install(PostHogFake())
+        fx.sut.start(resumeCurrent = true)
+        return fx
+    }
+
+    @Test
+    fun `wireframe capture warns once about a compose rooted window`() {
+        // A wireframe only covers classic View types, so a Compose window records as a blank
+        // screen while every capture still reports success. One log line must name the option
+        // that fixes it, and it must not repeat on every snapshot.
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val fx = wireframeFixture(messages)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            activity.findViewById<FrameLayout>(android.R.id.content)
+                .addView(FakeAndroidComposeView(activity))
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            repeat(2) {
+                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(activity.window))
+            }
+
+            assertEquals(1, messages.count { it.contains("sessionReplayConfig.screenshot = true") })
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `wireframe capture stays quiet for a classic view window`() {
+        // Control for the Compose warning: a window that the wireframe walk can render must
+        // not tell the customer to switch capture mode.
+        val messages = Collections.synchronizedList(mutableListOf<String>())
+        val fx = wireframeFixture(messages)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val decorView = activity.window.decorView
+            makeWindowVisible(decorView)
+            activity.findViewById<FrameLayout>(android.R.id.content)
+                .addView(TextView(activity))
+            fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(activity.window))
+
+            assertFalse(messages.any { it.contains("sessionReplayConfig.screenshot = true") })
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
     private class OnceThrowingChildFrameLayout(context: Context) : FrameLayout(context) {
         private var thrown = false
 
