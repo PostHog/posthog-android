@@ -1,5 +1,5 @@
 ---
-'posthog-android': patch
+'posthog-android': minor
 ---
 
-Reduce session replay screenshot overhead by capturing directly into a reusable, half-resolution bitmap with a lower-memory pixel format.
+Add an experimental `sessionReplayConfig.optimizeScreenshots` option to reduce screenshot overhead with a reusable bitmap at half the width and height. It defaults to `false`, preserving full-resolution ARGB_8888 capture. When enabled, RGB_565 reduces image detail and removes alpha, making transparent window regions appear black; captures are skipped while a timed-out PixelCopy still owns the reusable bitmap.

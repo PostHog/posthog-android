@@ -3,12 +3,15 @@ package com.posthog.android.replay
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
@@ -55,6 +58,7 @@ import org.mockito.kotlin.whenever
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowLegacyBitmap
@@ -1718,8 +1722,194 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
+    fun `screenshot capture uses a new full resolution ARGB8888 destination by default`() {
+        val h = screenshotCaptureHarness()
+        RecordingShadowPixelCopy.reset()
+        try {
+            h.hookLayout.layout(0, 0, 101, 99)
+            h.child.layout(0, 0, 101, 20)
+
+            repeat(2) {
+                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            }
+
+            val (first, second) = RecordingShadowPixelCopy.requests
+            assertFalse(first.bitmap === second.bitmap)
+            for (request in RecordingShadowPixelCopy.requests) {
+                assertEquals(101, request.width)
+                assertEquals(99, request.height)
+                assertEquals(Bitmap.Config.ARGB_8888, request.config)
+                assertTrue(request.bitmap.isRecycled)
+            }
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
+    fun `default screenshot capture continues after a timeout and recycles late bitmaps`() {
+        val h = screenshotCaptureHarness()
+        RecordingShadowPixelCopy.reset()
+        RecordingShadowPixelCopy.defer = true
+        try {
+            repeat(2) {
+                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            }
+            assertEquals(2, RecordingShadowPixelCopy.requests.size)
+            val (first, second) = RecordingShadowPixelCopy.requests
+            assertFalse(first.bitmap === second.bitmap)
+            assertFalse(first.bitmap.isRecycled)
+            assertFalse(second.bitmap.isRecycled)
+            assertEquals(0, h.fake.captures)
+
+            RecordingShadowPixelCopy.complete(0)
+            assertTrue(first.bitmap.isRecycled)
+            assertFalse(second.bitmap.isRecycled)
+
+            RecordingShadowPixelCopy.defer = false
+            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            RecordingShadowPixelCopy.complete(1)
+            assertTrue(second.bitmap.isRecycled)
+            assertEquals(1, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
+    fun `screenshot optimization can change while a previous capture is pending`() {
+        for (initiallyOptimized in listOf(false, true)) {
+            val h = screenshotCaptureHarness()
+            h.fx.config.sessionReplayConfig.optimizeScreenshots = initiallyOptimized
+            RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.defer = true
+            try {
+                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                val pendingBitmap = RecordingShadowPixelCopy.requests.single().bitmap
+
+                h.fx.config.sessionReplayConfig.optimizeScreenshots = !initiallyOptimized
+                RecordingShadowPixelCopy.defer = false
+                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                val current = RecordingShadowPixelCopy.requests[1]
+                assertEquals(if (initiallyOptimized) 100 else 50, current.width)
+                assertFalse(pendingBitmap === current.bitmap)
+
+                RecordingShadowPixelCopy.complete(0)
+                h.fx.config.sessionReplayConfig.optimizeScreenshots = initiallyOptimized
+                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertEquals(2, h.fake.captures)
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
+    fun `late screenshot callbacks release their bitmap after uninstall in both modes`() {
+        for (optimized in listOf(false, true)) {
+            val h = screenshotCaptureHarness()
+            h.fx.config.sessionReplayConfig.optimizeScreenshots = optimized
+            RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.defer = true
+            try {
+                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                val bitmap = RecordingShadowPixelCopy.requests.single().bitmap
+                h.fx.sut.uninstall()
+                assertFalse(bitmap.isRecycled)
+
+                RecordingShadowPixelCopy.complete(0)
+                assertTrue(bitmap.isRecycled)
+                assertEquals(0, h.fake.captures)
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+    }
+
+    private fun screenshotBitmap(fake: PostHogFake): Bitmap {
+        @Suppress("UNCHECKED_CAST")
+        val events = fake.properties?.get("\$snapshot_data") as List<RREvent>
+        val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+        val wireframes = (fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>
+        val wireframe = wireframes.single() as RRWireframe
+        val bytes = Base64.decode(assertNotNull(wireframe.base64).substringAfter(','), Base64.DEFAULT)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
+
+    @Test
+    @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `encoded screenshots preserve transparency unless optimizations are enabled`() {
+        for (optimized in listOf(false, true)) {
+            val h = screenshotCaptureHarness()
+            h.fx.config.sessionReplayConfig.optimizeScreenshots = optimized
+            RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.TRANSPARENT) }
+            try {
+                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                val bitmap = screenshotBitmap(h.fake)
+                try {
+                    assertEquals(if (optimized) 50 else 100, bitmap.width)
+                    assertEquals(if (optimized) 255 else 0, Color.alpha(bitmap.getPixel(0, 0)))
+                } finally {
+                    bitmap.recycle()
+                }
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `mask scaling uses the capture option even when it changes during PixelCopy`() {
+        for (optimized in listOf(false, true)) {
+            val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+            h.fx.config.sessionReplayConfig.optimizeScreenshots = optimized
+            h.hookLayout.layout(0, 0, 300, 300)
+            h.child.layout(40, 40, 140, 140)
+            val mask = Rect()
+            assertTrue(h.child.getGlobalVisibleRect(mask))
+            RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.onRequest = {
+                it.eraseColor(Color.RED)
+                h.fx.config.sessionReplayConfig.optimizeScreenshots = !optimized
+            }
+            try {
+                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                val bitmap = screenshotBitmap(h.fake)
+                try {
+                    val scale = if (optimized) 2 else 1
+                    val y = mask.centerY() / scale
+                    val maskedPixel = bitmap.getPixel((mask.left + 10) / scale, y)
+                    // Lossy WebP can slightly perturb a solid black mask.
+                    assertTrue(Color.red(maskedPixel) < 10 && Color.green(maskedPixel) < 10 && Color.blue(maskedPixel) < 10)
+                    assertTrue(Color.red(bitmap.getPixel((mask.left - 10) / scale, y)) > 200)
+                    assertTrue(Color.red(bitmap.getPixel((mask.right + 10) / scale, y)) > 200)
+                } finally {
+                    bitmap.recycle()
+                }
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
     fun `screenshot capture reuses a half resolution RGB565 destination`() {
         val h = screenshotCaptureHarness()
+        h.fx.config.sessionReplayConfig.optimizeScreenshots = true
         RecordingShadowPixelCopy.reset()
         try {
             h.hookLayout.layout(0, 0, 101, 99)
@@ -1766,9 +1956,37 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `screenshot capture discards non-positive source dimensions before masking`() {
+        for (optimized in listOf(false, true)) {
+            for ((width, height) in listOf(0 to 100, 100 to 0, -1 to 100, 100 to -1)) {
+                val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+                h.fx.config.sessionReplayConfig.optimizeScreenshots = optimized
+                try {
+                    DrawSequenceShadowPixelCopy.onRequest = {
+                        h.hookLayout.layout(0, 0, width, height)
+                    }
+
+                    assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                    assertEquals(0, h.fake.captures)
+
+                    DrawSequenceShadowPixelCopy.onRequest = null
+                    h.hookLayout.layout(0, 0, 100, 100)
+                    assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                    assertEquals(1, h.fake.captures)
+                } finally {
+                    DrawSequenceShadowPixelCopy.onRequest = null
+                    h.fx.sut.uninstall()
+                }
+            }
+        }
+    }
+
+    @Test
     @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
     fun `timed out PixelCopy lease is quarantined until its callback`() {
         val h = screenshotCaptureHarness()
+        h.fx.config.sessionReplayConfig.optimizeScreenshots = true
         RecordingShadowPixelCopy.reset()
         RecordingShadowPixelCopy.defer = true
         try {
@@ -1795,6 +2013,7 @@ internal class PostHogReplayIntegrationTest {
     @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
     fun `invalid RGB565 destination falls back once to ARGB8888`() {
         val h = screenshotCaptureHarness()
+        h.fx.config.sessionReplayConfig.optimizeScreenshots = true
         RecordingShadowPixelCopy.reset()
         try {
             RecordingShadowPixelCopy.result = PixelCopy.ERROR_DESTINATION_INVALID
@@ -2483,12 +2702,17 @@ internal class PostHogReplayIntegrationTest {
         data class Request(
             val bitmap: Bitmap,
             val listener: PixelCopy.OnPixelCopyFinishedListener,
-        )
+        ) {
+            val width = bitmap.width
+            val height = bitmap.height
+            val config = bitmap.config
+        }
 
         companion object {
             val requests = mutableListOf<Request>()
             var defer = false
             var result = PixelCopy.SUCCESS
+            var onRequest: ((Bitmap) -> Unit)? = null
 
             @JvmStatic
             @Implementation
@@ -2499,6 +2723,7 @@ internal class PostHogReplayIntegrationTest {
                 handler: Handler,
             ) {
                 requests.add(Request(bitmap, listener))
+                onRequest?.invoke(bitmap)
                 if (!defer) {
                     listener.onPixelCopyFinished(result)
                 }
@@ -2512,6 +2737,7 @@ internal class PostHogReplayIntegrationTest {
                 requests.clear()
                 defer = false
                 result = PixelCopy.SUCCESS
+                onRequest = null
             }
         }
     }
