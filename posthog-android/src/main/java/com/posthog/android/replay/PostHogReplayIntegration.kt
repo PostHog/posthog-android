@@ -180,9 +180,9 @@ public class PostHogReplayIntegration(
     @Volatile
     private var isSessionReplayActive: Boolean = false
 
-    // Set by any start that happens while config.sessionReplay is false — the manual API or an
-    // event trigger. Survives stopRecording() so an internal stop (session cleared, sampled out,
-    // flag off) can still resume later; only an explicit stop() or uninstall() clears it.
+    // Set only by an explicit start request made while config.sessionReplay is false. It survives
+    // stopRecording() so an internal stop (session cleared, sampled out, flag off) can still resume
+    // later; only an explicit stop() or uninstall() clears it.
     @Volatile
     private var startedWithAutomaticDisabled: Boolean = false
 
@@ -2252,7 +2252,12 @@ public class PostHogReplayIntegration(
     }
 
     override fun start(resumeCurrent: Boolean) {
-        // Check if we should wait for event triggers before starting
+        // Remember an explicit start asked for while automatic replay is off. The event gate can
+        // defer it, so the intent must be recorded before checking that gate.
+        if (!config.sessionReplay) {
+            startedWithAutomaticDisabled = true
+        }
+
         if (shouldWaitForEventTriggers()) {
             val triggers = config.remoteConfigHolder?.getEventTriggers()
             config.logger.log(
@@ -2261,10 +2266,13 @@ public class PostHogReplayIntegration(
             return
         }
 
+        startRecording(resumeCurrent)
+    }
+
+    private fun startRecording(resumeCurrent: Boolean) {
         val currentSessionId = postHog?.getSessionId()?.toString()
         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
-        startedWithAutomaticDisabled = !config.sessionReplay
         isSessionReplayActive = true
 
         if (!resumeCurrent) {
@@ -2306,7 +2314,7 @@ public class PostHogReplayIntegration(
 
     /**
      * Called when an event is captured. Checks if the event matches any configured triggers
-     * and starts session recording if so.
+     * and starts session recording if so, provided the other gates permit the session.
      */
     override fun onEvent(
         event: String,
@@ -2334,9 +2342,17 @@ public class PostHogReplayIntegration(
             synchronized(eventTriggersLock) {
                 triggerActivatedSessionId = currentSessionId
             }
+            // A matched trigger only lifts the event-trigger gate. The master switch, the project
+            // flag and the sampling decision still decide, as on every other automatic start path.
+            if (!isRecordingPermittedForCurrentSession()) {
+                config.logger.log(
+                    "[Session Replay] Event trigger matched: $event, but recording is not permitted for session $currentSessionId.",
+                )
+                return
+            }
             config.logger.log("[Session Replay] Event trigger matched: $event. Starting replay for session $currentSessionId.")
-            // Start the integration now that a trigger has matched
-            start(resumeCurrent = true)
+            // Do not call start(): only an explicit request may establish manual-start provenance.
+            startRecording(resumeCurrent = true)
         }
     }
 
@@ -2397,7 +2413,8 @@ public class PostHogReplayIntegration(
                 return@post
             }
             if (isSessionReplayActive) stopRecording()
-            start(resumeCurrent = false)
+            // Do not call start(): session rotation is an automatic transition.
+            startRecording(resumeCurrent = false)
         }
     }
 
@@ -2651,15 +2668,16 @@ public class PostHogReplayIntegration(
         if (!isSessionReplayActive) {
             config.logger.log("[Session Replay] Remote config enabled recording. Resuming.")
             mainHandler.handler.post {
-                if (!isSessionReplayActive) {
+                // Re-check at the transition so a queued automatic resume cannot use stale gates.
+                if (!isSessionReplayActive && isRecordingPermittedForCurrentSession()) {
                     // Force a fresh keyframe for the resumed segment. While stopped, per-view snapshot
                     // state is frozen and can reference a full snapshot that was never delivered (e.g. a
                     // first-config-off opening window that was dropped), so resuming against it would emit
                     // orphaned incremental snapshots the player can't anchor. Clear the state and force a
                     // redraw so the resumed segment starts with meta + full snapshot — without rotating the
-                    // session or touching the cold-start buffering state (unlike start(resumeCurrent = false)).
+                    // session or touching the cold-start buffering state (unlike startRecording(false)).
                     clearSnapshotStates()
-                    start(resumeCurrent = true)
+                    startRecording(resumeCurrent = true)
                     synchronized(decorViews) {
                         decorViews.keys.forEach { it.postInvalidate() }
                     }

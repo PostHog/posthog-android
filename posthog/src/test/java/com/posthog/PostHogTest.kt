@@ -2757,6 +2757,17 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `stopSessionReplay forwards stop when replay is inactive`() {
+        val http = mockHttp()
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, integration = integration)
+
+        sut.stopSessionReplay()
+
+        assertTrue(integration.stopCalled)
+    }
+
+    @Test
     @Suppress("DEPRECATION")
     fun `captureException captures exception with correct properties`() {
         val http = mockHttp()
