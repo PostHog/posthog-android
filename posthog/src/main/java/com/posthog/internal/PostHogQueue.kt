@@ -3,12 +3,12 @@ package com.posthog.internal
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import com.posthog.PostHogVisibleForTesting
-import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
 import java.io.IOException
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
+import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
@@ -63,8 +63,7 @@ public class PostHogQueue<Record>(
                 dirCreated = true
             }
 
-            val uuid = spec.recordUuid(record) ?: TimeBasedEpochGenerator.generate()
-            val file = File(dir, "$uuid.event")
+            val file = File(dir, "${UUID.randomUUID()}.event")
             synchronized(dequeLock) {
                 deque.add(file)
             }
@@ -81,6 +80,9 @@ public class PostHogQueue<Record>(
                 config.logger.log("${spec.describe(record)}: ${file.name} failed to parse: $e.")
 
                 // if for some reason the file failed to serialize, lets delete it
+                synchronized(dequeLock) {
+                    deque.remove(file)
+                }
                 file.deleteSafely(config)
             }
 
@@ -203,19 +205,11 @@ public class PostHogQueue<Record>(
         } catch (e: Throwable) {
             config.logger.log("Flushing failed: $e.")
 
-            retryCount++
+            retryCount = (retryCount + 1).coerceAtMost(maxRetryDelaySeconds)
+            retry = true
 
-            if (retryCount > config.maxRetries) {
-                config.logger.log("Max retries (${config.maxRetries}) exceeded, dropping ${spec.recordsLabel}.")
-                retryCount = 0
-                pausedUntil = null
-                dropAllRecords()
-            } else {
-                retry = true
-
-                if (e is PostHogApiError) {
-                    retryAfterSeconds = e.retryAfterSeconds
-                }
+            if (e is PostHogApiError) {
+                retryAfterSeconds = e.retryAfterSeconds
             }
         } finally {
             calculateDelay(retry, retryAfterSeconds)
@@ -285,13 +279,8 @@ public class PostHogQueue<Record>(
                 throw e
             }
         } catch (e: IOException) {
-            // no connection should try again
-            if (e.isNetworkingError()) {
-                deleteFiles = false
-                config.logger.log("Flushing failed because of a network error, let's try again soon.")
-            } else {
-                config.logger.log("Flushing failed: $e")
-            }
+            deleteFiles = false
+            config.logger.log("Flushing failed because of a network error, let's try again soon.")
             throw e
         } finally {
             if (deleteFiles) {
@@ -432,7 +421,14 @@ public class PostHogQueue<Record>(
 
         // sort by last modified date ascending so records are sent in order
         files.sortBy { file -> file.lastModified() }
-        return files
+
+        val maxQueueSize = spec.maxQueueSize(config).coerceAtLeast(1)
+        val overflow = (files.size - maxQueueSize).coerceAtLeast(0)
+        if (overflow > 0) {
+            files.take(overflow).forEach { it.deleteSafely(config) }
+            config.logger.log("Dropped $overflow oldest cached ${spec.recordsLabel} to enforce queue capacity.")
+        }
+        return files.drop(overflow)
     }
 
     private fun reloadFromDiskSync() {
@@ -490,6 +486,10 @@ public class PostHogQueue<Record>(
     internal val currentFlushAtForTesting: Int
         @PostHogVisibleForTesting
         get() = batchLimits.flushAt
+
+    internal val currentRetryCountForTesting: Int
+        @PostHogVisibleForTesting
+        get() = retryCount
 }
 
 internal class BatchLimits(
