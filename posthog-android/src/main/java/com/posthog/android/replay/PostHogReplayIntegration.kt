@@ -734,6 +734,7 @@ public class PostHogReplayIntegration(
                     status.drawState,
                 ) ?: return false
             } else {
+                warnIfComposeWireframe(view, status.drawState)
                 view.toWireframe() ?: return false
             }
 
@@ -1285,6 +1286,44 @@ public class PostHogReplayIntegration(
     ): Boolean {
         return config.sessionReplayConfig.verifyScreenshotMaskAlignment ||
             view.isComposeRooted(drawState)
+    }
+
+    // Fires once per process: repeating it on every snapshot would flood logcat, and one line
+    // is enough to point the developer at the option that fixes the recording. Read before the
+    // Compose check too, so a warned process never pays for the tree walk again.
+    private val composeWireframeWarningFired = AtomicBoolean(false)
+
+    // Wireframes are built from classic Android View types only, so whatever Compose draws
+    // comes back as an empty box that plays back blank, up to the whole screen when Compose
+    // draws all of it. Say so, because the capture itself keeps succeeding and the developer
+    // gets no other signal.
+    private fun warnIfComposeWireframe(
+        view: View,
+        drawState: WindowDrawState,
+    ) {
+        // The logger drops the message while debug logging is off, and PostHog.debug(true) can
+        // turn it on at any point, so the once-per-process budget must not be spent on a line
+        // nobody receives. Reading it up front also skips the Compose check while debug is off.
+        if (composeWireframeWarningFired.get() || !config.logger.isEnabled()) {
+            return
+        }
+        // Never block the capture thread for a log line: off the main thread the verdict is
+        // resolved there without waiting and read from the cache on the next snapshot.
+        val rooted =
+            drawState.composeRooted ?: if (Looper.myLooper() == mainHandler.handler.looper) {
+                view.isComposeRooted(drawState)
+            } else {
+                mainHandler.handler.post { view.isComposeRooted(drawState) }
+                return
+            }
+        if (rooted && composeWireframeWarningFired.compareAndSet(false, true)) {
+            config.logger.log(
+                "Session Replay found Jetpack Compose content, but wireframe capture is on. " +
+                    "Wireframes only cover classic Android Views, so Compose content records " +
+                    "blank; on a fully Compose screen that is the whole recording. " +
+                    "Set sessionReplayConfig.screenshot = true to record Compose content.",
+            )
+        }
     }
 
     private fun View.isComposeRooted(drawState: WindowDrawState): Boolean {
