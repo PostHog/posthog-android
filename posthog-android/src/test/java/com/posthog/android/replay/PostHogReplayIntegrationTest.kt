@@ -604,32 +604,44 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `event trigger does not start recording for a session the other gates reject`() {
-        val triggers = setOf("checkout_started")
+    fun `event trigger starts only when all replay gates pass`() {
+        data class GateCase(
+            val name: String,
+            val localEnabled: Boolean = true,
+            val flagActive: Boolean = true,
+            val samplingPasses: Boolean = true,
+            val triggerMatches: Boolean = true,
+            val expectedActive: Boolean = false,
+        )
+
         val cases =
             listOf(
-                "master switch off" to
-                    configWithSampling(
-                        flagActive = true,
-                        samplingPasses = true,
-                        sessionReplay = false,
-                        triggers = triggers,
-                    ),
-                "project flag off" to configWithSampling(flagActive = false, samplingPasses = true, triggers = triggers),
-                "sampled out" to configWithSampling(flagActive = true, samplingPasses = false, triggers = triggers),
+                GateCase("flag off, trigger not matched", flagActive = false, triggerMatches = false),
+                GateCase("flag off, trigger matched", flagActive = false),
+                GateCase("flag on, trigger not matched", triggerMatches = false),
+                GateCase("all gates pass", expectedActive = true),
+                GateCase("local switch off", localEnabled = false),
+                GateCase("sampled out", samplingPasses = false),
             )
 
-        for ((name, config) in cases) {
+        for (case in cases) {
+            val config =
+                configWithSampling(
+                    flagActive = case.flagActive,
+                    samplingPasses = case.samplingPasses,
+                    sessionReplay = case.localEnabled,
+                    triggers = setOf("checkout_started"),
+                )
             val sut = getSut(config)
             val postHog = mock<PostHogInterface>()
             whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
             sut.install(postHog)
             try {
                 PostHogSessionManager.startSession()
-                sut.onEvent("checkout_started", null)
+                sut.onEvent(if (case.triggerMatches) "checkout_started" else "product_viewed", null)
                 shadowOf(Looper.getMainLooper()).idle()
 
-                assertFalse(sut.isActive(), "started recording despite $name")
+                assertEquals(case.expectedActive, sut.isActive(), case.name)
             } finally {
                 sut.uninstall()
                 PostHogSessionManager.endSession()
@@ -667,7 +679,52 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `event trigger start refused by the master switch does not become a manual recording`() {
+    fun `event trigger activation is retained when another gate initially rejects recording`() {
+        val triggers = setOf("checkout_started")
+        val localConfig =
+            configWithSampling(
+                flagActive = true,
+                samplingPasses = true,
+                sessionReplay = false,
+                triggers = triggers,
+            )
+        val linkedFlag = AtomicBoolean(false)
+        val linkedFlagConfig = configWithSampling(flagActive = false, samplingPasses = true, triggers = triggers)
+        whenever(linkedFlagConfig.remoteConfigHolder!!.isSessionReplayFlagActive()).thenAnswer { linkedFlag.get() }
+        val sampling = AtomicBoolean(false)
+        val samplingConfig = configWithSampling(flagActive = true, samplingPasses = false, triggers = triggers)
+        whenever(samplingConfig.remoteConfigHolder!!.makeSamplingDecision(any())).thenAnswer { sampling.get() }
+        val cases =
+            listOf(
+                Triple("master switch", localConfig) { localConfig.sessionReplay = true },
+                Triple("linked flag", linkedFlagConfig) { linkedFlag.set(true) },
+                Triple("sampling", samplingConfig) { sampling.set(true) },
+            )
+
+        for ((name, config, openGate) in cases) {
+            val sut = getSut(config)
+            val postHog = mock<PostHogInterface>()
+            whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+            sut.install(postHog)
+            try {
+                PostHogSessionManager.startSession()
+                sut.onEvent("checkout_started", null)
+                assertFalse(sut.isActive(), "started before the $name gate opened")
+
+                openGate()
+                sut.onRemoteConfig()
+                shadowOf(Looper.getMainLooper()).idle()
+
+                assertTrue(sut.isActive(), "did not reuse trigger activation after the $name gate opened")
+            } finally {
+                sut.uninstall()
+                PostHogSessionManager.endSession()
+            }
+        }
+    }
+
+    @Test
+    fun `explicit stop cancels a manual start waiting for an event trigger`() {
         val config =
             configWithSampling(
                 flagActive = true,
@@ -681,23 +738,58 @@ internal class PostHogReplayIntegrationTest {
         sut.install(postHog)
         try {
             PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertFalse(sut.isActive())
+
+            sut.stop()
             sut.onEvent("checkout_started", null)
             shadowOf(Looper.getMainLooper()).idle()
-            assertFalse(sut.isActive())
 
-            // A refused start must not be treated as manually started, so the master switch keeps
-            // deciding on every later remote config delivery.
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `concurrent local disable does not give an event trigger manual start provenance`() {
+        val samplingStarted = CountDownLatch(1)
+        val continueSampling = CountDownLatch(1)
+        val config =
+            configWithSampling(
+                flagActive = true,
+                samplingPasses = true,
+                triggers = setOf("checkout_started"),
+            )
+        whenever(config.remoteConfigHolder!!.makeSamplingDecision(any())).thenAnswer {
+            samplingStarted.countDown()
+            assertTrue(continueSampling.await(2, TimeUnit.SECONDS))
+            true
+        }
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        val eventExecutor = Executors.newSingleThreadExecutor()
+        try {
+            PostHogSessionManager.startSession()
+            val event = eventExecutor.submit { sut.onEvent("checkout_started", null) }
+            assertTrue(samplingStarted.await(2, TimeUnit.SECONDS))
+
+            config.sessionReplay = false
+            continueSampling.countDown()
+            event.get(2, TimeUnit.SECONDS)
+            assertTrue(sut.isActive())
+
+            // The racing automatic start may win, but it must remain automatic so the next
+            // reevaluation can stop it instead of preserving it as a manual recording.
             sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
+
             assertFalse(sut.isActive())
-
-            // The trigger did fire though, so turning the switch back on records the rest of the session.
-            config.sessionReplay = true
-            sut.onSessionReplayConfigChanged()
-            shadowOf(Looper.getMainLooper()).idle()
-
-            assertTrue(sut.isActive())
         } finally {
+            continueSampling.countDown()
+            eventExecutor.shutdownNow()
             sut.uninstall()
         }
     }

@@ -2209,14 +2209,7 @@ public class PostHog private constructor(
             return
         }
 
-        sessionReplayHandler?.let {
-            // already inactive
-            if (!it.isActive()) {
-                return
-            }
-
-            it.stop()
-        } ?: run {
+        sessionReplayHandler?.stop() ?: run {
             config?.logger?.log("Session replay isn't installed.")
         }
     }
