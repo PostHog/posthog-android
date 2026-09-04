@@ -36,6 +36,19 @@ internal class PostHogAndroidConfigTest {
     }
 
     @Test
+    fun `screenshot optimizations should be disabled by default`() {
+        assertFalse(config.sessionReplayConfig.optimizeScreenshots)
+        assertFalse(config.sessionReplayConfig.screenshot)
+    }
+
+    @Test
+    fun `screenshot optimizations can be enabled`() {
+        config.sessionReplayConfig.optimizeScreenshots = true
+
+        assertTrue(config.sessionReplayConfig.optimizeScreenshots)
+    }
+
+    @Test
     fun `screenshot mask alignment verification should be disabled by default`() {
         assertFalse(config.sessionReplayConfig.verifyScreenshotMaskAlignment)
     }
