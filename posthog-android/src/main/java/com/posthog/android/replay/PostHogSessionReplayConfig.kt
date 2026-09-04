@@ -72,6 +72,19 @@ public class PostHogSessionReplayConfig
         @PostHogExperimental
         public var verifyScreenshotMaskAlignment: Boolean = false
 
+        /**
+         * Reduces screenshot capture overhead by reusing a bitmap at half the width and height
+         * with the lower-memory RGB_565 format. This reduces image detail and removes alpha,
+         * so transparent window regions appear black. Devices that reject RGB_565 fall back
+         * to ARGB_8888. A timed-out capture holds the reusable bitmap until its callback arrives,
+         * so subsequent screenshot captures are skipped while it is still in use.
+         *
+         * Defaults to false: each capture uses a new full-resolution ARGB_8888 bitmap.
+         * Applies only to screenshot capture; wireframe capture is unchanged.
+         */
+        @PostHogExperimental
+        public var optimizeScreenshots: Boolean = false
+
         init {
             // for keeping back compatibility
             @Suppress("DEPRECATION")
