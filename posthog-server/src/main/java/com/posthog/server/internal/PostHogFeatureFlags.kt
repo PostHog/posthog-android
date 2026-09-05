@@ -227,7 +227,7 @@ internal class PostHogFeatureFlags(
             groups,
             personProperties,
             groupProperties,
-        )?.get(key)
+        ).flags?.get(key)
     }
 
     private fun getFeatureFlagsFromCache(
@@ -399,7 +399,7 @@ internal class PostHogFeatureFlags(
         disableGeoip: Boolean = false,
         bypassCache: Boolean = false,
         onResponse: ((PostHogFlagsResponse) -> Unit)? = null,
-    ): Map<String, FeatureFlag>? {
+    ): FeatureFlagCacheEntry {
         // A refresh replaces the cache; an in-flight response may only populate its original cache.
         val responseCache = cache
         val cacheKey =
@@ -413,9 +413,9 @@ internal class PostHogFeatureFlags(
             )
 
         if (!bypassCache) {
-            val cachedFlags = responseCache.get(cacheKey)
-            if (cachedFlags != null) {
-                return cachedFlags
+            val cached = responseCache.getEntry(cacheKey)
+            if (cached?.flags != null) {
+                return cached
             }
         }
 
@@ -432,39 +432,35 @@ internal class PostHogFeatureFlags(
                     flagKeys = flagKeys,
                     disableGeoip = disableGeoip,
                 )
-            val flags = response?.flags
-            responseCache.put(
-                cacheKey,
-                flags,
-                response?.requestId,
-                response?.evaluatedAt,
-                computeResponseError(response),
-            )
+            val entry =
+                responseCache.put(
+                    cacheKey,
+                    response?.flags,
+                    response?.requestId,
+                    response?.evaluatedAt,
+                    computeResponseError(response),
+                )
             if (response != null) {
                 reconcileReturnedFlagEvidence(responseGeneration, response)
                 onResponse?.invoke(response)
             }
-            flags
+            // Return this request's envelope even if a refresh replaced the cache while it was in flight.
+            entry
         } catch (e: SocketTimeoutException) {
             config.logger.log("Loading remote feature flags timed out: $e")
             responseCache.put(cacheKey, null, error = FeatureFlagError.TIMEOUT)
-            null
         } catch (e: ConnectException) {
             config.logger.log("Loading remote feature flags connection failed: $e")
             responseCache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
-            null
         } catch (e: UnknownHostException) {
             config.logger.log("Loading remote feature flags DNS lookup failed: $e")
             responseCache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
-            null
         } catch (e: PostHogApiError) {
             config.logger.log("Loading remote feature flags API error: $e")
             responseCache.put(cacheKey, null, error = FeatureFlagError.apiError(e.statusCode))
-            null
         } catch (e: Throwable) {
             config.logger.log("Loading remote feature flags failed: $e")
             responseCache.put(cacheKey, null, error = FeatureFlagError.UNKNOWN_ERROR)
-            null
         }
     }
 
@@ -512,7 +508,7 @@ internal class PostHogFeatureFlags(
         }
 
         // Finally, fall back to remote fetch
-        return getFeatureFlagsFromRemote(distinctId, groups, personProperties, groupProperties)
+        return getFeatureFlagsFromRemote(distinctId, groups, personProperties, groupProperties).flags
     }
 
     override fun clear() {
@@ -1093,7 +1089,7 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        val (remoteFlags, entry) =
+        val entry =
             if (missingDefinitionKeys.isNotEmpty()) {
                 evaluateMissingFlagsRemotely(
                     cacheKey,
@@ -1107,21 +1103,15 @@ internal class PostHogFeatureFlags(
                     local?.needsRemote == true,
                 )
             } else {
-                var cached = cache.getEntry(cacheKey)
-                val flags =
-                    if (cached != null) {
-                        cached.flags
-                    } else {
-                        getFeatureFlagsFromRemote(
-                            distinctId,
-                            groups,
-                            personProperties,
-                            groupProperties,
-                            flagKeys,
-                            disableGeoip,
-                        ).also { cached = cache.getEntry(cacheKey) }
-                    }
-                flags to cached
+                cache.getEntry(cacheKey)
+                    ?: getFeatureFlagsFromRemote(
+                        distinctId,
+                        groups,
+                        personProperties,
+                        groupProperties,
+                        flagKeys,
+                        disableGeoip,
+                    )
             }
 
         // Forward the caller's original scope to `/flags`; locally resolved values win below.
@@ -1129,7 +1119,7 @@ internal class PostHogFeatureFlags(
         // Same precedence as posthog-python, which skips remote keys already in
         // `locally_evaluated_keys`. Note a group flag evaluated without `groups` resolves locally to
         // `false`, and that now beats the server's answer — pass `groups` when gating on one.
-        val merged = LinkedHashMap(remoteFlags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
+        val merged = LinkedHashMap(entry?.flags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
         return EvaluateFlagsResult(
             flags = merged,
             locallyEvaluated = merged.mapValues { it.key in localFlags },
@@ -1150,44 +1140,42 @@ internal class PostHogFeatureFlags(
         disableGeoip: Boolean,
         missingDefinitionKeys: Set<String>,
         localNeedsRemote: Boolean,
-    ): Pair<Map<String, FeatureFlag>?, FeatureFlagCacheEntry?> {
+    ): FeatureFlagCacheEntry? {
         while (true) {
             val plan = planMissingFlagProbe(missingDefinitionKeys)
 
             if (plan.waiting.isNotEmpty()) {
-                if (!plan.waiting.all { it.await(missingFlagProbeWaitTimeoutMs) }) return null to null
+                if (!plan.waiting.all { it.await(missingFlagProbeWaitTimeoutMs) }) return null
                 continue
             }
 
             val refreshMadeKeysLocal = plan.currentlyMissing.size < missingDefinitionKeys.size
             val needsRemote =
                 localNeedsRemote || refreshMadeKeysLocal || plan.knownRemote.isNotEmpty() || plan.owned.isNotEmpty()
-            if (!needsRemote) return null to null
+            if (!needsRemote) return null
 
             var entry = cache.getEntry(cacheKey)
             val bypassCache = shouldBypassCacheFor(plan, refreshMadeKeysLocal, entry)
             if (bypassCache) entry = null
             var response: PostHogFlagsResponse? = null
-            val flags =
-                try {
-                    if (entry != null) {
-                        entry.flags
-                    } else {
-                        getFeatureFlagsFromRemote(
-                            distinctId,
-                            groups,
-                            personProperties,
-                            groupProperties,
-                            flagKeys,
-                            disableGeoip,
-                            bypassCache = bypassCache,
-                            onResponse = { response = it },
-                        ).also { entry = cache.getEntry(cacheKey) }
-                    }
-                } finally {
-                    completeMissingFlagProbe(plan, response)
+            return try {
+                if (entry != null) {
+                    entry
+                } else {
+                    getFeatureFlagsFromRemote(
+                        distinctId,
+                        groups,
+                        personProperties,
+                        groupProperties,
+                        flagKeys,
+                        disableGeoip,
+                        bypassCache = bypassCache,
+                        onResponse = { response = it },
+                    )
                 }
-            return flags to entry
+            } finally {
+                completeMissingFlagProbe(plan, response)
+            }
         }
     }
 

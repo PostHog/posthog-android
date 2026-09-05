@@ -7,6 +7,7 @@ import com.posthog.server.CountingDispatcher
 import com.posthog.server.PostHogBlockingFlagDefinitionCacheProvider
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
 import com.posthog.server.createFlagsResponse
+import com.posthog.server.createFlagsResponseWithErrors
 import com.posthog.server.createTestConfig
 import com.posthog.server.jsonResponse
 import com.posthog.server.shutdownAndAwaitTermination
@@ -243,6 +244,93 @@ internal class VersionedPropertyMatchingTest {
             assertTrue(result.locallyEvaluated.values.all { it })
             assertEquals(2, dispatcher.localEvaluationCalls.get())
             assertEquals(1, dispatcher.flagsCalls.get(), "New-snapshot reads must not fall back remotely")
+        } finally {
+            releaseResponse.countDown()
+            executor.shutdownAndAwaitTermination()
+            sut.clear()
+            sut.shutDown()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `delayed missing flag response retains its envelope across refresh`() {
+        assertDelayedRemoteEnvelope("remote", fails = false)
+    }
+
+    @Test
+    fun `delayed inconclusive flag response retains its envelope across refresh`() {
+        assertDelayedRemoteEnvelope("person", fails = false)
+    }
+
+    @Test
+    fun `delayed missing flag failure retains its error across refresh`() {
+        assertDelayedRemoteEnvelope("remote", fails = true)
+    }
+
+    @Test
+    fun `delayed inconclusive flag failure retains its error across refresh`() {
+        assertDelayedRemoteEnvelope("person", fails = true)
+    }
+
+    private fun assertDelayedRemoteEnvelope(
+        key: String,
+        fails: Boolean,
+    ) {
+        val responseStarted = CountDownLatch(1)
+        val releaseResponse = CountDownLatch(1)
+        val version = AtomicInteger(1)
+        val requests = AtomicInteger()
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(definitions(version.get())) },
+                {
+                    val first = requests.incrementAndGet() == 1
+                    if (first) {
+                        responseStarted.countDown()
+                        check(releaseResponse.await(5, TimeUnit.SECONDS))
+                    }
+                    if (first && fails) {
+                        MockResponse().setResponseCode(500)
+                    } else {
+                        val requestId = if (first) "old-request" else "new-request"
+                        jsonResponse(
+                            createFlagsResponseWithErrors(key)
+                                .replaceFirst("{", """{"requestId":"$requestId","evaluatedAt":123,"""),
+                        )
+                    }
+                },
+            )
+        val http = MockWebServer()
+        http.dispatcher = dispatcher
+        http.start()
+        val sut = createSut(createTestConfig(host = http.url("/").toString()))
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            sut.loadFeatureFlagDefinitions()
+            val pending =
+                executor.submit<EvaluateFlagsResult> {
+                    // No person properties makes a known definition inconclusive.
+                    sut.evaluateFlags("user", null, null, null, listOf(key), false, false)
+                }
+            assertTrue(responseStarted.await(5, TimeUnit.SECONDS))
+            version.set(2)
+            sut.loadFeatureFlagDefinitions()
+            releaseResponse.countDown()
+            val result = pending.get(5, TimeUnit.SECONDS)
+            assertEquals(if (fails) null else true, result.flags[key]?.enabled)
+            assertEquals(if (fails) "api_error_500" else "errors_while_computing_flags", result.responseError)
+            assertEquals(if (fails) null else "old-request", result.requestId)
+            assertEquals(if (fails) null else 123L, result.evaluatedAt)
+
+            val fresh = sut.evaluateFlags("user", null, null, null, listOf(key), false, false)
+            assertEquals(true, fresh.flags[key]?.enabled)
+            assertEquals("new-request", fresh.requestId)
+            assertEquals("errors_while_computing_flags", fresh.responseError)
+            assertEquals(123L, fresh.evaluatedAt)
+            assertEquals(fresh, sut.evaluateFlags("user", null, null, null, listOf(key), false, false))
+            assertEquals(2, dispatcher.localEvaluationCalls.get())
+            assertEquals(2, dispatcher.flagsCalls.get(), "The old response must not populate the refreshed cache")
         } finally {
             releaseResponse.countDown()
             executor.shutdownAndAwaitTermination()
