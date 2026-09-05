@@ -38,7 +38,8 @@ internal class PostHogFeatureFlags(
     private val missingFlagKeysMaxSize: Int = DEFAULT_MISSING_FLAG_KEYS_MAX_SIZE,
     private val missingFlagProbeWaitTimeoutMs: Long = MISSING_FLAG_PROBE_WAIT_TIMEOUT_MS,
 ) : PostHogFeatureFlagsInterface {
-    private val cache =
+    @Volatile
+    private var cache =
         PostHogFeatureFlagCache(
             maxSize = cacheMaxSize,
             maxAgeMs = cacheMaxAgeMs,
@@ -51,19 +52,19 @@ internal class PostHogFeatureFlags(
     private var missingFlagKeysGeneration: Long = 0
     private var remoteFlagEvidenceSequence: Long = 0
 
-    @Volatile
-    private var featureFlags: List<FlagDefinition>? = null
+    // Publish definitions and their immutable matcher together; one evaluation pass retains this snapshot.
+    private data class DefinitionSnapshot(
+        val flagsByKey: Map<String, FlagDefinition>?,
+        val groupTypeMapping: Map<String, String>?,
+        val cohorts: Map<String, PropertyGroup>?,
+        val evaluator: FlagEvaluator,
+    )
 
     @Volatile
-    private var flagDefinitions: Map<String, FlagDefinition>? = null
+    private var definitionSnapshot: DefinitionSnapshot? = null
 
-    @Volatile
-    private var cohorts: Map<String, PropertyGroup>? = null
-
-    @Volatile
-    private var groupTypeMapping: Map<String, String>? = null
-
-    private val evaluator: FlagEvaluator = FlagEvaluator(config)
+    private val flagDefinitions: Map<String, FlagDefinition>?
+        get() = definitionSnapshot?.flagsByKey
 
     @Volatile
     private var poller: LocalEvaluationPoller? = null
@@ -188,7 +189,8 @@ internal class PostHogFeatureFlags(
                 loadFeatureFlagDefinitions()
             }
 
-            val flagDef = flagDefinitions?.get(key)
+            val snapshot = definitionSnapshot
+            val flagDef = snapshot?.flagsByKey?.get(key)
             if (flagDef != null) {
                 try {
                     config.logger.log("Attempting local evaluation for flag '$key' for distinctId: $distinctId")
@@ -196,6 +198,7 @@ internal class PostHogFeatureFlags(
 
                     val result =
                         computeFlagLocally(
+                            snapshot = snapshot,
                             key = key,
                             distinctId = distinctId,
                             personProperties = props,
@@ -301,7 +304,8 @@ internal class PostHogFeatureFlags(
             loadFeatureFlagDefinitions()
         }
 
-        val currentFlagDefinitions = flagDefinitions
+        val snapshot = definitionSnapshot
+        val currentFlagDefinitions = snapshot?.flagsByKey
         if (currentFlagDefinitions == null) {
             return null
         }
@@ -320,6 +324,7 @@ internal class PostHogFeatureFlags(
             try {
                 val result =
                     computeFlagLocally(
+                        snapshot = snapshot,
                         key = key,
                         distinctId = distinctId,
                         personProperties = props,
@@ -395,6 +400,8 @@ internal class PostHogFeatureFlags(
         bypassCache: Boolean = false,
         onResponse: ((PostHogFlagsResponse) -> Unit)? = null,
     ): Map<String, FeatureFlag>? {
+        // A refresh replaces the cache; an in-flight response may only populate its original cache.
+        val responseCache = cache
         val cacheKey =
             FeatureFlagCacheKey(
                 distinctId = distinctId,
@@ -406,7 +413,7 @@ internal class PostHogFeatureFlags(
             )
 
         if (!bypassCache) {
-            val cachedFlags = cache.get(cacheKey)
+            val cachedFlags = responseCache.get(cacheKey)
             if (cachedFlags != null) {
                 return cachedFlags
             }
@@ -426,7 +433,7 @@ internal class PostHogFeatureFlags(
                     disableGeoip = disableGeoip,
                 )
             val flags = response?.flags
-            cache.put(
+            responseCache.put(
                 cacheKey,
                 flags,
                 response?.requestId,
@@ -440,23 +447,23 @@ internal class PostHogFeatureFlags(
             flags
         } catch (e: SocketTimeoutException) {
             config.logger.log("Loading remote feature flags timed out: $e")
-            cache.put(cacheKey, null, error = FeatureFlagError.TIMEOUT)
+            responseCache.put(cacheKey, null, error = FeatureFlagError.TIMEOUT)
             null
         } catch (e: ConnectException) {
             config.logger.log("Loading remote feature flags connection failed: $e")
-            cache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
+            responseCache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
             null
         } catch (e: UnknownHostException) {
             config.logger.log("Loading remote feature flags DNS lookup failed: $e")
-            cache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
+            responseCache.put(cacheKey, null, error = FeatureFlagError.CONNECTION_ERROR)
             null
         } catch (e: PostHogApiError) {
             config.logger.log("Loading remote feature flags API error: $e")
-            cache.put(cacheKey, null, error = FeatureFlagError.apiError(e.statusCode))
+            responseCache.put(cacheKey, null, error = FeatureFlagError.apiError(e.statusCode))
             null
         } catch (e: Throwable) {
             config.logger.log("Loading remote feature flags failed: $e")
-            cache.put(cacheKey, null, error = FeatureFlagError.UNKNOWN_ERROR)
+            responseCache.put(cacheKey, null, error = FeatureFlagError.UNKNOWN_ERROR)
             null
         }
     }
@@ -599,6 +606,7 @@ internal class PostHogFeatureFlags(
                 flags = apiResponse.flags,
                 groupTypeMapping = apiResponse.groupTypeMapping,
                 cohorts = apiResponse.cohorts,
+                propertyMatchingVersion = apiResponse.propertyMatchingVersion,
             )
 
             config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
@@ -651,6 +659,7 @@ internal class PostHogFeatureFlags(
                 flags = response.flags,
                 groupTypeMapping = response.groupTypeMapping,
                 cohorts = response.cohorts,
+                propertyMatchingVersion = response.propertyMatchingVersion,
             )
             config.logger.log("Loaded ${response.flags?.size ?: 0} feature flags from flag definition cache")
             notifyFeatureFlagsLoaded()
@@ -705,6 +714,7 @@ internal class PostHogFeatureFlags(
                     "flags" to (response.flags ?: emptyList<FlagDefinition>()),
                     "group_type_mapping" to (response.groupTypeMapping ?: emptyMap<String, String>()),
                     "cohorts" to (response.cohorts ?: emptyMap<String, PropertyGroup>()),
+                    "property_matching_version" to response.propertyMatchingVersion,
                 )
             val writer = StringWriter()
             config.serializer.serialize(cacheData, writer)
@@ -728,14 +738,19 @@ internal class PostHogFeatureFlags(
         flags: List<FlagDefinition>?,
         groupTypeMapping: Map<String, String>?,
         cohorts: Map<String, PropertyGroup>?,
+        propertyMatchingVersion: Int?,
     ) {
         val invalidated =
             synchronized(missingFlagKeysLock) {
                 synchronized(loadLock) {
-                    featureFlags = flags
-                    flagDefinitions = flags?.associateBy { it.key }
-                    this.cohorts = cohorts
-                    this.groupTypeMapping = groupTypeMapping
+                    definitionSnapshot =
+                        DefinitionSnapshot(
+                            flags?.associateBy { it.key },
+                            groupTypeMapping,
+                            cohorts,
+                            FlagEvaluator(config, propertyMatchingVersion),
+                        )
+                    cache = PostHogFeatureFlagCache(maxSize = cacheMaxSize, maxAgeMs = cacheMaxAgeMs)
                     definitionsLoaded = true
                     definitionsLoadedAt = System.currentTimeMillis()
                 }
@@ -855,13 +870,14 @@ internal class PostHogFeatureFlags(
      * Compute a flag locally using the evaluation engine
      */
     private fun computeFlagLocally(
+        snapshot: DefinitionSnapshot,
         key: String,
         distinctId: String,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Any? {
-        val flags = this.flagDefinitions ?: return null
+        val flags = snapshot.flagsByKey ?: return null
         val flag = flags[key] ?: return null
 
         if (!flag.active) {
@@ -874,7 +890,7 @@ internal class PostHogFeatureFlags(
         val (evaluationId, evaluationProperties) =
             if (aggregationGroupIndex != null) {
                 // Group-based flag - evaluate at group level
-                val groupTypeName = groupTypeMapping?.get(aggregationGroupIndex.toString())
+                val groupTypeName = snapshot.groupTypeMapping?.get(aggregationGroupIndex.toString())
 
                 if (groupTypeName == null) {
                     config.logger.log("Unknown group type index $aggregationGroupIndex for flag '$key'")
@@ -896,11 +912,11 @@ internal class PostHogFeatureFlags(
             }
 
         val evaluationCache = mutableMapOf<String, Any?>()
-        return evaluator.matchFeatureFlagProperties(
+        return snapshot.evaluator.matchFeatureFlagProperties(
             flag = flag,
             distinctId = evaluationId,
             properties = evaluationProperties ?: EMPTY_PROPERTIES,
-            cohortProperties = cohorts ?: EMPTY_COHORT_PROPERTIES,
+            cohortProperties = snapshot.cohorts ?: EMPTY_COHORT_PROPERTIES,
             flagsByKey = flags,
             evaluationCache = evaluationCache,
         )
