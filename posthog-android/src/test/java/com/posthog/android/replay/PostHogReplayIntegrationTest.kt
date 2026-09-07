@@ -40,10 +40,14 @@ import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
+import curtains.Curtains
 import curtains.DispatchState
+import curtains.OnRootViewsChangedListener
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.mockito.MockedStatic
+import org.mockito.Mockito.mockStatic
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
@@ -65,6 +69,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -226,6 +232,144 @@ internal class PostHogReplayIntegrationTest {
         executor: ExecutorService,
     ): PostHogReplayIntegration {
         return PostHogReplayIntegration(context, config, MainHandler(), executor)
+    }
+
+    // Robolectric resets WindowManagerGlobal between tests, but Curtains caches its old
+    // root list. Supply the actual activity explicitly rather than relying on that cache.
+    private fun mockCurtainsRoot(view: View): MockedStatic<Curtains> {
+        val mocked = mockStatic(Curtains::class.java)
+        mocked.`when`<List<View>> { Curtains.rootViews }.thenReturn(listOf(view))
+        mocked.`when`<MutableList<OnRootViewsChangedListener>> { Curtains.onRootViewsChangedListeners }
+            .thenReturn(mutableListOf())
+        return mocked
+    }
+
+    private class QueuedReplayExecutor(delegate: ExecutorService) : ExecutorService by delegate {
+        val tasks = mutableListOf<FutureTask<*>>()
+        var reject = false
+
+        override fun submit(task: Runnable): Future<*> {
+            if (reject) throw RejectedExecutionException("Test rejection")
+            return FutureTask(task, null).also { tasks.add(it) }
+        }
+    }
+
+    @Test
+    fun `draw requests are coalesced per window while capture is queued`() {
+        val executor = QueuedReplayExecutor(createReplayExecutor())
+        val tasks = executor.tasks
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        config.sessionReplayConfig.throttleDelayMs = 0
+        val sut = getSutWithExecutor(config, executor)
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val curtains = mockCurtainsRoot(controller.get().window.decorView)
+        sut.install(createPostHogFake())
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            val status = assertNotNull(sut.decorViews[controller.get().window.decorView])
+            tasks.forEach { it.run() }
+            tasks.clear()
+
+            repeat(100) { status.listener.onDraw() }
+
+            assertEquals(1, tasks.size)
+            // Coalescing must not suppress the unthrottled draw/mask callback.
+            assertTrue(status.drawState.isOnDrawnCalled)
+
+            // An early bail (stopped before execution) must release the gate too.
+            sut.stop()
+            tasks.removeAt(0).run()
+            sut.start(resumeCurrent = true)
+            status.listener.onDraw()
+            assertEquals(1, tasks.size)
+        } finally {
+            sut.uninstall()
+            curtains.close()
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `running capture blocks duplicates but not other windows`() {
+        val executor = createReplayExecutor()
+        val sut = getSutWithExecutor(PostHogAndroidConfig(API_KEY), executor)
+        val firstWindow = WindowDrawState()
+        val secondWindow = WindowDrawState()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        try {
+            assertTrue(
+                sut.submitCapture(firstWindow) {
+                    entered.countDown()
+                    assertTrue(release.await(2, TimeUnit.SECONDS))
+                },
+            )
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            repeat(100) { assertFalse(sut.submitCapture(firstWindow) { error("Duplicate capture") }) }
+            assertTrue(sut.submitCapture(secondWindow) {})
+            assertFalse(sut.submitCapture(secondWindow) {})
+        } finally {
+            release.countDown()
+            awaitReplayExecutors()
+        }
+        assertTrue(sut.submitCapture(firstWindow) {})
+        assertTrue(sut.submitCapture(secondWindow) {})
+        awaitReplayExecutors()
+    }
+
+    @Test
+    fun `capture gate releases after rejection and task failure`() {
+        val executor = QueuedReplayExecutor(createReplayExecutor())
+        val sut = getSutWithExecutor(PostHogAndroidConfig(API_KEY), executor)
+        val drawState = WindowDrawState()
+        executor.reject = true
+        assertFalse(sut.submitCapture(drawState) {})
+        executor.reject = false
+        assertTrue(sut.submitCapture(drawState) { error("Capture failed") })
+        executor.tasks.removeAt(0).run()
+        assertTrue(sut.submitCapture(drawState) {})
+        executor.tasks.removeAt(0).run()
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `bridge capture shares draw gate and reports once for accepted requests only`() {
+        val executor = QueuedReplayExecutor(createReplayExecutor())
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        config.sessionReplayConfig.throttleDelayMs = 0
+        val sut = getSutWithExecutor(config, executor)
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val curtains = mockCurtainsRoot(controller.get().window.decorView)
+        sut.install(createPostHogFake())
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            val status = assertNotNull(sut.decorViews[controller.get().window.decorView])
+            executor.tasks.forEach { it.run() }
+            executor.tasks.clear()
+            val results = mutableListOf<Boolean>()
+
+            assertTrue(sut.captureSessionReplaySnapshot(null, true, { false }) { results.add(it) })
+            assertFalse(sut.captureSessionReplaySnapshot(null, true, { true }) { error("Not scheduled") })
+            status.listener.onDraw()
+            assertEquals(1, executor.tasks.size)
+            assertTrue(results.isEmpty())
+            executor.tasks.removeAt(0).run()
+            assertEquals(listOf(false), results)
+
+            status.listener.onDraw()
+            assertFalse(sut.captureSessionReplaySnapshot(null, true, { true }) { error("Not scheduled") })
+            // Uninstalling with work queued must still let that work self-drop and release.
+            sut.uninstall()
+            executor.tasks.removeAt(0).run()
+            assertTrue(status.drawState.tryScheduleCapture())
+            status.drawState.finishScheduledCapture()
+        } finally {
+            sut.uninstall()
+            curtains.close()
+            controller.pause().stop().destroy()
+        }
     }
 
     // currentTimeMillis() on Android does a network-time lookup; count how often the touch path
@@ -1684,8 +1828,63 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
 
             assertEquals(0, fake.captures)
+            val drawState = fx.sut.decorViews[decorView]!!.drawState
+            assertTrue(drawState.tryScheduleCapture())
+            drawState.finishScheduledCapture()
         } finally {
             fx.sut.uninstall()
+        }
+    }
+
+    @Implements(PixelCopy::class)
+    class DelayedShadowPixelCopy {
+        companion object {
+            var callback: PixelCopy.OnPixelCopyFinishedListener? = null
+
+            @JvmStatic
+            @Implementation
+            fun request(
+                window: Window,
+                bitmap: Bitmap,
+                listener: PixelCopy.OnPixelCopyFinishedListener,
+                handler: Handler,
+            ) {
+                callback = listener
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DelayedShadowPixelCopy::class])
+    fun `timed out PixelCopy keeps capture gate closed until callback completes`() {
+        val (fx, fake) = screenshotFixture()
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            shadowOf(Looper.getMainLooper()).idle()
+            val window = controller.get().window
+            val decorView = window.decorView
+            makeWindowVisible(decorView)
+            val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+            fx.sut.decorViews[decorView] = status
+            assertTrue(status.drawState.tryScheduleCapture())
+
+            assertFalse(fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(window)))
+            status.drawState.finishScheduledCapture()
+            assertNotNull(DelayedShadowPixelCopy.callback)
+            assertFalse(status.drawState.tryScheduleCapture())
+            assertEquals(0, fake.captures)
+
+            // Stop/reset cannot release the gate while Android still owns the bitmap.
+            fx.sut.stop()
+            assertFalse(status.drawState.tryScheduleCapture())
+            DelayedShadowPixelCopy.callback!!.onPixelCopyFinished(PixelCopy.SUCCESS)
+            assertTrue(status.drawState.tryScheduleCapture())
+            status.drawState.finishScheduledCapture()
+            assertEquals(0, fake.captures)
+        } finally {
+            DelayedShadowPixelCopy.callback = null
+            fx.sut.uninstall()
+            controller.pause().stop().destroy()
         }
     }
 

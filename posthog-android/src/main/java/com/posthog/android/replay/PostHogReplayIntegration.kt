@@ -334,8 +334,11 @@ public class PostHogReplayIntegration(
                                             return@onNextDraw
                                         }
 
-                                        executor.submit {
+                                        submitCapture(drawState) {
                                             try {
+                                                if (decorViews[decorView]?.drawState !== drawState) {
+                                                    return@submitCapture
+                                                }
                                                 generateSnapshot(WeakReference(decorView), WeakReference(window))
                                             } catch (e: Throwable) {
                                                 config.logger.log("Session Replay generateSnapshot failed: $e.")
@@ -371,6 +374,29 @@ public class PostHogReplayIntegration(
         } catch (e: Throwable) {
             config.logger.log("Session Replay OnRootViewsChangedListener failed: $e.")
         }
+    }
+
+    // Acquire before submitting, not on the worker: a busy worker must not accumulate
+    // redundant captures. Draw-time mask verification still runs for every draw.
+    internal fun submitCapture(
+        drawState: WindowDrawState,
+        capture: () -> Unit,
+    ): Boolean {
+        if (!drawState.tryScheduleCapture()) return false
+        try {
+            executor.submit {
+                try {
+                    capture()
+                } finally {
+                    drawState.finishScheduledCapture()
+                }
+            }
+        } catch (e: Throwable) {
+            drawState.finishScheduledCapture()
+            config.logger.log("Session Replay capture submission failed: $e.")
+            return false
+        }
+        return true
     }
 
     private val onRootViewsChangedListener =
@@ -612,7 +638,8 @@ public class PostHogReplayIntegration(
      *
      * The return value only means the capture was scheduled; [onResult] fires on
      * the capture thread with whether a frame was actually delivered — callers
-     * must treat that, not the return value, as the retry signal.
+     * must treat that, not the return value, as the retry signal. Returns false without
+     * calling [onResult] if this window already has a pending/in-flight capture.
      */
     @PostHogInternalReplayApi
     public fun captureSessionReplaySnapshot(
@@ -642,13 +669,14 @@ public class PostHogReplayIntegration(
                 return false
             }
             val window = decorView.phoneWindow ?: return false
-            if (decorViews[decorView] == null) {
+            val drawState = decorViews[decorView]?.drawState
+            if (drawState == null) {
                 // Not tracked yet (onDecorViewReady pending): generateSnapshot
                 // would bail silently — report failure so the caller retries
                 // and the first-of-episode reset is not consumed.
                 return false
             }
-            executor.submit {
+            return submitCapture(drawState) {
                 // A throwing onResult would land in the catch below and fire a
                 // second time — report exactly once per scheduled capture.
                 var resultReported = false
@@ -663,12 +691,12 @@ public class PostHogReplayIntegration(
                     // the capture thread: the reset mutates snapshot status
                     // fields that are otherwise only touched here, and a
                     // stale queued capture must not emit after the episode.
-                    if (!isStillValid()) {
+                    if (!isStillValid() || decorViews[decorView]?.drawState !== drawState) {
                         // The contract promises onResult for every scheduled
                         // capture; a silent self-drop would leave the caller's
                         // in-flight tracking latched forever.
                         report(false)
-                        return@submit
+                        return@submitCapture
                     }
                     if (forceFullSnapshot) {
                         decorViews[decorView]?.let { status ->
@@ -687,7 +715,6 @@ public class PostHogReplayIntegration(
                     report(false)
                 }
             }
-            return true
         } catch (e: Throwable) {
             config.logger.log("Session Replay bridge capture failed: $e.")
             return false
@@ -1643,6 +1670,7 @@ public class PostHogReplayIntegration(
         // We use the latch itself as the synchronization mechanism (await happens-before countDown)
         var callbackCompleted = false
 
+        drawState.beginPixelCopy()
         try {
             PixelCopy.request(window, bitmap, { copyResult ->
                 try {
@@ -1662,6 +1690,7 @@ public class PostHogReplayIntegration(
                     success = false
                 } finally {
                     callbackCompleted = true
+                    drawState.finishPixelCopy()
                     latch.countDown()
                 }
             }, handler)
@@ -1669,6 +1698,7 @@ public class PostHogReplayIntegration(
             config.logger.log("Session Replay PixelCopy failed: $e.")
             success = false
             callbackCompleted = true
+            drawState.finishPixelCopy()
             latch.countDown()
         }
 
