@@ -96,6 +96,14 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public fun uninstall ()V
 }
 
+public final class com/posthog/android/replay/PostHogScreenshotColorMode : java/lang/Enum {
+	public static final field ARGB_8888 Lcom/posthog/android/replay/PostHogScreenshotColorMode;
+	public static final field RGB_565 Lcom/posthog/android/replay/PostHogScreenshotColorMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/android/replay/PostHogScreenshotColorMode;
+	public static fun values ()[Lcom/posthog/android/replay/PostHogScreenshotColorMode;
+}
+
 public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public fun <init> ()V
 	public fun <init> (Z)V
@@ -112,9 +120,11 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun getDrawableConverter ()Lcom/posthog/android/replay/PostHogDrawableConverter;
 	public final fun getMaskAllImages ()Z
 	public final fun getMaskAllTextInputs ()Z
-	public final fun getOptimizeScreenshots ()Z
 	public final fun getSampleRate ()Ljava/lang/Double;
 	public final fun getScreenshot ()Z
+	public final fun getScreenshotColorMode ()Lcom/posthog/android/replay/PostHogScreenshotColorMode;
+	public final fun getScreenshotCompressionQuality ()I
+	public final fun getScreenshotScale ()F
 	public final fun getThrottleDelayMs ()J
 	public final fun getVerifyScreenshotMaskAlignment ()Z
 	public final fun setCaptureLogcat (Z)V
@@ -122,9 +132,11 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun setDrawableConverter (Lcom/posthog/android/replay/PostHogDrawableConverter;)V
 	public final fun setMaskAllImages (Z)V
 	public final fun setMaskAllTextInputs (Z)V
-	public final fun setOptimizeScreenshots (Z)V
 	public final fun setSampleRate (Ljava/lang/Double;)V
 	public final fun setScreenshot (Z)V
+	public final fun setScreenshotColorMode (Lcom/posthog/android/replay/PostHogScreenshotColorMode;)V
+	public final fun setScreenshotCompressionQuality (I)V
+	public final fun setScreenshotScale (F)V
 	public final fun setThrottleDelayMs (J)V
 	public final fun setVerifyScreenshotMaskAlignment (Z)V
 }

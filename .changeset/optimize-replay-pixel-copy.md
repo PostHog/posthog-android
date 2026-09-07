@@ -2,4 +2,4 @@
 'posthog-android': minor
 ---
 
-Add an experimental `sessionReplayConfig.optimizeScreenshots` option to reduce screenshot overhead with a reusable bitmap at half the width and height. It defaults to `false`, preserving full-resolution ARGB_8888 capture. When enabled, RGB_565 reduces image detail and removes alpha, making transparent window regions appear black; captures are skipped while a timed-out PixelCopy still owns the reusable bitmap.
+Add experimental `sessionReplayConfig.screenshotScale`, `screenshotCompressionQuality`, and `screenshotColorMode` options. Scale is clamped to 0.1–1.0 and WebP quality to 0–100; defaults remain full resolution, quality 30, and ARGB_8888. RGB_565 can reduce bitmap memory at the cost of color precision and alpha. Screenshot destinations are reused when available, and idle destinations are released when recording stops; pending PixelCopy destinations are never reused before completion.

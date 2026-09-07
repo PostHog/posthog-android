@@ -73,17 +73,43 @@ public class PostHogSessionReplayConfig
         public var verifyScreenshotMaskAlignment: Boolean = false
 
         /**
-         * Reduces screenshot capture overhead by reusing a bitmap at half the width and height
-         * with the lower-memory RGB_565 format. This reduces image detail and removes alpha,
-         * so transparent window regions appear black. Devices that reject RGB_565 fall back
-         * to ARGB_8888. A timed-out capture holds the reusable bitmap until its callback arrives,
-         * so subsequent screenshot captures are skipped while it is still in use.
-         *
-         * Defaults to false: each capture uses a new full-resolution ARGB_8888 bitmap.
-         * Applies only to screenshot capture; wireframe capture is unchanged.
+         * WebP compression quality for screenshots, clamped to 0..100. Defaults to 30.
+         * Higher values generally retain more detail and produce larger payloads.
+         * Compression is lossy, except on Android 10 (API 29), where the platform's legacy
+         * WebP encoder uses lossless compression at quality 100.
+         * Does not change screenshot resolution or enable screenshot capture.
          */
         @PostHogExperimental
-        public var optimizeScreenshots: Boolean = false
+        @Volatile
+        public var screenshotCompressionQuality: Int = 30
+            set(value) {
+                field = value.coerceIn(0, 100)
+            }
+
+        /**
+         * Multiplier for the physical width and height of screenshot captures, clamped to 0.1..1.0.
+         * For example, 0.5 captures half the width and height, or one quarter of the pixels.
+         * Dimensions are rounded up to at least one pixel; the logical replay viewport is unchanged.
+         * Defaults to 1.0 (full resolution). NaN and infinite values reset the scale to 1.0.
+         * Does not change compression quality, color mode, or enable screenshot capture.
+         */
+        @PostHogExperimental
+        @Volatile
+        public var screenshotScale: Float = 1f
+            set(value) {
+                field = if (value.isFinite()) value.coerceIn(0.1f, 1f) else 1f
+            }
+
+        /**
+         * Pixel format used for screenshot captures. Defaults to [PostHogScreenshotColorMode.ARGB_8888]
+         * to preserve alpha and color precision before lossy WebP compression.
+         * [PostHogScreenshotColorMode.RGB_565] uses less bitmap memory but reduces color precision
+         * and removes alpha, making transparent window regions appear black. Devices that reject
+         * RGB_565 fall back to ARGB_8888. Does not enable screenshot capture.
+         */
+        @PostHogExperimental
+        @Volatile
+        public var screenshotColorMode: PostHogScreenshotColorMode = PostHogScreenshotColorMode.ARGB_8888
 
         init {
             // for keeping back compatibility
