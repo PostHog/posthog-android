@@ -94,7 +94,7 @@ public class PostHogQueue<Record>(
     }
 
     private fun removeRecordSync() {
-        if (deque.size >= spec.maxQueueSize(config)) {
+        if (deque.size > spec.maxQueueSize(config).coerceAtLeast(1)) {
             try {
                 val first: File
                 synchronized(dequeLock) {
@@ -128,8 +128,8 @@ public class PostHogQueue<Record>(
         isFatal: Boolean = false,
     ) {
         ensureCachedRecordsLoaded()
-        removeRecordSync()
         if (addRecordSync(record)) {
+            removeRecordSync()
             // this is best effort since we dont know if theres
             // enough time to flush records to the wire
             flushIfOverThreshold(isFatal)

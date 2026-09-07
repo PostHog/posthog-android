@@ -23,6 +23,7 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -59,18 +60,6 @@ internal class PostHogQueueTest {
             }
         val api = PostHogApi(config)
         return PostHogQueue(config, EndpointSpec.batch(config, api, config.storagePrefix), executor)
-    }
-
-    private fun waitUntil(
-        timeoutMillis: Long = 5_000,
-        condition: () -> Boolean,
-    ): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMillis
-        while (System.currentTimeMillis() < deadline) {
-            if (condition()) return true
-            Thread.sleep(10)
-        }
-        return condition()
     }
 
     @Test
@@ -423,7 +412,8 @@ internal class PostHogQueueTest {
         val httpClient =
             OkHttpClient.Builder()
                 .addInterceptor { chain ->
-                    if (attempts.incrementAndGet() <= failedAttempts) {
+                    val attempt = attempts.incrementAndGet()
+                    if (attempt <= failedAttempts || attempt == failedAttempts + 2) {
                         throw IOException("connection reset")
                     }
                     chain.proceed(chain.request())
@@ -459,8 +449,19 @@ internal class PostHogQueueTest {
 
             assertEquals(failedAttempts + 1, attempts.get())
             assertEquals(1, http.requestCount)
+            assertEquals(0, sut.currentRetryCountForTesting)
             assertEquals(0, sut.dequeList.size)
             assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+
+            sut.add(generateEvent("fresh"))
+            sut.flush()
+            executor.awaitExecution()
+
+            assertEquals(failedAttempts + 2, attempts.get())
+            assertEquals(1, http.requestCount)
+            assertEquals(1, sut.currentRetryCountForTesting)
+            assertEquals(1, sut.dequeList.size)
+            assertEquals(1, File(path, API_KEY).listFiles()!!.size)
         } finally {
             sut.clear()
             executor.shutdownAndAwaitTermination()
@@ -492,22 +493,30 @@ internal class PostHogQueueTest {
     }
 
     @Test
-    fun `successful in-flight batch removes exact entries after full queue replacement`() {
-        val queueExecutor = Executors.newFixedThreadPool(2, PostHogThreadFactory("ConcurrentQueueTest"))
+    fun `successful in-flight batch removes exact entries after identical full queue replacement`() {
+        assertInFlightReplacementPreserved(200)
+    }
+
+    @Test
+    fun `terminal in-flight batch removes exact entries after identical full queue replacement`() {
+        assertInFlightReplacementPreserved(400)
+    }
+
+    private fun assertInFlightReplacementPreserved(status: Int) {
+        // SDK callers serialize sends and enqueues. This stress harness permits replacement
+        // during transport to verify acknowledgement independently of executor ordering.
+        val queueExecutor = Executors.newFixedThreadPool(1, PostHogThreadFactory("ConcurrentQueueTest")) as ThreadPoolExecutor
         val path = tmpDir.newFolder().absolutePath
         val config =
             PostHogConfig(API_KEY).apply {
                 storagePrefix = path
-                maxQueueSize = 2
-                maxBatchSize = 2
+                maxQueueSize = 3
+                maxBatchSize = 3
                 flushAt = 100
             }
-        val initialRecordsWritten = CountDownLatch(2)
-        val replacementWritten = CountDownLatch(1)
         val sendStarted = CountDownLatch(1)
         val releaseSend = CountDownLatch(1)
-        val sendAttempts = AtomicInteger()
-        val sentRecords = Collections.synchronizedList(mutableListOf<String>())
+        val sentRecords = Collections.synchronizedList(mutableListOf<List<String>>())
         val spec =
             EndpointSpec(
                 recordsLabel = "records",
@@ -516,54 +525,53 @@ internal class PostHogQueueTest {
                 initialFlushAt = { it.flushAt },
                 maxQueueSize = { it.maxQueueSize },
                 flushIntervalSeconds = { it.flushIntervalSeconds },
-                encode = { record, stream ->
-                    stream.write(record.toByteArray())
-                    if (record == "replacement") {
-                        replacementWritten.countDown()
-                    } else {
-                        initialRecordsWritten.countDown()
-                    }
-                },
+                encode = { record, stream -> stream.write(record.toByteArray()) },
                 decode = { stream -> String(stream.readBytes()) },
                 describe = { it },
                 send = { records ->
-                    if (sendAttempts.incrementAndGet() == 1) {
-                        sentRecords.addAll(records)
+                    sentRecords.add(records)
+                    if (sentRecords.size == 1) {
                         sendStarted.countDown()
                         check(releaseSend.await(5, TimeUnit.SECONDS))
+                        if (status == 400) throw PostHogApiError(status, "terminal", null)
                     } else {
-                        throw IOException("retain replacement after its later send attempt")
+                        throw IOException("retain replacements after their later send attempt")
                     }
                 },
-                isRetriableStatusCode = { false },
+                isRetriableStatusCode = ::isEventsRetriableStatusCode,
             )
         val sut = PostHogQueue(config, spec, queueExecutor)
 
         try {
-            sut.add("first")
-            sut.add("second")
-            assertTrue(initialRecordsWritten.await(5, TimeUnit.SECONDS))
+            repeat(3) {
+                sut.add("same")
+                queueExecutor.awaitExecution()
+            }
             val initialFiles = sut.dequeList.toSet()
-            assertEquals(2, initialFiles.size)
+            assertEquals(3, initialFiles.size)
+            queueExecutor.maximumPoolSize = 2
+            queueExecutor.corePoolSize = 2
 
             sut.flush()
             assertTrue(sendStarted.await(5, TimeUnit.SECONDS))
 
-            sut.add("replacement")
-            assertTrue(replacementWritten.await(5, TimeUnit.SECONDS))
-            val replacementFile = sut.dequeList.single { it !in initialFiles }
+            repeat(3) {
+                sut.add("same")
+                queueExecutor.awaitExecution()
+            }
+            val replacementFiles = sut.dequeList
+            assertEquals(3, replacementFiles.size)
+            assertTrue(replacementFiles.none { it in initialFiles })
+            assertTrue(initialFiles.none { it.exists() })
 
             releaseSend.countDown()
-            assertTrue {
-                waitUntil {
-                    sut.currentRetryCountForTesting == 1 && sut.dequeList == listOf(replacementFile)
-                }
-            }
+            queueExecutor.shutdownAndAwaitTermination()
 
-            assertEquals(2, sendAttempts.get())
-            assertEquals(setOf("first", "second"), sentRecords.toSet())
-            assertEquals("replacement", replacementFile.readText())
-            assertTrue(replacementFile.exists())
+            assertEquals(List(2) { List(3) { "same" } }, sentRecords)
+            assertEquals(1, sut.currentRetryCountForTesting)
+            assertEquals(replacementFiles, sut.dequeList)
+            assertEquals(List(3) { "same" }, replacementFiles.map { it.readText() })
+            assertEquals(replacementFiles.toSet(), File(path, API_KEY).listFiles()!!.toSet())
         } finally {
             releaseSend.countDown()
             sut.clear()
