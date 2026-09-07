@@ -48,6 +48,7 @@ class StatefulClient(
     private val completion: ReloadCompletion,
 ) : SdkClient {
     private val groups = mutableMapOf<String, String>()
+    private var identified = false
 
     override fun capture(request: CaptureRequest) {
         observer.track {
@@ -61,6 +62,9 @@ class StatefulClient(
     }
 
     override fun flag(request: FlagRequest): Any? {
+        require(!identified || request.distinct_id == null || request.distinct_id == sdk.distinctId()) {
+            "Changing an identified user requires reset/init before evaluating flags for another user"
+        }
         request.person_properties?.let { sdk.setPersonPropertiesForFlags(it, reloadFeatureFlags = false) }
         request.group_properties?.forEach { (type, properties) ->
             sdk.setGroupPropertiesForFlags(type, properties, reloadFeatureFlags = false)
@@ -81,7 +85,10 @@ class StatefulClient(
         }
         request.distinct_id?.let { distinctId ->
             if (sdk.distinctId() != distinctId) {
-                completion.await { observer.track { sdk.identify(distinctId) } }
+                completion.await {
+                    observer.track { sdk.identify(distinctId) }
+                    identified = sdk.distinctId() == distinctId
+                }
                 reloaded = true
             }
         }

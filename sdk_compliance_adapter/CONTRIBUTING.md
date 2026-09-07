@@ -52,6 +52,8 @@ Person/group properties use public setters. Identity and groups use public
 `identify`/`group`, retaining their SDK-owned events and reloads. The adapter awaits
 those reload callbacks; otherwise it explicitly reloads and reads the public cached
 getter. No controller parses flag responses or manufactures called-events.
+Once identified, changing to another user requires adapter reset/init; unsupported
+identity transitions are rejected before changing SDK state or waiting for a reload.
 Multi-group actions can cause multiple SDK requests. Singleton flag-key scope,
 per-call GeoIP overrides and compound person-property assertions are deferred
 stateful/server-contract differences, but remain selected and visible in reports.

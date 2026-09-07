@@ -17,6 +17,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -110,4 +111,19 @@ class ComplianceAdapterTest {
     @Test fun coreReloadUsesSdkResultAndCalledEvent() = flags(CoreProfile)
 
     @Test fun serverSnapshotUsesSdkResultAndCalledEvent() = flags(ServerProfile)
+
+    @Test(timeout = 10_000)
+    fun coreRejectsChangingAnIdentifiedFlagUserWithoutReloading() =
+        withAdapter(CoreProfile) { mock ->
+            action("get_feature_flag", """{"key":"test-flag","distinct_id":"user-a"}""")
+            val requestsBefore = mock.requestCount
+            val error =
+                assertFailsWith<IllegalStateException> {
+                    action("get_feature_flag", """{"key":"test-flag","distinct_id":"user-b"}""")
+                }
+            assertTrue(error.message.orEmpty().contains("requires reset/init"))
+            assertEquals(requestsBefore, mock.requestCount)
+            val result = action("get_feature_flag", """{"key":"test-flag","distinct_id":"user-a"}""")
+            assertEquals("variant-a", result["value"].asString)
+        }
 }
