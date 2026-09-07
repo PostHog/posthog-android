@@ -53,6 +53,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
+import org.robolectric.annotation.LooperMode
 import org.robolectric.shadows.ShadowLegacyBitmap
 import org.robolectric.shadows.ShadowPixelCopy
 import org.robolectric.util.ReflectionHelpers
@@ -313,6 +314,34 @@ internal class PostHogReplayIntegrationTest {
             sut.onSessionIdChanged()
             shadowOf(Looper.getMainLooper()).idle()
 
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
+    fun `queued session rotation respects newly loaded event triggers`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            assertFalse(sut.isActive())
+
+            // Config resolves after the restart is queued but before it runs on main.
+            whenever(config.remoteConfigHolder!!.getEventTriggers()).thenReturn(setOf("checkout_started"))
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive(), "Queued restart must wait for the newly configured trigger")
+
+            sut.onEvent("checkout_started", null)
+            shadowOf(Looper.getMainLooper()).idle()
             assertTrue(sut.isActive())
         } finally {
             sut.uninstall()

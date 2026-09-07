@@ -2258,6 +2258,11 @@ public class PostHogReplayIntegration(
             startedWithAutomaticDisabled = true
         }
 
+        startRecording(resumeCurrent)
+    }
+
+    private fun startRecording(resumeCurrent: Boolean) {
+        // Event triggers may change while an automatic start is queued on main.
         if (shouldWaitForEventTriggers()) {
             val triggers = config.remoteConfigHolder?.getEventTriggers()
             config.logger.log(
@@ -2266,10 +2271,6 @@ public class PostHogReplayIntegration(
             return
         }
 
-        startRecording(resumeCurrent)
-    }
-
-    private fun startRecording(resumeCurrent: Boolean) {
         val currentSessionId = postHog?.getSessionId()?.toString()
         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
