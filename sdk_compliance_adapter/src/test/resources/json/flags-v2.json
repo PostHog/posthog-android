@@ -1,0 +1,12 @@
+{
+  "featureFlags": {"test-flag": "variant-a"},
+  "flags": {
+    "test-flag": {
+      "key": "test-flag",
+      "enabled": true,
+      "variant": "variant-a",
+      "metadata": {"id": 1, "version": 1, "payload": null},
+      "reason": {"kind": "condition_match", "condition_index": 0}
+    }
+  }
+}
