@@ -1,5 +1,11 @@
 ## Next
 
+## 3.61.2
+
+### Patch Changes
+
+- 456f790: Skip redundant session replay captures while a window has a queued capture or unfinished PixelCopy callback.
+
 ## 3.61.1
 
 ### Patch Changes
