@@ -24,4 +24,11 @@ public interface PostHogSessionReplayHandler {
      * Used to stop recording if event triggers are configured and the new session hasn't been activated.
      */
     public fun onSessionIdChanged()
+
+    /**
+     * Called when [com.posthog.PostHogConfig.sessionReplay] is written after setup.
+     * Used to re-evaluate recording against the master switch right away, instead of waiting
+     * for the next session rotation or remote config delivery.
+     */
+    public fun onSessionReplayConfigChanged() {}
 }

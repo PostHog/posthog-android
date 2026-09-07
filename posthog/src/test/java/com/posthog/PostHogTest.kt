@@ -2618,6 +2618,42 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `writing sessionReplay after setup asks the replay handler to re-evaluate`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, integration = integration)
+
+        config.sessionReplay = true
+
+        assertTrue(integration.onSessionReplayConfigChangedCalled)
+
+        integration.reset()
+        config.sessionReplay = false
+
+        assertTrue(integration.onSessionReplayConfigChangedCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `writing the same sessionReplay value does not ask the replay handler to re-evaluate`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, integration = integration)
+
+        integration.reset()
+        config.sessionReplay = false
+
+        assertFalse(integration.onSessionReplayConfigChangedCalled)
+
+        sut.close()
+    }
+
+    @Test
     fun `send feature flag called when session starts`() {
         val file = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json")
         val responseFlagsApi = file.readText()

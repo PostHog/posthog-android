@@ -312,6 +312,14 @@ public class PostHog private constructor(
                 isOptedOut()
                 pushSubscriptionManager?.retryPending()
 
+                config.onSessionReplayChanged = {
+                    try {
+                        sessionReplayHandler?.onSessionReplayConfigChanged()
+                    } catch (e: Throwable) {
+                        config.logger.log("onSessionReplayChanged listener failed: $e.")
+                    }
+                }
+
                 PostHogSessionManager.setOnSessionIdChangedListener {
                     try {
                         sessionReplayHandler?.onSessionIdChanged()
@@ -517,6 +525,7 @@ public class PostHog private constructor(
 
                 config?.let { config ->
                     apiKeys.remove(config.apiKey)
+                    config.onSessionReplayChanged = null
 
                     config.integrations.forEach {
                         try {
