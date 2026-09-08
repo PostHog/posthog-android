@@ -13,6 +13,9 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Test
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
@@ -111,6 +114,54 @@ class ComplianceAdapterTest {
     @Test fun coreReloadUsesSdkResultAndCalledEvent() = flags(CoreProfile)
 
     @Test fun serverSnapshotUsesSdkResultAndCalledEvent() = flags(ServerProfile)
+
+    private fun ingressPreserves503WithoutFollowUp(method: String) {
+        lateinit var ingress: String
+        val profile =
+            object : SdkProfile by CoreProfile {
+                override fun create(
+                    request: InitRequest,
+                    storage: File,
+                    observer: Observation,
+                ): SdkClient {
+                    ingress = request.host
+                    return CoreProfile.create(request, storage, observer)
+                }
+            }
+        withAdapter(profile) { mock ->
+            mock.dispatcher =
+                object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse =
+                        MockResponse().setResponseCode(503).setHeader("Retry-After", "0")
+                            .setHeader("X-Upstream", "unchanged").setBody("upstream unavailable")
+                }
+            val before = mock.requestCount
+            val connection = URL("$ingress/probe").openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = method
+                connection.instanceFollowRedirects = false
+                connection.readTimeout = 5000
+                if (method == "POST") {
+                    connection.doOutput = true
+                    connection.outputStream.use { it.write("original request".toByteArray()) }
+                }
+                assertEquals(503, connection.responseCode)
+                assertEquals("0", connection.getHeaderField("Retry-After"))
+                assertEquals("unchanged", connection.getHeaderField("X-Upstream"))
+                assertEquals("upstream unavailable", connection.errorStream.reader().readText())
+                assertEquals(before + 1, mock.requestCount)
+                val request = mock.takeRequest(5, TimeUnit.SECONDS)!!
+                assertEquals(method, request.method)
+                assertEquals(if (method == "POST") "original request" else "", request.body.readUtf8())
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }
+
+    @Test fun ingressDoesNotRetry503Post() = ingressPreserves503WithoutFollowUp("POST")
+
+    @Test fun ingressDoesNotRetry503BodylessGet() = ingressPreserves503WithoutFollowUp("GET")
 
     @Test(timeout = 10_000)
     fun coreRejectsChangingAnIdentifiedFlagUserWithoutReloading() =

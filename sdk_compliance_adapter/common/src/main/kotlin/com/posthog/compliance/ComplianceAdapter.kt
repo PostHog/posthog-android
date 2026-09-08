@@ -24,7 +24,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
@@ -204,7 +203,7 @@ fun Application.complianceRoutes(
     val actions = Mutex()
     val sessions = ConcurrentHashMap<String, Session>()
     var active: Session? = null
-    val proxy = OkHttpClient.Builder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).build()
+    val proxy = passiveProxyClient()
     val hopHeaders = setOf("host", "connection", "content-length", "transfer-encoding", "keep-alive", "upgrade", "proxy-connection")
 
     routing {
