@@ -1660,9 +1660,12 @@ public final class com/posthog/surveys/OpenSurveyQuestion : com/posthog/surveys/
 
 public final class com/posthog/surveys/PostHogDisplayChoiceQuestion : com/posthog/surveys/PostHogDisplaySurveyQuestion {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Ljava/util/List;ZZZ)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Ljava/util/List;ZZZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Ljava/util/List;ZZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getChoices ()Ljava/util/List;
 	public final fun getHasOpenChoice ()Z
 	public final fun getShuffleOptions ()Z
+	public final fun getSkipSubmitButton ()Z
 	public final fun isMultipleChoice ()Z
 }
 
@@ -1677,10 +1680,13 @@ public final class com/posthog/surveys/PostHogDisplayOpenQuestion : com/posthog/
 
 public final class com/posthog/surveys/PostHogDisplayRatingQuestion : com/posthog/surveys/PostHogDisplaySurveyQuestion {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;IILjava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;IILjava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyTextContentType;ZLjava/lang/String;Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;IILjava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getLowerBoundLabel ()Ljava/lang/String;
 	public final fun getRatingType ()Lcom/posthog/surveys/PostHogDisplaySurveyRatingType;
 	public final fun getScaleLowerBound ()I
 	public final fun getScaleUpperBound ()I
+	public final fun getSkipSubmitButton ()Z
 	public final fun getUpperBoundLabel ()Ljava/lang/String;
 }
 
@@ -2157,6 +2163,7 @@ public class com/posthog/surveys/SurveyQuestion {
 	public final fun getId ()Ljava/lang/String;
 	public final fun getOptional ()Ljava/lang/Boolean;
 	public final fun getQuestion ()Ljava/lang/String;
+	public final fun getSkipSubmitButton ()Ljava/lang/Boolean;
 	public final fun getTranslations ()Ljava/util/Map;
 	public final fun getType ()Lcom/posthog/surveys/SurveyQuestionType;
 }

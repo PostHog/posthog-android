@@ -92,6 +92,7 @@ public open class PostHogDisplaySurveyQuestion(
                             questionDescriptionContentType = contentType,
                             isOptional = isOptional,
                             buttonText = buttonText,
+                            skipSubmitButton = question.skipSubmitButton == true,
                             ratingType = ratingType,
                             scaleLowerBound = scaleLower,
                             scaleUpperBound = scaleUpper,
@@ -106,6 +107,7 @@ public open class PostHogDisplaySurveyQuestion(
                             questionDescriptionContentType = contentType,
                             isOptional = isOptional,
                             buttonText = buttonText,
+                            skipSubmitButton = question.skipSubmitButton == true,
                             ratingType = PostHogDisplaySurveyRatingType.NUMBER,
                             scaleLowerBound = 1,
                             scaleUpperBound = 5,
@@ -128,6 +130,7 @@ public open class PostHogDisplaySurveyQuestion(
                         choices = choices,
                         hasOpenChoice = single?.hasOpenChoice ?: false,
                         shuffleOptions = single?.shuffleOptions ?: false,
+                        skipSubmitButton = question.skipSubmitButton == true,
                         isMultipleChoice = false,
                     )
                 }
@@ -145,6 +148,7 @@ public open class PostHogDisplaySurveyQuestion(
                         choices = choices,
                         hasOpenChoice = multiple?.hasOpenChoice ?: false,
                         shuffleOptions = multiple?.shuffleOptions ?: false,
+                        skipSubmitButton = question.skipSubmitButton == true,
                         isMultipleChoice = true,
                     )
                 }
@@ -204,27 +208,31 @@ public class PostHogDisplayLinkQuestion(
  * @property scaleUpperBound The upper bound of the rating scale
  * @property lowerBoundLabel The label for the lower bound of the rating scale
  * @property upperBoundLabel The label for the upper bound of the rating scale
+ * @property skipSubmitButton Whether selecting a rating submits without an extra submit tap
  */
-public class PostHogDisplayRatingQuestion(
-    id: String,
-    question: String,
-    questionDescription: String?,
-    questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
-    isOptional: Boolean,
-    buttonText: String?,
-    public val ratingType: PostHogDisplaySurveyRatingType,
-    public val scaleLowerBound: Int,
-    public val scaleUpperBound: Int,
-    public val lowerBoundLabel: String,
-    public val upperBoundLabel: String,
-) : PostHogDisplaySurveyQuestion(
-        id = id,
-        question = question,
-        questionDescription = questionDescription,
-        questionDescriptionContentType = questionDescriptionContentType,
-        isOptional = isOptional,
-        buttonText = buttonText,
-    )
+public class PostHogDisplayRatingQuestion
+    @JvmOverloads
+    constructor(
+        id: String,
+        question: String,
+        questionDescription: String?,
+        questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
+        isOptional: Boolean,
+        buttonText: String?,
+        public val ratingType: PostHogDisplaySurveyRatingType,
+        public val scaleLowerBound: Int,
+        public val scaleUpperBound: Int,
+        public val lowerBoundLabel: String,
+        public val upperBoundLabel: String,
+        public val skipSubmitButton: Boolean = false,
+    ) : PostHogDisplaySurveyQuestion(
+            id = id,
+            question = question,
+            questionDescription = questionDescription,
+            questionDescriptionContentType = questionDescriptionContentType,
+            isOptional = isOptional,
+            buttonText = buttonText,
+        )
 
 /**
  * Represents a question where users can select one or more choices
@@ -233,23 +241,27 @@ public class PostHogDisplayRatingQuestion(
  * @property hasOpenChoice Whether the question includes an "other" option for users to input free-form text
  * @property shuffleOptions Whether the options should be shuffled when presented
  * @property isMultipleChoice Whether the user can select multiple options
+ * @property skipSubmitButton Whether to auto-submit single choices without an open-ended option
  */
-public class PostHogDisplayChoiceQuestion(
-    id: String,
-    question: String,
-    questionDescription: String?,
-    questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
-    isOptional: Boolean,
-    buttonText: String?,
-    public val choices: List<String>,
-    public val hasOpenChoice: Boolean,
-    public val shuffleOptions: Boolean,
-    public val isMultipleChoice: Boolean,
-) : PostHogDisplaySurveyQuestion(
-        id = id,
-        question = question,
-        questionDescription = questionDescription,
-        questionDescriptionContentType = questionDescriptionContentType,
-        isOptional = isOptional,
-        buttonText = buttonText,
-    )
+public class PostHogDisplayChoiceQuestion
+    @JvmOverloads
+    constructor(
+        id: String,
+        question: String,
+        questionDescription: String?,
+        questionDescriptionContentType: PostHogDisplaySurveyTextContentType,
+        isOptional: Boolean,
+        buttonText: String?,
+        public val choices: List<String>,
+        public val hasOpenChoice: Boolean,
+        public val shuffleOptions: Boolean,
+        public val isMultipleChoice: Boolean,
+        public val skipSubmitButton: Boolean = false,
+    ) : PostHogDisplaySurveyQuestion(
+            id = id,
+            question = question,
+            questionDescription = questionDescription,
+            questionDescriptionContentType = questionDescriptionContentType,
+            isOptional = isOptional,
+            buttonText = buttonText,
+        )
