@@ -2,6 +2,7 @@ package com.posthog.compliance
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import com.google.gson.ToNumberPolicy
 import com.posthog.PostHogBeforeSend
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -199,7 +200,7 @@ fun Application.complianceRoutes(
     storageRoot: File,
 ) {
     install(IgnoreTrailingSlash)
-    val gson = Gson().newBuilder().serializeNulls().create()
+    val gson = Gson().newBuilder().setObjectToNumberStrategy(ToNumberPolicy.LONG_OR_DOUBLE).serializeNulls().create()
     val actions = Mutex()
     val sessions = ConcurrentHashMap<String, Session>()
     var active: Session? = null

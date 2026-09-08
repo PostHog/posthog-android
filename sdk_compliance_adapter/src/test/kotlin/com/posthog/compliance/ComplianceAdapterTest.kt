@@ -115,7 +115,25 @@ class ComplianceAdapterTest {
 
     @Test fun serverSnapshotUsesSdkResultAndCalledEvent() = flags(ServerProfile)
 
-    private fun ingressPreserves503WithoutFollowUp(method: String) {
+    @Test
+    fun capturePreservesLargeIntegerPropertiesOnTheWire() =
+        withAdapter(CoreProfile) { mock ->
+            action("capture", fixture("capture-large-integers.json"))
+            action("flush")
+            val request = mock.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("/batch", request.path)
+            val body = GZIPInputStream(request.body.inputStream()).reader().readText()
+            val event = JsonParser.parseString(body).asJsonObject["batch"].asJsonArray.single().asJsonObject
+            assertEquals("large-integer-properties", event["event"].asString)
+            val properties = event["properties"].asJsonObject
+            assertEquals(9007199254740993L, properties["exact"].asLong)
+            assertEquals(9007199254740993L, properties["nested"].asJsonObject["exact"].asLong)
+        }
+
+    private fun ingressPreservesResponse(
+        method: String,
+        status: Int = 503,
+    ) {
         lateinit var ingress: String
         val profile =
             object : SdkProfile by CoreProfile {
@@ -132,8 +150,14 @@ class ComplianceAdapterTest {
             mock.dispatcher =
                 object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse =
-                        MockResponse().setResponseCode(503).setHeader("Retry-After", "0")
-                            .setHeader("X-Upstream", "unchanged").setBody("upstream unavailable")
+                        MockResponse().setResponseCode(status).setHeader("X-Upstream", "unchanged").apply {
+                            if (status == 503) {
+                                setHeader("Retry-After", "0").setBody("upstream unavailable")
+                            } else {
+                                setHeader("Content-Encoding", "gzip").removeHeader("Content-Length")
+                                setHeader("Connection", "close")
+                            }
+                        }
                 }
             val before = mock.requestCount
             val connection = URL("$ingress/probe").openConnection() as HttpURLConnection
@@ -145,10 +169,15 @@ class ComplianceAdapterTest {
                     connection.doOutput = true
                     connection.outputStream.use { it.write("original request".toByteArray()) }
                 }
-                assertEquals(503, connection.responseCode)
-                assertEquals("0", connection.getHeaderField("Retry-After"))
+                assertEquals(status, connection.responseCode)
                 assertEquals("unchanged", connection.getHeaderField("X-Upstream"))
-                assertEquals("upstream unavailable", connection.errorStream.reader().readText())
+                if (status == 503) {
+                    assertEquals("0", connection.getHeaderField("Retry-After"))
+                    assertEquals("upstream unavailable", connection.errorStream.reader().readText())
+                } else {
+                    assertEquals("gzip", connection.getHeaderField("Content-Encoding"))
+                    assertEquals("", connection.inputStream.reader().readText())
+                }
                 assertEquals(before + 1, mock.requestCount)
                 val request = mock.takeRequest(5, TimeUnit.SECONDS)!!
                 assertEquals(method, request.method)
@@ -159,9 +188,13 @@ class ComplianceAdapterTest {
         }
     }
 
-    @Test fun ingressDoesNotRetry503Post() = ingressPreserves503WithoutFollowUp("POST")
+    @Test fun ingressDoesNotRetry503Post() = ingressPreservesResponse("POST")
 
-    @Test fun ingressDoesNotRetry503BodylessGet() = ingressPreserves503WithoutFollowUp("GET")
+    @Test fun ingressDoesNotRetry503BodylessGet() = ingressPreservesResponse("GET")
+
+    @Test fun ingressPreservesBodyless304WithGzipMetadata() = ingressPreservesResponse("GET", 304)
+
+    @Test fun ingressPreservesBodyless204WithGzipMetadata() = ingressPreservesResponse("GET", 204)
 
     @Test(timeout = 10_000)
     fun coreRejectsChangingAnIdentifiedFlagUserWithoutReloading() =

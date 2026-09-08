@@ -21,6 +21,6 @@ internal fun passiveProxyClient(): OkHttpClient =
             // OkHttp's 503/Retry-After: 0 follow-up ignores retryOnConnectionFailure(false),
             // including for bodyless requests. Hide the status only from its follow-up layer;
             // the application interceptor restores it before forwarding or observation.
-            response.newBuilder().code(200).build()
+            if (response.code == 503) response.newBuilder().code(200).build() else response
         }
         .build()
