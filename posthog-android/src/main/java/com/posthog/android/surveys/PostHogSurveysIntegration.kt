@@ -34,6 +34,7 @@ import com.posthog.surveys.SurveyQuestionTranslation
 import com.posthog.surveys.SurveyType
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 public class PostHogSurveysIntegration(
     context: Context,
@@ -309,14 +310,13 @@ public class PostHogSurveysIntegration(
 
         val displayLanguage = resolveDisplayLanguage()
         val translations = resolveSurveyTranslations(survey, displayLanguage)
-        val resolvedLanguage = translations.matchedKey
-        val resolvedQuestionTranslations = translations.questions
+        val responseContext = SurveyResponseContext(survey, translations.matchedKey, translations.questions)
 
         val displaySurvey =
             PostHogDisplaySurvey.toDisplaySurvey(
                 survey,
                 surveyTranslation = translations.survey,
-                questionTranslations = resolvedQuestionTranslations,
+                questionTranslations = responseContext.questionTranslations,
             )
 
         // Store the original survey for branching logic
@@ -336,7 +336,7 @@ public class PostHogSurveysIntegration(
                 }
 
                 // Send survey shown event
-                sendSurveyShownEvent(originalSurvey, resolvedLanguage)
+                sendSurveyShownEvent(originalSurvey, responseContext.language)
 
                 // Clear up event-activated surveys if this survey has events
                 if (hasEvents(originalSurvey)) {
@@ -372,12 +372,12 @@ public class PostHogSurveysIntegration(
                 activeSurveyCompleted = nextQuestion.isSurveyCompleted
 
                 // Send completion event if survey is finished
-                if (activeSurveyCompleted) {
+                if (shouldSendResponse(originalSurvey, activeSurveyCompleted)) {
                     responsesToSend = currentSurveyResponses.toMap()
                 }
             }
 
-            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it, resolvedLanguage, resolvedQuestionTranslations) }
+            responsesToSend?.let { sendSurveySentEvent(responseContext, it, nextQuestion.isSurveyCompleted) }
 
             nextQuestion
         }
@@ -405,7 +405,7 @@ public class PostHogSurveysIntegration(
 
             // Send survey dismissed event if survey was not completed
             if (!wasSurveyCompleted) {
-                sendSurveyDismissedEvent(originalSurvey, surveyResponses, resolvedLanguage, resolvedQuestionTranslations)
+                sendSurveyDismissedEvent(responseContext, surveyResponses)
             }
 
             // Mark survey as seen
@@ -721,6 +721,18 @@ public class PostHogSurveysIntegration(
         }
     }
 
+    private data class SurveyResponseContext(
+        val survey: Survey,
+        val language: String?,
+        val questionTranslations: List<SurveyQuestionTranslation?>?,
+        val submissionId: String = UUID.randomUUID().toString(),
+    )
+
+    private fun shouldSendResponse(
+        survey: Survey,
+        isCompleted: Boolean,
+    ): Boolean = survey.enablePartialResponses == true || isCompleted
+
     // Survey Event Methods
 
     /**
@@ -740,29 +752,31 @@ public class PostHogSurveysIntegration(
     /**
      * Sends a "survey sent" event to PostHog instance
      * Sends a survey completion event to PostHog with all collected responses
-     * @param survey The completed survey
+     * @param context The survey submission and display language
      * @param responses Map of collected responses for each question
      */
     private fun sendSurveySentEvent(
-        survey: Survey,
+        context: SurveyResponseContext,
         responses: Map<String, PostHogSurveyResponse>,
-        language: String?,
-        questionTranslations: List<SurveyQuestionTranslation?>?,
+        isCompleted: Boolean,
     ) {
         val additionalProperties =
-            buildSurveyResponseProperties(survey, responses, questionTranslations) +
+            buildSurveyResponseProperties(context.survey, responses, context.questionTranslations) +
                 mapOf(
+                    "\$survey_submission_id" to context.submissionId,
+                    "\$survey_completed" to isCompleted,
                     "\$set" to
                         mapOf(
-                            getSurveyInteractionProperty(survey, "responded") to true,
+                            getSurveyInteractionProperty(context.survey, "responded") to true,
                         ),
                 )
 
+        setSurveySeen(context.survey)
         sendSurveyEvent(
             event = "survey sent",
-            survey = survey,
+            survey = context.survey,
             additionalProperties = additionalProperties,
-            language = language,
+            language = context.language,
         )
     }
 
@@ -770,26 +784,25 @@ public class PostHogSurveysIntegration(
      * Sends a "survey dismissed" event to PostHog instance
      */
     private fun sendSurveyDismissedEvent(
-        survey: Survey,
+        context: SurveyResponseContext,
         responses: Map<String, PostHogSurveyResponse>,
-        language: String?,
-        questionTranslations: List<SurveyQuestionTranslation?>?,
     ) {
         val additionalProperties =
-            buildSurveyResponseProperties(survey, responses, questionTranslations) +
+            buildSurveyResponseProperties(context.survey, responses, context.questionTranslations) +
                 mapOf(
+                    "\$survey_submission_id" to context.submissionId,
                     "\$survey_partially_completed" to surveyHasResponses(responses),
                     "\$set" to
                         mapOf(
-                            getSurveyInteractionProperty(survey, "dismissed") to true,
+                            getSurveyInteractionProperty(context.survey, "dismissed") to true,
                         ),
                 )
 
         sendSurveyEvent(
             event = "survey dismissed",
-            survey = survey,
+            survey = context.survey,
             additionalProperties = additionalProperties,
-            language = language,
+            language = context.language,
         )
     }
 

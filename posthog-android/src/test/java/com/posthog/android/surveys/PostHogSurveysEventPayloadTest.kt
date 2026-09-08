@@ -111,6 +111,119 @@ internal class PostHogSurveysEventPayloadTest {
         )
     }
 
+    private fun partialResponseSurvey(
+        enabled: Boolean?,
+        endAfterFirst: Boolean = false,
+    ): Survey {
+        val questions =
+            listOf(
+                mapOf(
+                    "id" to "first",
+                    "type" to "open",
+                    "question" to "First?",
+                    "optional" to true,
+                    "branching" to if (endAfterFirst) mapOf("type" to "end") else null,
+                ),
+                mapOf("id" to "second", "type" to "open", "question" to "Second?"),
+            )
+        return assertNotNull(
+            serializer.deserializeList<Survey>(
+                listOf(
+                    mapOf(
+                        "id" to "partial-survey",
+                        "name" to "Partial survey",
+                        "type" to "popover",
+                        "questions" to questions,
+                        "enable_partial_responses" to enabled,
+                    ),
+                ),
+            )?.firstOrNull(),
+        )
+    }
+
+    @Test
+    fun `partial responses emit cumulative answers with one submission id`() {
+        for (enabled in listOf(true, false, null)) {
+            val delegate = RecordingDelegate()
+            val (integration, postHog) = createIntegration(delegate)
+            try {
+                integration.showSurvey(partialResponseSurvey(enabled))
+                val survey = assertNotNull(delegate.shownSurvey)
+                assertNotNull(delegate.onSurveyShown).invoke(survey)
+                val respond = assertNotNull(delegate.onSurveyResponse)
+                val first = assertNotNull(respond(survey, 0, PostHogSurveyResponse.Text("First answer")))
+                assertEquals(false, first.isSurveyCompleted)
+                assertEquals(if (enabled == true) 2 else 1, postHog.captures)
+                val partial = postHog.properties
+                if (enabled == true) {
+                    assertEquals("survey sent", postHog.event)
+                    assertEquals(false, partial?.get("\$survey_completed"))
+                    assertEquals("First answer", partial?.get("\$survey_response_first"))
+                    assertNull(partial?.get("\$survey_response_second"))
+                }
+                respond(survey, 1, PostHogSurveyResponse.Text("Second answer"))
+                assertEquals(if (enabled == true) 3 else 2, postHog.captures)
+                assertEquals("survey sent", postHog.event)
+                val completed = assertNotNull(postHog.properties)
+                assertEquals(true, completed["\$survey_completed"])
+                assertEquals("First answer", completed["\$survey_response_first"])
+                assertEquals("Second answer", completed["\$survey_response_second"])
+                val submissionId = assertNotNull(completed["\$survey_submission_id"] as? String)
+                java.util.UUID.fromString(submissionId)
+                if (enabled == true) assertEquals(submissionId, partial?.get("\$survey_submission_id"))
+                assertNotNull(delegate.onSurveyClosed).invoke(survey)
+                assertEquals(if (enabled == true) 3 else 2, postHog.captures)
+            } finally {
+                integration.uninstall()
+            }
+        }
+    }
+
+    @Test
+    fun `dismissal keeps submission id and a new attempt gets a new id`() {
+        val delegate = RecordingDelegate()
+        val (integration, postHog) = createIntegration(delegate)
+        try {
+            val original = partialResponseSurvey(true)
+            integration.showSurvey(original)
+            val survey = assertNotNull(delegate.shownSurvey)
+            assertNotNull(delegate.onSurveyShown).invoke(survey)
+            assertNotNull(delegate.onSurveyResponse).invoke(survey, 0, PostHogSurveyResponse.Text("Saved"))
+            assertEquals("survey sent", postHog.event)
+            val submissionId = assertNotNull(postHog.properties?.get("\$survey_submission_id"))
+            assertNotNull(delegate.onSurveyClosed).invoke(survey)
+            assertEquals("survey dismissed", postHog.event)
+            assertEquals(submissionId, postHog.properties?.get("\$survey_submission_id"))
+            assertEquals(true, postHog.properties?.get("\$survey_partially_completed"))
+            assertEquals("Saved", postHog.properties?.get("\$survey_response_first"))
+            integration.showSurvey(original)
+            assertNotNull(delegate.onSurveyShown).invoke(assertNotNull(delegate.shownSurvey))
+            assertNotNull(delegate.onSurveyResponse).invoke(assertNotNull(delegate.shownSurvey), 0, PostHogSurveyResponse.Text("New"))
+            val nextId = assertNotNull(postHog.properties?.get("\$survey_submission_id"))
+            kotlin.test.assertNotEquals(submissionId, nextId)
+        } finally {
+            integration.uninstall()
+        }
+    }
+
+    @Test
+    fun `branching to end completes a partial-enabled survey even with a skipped optional answer`() {
+        val delegate = RecordingDelegate()
+        val (integration, postHog) = createIntegration(delegate)
+        try {
+            integration.showSurvey(partialResponseSurvey(true, endAfterFirst = true))
+            val survey = assertNotNull(delegate.shownSurvey)
+            assertNotNull(delegate.onSurveyShown).invoke(survey)
+            val next = assertNotNull(assertNotNull(delegate.onSurveyResponse).invoke(survey, 0, PostHogSurveyResponse.Text(null)))
+            assertEquals(true, next.isSurveyCompleted)
+            assertEquals(2, postHog.captures)
+            assertEquals(true, postHog.properties?.get("\$survey_completed"))
+            assertNull(postHog.properties?.get("\$survey_response_second"))
+        } finally {
+            integration.uninstall()
+        }
+    }
+
     @Test
     fun `survey sent includes legacy and question id response keys`() {
         val delegate = RecordingDelegate()

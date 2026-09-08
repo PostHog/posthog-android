@@ -29,4 +29,6 @@ public data class Survey(
     val endDate: Date?,
     val schedule: SurveySchedule?,
     val translations: Map<String, SurveyTranslation>? = null,
+    @SerializedName("enable_partial_responses")
+    val enablePartialResponses: Boolean? = null,
 )
