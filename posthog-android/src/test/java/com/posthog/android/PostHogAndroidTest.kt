@@ -82,6 +82,29 @@ internal class PostHogAndroidTest {
     }
 
     @Test
+    fun `a setup the core rejects must not re-arm the manual entry at the rejected config`() {
+        mockContextAppStart(context, tmpDir)
+        val activePrefs = PostHogMemoryPreferences()
+        val rejectedPrefs = PostHogMemoryPreferences()
+
+        PostHogAndroid.setup(context, PostHogAndroidConfig(API_KEY).apply { cachePreferences = activePrefs })
+        // The core no-ops this one — an instance is already active — so the shared client keeps
+        // sending under the first config and this one must not decide the gate or the prefs file.
+        PostHogAndroid.setup(
+            context,
+            PostHogAndroidConfig(API_KEY_2).apply {
+                cachePreferences = rejectedPrefs
+                capturePushNotificationOpened = false
+            },
+        )
+
+        PostHogAndroid.capturePushNotificationOpened(Intent().putExtra("google.message_id", "probe"))
+
+        assertEquals("probe", activePrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
+        assertNull(rejectedPrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
+    }
+
+    @Test
     fun `with after setup must not redirect the manual entry to the secondary project`() {
         mockContextAppStart(context, tmpDir)
         val primaryPrefs = PostHogMemoryPreferences()

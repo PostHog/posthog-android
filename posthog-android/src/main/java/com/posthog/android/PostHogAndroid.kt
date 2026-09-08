@@ -108,8 +108,12 @@ public class PostHogAndroid private constructor() {
 
                 // Only setup() arms the manual entry point: with() builds a secondary instance whose
                 // config must not decide the gate, or the preferences file, for events that are
-                // delivered to the shared one.
-                androidConfig = config
+                // delivered to the shared one. The identity check is the other half of that: setup()
+                // no-ops when an instance is already active or the key was empty, and adopting a
+                // config it rejected would gate and persist under a project nothing is sent to.
+                if (PostHog.getConfig<PostHogAndroidConfig>() === config) {
+                    androidConfig = config
+                }
             }
         }
 
