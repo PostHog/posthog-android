@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <application android:label="PostHog compliance adapter" android:usesCleartextTraffic="true">
+    <application android:label="PostHog compliance adapter" android:allowBackup="false" android:usesCleartextTraffic="true">
         <activity android:name=".AdapterActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
