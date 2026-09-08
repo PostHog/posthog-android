@@ -9,6 +9,8 @@ public interface PostHogSurveysDelegate {
     /**
      * Called when an activated PostHog survey needs to be rendered on the app's UI
      *
+     * Start at [PostHogDisplaySurvey.initialQuestionIndex] to resume an unfinished survey.
+     *
      * @param survey The survey to be displayed to the user
      * @param onSurveyShown To be called when the survey is successfully displayed to the user
      * @param onSurveyResponse To be called when the user submits a response to a question

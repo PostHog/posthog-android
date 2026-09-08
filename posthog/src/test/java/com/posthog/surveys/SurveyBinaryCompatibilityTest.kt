@@ -22,6 +22,34 @@ internal class SurveyBinaryCompatibilityTest {
         )
 
     @Test
+    fun `display survey legacy constructor and copy preserve resume index`() {
+        val types =
+            arrayOf(
+                String::class.java,
+                String::class.java,
+                List::class.java,
+                PostHogDisplaySurveyAppearance::class.java,
+                Date::class.java,
+                Date::class.java,
+            )
+        val constructor = PostHogDisplaySurvey::class.java.getDeclaredConstructor(*types)
+        val original = constructor.newInstance("id", "name", emptyList<PostHogDisplaySurveyQuestion>(), null, null, null)
+        assertEquals(0, original.initialQuestionIndex)
+        val resumed = original.copy(initialQuestionIndex = 2)
+        assertEquals(2, resumed.copy(name = "Updated").initialQuestionIndex)
+        val defaultCopy =
+            PostHogDisplaySurvey::class.java.getDeclaredMethod(
+                "copy\$default",
+                PostHogDisplaySurvey::class.java,
+                *types,
+                Int::class.javaPrimitiveType,
+                Any::class.java,
+            )
+        val copied = defaultCopy.invoke(null, resumed, *arrayOfNulls<Any>(6), 63, null) as PostHogDisplaySurvey
+        assertEquals(2, copied.initialQuestionIndex)
+    }
+
+    @Test
     fun `legacy constructor and its Kotlin defaults remain callable`() {
         val constructor = Survey::class.java.getDeclaredConstructor(*legacyParameterTypes)
         val survey = constructor.newInstance(*legacyArguments())

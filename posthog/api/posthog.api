@@ -915,6 +915,7 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
+	public static final field SURVEY_PROGRESS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
 	public abstract fun clear (Ljava/util/List;)V
@@ -933,6 +934,7 @@ public final class com/posthog/internal/PostHogPreferences$Companion {
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
+	public static final field SURVEY_PROGRESS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
 	public static final field VERSION Ljava/lang/String;
 	public final fun getALL_INTERNAL_KEYS ()Ljava/util/Set;
@@ -1687,6 +1689,8 @@ public final class com/posthog/surveys/PostHogDisplayRatingQuestion : com/postho
 public final class com/posthog/surveys/PostHogDisplaySurvey {
 	public static final field Companion Lcom/posthog/surveys/PostHogDisplaySurvey$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;I)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -1694,12 +1698,16 @@ public final class com/posthog/surveys/PostHogDisplaySurvey {
 	public final fun component4 ()Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;
 	public final fun component5 ()Ljava/util/Date;
 	public final fun component6 ()Ljava/util/Date;
+	public final fun component7 ()I
 	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;)Lcom/posthog/surveys/PostHogDisplaySurvey;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;I)Lcom/posthog/surveys/PostHogDisplaySurvey;
+	public static synthetic fun copy$default (Lcom/posthog/surveys/PostHogDisplaySurvey;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;IILjava/lang/Object;)Lcom/posthog/surveys/PostHogDisplaySurvey;
 	public static synthetic fun copy$default (Lcom/posthog/surveys/PostHogDisplaySurvey;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;Ljava/util/Date;Ljava/util/Date;ILjava/lang/Object;)Lcom/posthog/surveys/PostHogDisplaySurvey;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAppearance ()Lcom/posthog/surveys/PostHogDisplaySurveyAppearance;
 	public final fun getEndDate ()Ljava/util/Date;
 	public final fun getId ()Ljava/lang/String;
+	public final fun getInitialQuestionIndex ()I
 	public final fun getName ()Ljava/lang/String;
 	public final fun getQuestions ()Ljava/util/List;
 	public final fun getStartDate ()Ljava/util/Date;
