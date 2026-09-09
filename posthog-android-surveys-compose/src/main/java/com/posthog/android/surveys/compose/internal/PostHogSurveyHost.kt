@@ -41,17 +41,14 @@ import com.posthog.surveys.PostHogDisplaySurvey
  * Only the explicit close button dismisses (touch-outside and back are
  * disabled).
  *
- * ## Surviving configuration changes
+ * ## Surviving host activity changes
  *
  * A dialog window is bound to its host activity's token, so it must come down
- * when that activity is destroyed. To avoid losing the survey (and emitting a
- * spurious `survey dismissed`) on a rotation / dark-mode / font-size change, we
- * distinguish a configuration change from a genuine finish:
- * - **Configuration change** ([Activity.isChangingConfigurations]): snapshot the
- *   sheet's `rememberSaveable` state into a host-owned [SaveableStateRegistry],
- *   drop the window, and re-present on the recreated activity with that state
- *   restored verbatim. The survey stays active; no close event is fired.
- * - **Genuine finish**: dismiss and notify the SDK as usual.
+ * when that activity is destroyed. Snapshot the sheet's `rememberSaveable` state
+ * into a host-owned [SaveableStateRegistry], drop the window, and re-present on
+ * the next foreground activity. This applies both to configuration changes and
+ * genuine Activity finishes: only an explicit survey close is a dismissal.
+ * The survey stays active and no close event is fired during host teardown.
  *
  * All UI mutation happens on the main thread; the public API is safe to call
  * from the SDK's survey thread.
@@ -67,7 +64,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     private var hostActivity: Activity? = null
 
     // Callbacks + survey for the active survey, retained so we can re-present it
-    // on the recreated activity after a configuration change.
+    // on the recreated activity after a host activity change.
     private var currentSurvey: PostHogDisplaySurvey? = null
     private var onShownCallback: OnPostHogSurveyShown? = null
     private var onResponseCallback: OnPostHogSurveyResponse? = null
@@ -77,7 +74,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     private var pendingShow: Runnable? = null
 
     // Whether `survey shown` has already been reported for the current survey,
-    // so a re-present after a configuration change doesn't double-fire it.
+    // so a re-present after a host activity change doesn't double-fire it.
     private var shownReported = false
 
     // Set when a show fired with no foreground activity to host the sheet (e.g. the
@@ -87,8 +84,8 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     private var awaitingForeground = false
 
     // The live registry backing the sheet's `rememberSaveable` state, plus the
-    // snapshot taken across a configuration change. A non-null snapshot means a
-    // re-present is armed: the window was dropped for a config change and should be
+    // snapshot taken across a host activity change. A non-null snapshot means a
+    // re-present is armed: the window was dropped for a host activity change and should be
     // rebuilt on the next foreground activity.
     private var saveableRegistry: SaveableStateRegistry? = null
     private var savedSurveyState: Map<String, List<Any?>>? = null
@@ -96,18 +93,14 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     init {
         activityProvider.onActivityDestroyedListener = { destroyed ->
             if (destroyed === hostActivity) {
-                if (destroyed.isChangingConfigurations) {
-                    // Rotation / dark-mode / font-size / locale / fold: keep the
-                    // survey alive and rebuild it on the recreated activity.
-                    preserveForConfigChange()
-                } else {
-                    // Genuine finish: tear down and notify the SDK.
-                    dismissInternal(notifyClosed = true)
-                }
+                // Rotation / dark-mode / font-size / locale / fold or a genuine finish:
+                // keep the survey alive and rebuild it on the next foreground activity.
+                preserveForHostChange()
+                activityProvider.foregroundActivity?.takeIf { it !== destroyed }?.let(::present)
             }
         }
         activityProvider.onActivityResumedListener = { resumed ->
-            // Re-present on the next foreground activity when either a config-change
+            // Re-present on the next foreground activity when either a host-change
             // snapshot is armed (window dropped for rotation/etc.) or a show was
             // deferred because no activity was available when it fired.
             if (currentSurvey != null && (savedSurveyState != null || awaitingForeground)) {
@@ -174,7 +167,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
                 hostActivity = activity
 
                 // Host-owned registry so the sheet's `rememberSaveable` state survives the
-                // ComposeView being recreated across a configuration change. Seeded with
+                // ComposeView being recreated across a host activity change. Seeded with
                 // any snapshot taken before the previous window was dropped.
                 val registry =
                     SaveableStateRegistry(
@@ -222,7 +215,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
 
     /**
      * Forwards `survey shown` to the SDK at most once per survey, so re-presenting
-     * after a configuration change doesn't emit a duplicate event.
+     * after a host activity change doesn't emit a duplicate event.
      */
     private fun reportShownOnce() {
         if (shownReported) return
@@ -248,14 +241,14 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     }
 
     /**
-     * Drops the dialog window for a configuration change while keeping the survey
+     * Drops the dialog window for a host activity change while keeping the survey
      * active: snapshots the sheet's saveable state and arms a re-present on the
      * next foreground activity. No close event is fired.
      */
-    private fun preserveForConfigChange() {
+    private fun preserveForHostChange() {
         cancelPendingShow()
 
-        guard("preserving the survey across a configuration change") {
+        guard("preserving the survey across a host activity change") {
             // Snapshot before disposing — providers unregister on disposal.
             savedSurveyState = saveableRegistry?.performSave()
             saveableRegistry = null

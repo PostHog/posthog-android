@@ -1933,7 +1933,15 @@ public class PostHog private constructor(
         if (config?.reuseAnonymousId == true) {
             except.add(ANONYMOUS_ID)
         }
-        getPreferences().clear(except = except.toList())
+        val surveysConfig = config?.surveysConfig
+        if (surveysConfig != null) {
+            synchronized(surveysConfig) {
+                surveysConfig.reset()
+                getPreferences().clear(except = except.toList())
+            }
+        } else {
+            getPreferences().clear(except = except.toList())
+        }
         remoteConfig?.clear()
         featureFlagsCalled.clear()
         lastScreenName = null

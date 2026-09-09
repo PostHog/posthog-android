@@ -1876,6 +1876,7 @@ public final class com/posthog/surveys/PostHogSurveyResponse$Text : com/posthog/
 public final class com/posthog/surveys/PostHogSurveysConfig {
 	public fun <init> ()V
 	public final fun getOverrideDisplayLanguage ()Ljava/lang/String;
+	public final fun getResetGeneration ()J
 	public final fun getSurveysDelegate ()Lcom/posthog/surveys/PostHogSurveysDelegate;
 	public final fun setOverrideDisplayLanguage (Ljava/lang/String;)V
 	public final fun setSurveysDelegate (Lcom/posthog/surveys/PostHogSurveysDelegate;)V

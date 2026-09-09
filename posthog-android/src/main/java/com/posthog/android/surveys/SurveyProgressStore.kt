@@ -49,7 +49,7 @@ internal data class StoredSurveyResponse(
 
 internal class SurveyProgressStore(private val config: PostHogConfig) {
     private val serializer = PostHogSerializer(config)
-    private val lock = Any()
+    private val lock = config.surveysConfig
 
     private fun key(survey: Survey): String = "${survey.id}/${survey.currentIteration ?: 0}"
 
@@ -66,20 +66,23 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
 
     fun load(survey: Survey): SurveyProgress? =
         synchronized(lock) {
+            val generation = lock.resetGeneration
             val json = records()[key(survey)] as? String ?: return@synchronized null
+            if (generation != lock.resetGeneration) return@synchronized null
             try {
                 val progress = serializer.deserialize<SurveyProgress>(StringReader(json))
                 if (progress.version == 1 && progress.submissionId.isNotEmpty() &&
                     progress.questionIndex in survey.questions.indices &&
                     progress.questionOrder == questionOrder(survey) &&
-                    progress.responses.values.all { it.toResponse() != null }
+                    progress.responses.values.all { it.toResponse() != null } &&
+                    progress.questionText.keys.all { it in survey.questions.indices }
                 ) {
-                    return@synchronized progress
+                    return@synchronized progress.takeIf { generation == lock.resetGeneration }
                 }
             } catch (_: Exception) {
                 config.logger.log("Discarding invalid saved survey progress")
             }
-            remove(survey)
+            if (generation == lock.resetGeneration) remove(survey)
             null
         }
 
@@ -87,25 +90,38 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
         survey: Survey,
         progress: SurveyProgress,
     ) = synchronized(lock) {
+        val generation = lock.resetGeneration
         if (config.cachePreferences?.isAvailable() == false) return@synchronized
         val records = records()
         records[key(survey)] = serializer.serializeObject(progress) ?: return@synchronized
-        config.cachePreferences?.setValue(PostHogPreferences.SURVEY_PROGRESS, records)
+        writeRecords(records, generation)
         Unit
     }
 
     fun reconcile(surveys: List<Survey>) =
         synchronized(lock) {
+            val generation = lock.resetGeneration
+            if (config.cachePreferences?.isAvailable() == false) return@synchronized
             val keys = surveys.filter { it.startDate != null && it.endDate == null }.map(::key).toSet()
-            config.cachePreferences?.setValue(PostHogPreferences.SURVEY_PROGRESS, records().filterKeys { it in keys })
+            writeRecords(records().filterKeys { it in keys }, generation)
             Unit
         }
 
     fun remove(survey: Survey) =
         synchronized(lock) {
+            val generation = lock.resetGeneration
             val records = records()
             records.remove(key(survey))
-            config.cachePreferences?.setValue(PostHogPreferences.SURVEY_PROGRESS, records)
+            writeRecords(records, generation)
             Unit
         }
+
+    private fun writeRecords(
+        records: Map<String, Any>,
+        generation: Long,
+    ) {
+        if (generation == lock.resetGeneration) {
+            config.cachePreferences?.setValue(PostHogPreferences.SURVEY_PROGRESS, records)
+        }
+    }
 }

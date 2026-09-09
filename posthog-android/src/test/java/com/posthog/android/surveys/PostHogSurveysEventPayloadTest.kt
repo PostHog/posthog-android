@@ -2,11 +2,15 @@ package com.posthog.android.surveys
 
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.posthog.PostHog
+import com.posthog.PostHogBeforeSend
 import com.posthog.PostHogConfig
 import com.posthog.PostHogFake
+import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogSerializer
 import com.posthog.surveys.OnPostHogSurveyClosed
@@ -18,9 +22,13 @@ import com.posthog.surveys.PostHogSurveysDelegate
 import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyType
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.runner.RunWith
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -34,6 +42,7 @@ internal class PostHogSurveysEventPayloadTest {
         var onSurveyShown: OnPostHogSurveyShown? = null
         var onSurveyResponse: OnPostHogSurveyResponse? = null
         var onSurveyClosed: OnPostHogSurveyClosed? = null
+        var cleanupCalls = 0
 
         override fun renderSurvey(
             survey: PostHogDisplaySurvey,
@@ -47,7 +56,9 @@ internal class PostHogSurveysEventPayloadTest {
             this.onSurveyClosed = onSurveyClosed
         }
 
-        override fun cleanupSurveys() {}
+        override fun cleanupSurveys() {
+            cleanupCalls++
+        }
     }
 
     private fun createIntegration(
@@ -183,6 +194,127 @@ internal class PostHogSurveysEventPayloadTest {
                 resumed.uninstall()
                 preferences.clear()
             }
+        }
+    }
+
+    @Test
+    fun `reset before a restored survey is shown rejects captured answers`() {
+        val preferences = PostHogMemoryPreferences()
+        val delegate = RecordingDelegate()
+        val survey = partialResponseSurvey(true)
+        val (first, _) = createIntegration(delegate, preferences)
+        first.showSurvey(survey)
+        val firstDisplay = assertNotNull(delegate.shownSurvey)
+        assertNotNull(delegate.onSurveyShown).invoke(firstDisplay)
+        assertNotNull(delegate.onSurveyResponse).invoke(firstDisplay, 0, PostHogSurveyResponse.Text("Previous user"))
+        first.uninstall()
+
+        val (resumed, postHog) = createIntegration(delegate, preferences)
+        try {
+            resumed.showSurvey(survey)
+            val restored = assertNotNull(delegate.shownSurvey)
+            assertEquals(1, restored.initialQuestionIndex)
+            preferences.clear()
+            val count = postHog.captures
+            assertNotNull(delegate.onSurveyShown).invoke(restored)
+            assertNull(assertNotNull(delegate.onSurveyResponse).invoke(restored, 1, PostHogSurveyResponse.Text("Next user")))
+            assertEquals(count, postHog.captures)
+            assertNull(preferences.getValue(PostHogPreferences.SURVEY_PROGRESS))
+        } finally {
+            resumed.uninstall()
+        }
+    }
+
+    @Test
+    fun `stale shown callback does not clean up a newer survey`() {
+        val preferences = PostHogMemoryPreferences()
+        val delegate = RecordingDelegate()
+        val survey = partialResponseSurvey(true)
+        val (first, _) = createIntegration(delegate, preferences)
+        first.showSurvey(survey)
+        val firstDisplay = assertNotNull(delegate.shownSurvey)
+        assertNotNull(delegate.onSurveyShown).invoke(firstDisplay)
+        assertNotNull(delegate.onSurveyResponse).invoke(firstDisplay, 0, PostHogSurveyResponse.Text("Saved"))
+        first.uninstall()
+        val (resumed, postHog) = createIntegration(delegate, preferences)
+        try {
+            resumed.showSurvey(survey)
+            val staleDisplay = assertNotNull(delegate.shownSurvey)
+            val staleShown = assertNotNull(delegate.onSurveyShown)
+            preferences.clear()
+            resumed.showSurvey(survey.copy(id = "new-survey"))
+            val currentDisplay = assertNotNull(delegate.shownSurvey)
+            assertNotNull(delegate.onSurveyShown).invoke(currentDisplay)
+            val captures = postHog.captures
+            val cleanupCalls = delegate.cleanupCalls
+
+            staleShown(staleDisplay)
+
+            assertEquals(cleanupCalls, delegate.cleanupCalls)
+            assertEquals(captures, postHog.captures)
+            assertNotNull(assertNotNull(delegate.onSurveyResponse).invoke(currentDisplay, 0, PostHogSurveyResponse.Text("Current")))
+            assertEquals("new-survey", postHog.properties?.get("\$survey_id"))
+        } finally {
+            resumed.uninstall()
+        }
+    }
+
+    @Test
+    fun `capture callback can reset without retaining previous progress`() {
+        val delegate = RecordingDelegate()
+        val preferences = PostHogMemoryPreferences()
+        val directory = java.io.File(context.cacheDir, java.util.UUID.randomUUID().toString()).apply { mkdirs() }
+        lateinit var sdk: PostHogInterface
+        var heldSurveyLock = true
+        var sentIdentity: String? = null
+        val http =
+            MockWebServer().apply {
+                enqueue(MockResponse().setBody("{}"))
+                enqueue(MockResponse().setBody("{}"))
+            }
+        val config =
+            PostHogConfig("reset-callback-test", http.url("/").toString()).apply {
+                cachePreferences = preferences
+                storagePrefix = java.io.File(directory, "events").absolutePath
+                replayStoragePrefix = java.io.File(directory, "replay").absolutePath
+                preloadFeatureFlags = false
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected(): Boolean = false
+                    }
+                surveys = true
+                surveysConfig.surveysDelegate = delegate
+                addBeforeSend(
+                    PostHogBeforeSend { event ->
+                        if (event.event == "survey sent") {
+                            heldSurveyLock = Thread.holdsLock(surveysConfig)
+                            sentIdentity = event.distinctId
+                            sdk.reset()
+                        }
+                        null
+                    },
+                )
+            }
+        val integration = PostHogSurveysIntegration(context, config)
+        config.addIntegration(integration)
+        sdk = PostHog.with(config)
+        try {
+            val previousIdentity = sdk.distinctId()
+            integration.showSurvey(partialResponseSurvey(true))
+            val display = assertNotNull(delegate.shownSurvey)
+            assertNotNull(delegate.onSurveyShown).invoke(display)
+            assertNotNull(delegate.onSurveyResponse).invoke(display, 0, PostHogSurveyResponse.Text("Previous user"))
+
+            assertFalse(heldSurveyLock)
+            assertEquals(previousIdentity, sentIdentity)
+            assertNotEquals(previousIdentity, sdk.distinctId())
+            assertNull(preferences.getValue(PostHogPreferences.SURVEY_PROGRESS))
+            assertNull(preferences.getValue(PostHogPreferences.SURVEY_SEEN))
+            assertNull(assertNotNull(delegate.onSurveyResponse).invoke(display, 1, PostHogSurveyResponse.Text("Stale")))
+        } finally {
+            sdk.close()
+            http.shutdown()
+            directory.deleteRecursively()
         }
     }
 
