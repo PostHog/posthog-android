@@ -6,8 +6,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Owns the reusable destination bitmap used by session replay PixelCopy requests.
  *
- * Only one lease can be active per recording run. Closing a run recycles an idle bitmap and
- * detaches an in-flight lease so a late callback cannot return it to a later run.
+ * One bitmap is cached per recording run. Captures while that bitmap is in use receive
+ * uncached leases, so a timed-out request does not block later capture attempts.
+ * Closing a run recycles the idle bitmap and detaches in-flight leases so late callbacks
+ * cannot return their bitmaps to a later run.
  */
 internal class PixelCopyBitmapBuffer {
     private var isOpen = false
@@ -15,7 +17,7 @@ internal class PixelCopyBitmapBuffer {
     private var nextLeaseId = 0L
     private var activeLeaseId: Long? = null
     private var idleBitmap: Bitmap? = null
-    private var bitmapConfig = Bitmap.Config.RGB_565
+    private var rgb565Rejected = false
 
     @Synchronized
     fun open() {
@@ -29,25 +31,34 @@ internal class PixelCopyBitmapBuffer {
     fun acquire(
         width: Int,
         height: Int,
+        requestedConfig: Bitmap.Config,
     ): Lease? {
-        if (!isOpen || activeLeaseId != null) {
+        if (!isOpen) {
             return null
         }
 
-        val bitmap = obtainBitmap(width, height)
+        val bitmapConfig =
+            if (rgb565Rejected && requestedConfig == Bitmap.Config.RGB_565) Bitmap.Config.ARGB_8888 else requestedConfig
+        val canCache = activeLeaseId == null
+        val bitmap =
+            if (canCache) obtainBitmap(width, height, bitmapConfig) else Bitmap.createBitmap(width, height, bitmapConfig)
         val leaseId = ++nextLeaseId
-        activeLeaseId = leaseId
+        if (canCache) {
+            activeLeaseId = leaseId
+        }
         return Lease(this, bitmap, generation, leaseId)
     }
 
     @Synchronized
     fun fallbackToArgb8888(): Boolean {
-        if (bitmapConfig == Bitmap.Config.ARGB_8888) {
+        if (rgb565Rejected) {
             return false
         }
-        bitmapConfig = Bitmap.Config.ARGB_8888
-        idleBitmap?.recycle()
-        idleBitmap = null
+        rgb565Rejected = true
+        if (idleBitmap?.config == Bitmap.Config.RGB_565) {
+            idleBitmap?.recycle()
+            idleBitmap = null
+        }
         return true
     }
 
@@ -68,7 +79,7 @@ internal class PixelCopyBitmapBuffer {
         if (ownsActiveLease) {
             activeLeaseId = null
         }
-        if (isOpen && ownsActiveLease && lease.bitmap.config == bitmapConfig) {
+        if (isOpen && ownsActiveLease && !(rgb565Rejected && lease.bitmap.config == Bitmap.Config.RGB_565)) {
             idleBitmap = lease.bitmap
         } else {
             lease.bitmap.recycle()
@@ -78,6 +89,7 @@ internal class PixelCopyBitmapBuffer {
     private fun obtainBitmap(
         width: Int,
         height: Int,
+        bitmapConfig: Bitmap.Config,
     ): Bitmap {
         require(width > 0 && height > 0) { "PixelCopy bitmap dimensions must be positive" }
 
