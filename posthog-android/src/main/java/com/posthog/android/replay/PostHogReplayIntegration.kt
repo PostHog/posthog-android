@@ -71,6 +71,7 @@ import com.posthog.android.replay.internal.BaselineResult
 import com.posthog.android.replay.internal.IntHashSet
 import com.posthog.android.replay.internal.MaskCaptureToken
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
+import com.posthog.android.replay.internal.PixelCopyBitmapBuffer
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.WindowDrawState
 import com.posthog.android.replay.internal.isAlive
@@ -107,6 +108,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.ceil
+import kotlin.math.floor
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -149,6 +152,7 @@ public class PostHogReplayIntegration(
     //  directly, eliminating the need for a HandlerThread entirely. Requires compileSdk 34+.
     private var pixelCopyThread: HandlerThread? = null
     private var pixelCopyHandler: Handler? = null
+    private val pixelCopyBitmapBuffer = PixelCopyBitmapBuffer()
 
     private fun ensurePixelCopyHandler(): Handler {
         pixelCopyThread?.let { thread ->
@@ -620,6 +624,15 @@ public class PostHogReplayIntegration(
         } finally {
             ownsInstallation = false
             integrationInstalled.set(false)
+            try {
+                synchronized(pixelCopyBitmapBuffer) {
+                    startedWithAutomaticDisabled = false
+                    isSessionReplayActive = false
+                    pixelCopyBitmapBuffer.close()
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay screenshot buffer cleanup failed: $e.")
+            }
         }
     }
 
@@ -1513,9 +1526,30 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun Bitmap.paintScreenshotMasks(rects: List<Rect>): Boolean {
+    internal fun RectF.setScaledScreenshotMask(
+        rect: Rect,
+        scaleX: Float,
+        scaleY: Float,
+    ) {
+        set(
+            floor(rect.left * scaleX),
+            floor(rect.top * scaleY),
+            ceil(rect.right * scaleX),
+            ceil(rect.bottom * scaleY),
+        )
+    }
+
+    private fun Bitmap.paintScreenshotMasks(
+        rects: List<Rect>,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        canPaintMask: () -> Boolean = { true },
+    ): Boolean {
         if (!isValid()) {
             this@PostHogReplayIntegration.config.logger.log("Session Replay Bitmap is invalid.")
+            return false
+        }
+        if (sourceWidth <= 0 || sourceHeight <= 0) {
             return false
         }
 
@@ -1527,10 +1561,15 @@ public class PostHogReplayIntegration(
                 return false
             }
 
+        val scaleX = width.toFloat() / sourceWidth
+        val scaleY = height.toFloat() / sourceHeight
         val maskRect = RectF()
-        rects.forEach {
-            maskRect.set(it)
-            canvas.drawRoundRect(maskRect, 10f, 10f, paint)
+        for (rect in rects) {
+            if (!canPaintMask()) {
+                return false
+            }
+            maskRect.setScaledScreenshotMask(rect, scaleX, scaleY)
+            canvas.drawRoundRect(maskRect, 10f * scaleX, 10f * scaleY, paint)
         }
         return true
     }
@@ -1539,7 +1578,12 @@ public class PostHogReplayIntegration(
         bitmap: Bitmap,
         drawState: WindowDrawState,
         armedCapture: ArmedMaskCapture,
+        sourceWidth: Int,
+        sourceHeight: Int,
     ): Boolean {
+        if (width != sourceWidth || height != sourceHeight) {
+            return false
+        }
         val postWalk = MaskWalk()
         // A layout pass or an invalidating draw sample already sealed the verdict as discard,
         // so the post-copy walk would be wasted work.
@@ -1554,19 +1598,26 @@ public class PostHogReplayIntegration(
                 postWalk.rects,
                 postWalk.poisoned,
             )
-        if (!captureAligned || !shouldKeepFrame(drawState, armedCapture.preWalk, postWalk)) {
+        if (width != sourceWidth || height != sourceHeight ||
+            !captureAligned || !shouldKeepFrame(drawState, armedCapture.preWalk, postWalk)
+        ) {
             // Masks may be out of sync with the pixels, discard to avoid a PII leak.
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
         }
-        return bitmap.paintScreenshotMasks(postWalk.rects)
+        return bitmap.paintScreenshotMasks(postWalk.rects, sourceWidth, sourceHeight)
     }
 
     private fun View.maskLegacyScreenshot(
         bitmap: Bitmap,
         drawState: WindowDrawState,
+        sourceWidth: Int,
+        sourceHeight: Int,
     ): Boolean {
-        val unsafeRedraw = { drawState.isOnDrawnCalled && !drawState.isOnlyAnimationRedraw }
+        val unsafeRedraw = {
+            width != sourceWidth || height != sourceHeight ||
+                (drawState.isOnDrawnCalled && !drawState.isOnlyAnimationRedraw)
+        }
         if (unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
@@ -1579,28 +1630,60 @@ public class PostHogReplayIntegration(
             return false
         }
 
-        if (!bitmap.isValid()) {
-            config.logger.log("Session Replay Bitmap is invalid.")
-            return false
-        }
-        val canvas =
-            try {
-                Canvas(bitmap)
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay Canvas creation failed: $e.")
-                return false
-            }
-        val maskRect = RectF()
-        walk.rects.forEach {
-            if (unsafeRedraw()) {
+        return bitmap.paintScreenshotMasks(walk.rects, sourceWidth, sourceHeight) {
+            val safe = !unsafeRedraw()
+            if (!safe) {
                 config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            }
+            safe
+        }
+    }
+
+    private class PixelCopyRequestState {
+        private var callbackFinished = false
+        private var waiterAbandoned = false
+        private var copySucceeded = false
+
+        @Synchronized
+        fun isAbandoned(): Boolean = waiterAbandoned
+
+        @Synchronized
+        fun complete(succeeded: Boolean): Boolean {
+            if (callbackFinished) {
                 return false
             }
-            maskRect.set(it)
-            canvas.drawRoundRect(maskRect, 10f, 10f, paint)
+            copySucceeded = succeeded
+            callbackFinished = true
+            return waiterAbandoned
         }
-        return true
+
+        @Synchronized
+        fun abandon(): Boolean {
+            waiterAbandoned = true
+            return callbackFinished
+        }
+
+        @Synchronized
+        fun succeeded(): Boolean = callbackFinished && copySucceeded
     }
+
+    private fun finishScreenshotCapture(
+        drawState: WindowDrawState,
+        armedCapture: ArmedMaskCapture?,
+        verifyMaskAlignment: Boolean,
+    ) {
+        armedCapture?.let { drawState.cancelMaskCapture(it.token) }
+        if (verifyMaskAlignment) {
+            drawState.reset()
+        } else {
+            drawState.finishLegacyCapture()
+        }
+    }
+
+    private fun scaledScreenshotDimension(
+        size: Int,
+        scale: Float,
+    ): Int = maxOf(1, ceil(size * scale).toInt())
 
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
@@ -1625,8 +1708,17 @@ public class PostHogReplayIntegration(
         }
         val x = coordinates[0].densityValue(screenDensity)
         val y = coordinates[1].densityValue(screenDensity)
-        val width = view.width.densityValue(screenDensity)
-        val height = view.height.densityValue(screenDensity)
+        val sourceWidth = view.width
+        val sourceHeight = view.height
+        val width = sourceWidth.densityValue(screenDensity)
+        val height = sourceHeight.densityValue(screenDensity)
+        val screenshotScale = config.sessionReplayConfig.screenshotScale
+        val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
+        val bitmapConfig =
+            when (config.sessionReplayConfig.screenshotColorMode) {
+                PostHogScreenshotColorMode.ARGB_8888 -> Bitmap.Config.ARGB_8888
+                PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
+            }
         var base64: String? = null
 
         val verifyMaskAlignment = shouldVerifyMaskAlignment(view, drawState)
@@ -1645,82 +1737,129 @@ public class PostHogReplayIntegration(
             recordScreenshotDiscarded(drawState)
             return null
         }
-        val bitmap: Bitmap
+
+        if (sourceWidth <= 0 || sourceHeight <= 0 || view.width != sourceWidth || view.height != sourceHeight) {
+            finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
+            recordScreenshotDiscarded(drawState)
+            return null
+        }
+        val bitmapLease: PixelCopyBitmapBuffer.Lease
         val handler: Handler
         try {
-            bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
             handler = ensurePixelCopyHandler()
+            bitmapLease =
+                pixelCopyBitmapBuffer.acquire(
+                    scaledScreenshotDimension(sourceWidth, screenshotScale),
+                    scaledScreenshotDimension(sourceHeight, screenshotScale),
+                    bitmapConfig,
+                ) ?: run {
+                    finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
+                    recordScreenshotDiscarded(drawState)
+                    return null
+                }
         } catch (e: Throwable) {
-            armedCapture?.let { drawState.cancelMaskCapture(it.token) }
-            if (verifyMaskAlignment) {
-                drawState.reset()
-            } else {
-                drawState.finishLegacyCapture()
-            }
+            finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
             config.logger.log("Session Replay screenshot setup failed: $e.")
             recordScreenshotDiscarded(drawState)
             return null
         }
 
+        val bitmap = bitmapLease.bitmap
         val latch = CountDownLatch(1)
-        var success = true
-
-        // Track whether the PixelCopy callback has finished to avoid recycling the bitmap
-        // while the callback is still using it (e.g. if latch.await times out).
-        // We use the latch itself as the synchronization mechanism (await happens-before countDown)
-        var callbackCompleted = false
+        val requestState = PixelCopyRequestState()
 
         drawState.beginPixelCopy()
         try {
-            PixelCopy.request(window, bitmap, { copyResult ->
-                try {
-                    if (copyResult != PixelCopy.SUCCESS) {
-                        config.logger.log("Session Replay PixelCopy failed: $copyResult.")
-                        success = false
-                    } else {
-                        success =
-                            if (armedCapture != null) {
-                                view.maskVerifiedScreenshot(bitmap, drawState, armedCapture)
-                            } else {
-                                view.maskLegacyScreenshot(bitmap, drawState)
+            PixelCopy.request(
+                window,
+                bitmap,
+                { copyResult ->
+                    var succeeded = false
+                    try {
+                        if (copyResult != PixelCopy.SUCCESS) {
+                            if (
+                                copyResult == PixelCopy.ERROR_DESTINATION_INVALID &&
+                                bitmap.config == Bitmap.Config.RGB_565 &&
+                                pixelCopyBitmapBuffer.fallbackToArgb8888()
+                            ) {
+                                config.logger.log(
+                                    "Session Replay PixelCopy does not support RGB_565; falling back to ARGB_8888.",
+                                )
                             }
+                            config.logger.log("Session Replay PixelCopy failed: $copyResult.")
+                        } else if (!requestState.isAbandoned()) {
+                            succeeded =
+                                if (armedCapture != null) {
+                                    view.maskVerifiedScreenshot(bitmap, drawState, armedCapture, sourceWidth, sourceHeight)
+                                } else {
+                                    view.maskLegacyScreenshot(bitmap, drawState, sourceWidth, sourceHeight)
+                                }
+                        }
+                    } catch (e: Throwable) {
+                        config.logger.log("Session Replay PixelCopy failed: $e.")
+                    } finally {
+                        val releaseInCallback = requestState.complete(succeeded)
+                        try {
+                            if (releaseInCallback) {
+                                bitmapLease.release()
+                            }
+                        } finally {
+                            drawState.finishPixelCopy()
+                            latch.countDown()
+                        }
                     }
-                } catch (e: Throwable) {
-                    config.logger.log("Session Replay PixelCopy failed: $e.")
-                    success = false
-                } finally {
-                    callbackCompleted = true
-                    drawState.finishPixelCopy()
-                    latch.countDown()
-                }
-            }, handler)
+                },
+                handler,
+            )
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy failed: $e.")
-            success = false
-            callbackCompleted = true
-            drawState.finishPixelCopy()
-            latch.countDown()
+            try {
+                if (requestState.complete(false)) {
+                    bitmapLease.release()
+                }
+            } finally {
+                drawState.finishPixelCopy()
+                latch.countDown()
+            }
         }
 
+        var releaseFromWaiter = false
+        val callbackFinished =
+            try {
+                latch.await(1000, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                config.logger.log("Session Replay PixelCopy wait interrupted: $e.")
+                releaseFromWaiter = requestState.abandon()
+                null
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay PixelCopy wait failed: $e.")
+                releaseFromWaiter = requestState.abandon()
+                null
+            }
+
         try {
-            // On timeout the masks aren't painted yet, so the bitmap must not be shipped.
-            if (latch.await(1000, TimeUnit.MILLISECONDS) && success) {
-                base64 = bitmap.webpBase64()
+            when (callbackFinished) {
+                true -> {
+                    releaseFromWaiter = true
+                    if (requestState.succeeded()) {
+                        try {
+                            base64 = bitmap.webpBase64(compressionQuality)
+                        } catch (e: Throwable) {
+                            config.logger.log("Session Replay screenshot encoding failed: $e.")
+                        }
+                    }
+                }
+                false -> {
+                    config.logger.log("Session Replay PixelCopy timed out.")
+                    releaseFromWaiter = requestState.abandon()
+                }
+                null -> Unit
             }
-        } catch (e: Throwable) {
-            config.logger.log("Session Replay PixelCopy timed out: $e.")
         } finally {
-            armedCapture?.let { drawState.cancelMaskCapture(it.token) }
-            if (verifyMaskAlignment) {
-                drawState.reset()
-            } else {
-                drawState.finishLegacyCapture()
-            }
-            // Only recycle the bitmap if the callback has completed.
-            // If the latch timed out, the PixelCopy callback may still be writing to the bitmap
-            // on another thread; recycling it now would cause a native SIGSEGV.
-            if (callbackCompleted && !bitmap.isRecycled) {
-                bitmap.recycle()
+            finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
+            if (releaseFromWaiter) {
+                bitmapLease.release()
             }
         }
 
@@ -2304,7 +2443,11 @@ public class PostHogReplayIntegration(
         val currentSessionId = postHog?.getSessionId()?.toString()
         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
-        isSessionReplayActive = true
+        // The active flag and buffer lifecycle must move together when start/stop overlap.
+        synchronized(pixelCopyBitmapBuffer) {
+            pixelCopyBitmapBuffer.open()
+            isSessionReplayActive = true
+        }
 
         if (!resumeCurrent) {
             // Without this, on a static UI the first user-driven onDraw can be tens of seconds
@@ -2328,12 +2471,17 @@ public class PostHogReplayIntegration(
     }
 
     override fun stop() {
-        startedWithAutomaticDisabled = false
-        stopRecording()
+        stopRecording(resetManualStart = true)
     }
 
-    private fun stopRecording() {
-        isSessionReplayActive = false
+    private fun stopRecording(resetManualStart: Boolean = false) {
+        synchronized(pixelCopyBitmapBuffer) {
+            if (resetManualStart) {
+                startedWithAutomaticDisabled = false
+            }
+            isSessionReplayActive = false
+            pixelCopyBitmapBuffer.close()
+        }
         synchronized(decorViews) {
             decorViews.values.forEach { it.drawState.invalidateMaskCapture() }
         }
