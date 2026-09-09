@@ -162,6 +162,8 @@ internal class PostHogReplayIntegrationTest {
 
     @AfterTest
     fun `tear down`() {
+        // Flush listener removals posted by uninstall before Robolectric resets the main looper.
+        shadowOf(Looper.getMainLooper()).idle()
         PostHogSessionManager.isReactNative = false
         PostHogSessionManager.endSession()
         PostHogSessionManager.setAppInBackground(true)
