@@ -18,10 +18,12 @@
         },
         "ordered_array": [
           "alpha",
+          null,
           "omega"
         ],
         "ordered_list": [
           "first",
+          null,
           "third"
         ]
       },
