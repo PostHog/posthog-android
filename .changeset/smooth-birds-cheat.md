@@ -11,3 +11,5 @@ Persist unfinished survey progress across app restarts and restore the submissio
 Keep unfinished surveys across Activity teardown, preserve unreadable progress during Direct Boot, and invalidate delayed responses on reset without mixing user identities.
 
 Discard visible, delayed, and retained Compose survey input on reset, while preserving fresh presentations and delegate reuse across SDK configurations.
+
+Preserve unfinished progress when startup has no cached survey configuration; confirmed empty survey lists still clear removed surveys.

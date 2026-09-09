@@ -18,7 +18,11 @@ internal class SurveyBinaryCompatibilityTest {
     private fun legacyArguments(): Array<Any?> =
         arrayOf(
             "survey", "Survey", SurveyType.POPOVER, emptyList<SurveyQuestion>(),
-            null, null, null, null, null, null, null, null, null, null, null, null, null,
+            "Description", null, "linked", "targeting", "internal", null, null, 7,
+            Date(
+                101,
+            ),
+            Date(202), Date(303), null, emptyMap<String, SurveyTranslation>(),
         )
 
     @Test
@@ -33,7 +37,17 @@ internal class SurveyBinaryCompatibilityTest {
                 Date::class.java,
             )
         val constructor = PostHogDisplaySurvey::class.java.getDeclaredConstructor(*types)
-        val original = constructor.newInstance("id", "name", emptyList<PostHogDisplaySurveyQuestion>(), null, null, null)
+        val original =
+            constructor.newInstance(
+                "id",
+                "name",
+                emptyList<PostHogDisplaySurveyQuestion>(),
+                PostHogDisplaySurveyAppearance(),
+                Date(404),
+                Date(505),
+            )
+        assertEquals(Date(404), original.startDate)
+        assertEquals(Date(505), original.endDate)
         assertEquals(0, original.initialQuestionIndex)
         val resumed = original.copy(initialQuestionIndex = 2)
         assertEquals(2, resumed.copy(name = "Updated").initialQuestionIndex)
@@ -45,8 +59,15 @@ internal class SurveyBinaryCompatibilityTest {
                 Int::class.javaPrimitiveType,
                 Any::class.java,
             )
-        val copied = defaultCopy.invoke(null, resumed, *arrayOfNulls<Any>(6), 63, null) as PostHogDisplaySurvey
-        assertEquals(2, copied.initialQuestionIndex)
+        val copied =
+            defaultCopy.invoke(
+                null, resumed, null, "Mixed name", null, null,
+                Date(
+                    606,
+                ),
+                null, 63 xor (1 shl 1) xor (1 shl 4), null,
+            ) as PostHogDisplaySurvey
+        assertEquals(resumed.copy(name = "Mixed name", startDate = Date(606)), copied)
     }
 
     @Test
@@ -54,6 +75,12 @@ internal class SurveyBinaryCompatibilityTest {
         val constructor = Survey::class.java.getDeclaredConstructor(*legacyParameterTypes)
         val survey = constructor.newInstance(*legacyArguments())
         assertEquals("survey", survey.id)
+        assertEquals(
+            listOf("Description", "linked", "targeting", "internal"),
+            listOf(survey.description, survey.linkedFlagKey, survey.targetingFlagKey, survey.internalTargetingFlagKey),
+        )
+        assertEquals(7, survey.currentIteration)
+        assertEquals(listOf(Date(101), Date(202), Date(303)), listOf(survey.currentIterationStartDate, survey.startDate, survey.endDate))
         assertEquals(null, survey.enablePartialResponses)
 
         val defaultConstructor =
@@ -63,17 +90,15 @@ internal class SurveyBinaryCompatibilityTest {
                 Class.forName("kotlin.jvm.internal.DefaultConstructorMarker"),
             )
         val withDefaults = defaultConstructor.newInstance(*legacyArguments(), 1 shl 16, null)
-        assertEquals(survey, withDefaults)
+        assertEquals(survey.copy(translations = null), withDefaults)
     }
 
     @Test
     fun `legacy copy and Kotlin default copy preserve partial responses`() {
         val survey =
-            Survey(
-                "survey", "Survey", SurveyType.POPOVER, emptyList(),
-                null, null, null, null, null, null, null, null, null, null, null, null,
-                enablePartialResponses = true,
-            )
+            Survey::class.java.getDeclaredConstructor(
+                *legacyParameterTypes,
+            ).newInstance(*legacyArguments()).copy(enablePartialResponses = true)
         assertEquals(true, survey.copy(name = "Renamed").enablePartialResponses)
         assertEquals(false, survey.copy(enablePartialResponses = false).enablePartialResponses)
         val copy = Survey::class.java.getDeclaredMethod("copy", *legacyParameterTypes)
@@ -90,7 +115,16 @@ internal class SurveyBinaryCompatibilityTest {
                 Any::class.java,
             )
         val copiedWithDefaults =
-            defaultCopy.invoke(null, survey, *arrayOfNulls<Any>(17), (1 shl 17) - 1, null) as Survey
-        assertEquals(survey, copiedWithDefaults)
+            defaultCopy.invoke(
+                null,
+                survey,
+                *legacyArguments().apply {
+                    this[1] = "Mixed name"
+                    this[4] = "New description"
+                },
+                ((1 shl 17) - 1) xor (1 shl 1) xor (1 shl 4),
+                null,
+            ) as Survey
+        assertEquals(survey.copy(name = "Mixed name", description = "New description"), copiedWithDefaults)
     }
 }

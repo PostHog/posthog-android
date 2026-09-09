@@ -2,6 +2,7 @@ package com.posthog.android.surveys.compose.internal
 
 import android.app.Application
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
@@ -25,6 +26,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -65,29 +67,13 @@ internal class PostHogSurveyHostResetRaceTest {
                 binder.start()
                 awaitBlocked(binder)
                 resetter.start()
-                // The original race delivers reset before bind installs the new owner. With
-                // atomic binding reset waits for that installation, then invalidates it.
-                notification.await(2, TimeUnit.SECONDS)
+                awaitResetDeliveryOrBlocking(resetter, notification)
             }
             binder.join(2000)
             resetter.join(2000)
             assertFalse(binder.isAlive)
             assertFalse(resetter.isAlive)
-            val survey =
-                PostHogDisplaySurvey(
-                    "old",
-                    "Old",
-                    listOf(
-                        PostHogDisplayOpenQuestion(
-                            "q",
-                            "Previous user question",
-                            null,
-                            PostHogDisplaySurveyTextContentType.TEXT,
-                            false,
-                            "Send",
-                        ),
-                    ),
-                )
+            val survey = oldSurvey()
             compose.runOnIdle {
                 delegate.renderSurvey(
                     PostHogSurveyPresentation(survey, oldGeneration, owner),
@@ -97,6 +83,15 @@ internal class PostHogSurveyHostResetRaceTest {
                 )
             }
             compose.onNodeWithText("Previous user question").assertDoesNotExist()
+            compose.runOnIdle {
+                delegate.renderSurvey(
+                    PostHogSurveyPresentation(survey, config.surveysConfig.resetGeneration, owner),
+                    {},
+                    { _, _, _ -> null },
+                    {},
+                )
+            }
+            compose.onNodeWithText("Previous user question").assertIsDisplayed()
         } finally {
             compose.runOnUiThread { delegate.cleanupSurveys() }
             sdk.close()
@@ -106,6 +101,34 @@ internal class PostHogSurveyHostResetRaceTest {
     private fun awaitBlocked(thread: Thread) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         while (thread.state != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield()
-        assertTrue(thread.state == Thread.State.BLOCKED, "Binder must be waiting on the held host gate")
+        assertTrue(thread.state == Thread.State.BLOCKED, "Contested operation must reach its monitor before releasing the host gate")
     }
+
+    private fun awaitResetDeliveryOrBlocking(
+        resetter: Thread,
+        notification: CountDownLatch,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (System.nanoTime() < deadline) {
+            if (notification.count == 0L || resetter.state == Thread.State.BLOCKED) return
+            Thread.yield()
+        }
+        fail("Reset must deliver or reach the contested monitor")
+    }
+
+    private fun oldSurvey(): PostHogDisplaySurvey =
+        PostHogDisplaySurvey(
+            "old",
+            "Old",
+            listOf(
+                PostHogDisplayOpenQuestion(
+                    "q",
+                    "Previous user question",
+                    null,
+                    PostHogDisplaySurveyTextContentType.TEXT,
+                    false,
+                    "Send",
+                ),
+            ),
+        )
 }

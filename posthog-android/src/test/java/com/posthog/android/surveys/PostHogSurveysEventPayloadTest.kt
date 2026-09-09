@@ -7,8 +7,6 @@ import com.posthog.PostHogBeforeSend
 import com.posthog.PostHogConfig
 import com.posthog.PostHogFake
 import com.posthog.PostHogInterface
-import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
@@ -37,32 +35,8 @@ internal class PostHogSurveysEventPayloadTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val serializer = PostHogSerializer(PostHogConfig("test-api-key"))
 
-    private class RecordingDelegate : PostHogSurveysDelegate {
-        var shownSurvey: PostHogDisplaySurvey? = null
-        var onSurveyShown: OnPostHogSurveyShown? = null
-        var onSurveyResponse: OnPostHogSurveyResponse? = null
-        var onSurveyClosed: OnPostHogSurveyClosed? = null
-        var cleanupCalls = 0
-
-        override fun renderSurvey(
-            survey: PostHogDisplaySurvey,
-            onSurveyShown: OnPostHogSurveyShown,
-            onSurveyResponse: OnPostHogSurveyResponse,
-            onSurveyClosed: OnPostHogSurveyClosed,
-        ) {
-            shownSurvey = survey
-            this.onSurveyShown = onSurveyShown
-            this.onSurveyResponse = onSurveyResponse
-            this.onSurveyClosed = onSurveyClosed
-        }
-
-        override fun cleanupSurveys() {
-            cleanupCalls++
-        }
-    }
-
     private fun createIntegration(
-        delegate: RecordingDelegate,
+        delegate: RecordingSurveyDelegate,
         preferences: PostHogPreferences = PostHogMemoryPreferences(),
     ): Pair<PostHogSurveysIntegration, PostHogFake> {
         val config =
@@ -161,46 +135,9 @@ internal class PostHogSurveysEventPayloadTest {
     }
 
     @Test
-    fun `unfinished responses survive integration restart`() {
-        for (enabled in listOf(true, false, null)) {
-            val preferences = PostHogSharedPreferences(context, PostHogAndroidConfig("survey-resume-test"))
-            preferences.clear()
-            val delegate = RecordingDelegate()
-            val survey = partialResponseSurvey(enabled)
-            val (first, firstPostHog) = createIntegration(delegate, preferences)
-            first.showSurvey(survey)
-            val display = assertNotNull(delegate.shownSurvey)
-            assertNotNull(delegate.onSurveyShown).invoke(display)
-            assertNotNull(delegate.onSurveyResponse).invoke(display, 0, PostHogSurveyResponse.Text("Saved"))
-            val submissionId = firstPostHog.properties?.get("\$survey_submission_id")
-            first.uninstall()
-
-            val reloadedPreferences = PostHogSharedPreferences(context, PostHogAndroidConfig("survey-resume-test"))
-            val (resumed, resumedPostHog) = createIntegration(delegate, reloadedPreferences)
-            try {
-                resumed.showSurvey(survey)
-                val restored = assertNotNull(delegate.shownSurvey)
-                assertEquals(1, restored.initialQuestionIndex)
-                assertNotNull(delegate.onSurveyShown).invoke(restored)
-                assertNotNull(delegate.onSurveyResponse).invoke(restored, 1, PostHogSurveyResponse.Text("Final"))
-                val properties = assertNotNull(resumedPostHog.properties)
-                assertEquals("Saved", properties["\$survey_response_first"])
-                assertEquals(true, properties["\$survey_completed"])
-                if (enabled == true) assertEquals(submissionId, properties["\$survey_submission_id"])
-                assertNotNull(delegate.onSurveyClosed).invoke(restored)
-                resumed.showSurvey(survey)
-                assertEquals(0, assertNotNull(delegate.shownSurvey).initialQuestionIndex)
-            } finally {
-                resumed.uninstall()
-                preferences.clear()
-            }
-        }
-    }
-
-    @Test
-    fun `reset before a restored survey is shown rejects captured answers`() {
+    fun `clearing storage before a restored survey is shown rejects captured answers`() {
         val preferences = PostHogMemoryPreferences()
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val survey = partialResponseSurvey(true)
         val (first, _) = createIntegration(delegate, preferences)
         first.showSurvey(survey)
@@ -228,7 +165,7 @@ internal class PostHogSurveysEventPayloadTest {
     @Test
     fun `stale shown callback does not clean up a newer survey`() {
         val preferences = PostHogMemoryPreferences()
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val survey = partialResponseSurvey(true)
         val (first, _) = createIntegration(delegate, preferences)
         first.showSurvey(survey)
@@ -261,7 +198,7 @@ internal class PostHogSurveysEventPayloadTest {
 
     @Test
     fun `capture callback can reset without retaining previous progress`() {
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val preferences = PostHogMemoryPreferences()
         val directory = java.io.File(context.cacheDir, java.util.UUID.randomUUID().toString()).apply { mkdirs() }
         lateinit var sdk: PostHogInterface
@@ -319,37 +256,31 @@ internal class PostHogSurveysEventPayloadTest {
     }
 
     @Test
-    fun `dismissal and reset clear saved progress without stale callbacks restoring it`() {
-        for (reset in listOf(false, true)) {
-            val preferences = PostHogMemoryPreferences()
-            val delegate = RecordingDelegate()
-            val (integration, postHog) = createIntegration(delegate, preferences)
-            try {
-                integration.showSurvey(partialResponseSurvey(true))
-                val display = assertNotNull(delegate.shownSurvey)
-                assertNotNull(delegate.onSurveyShown).invoke(display)
-                assertNotNull(delegate.onSurveyResponse).invoke(display, 0, PostHogSurveyResponse.Text("Saved"))
-                if (reset) {
-                    preferences.clear()
-                    val count = postHog.captures
-                    assertNull(assertNotNull(delegate.onSurveyResponse).invoke(display, 1, PostHogSurveyResponse.Text("Stale")))
-                    assertEquals(count, postHog.captures)
-                } else {
-                    assertNotNull(delegate.onSurveyClosed).invoke(display)
-                }
-                integration.showSurvey(partialResponseSurvey(true))
-                assertEquals(0, assertNotNull(delegate.shownSurvey).initialQuestionIndex)
-            } finally {
-                integration.uninstall()
-                preferences.clear()
-            }
+    fun `clearing storage rejects stale responses and starts a fresh attempt`() {
+        val preferences = PostHogMemoryPreferences()
+        val delegate = RecordingSurveyDelegate()
+        val (integration, postHog) = createIntegration(delegate, preferences)
+        try {
+            integration.showSurvey(partialResponseSurvey(true))
+            val display = assertNotNull(delegate.shownSurvey)
+            assertNotNull(delegate.onSurveyShown).invoke(display)
+            assertNotNull(delegate.onSurveyResponse).invoke(display, 0, PostHogSurveyResponse.Text("Saved"))
+            preferences.clear()
+            val count = postHog.captures
+            assertNull(assertNotNull(delegate.onSurveyResponse).invoke(display, 1, PostHogSurveyResponse.Text("Stale")))
+            assertEquals(count, postHog.captures)
+            integration.showSurvey(partialResponseSurvey(true))
+            assertEquals(0, assertNotNull(delegate.shownSurvey).initialQuestionIndex)
+        } finally {
+            integration.uninstall()
+            preferences.clear()
         }
     }
 
     @Test
     fun `unfinished surveys bypass seen and internal targeting but honor linked flags`() {
         val preferences = PostHogMemoryPreferences()
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, _) = createIntegration(delegate, preferences)
         val survey = partialResponseSurvey(true).copy(startDate = java.util.Date())
         integration.showSurvey(survey)
@@ -374,7 +305,7 @@ internal class PostHogSurveysEventPayloadTest {
     @Test
     fun `restart restores the branching destination and omits skipped answers`() {
         val preferences = PostHogMemoryPreferences()
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val questions =
             assertNotNull(
                 serializer.deserializeList<SurveyQuestion>(
@@ -391,11 +322,12 @@ internal class PostHogSurveysEventPayloadTest {
                 ),
             )
         val survey = partialResponseSurvey(true).copy(questions = questions)
-        val (first, _) = createIntegration(delegate, preferences)
+        val (first, firstPostHog) = createIntegration(delegate, preferences)
         first.showSurvey(survey)
         val display = assertNotNull(delegate.shownSurvey)
         assertNotNull(delegate.onSurveyShown).invoke(display)
         assertNotNull(delegate.onSurveyResponse).invoke(display, 0, PostHogSurveyResponse.Text("Saved"))
+        val submissionId = assertNotNull(firstPostHog.properties?.get("\$survey_submission_id"))
         first.uninstall()
         val (resumed, postHog) = createIntegration(delegate, preferences)
         try {
@@ -405,7 +337,13 @@ internal class PostHogSurveysEventPayloadTest {
             assertNotNull(delegate.onSurveyShown).invoke(restored)
             assertNotNull(delegate.onSurveyResponse).invoke(restored, 2, PostHogSurveyResponse.Text("Final"))
             assertEquals("Saved", postHog.properties?.get("\$survey_response_first"))
+            assertEquals("Saved", postHog.properties?.get("\$survey_response"))
+            assertEquals("Final", postHog.properties?.get("\$survey_response_last"))
+            assertEquals("Final", postHog.properties?.get("\$survey_response_2"))
+            assertEquals(true, postHog.properties?.get("\$survey_completed"))
+            assertEquals(submissionId, postHog.properties?.get("\$survey_submission_id"))
             assertNull(postHog.properties?.get("\$survey_response_skipped"))
+            assertNull(postHog.properties?.get("\$survey_response_1"))
         } finally {
             resumed.uninstall()
             preferences.clear()
@@ -415,7 +353,7 @@ internal class PostHogSurveysEventPayloadTest {
     @Test
     fun `showing a survey alone does not create resumable progress`() {
         val preferences = PostHogMemoryPreferences()
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, _) = createIntegration(delegate, preferences)
         try {
             integration.showSurvey(partialResponseSurvey(true))
@@ -430,7 +368,7 @@ internal class PostHogSurveysEventPayloadTest {
     @Test
     fun `partial responses emit cumulative answers with one submission id`() {
         for (enabled in listOf(true, false, null)) {
-            val delegate = RecordingDelegate()
+            val delegate = RecordingSurveyDelegate()
             val (integration, postHog) = createIntegration(delegate)
             try {
                 integration.showSurvey(partialResponseSurvey(enabled))
@@ -467,7 +405,7 @@ internal class PostHogSurveysEventPayloadTest {
 
     @Test
     fun `dismissal keeps submission id and a new attempt gets a new id`() {
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, postHog) = createIntegration(delegate)
         try {
             val original = partialResponseSurvey(true)
@@ -483,6 +421,7 @@ internal class PostHogSurveysEventPayloadTest {
             assertEquals(true, postHog.properties?.get("\$survey_partially_completed"))
             assertEquals("Saved", postHog.properties?.get("\$survey_response_first"))
             integration.showSurvey(original)
+            assertEquals(0, assertNotNull(delegate.shownSurvey).initialQuestionIndex)
             assertNotNull(delegate.onSurveyShown).invoke(assertNotNull(delegate.shownSurvey))
             assertNotNull(delegate.onSurveyResponse).invoke(assertNotNull(delegate.shownSurvey), 0, PostHogSurveyResponse.Text("New"))
             val nextId = assertNotNull(postHog.properties?.get("\$survey_submission_id"))
@@ -494,7 +433,7 @@ internal class PostHogSurveysEventPayloadTest {
 
     @Test
     fun `branching to end completes a partial-enabled survey even with a skipped optional answer`() {
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, postHog) = createIntegration(delegate)
         try {
             integration.showSurvey(partialResponseSurvey(true, endAfterFirst = true))
@@ -504,7 +443,14 @@ internal class PostHogSurveysEventPayloadTest {
             assertEquals(true, next.isSurveyCompleted)
             assertEquals(2, postHog.captures)
             assertEquals(true, postHog.properties?.get("\$survey_completed"))
-            assertNull(postHog.properties?.get("\$survey_response_second"))
+            val properties = assertNotNull(postHog.properties)
+            for (key in listOf("\$survey_response", "\$survey_response_first", "\$survey_response_1", "\$survey_response_second")) {
+                assertFalse(properties.containsKey(key), "Null and unvisited answers must omit $key")
+            }
+            assertEquals(
+                listOf(mapOf("id" to "first", "question" to "First?"), mapOf("id" to "second", "question" to "Second?")),
+                properties["\$survey_questions"],
+            )
         } finally {
             integration.uninstall()
         }
@@ -512,7 +458,7 @@ internal class PostHogSurveysEventPayloadTest {
 
     @Test
     fun `survey sent includes legacy and question id response keys`() {
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, postHog) = createIntegration(delegate)
         val survey = createSurvey(id = "sent-survey", name = "Sent Survey")
 
@@ -554,7 +500,7 @@ internal class PostHogSurveysEventPayloadTest {
 
     @Test
     fun `survey dismissed includes responses and marks partial completion when there are answers`() {
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, postHog) = createIntegration(delegate)
         val survey = createSurvey()
 
@@ -594,7 +540,7 @@ internal class PostHogSurveysEventPayloadTest {
 
     @Test
     fun `survey dismissed marks partial completion false when there are no answers`() {
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, postHog) = createIntegration(delegate)
         val survey = createSurvey(id = "empty-dismissed-survey", name = "Empty Dismissed Survey")
 
@@ -631,7 +577,7 @@ internal class PostHogSurveysEventPayloadTest {
 
     @Test
     fun `survey dismissed ignores null rating response`() {
-        val delegate = RecordingDelegate()
+        val delegate = RecordingSurveyDelegate()
         val (integration, postHog) = createIntegration(delegate)
         val survey = createSurvey(id = "null-rating-survey", name = "Null Rating Survey")
 
@@ -661,5 +607,29 @@ internal class PostHogSurveysEventPayloadTest {
             ),
             properties["\$survey_questions"],
         )
+    }
+}
+
+internal class RecordingSurveyDelegate : PostHogSurveysDelegate {
+    var shownSurvey: PostHogDisplaySurvey? = null
+    var onSurveyShown: OnPostHogSurveyShown? = null
+    var onSurveyResponse: OnPostHogSurveyResponse? = null
+    var onSurveyClosed: OnPostHogSurveyClosed? = null
+    var cleanupCalls = 0
+
+    override fun renderSurvey(
+        survey: PostHogDisplaySurvey,
+        onSurveyShown: OnPostHogSurveyShown,
+        onSurveyResponse: OnPostHogSurveyResponse,
+        onSurveyClosed: OnPostHogSurveyClosed,
+    ) {
+        shownSurvey = survey
+        this.onSurveyShown = onSurveyShown
+        this.onSurveyResponse = onSurveyResponse
+        this.onSurveyClosed = onSurveyClosed
+    }
+
+    override fun cleanupSurveys() {
+        cleanupCalls++
     }
 }

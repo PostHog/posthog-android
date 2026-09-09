@@ -19,9 +19,16 @@ import com.posthog.surveys.PostHogSurveysResetAwareDelegate
 import com.posthog.surveys.Survey
 import org.junit.runner.RunWith
 import java.io.StringReader
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogSurveysDelegateLifecycleTest {
@@ -37,7 +44,9 @@ internal class PostHogSurveysDelegateLifecycleTest {
     @Test
     fun `replacement delegate is bound and retired integration cannot render again`() {
         var generation: Long? = null
-        var boundConfig: PostHogSurveysConfig? = null
+        var boundSession: PostHogSurveyPresentationSession? = null
+        var renderedSession: PostHogSurveyPresentationSession? = null
+        var cleanedSession: PostHogSurveyPresentationSession? = null
         val delegate =
             object : PostHogSurveysResetAwareDelegate, PostHogSurveysDelegate by PostHogSurveysDefaultDelegate() {
                 override fun renderSurvey(
@@ -47,13 +56,16 @@ internal class PostHogSurveysDelegateLifecycleTest {
                     onSurveyClosed: OnPostHogSurveyClosed,
                 ) {
                     generation = presentation.resetGeneration
+                    renderedSession = presentation.session
                 }
 
                 override fun bindSurveySession(session: PostHogSurveyPresentationSession) {
-                    boundConfig = session.config
+                    boundSession = session
                 }
 
-                override fun cleanupSurveys(session: PostHogSurveyPresentationSession) = Unit
+                override fun cleanupSurveys(session: PostHogSurveyPresentationSession) {
+                    cleanedSession = session
+                }
 
                 override fun onSurveyReset(
                     resetGeneration: Long,
@@ -65,21 +77,33 @@ internal class PostHogSurveysDelegateLifecycleTest {
         try {
             integration.showSurvey(survey)
             assertEquals(0L, generation)
-            assertEquals(config.surveysConfig, boundConfig)
+            val firstSession = assertNotNull(boundSession)
+            assertSame(config.surveysConfig, firstSession.config)
+            assertSame(firstSession, renderedSession)
+            assertTrue(firstSession.isActive)
             integration.uninstall()
+            assertFalse(firstSession.isActive)
+            assertSame(firstSession, cleanedSession)
             generation = null
-            boundConfig = null
+            boundSession = null
             integration.showSurvey(survey)
             assertNull(generation)
-            assertNull(boundConfig)
+            assertNull(boundSession)
+            integration.install(PostHogFake())
+            integration.showSurvey(survey)
+            val nextSession = assertNotNull(boundSession)
+            assertNotSame(firstSession, nextSession)
+            assertTrue(nextSession.isActive)
+            assertSame(nextSession, renderedSession)
         } finally {
             integration.uninstall()
         }
     }
 
     @Test
-    fun `custom render runs without the integration lifecycle monitor`() {
-        var heldLock: Boolean? = null
+    fun `custom render can wait for another thread to uninstall the integration`() {
+        var completed: Boolean? = null
+        var handoff: Thread? = null
         config.surveysConfig.surveysDelegate =
             object : PostHogSurveysDelegate by PostHogSurveysDefaultDelegate() {
                 override fun renderSurvey(
@@ -88,15 +112,22 @@ internal class PostHogSurveysDelegateLifecycleTest {
                     onSurveyResponse: OnPostHogSurveyResponse,
                     onSurveyClosed: OnPostHogSurveyClosed,
                 ) {
-                    val field = PostHogSurveysIntegration::class.java.getDeclaredField("lifecycleLock").apply { isAccessible = true }
-                    heldLock = Thread.holdsLock(checkNotNull(field.get(integration)))
+                    val uninstalled = CountDownLatch(1)
+                    handoff =
+                        Thread {
+                            integration.uninstall()
+                            uninstalled.countDown()
+                        }.apply { start() }
+                    completed = uninstalled.await(2, TimeUnit.SECONDS)
                 }
             }
         integration.install(PostHogFake())
         try {
             integration.showSurvey(survey)
-            assertEquals(false, heldLock)
+            assertEquals(true, completed, "Custom rendering must not deadlock with an uninstall handoff")
         } finally {
+            handoff?.join(2_000)
+            assertFalse(handoff?.isAlive == true)
             integration.uninstall()
         }
     }

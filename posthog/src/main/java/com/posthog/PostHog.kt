@@ -340,8 +340,7 @@ public class PostHog private constructor(
                             surveysHandler = it
                             // Immediately push any cached surveys from remote config
                             try {
-                                val surveys = remoteConfig?.getSurveys() ?: emptyList()
-                                it.onSurveysLoaded(surveys)
+                                remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
                             } catch (e: Throwable) {
                                 config.logger.log("Pushing cached surveys to integration failed: $e.")
                             }

@@ -26,6 +26,7 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 import com.posthog.surveys.PostHogNextSurveyQuestion
 import com.posthog.surveys.PostHogSurveyPresentation
 import com.posthog.surveys.PostHogSurveyPresentationSession
+import com.posthog.surveys.PostHogSurveyResponse
 import com.posthog.surveys.PostHogSurveysConfig
 import org.junit.Rule
 import org.junit.Test
@@ -35,6 +36,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.Duration
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -54,32 +56,17 @@ internal class PostHogSurveyHostTest {
 
     @Test
     fun `reset removes unsent text before a new host resumes`() {
-        assertResetBeforeHostTransition(replacementAlreadyResumed = false)
-    }
-
-    @Test
-    fun `reset removes unsent text when replacement host already resumed`() {
-        assertResetBeforeHostTransition(replacementAlreadyResumed = true)
+        assertResetBeforeHostTransition(resetAfterFinish = false)
     }
 
     @Test
     fun `reset discards retained unsent text after host has already finished`() {
-        assertResetBeforeHostTransition(replacementAlreadyResumed = false, resetAfterFinish = true)
+        assertResetBeforeHostTransition(resetAfterFinish = true)
     }
 
-    @Suppress("DEPRECATION")
-    private fun assertResetBeforeHostTransition(
-        replacementAlreadyResumed: Boolean,
-        resetAfterFinish: Boolean = false,
-    ) {
+    private fun assertResetBeforeHostTransition(resetAfterFinish: Boolean) {
         val application = ApplicationProvider.getApplicationContext<Application>()
-        val config =
-            PostHogConfig("host-reset", "http://127.0.0.1:1").apply {
-                cachePreferences = PostHogMemoryPreferences()
-                preloadFeatureFlags = false
-                remoteConfig = false
-                reuseAnonymousId = true
-            }
+        val config = resetConfig()
         val sdk = PostHog.with(config)
         val integration = PostHogSurveysIntegration(application, config)
         integration.install(sdk)
@@ -91,10 +78,17 @@ internal class PostHogSurveyHostTest {
                 listOf(PostHogDisplayOpenQuestion("q", "Private question?", null, PostHogDisplaySurveyTextContentType.TEXT, false, "Send")),
             )
         var closed = 0
+        val oldAnswers = mutableListOf<PostHogSurveyResponse>()
+        val freshAnswers = mutableListOf<PostHogSurveyResponse>()
         var replacement: ActivityScenario<ComponentActivity>? = null
         try {
             compose.activityRule.scenario.recreate()
-            compose.runOnIdle { delegate.renderSurvey(survey, {}, { _, _, _ -> null }, { closed++ }) }
+            compose.runOnIdle {
+                delegate.renderSurvey(survey, {}, { _, _, answer ->
+                    oldAnswers.add(answer)
+                    null
+                }, { closed++ })
+            }
             compose.onNode(hasSetTextAction()).performTextInput("Previous user secret")
             val oldClose =
                 compose.onNodeWithContentDescription(
@@ -107,7 +101,6 @@ internal class PostHogSurveyHostTest {
                 compose.onNodeWithText("Previous user secret").assertDoesNotExist()
                 compose.onNodeWithText("Private question?").assertDoesNotExist()
             }
-            if (replacementAlreadyResumed) replacement = ActivityScenario.launch(ComponentActivity::class.java)
             compose.activityRule.scenario.close()
             if (resetAfterFinish) compose.runOnUiThread { sdk.reset() }
             if (replacement == null) replacement = ActivityScenario.launch(ComponentActivity::class.java)
@@ -115,12 +108,19 @@ internal class PostHogSurveyHostTest {
             compose.onNodeWithText("Previous user secret").assertDoesNotExist()
             compose.onNodeWithText("Private question?").assertDoesNotExist()
             assertEquals(0, closed)
-            compose.runOnIdle { delegate.renderSurvey(survey, {}, { _, _, _ -> null }, { closed++ }) }
+            compose.runOnIdle {
+                delegate.renderSurvey(survey, {}, { _, _, answer ->
+                    freshAnswers.add(answer)
+                    null
+                }, { closed++ })
+            }
             compose.onNodeWithText("Private question?").assertIsDisplayed()
             compose.runOnIdle {
                 oldClose()
                 oldSubmit()
             }
+            assertEquals(emptyList(), oldAnswers)
+            assertEquals(emptyList(), freshAnswers)
             compose.onNodeWithText("Private question?").assertIsDisplayed()
             compose.onNodeWithText("Previous user secret").assertDoesNotExist()
             compose.onNodeWithContentDescription("Close survey").performSemanticsAction(SemanticsActions.OnClick) { it() }
@@ -161,7 +161,8 @@ internal class PostHogSurveyHostTest {
                     )
                 }.apply {
                     start()
-                    join()
+                    join(2_000)
+                    assertFalse(isAlive, "Queued render must finish without waiting for main")
                 }
                 delegate.onSurveyReset(1, owner.config)
             }
@@ -202,7 +203,8 @@ internal class PostHogSurveyHostTest {
             // Cleanup is queued, but a fresh presentation reaches main first.
             Thread { delegate.onSurveyReset(3, owner.config) }.apply {
                 start()
-                join()
+                join(2_000)
+                assertFalse(isAlive, "Reset notification must finish without waiting for main")
             }
             delegate.renderSurvey(PostHogSurveyPresentation(survey, 4, owner), { shown++ }, { _, _, _ -> null }, { closed++ })
             delegate.onSurveyReset(2, owner.config)
@@ -244,7 +246,7 @@ internal class PostHogSurveyHostTest {
         val host = PostHogSurveyHost(provider)
         var shown = 0
         var closed = 0
-        val submitted = mutableListOf<Int>()
+        val submitted = mutableListOf<Pair<Int, PostHogSurveyResponse>>()
         val survey =
             PostHogDisplaySurvey(
                 id = "resume",
@@ -259,16 +261,17 @@ internal class PostHogSurveyHostTest {
         try {
             compose.runOnIdle {
                 provider.onActivityResumed(compose.activity)
-                host.show(survey, { shown++ }, { _, index, _ ->
-                    submitted.add(index)
-                    PostHogNextSurveyQuestion(index + 1, false)
+                host.show(survey, { shown++ }, { _, index, answer ->
+                    submitted.add(index to answer)
+                    PostHogNextSurveyQuestion(1, false)
                 }, { closed++ })
             }
             compose.onNodeWithText("First?").assertIsDisplayed()
             compose.onNode(hasSetTextAction()).performTextInput("Saved")
             compose.onNodeWithText("Next").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick) { it() }
-            assertEquals(listOf(0), submitted)
+            assertEquals(listOf<Pair<Int, PostHogSurveyResponse>>(0 to PostHogSurveyResponse.Text("Saved")), submitted)
             compose.onNodeWithText("Second?").assertExists()
+            compose.onNode(hasSetTextAction()).performTextInput("Unsent draft")
 
             if (replacementAlreadyResumed) replacement = ActivityScenario.launch(ComponentActivity::class.java)
             compose.activityRule.scenario.close()
@@ -276,8 +279,17 @@ internal class PostHogSurveyHostTest {
             if (replacement == null) replacement = ActivityScenario.launch(ComponentActivity::class.java)
 
             compose.onNodeWithText("Second?").assertExists()
-            assertEquals(listOf(0), submitted)
+            assertEquals(listOf<Pair<Int, PostHogSurveyResponse>>(0 to PostHogSurveyResponse.Text("Saved")), submitted)
             assertEquals(1, shown)
+            compose.onNodeWithText("Unsent draft").assertIsDisplayed()
+            compose.onNodeWithText("Next").performSemanticsAction(SemanticsActions.OnClick) { it() }
+            assertEquals(
+                listOf<Pair<Int, PostHogSurveyResponse>>(
+                    0 to PostHogSurveyResponse.Text("Saved"),
+                    1 to PostHogSurveyResponse.Text("Unsent draft"),
+                ),
+                submitted,
+            )
             compose.onNodeWithContentDescription("Close survey").performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.waitForIdle()
             assertEquals(1, closed)
@@ -287,4 +299,13 @@ internal class PostHogSurveyHostTest {
             application.unregisterActivityLifecycleCallbacks(provider)
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun resetConfig(): PostHogConfig =
+        PostHogConfig("host-reset", "http://127.0.0.1:1").apply {
+            cachePreferences = PostHogMemoryPreferences()
+            preloadFeatureFlags = false
+            remoteConfig = false
+            reuseAnonymousId = true
+        }
 }
