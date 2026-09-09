@@ -24,6 +24,15 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
+import com.posthog.surveys.OnPostHogSurveyClosed
+import com.posthog.surveys.OnPostHogSurveyResponse
+import com.posthog.surveys.OnPostHogSurveyShown
+import com.posthog.surveys.PostHogSurveyPresentation
+import com.posthog.surveys.PostHogSurveyPresentationSession
+import com.posthog.surveys.PostHogSurveysConfig
+import com.posthog.surveys.PostHogSurveysDefaultDelegate
+import com.posthog.surveys.PostHogSurveysDelegate
+import com.posthog.surveys.PostHogSurveysResetAwareDelegate
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
@@ -2483,11 +2492,36 @@ internal class PostHogTest {
         val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
         try {
             val generation = config.surveysConfig.resetGeneration
+            var notifiedGeneration: Long? = null
+            var callbackHeldLock: Boolean? = null
+            config.surveysConfig.surveysDelegate =
+                object : PostHogSurveysResetAwareDelegate, PostHogSurveysDelegate by PostHogSurveysDefaultDelegate() {
+                    override fun renderSurvey(
+                        presentation: PostHogSurveyPresentation,
+                        onSurveyShown: OnPostHogSurveyShown,
+                        onSurveyResponse: OnPostHogSurveyResponse,
+                        onSurveyClosed: OnPostHogSurveyClosed,
+                    ) = Unit
+
+                    override fun cleanupSurveys(session: PostHogSurveyPresentationSession) = Unit
+
+                    override fun bindSurveySession(session: PostHogSurveyPresentationSession) = Unit
+
+                    override fun onSurveyReset(
+                        resetGeneration: Long,
+                        config: PostHogSurveysConfig,
+                    ) {
+                        notifiedGeneration = resetGeneration
+                        callbackHeldLock = Thread.holdsLock(this@PostHogTest.config.surveysConfig)
+                    }
+                }
             config.cachePreferences?.setValue(PostHogPreferences.SURVEY_PROGRESS, mapOf("survey" to "saved"))
 
             sut.reset()
 
             assertNotEquals(generation, config.surveysConfig.resetGeneration)
+            assertEquals(config.surveysConfig.resetGeneration, notifiedGeneration)
+            assertEquals(false, callbackHeldLock)
             assertNull(config.cachePreferences?.getValue(PostHogPreferences.SURVEY_PROGRESS))
         } finally {
             sut.close()

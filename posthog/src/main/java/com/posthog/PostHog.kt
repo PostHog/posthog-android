@@ -39,6 +39,7 @@ import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.logs.PostHogLogRecord
 import com.posthog.logs.PostHogLogSeverity
 import com.posthog.logs.PostHogLogger
+import com.posthog.surveys.PostHogSurveysResetAwareDelegate
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
@@ -1935,9 +1936,16 @@ public class PostHog private constructor(
         }
         val surveysConfig = config?.surveysConfig
         if (surveysConfig != null) {
-            synchronized(surveysConfig) {
-                surveysConfig.reset()
-                getPreferences().clear(except = except.toList())
+            val resetNotification =
+                synchronized(surveysConfig) {
+                    surveysConfig.reset()
+                    getPreferences().clear(except = except.toList())
+                    (surveysConfig.surveysDelegate as? PostHogSurveysResetAwareDelegate) to surveysConfig.resetGeneration
+                }
+            try {
+                resetNotification.first?.onSurveyReset(resetNotification.second, surveysConfig)
+            } catch (error: Throwable) {
+                config?.logger?.log("Resetting survey presentation failed: $error")
             }
         } else {
             getPreferences().clear(except = except.toList())

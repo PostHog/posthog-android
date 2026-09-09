@@ -20,9 +20,12 @@ import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogNextSurveyQuestion
+import com.posthog.surveys.PostHogSurveyPresentation
+import com.posthog.surveys.PostHogSurveyPresentationSession
 import com.posthog.surveys.PostHogSurveyResponse
 import com.posthog.surveys.PostHogSurveysDefaultDelegate
 import com.posthog.surveys.PostHogSurveysDelegate
+import com.posthog.surveys.PostHogSurveysResetAwareDelegate
 import com.posthog.surveys.RatingSurveyQuestion
 import com.posthog.surveys.SingleSurveyQuestion
 import com.posthog.surveys.Survey
@@ -97,6 +100,8 @@ public class PostHogSurveysIntegration(
         // Start the survey integration lifecycle
         synchronized(lifecycleLock) {
             isStarted = true
+            presentationSession?.invalidate()
+            presentationSession = PostHogSurveyPresentationSession(config.surveysConfig)
         }
 
         // Resolve the delegate now, at app start — do NOT defer this to first
@@ -107,7 +112,10 @@ public class PostHogSurveysIntegration(
         // (on the first survey) registers it too late — the resume has already
         // fired and is not replayed, leaving no foreground activity to host the
         // survey, which then closes immediately as a "non-active survey".
-        getSurveysDelegate()
+        val delegate = getSurveysDelegate()
+        presentationSession?.let { session ->
+            (delegate as? PostHogSurveysResetAwareDelegate)?.bindSurveySession(session)
+        }
 
         showNextSurvey()
     }
@@ -116,6 +124,7 @@ public class PostHogSurveysIntegration(
         // Stop the survey integration lifecycle
         synchronized(lifecycleLock) {
             isStarted = false
+            presentationSession?.invalidate()
         }
 
         // Tear down any survey UI still on screen so its dialog window doesn't outlive the
@@ -158,10 +167,13 @@ public class PostHogSurveysIntegration(
      */
     private fun getSurveysDelegate(): PostHogSurveysDelegate {
         val configured = config.surveysConfig.surveysDelegate
-        if (configured !is PostHogSurveysDefaultDelegate) {
-            return configured
-        }
-        return autoDiscoveredComposeDelegate ?: configured
+        val delegate =
+            if (configured !is PostHogSurveysDefaultDelegate) {
+                configured
+            } else {
+                autoDiscoveredComposeDelegate?.also { config.surveysConfig.surveysDelegate = it } ?: configured
+            }
+        return delegate
     }
 
     /**
@@ -312,6 +324,7 @@ public class PostHogSurveysIntegration(
      * @param survey The survey to show
      */
     internal fun showSurvey(survey: Survey) {
+        val session = synchronized(lifecycleLock) { presentationSession?.takeIf { isStarted } } ?: return
         // Check if we can show a survey (no active survey)
         if (!canShowNextSurvey()) {
             config.logger.log("Cannot show survey - another survey is already active")
@@ -390,7 +403,23 @@ public class PostHogSurveysIntegration(
         }
 
         // Call the delegate to render the survey
-        getSurveysDelegate().renderSurvey(displaySurvey, onSurveyShown, onSurveyResponse, onSurveyClosed)
+        renderSurvey(PostHogSurveyPresentation(displaySurvey, resetGeneration, session), onSurveyShown, onSurveyResponse, onSurveyClosed)
+    }
+
+    private fun renderSurvey(
+        presentation: PostHogSurveyPresentation,
+        onSurveyShown: OnPostHogSurveyShown,
+        onSurveyResponse: OnPostHogSurveyResponse,
+        onSurveyClosed: OnPostHogSurveyClosed,
+    ) {
+        if (!presentation.session.isActive) return
+        val delegate = getSurveysDelegate()
+        if (delegate is PostHogSurveysResetAwareDelegate) {
+            delegate.bindSurveySession(presentation.session)
+            delegate.renderSurvey(presentation, onSurveyShown, onSurveyResponse, onSurveyClosed)
+        } else {
+            delegate.renderSurvey(presentation.survey, onSurveyShown, onSurveyResponse, onSurveyClosed)
+        }
     }
 
     private fun surveyResponseCallback(responseContext: SurveyResponseContext): OnPostHogSurveyResponse =
@@ -541,7 +570,13 @@ public class PostHogSurveysIntegration(
      * Cleans up any active surveys by calling the delegate's cleanupSurveys method.
      */
     internal fun cleanupSurveys() {
-        getSurveysDelegate().cleanupSurveys()
+        val delegate = getSurveysDelegate()
+        val session = presentationSession
+        if (delegate is PostHogSurveysResetAwareDelegate && session != null) {
+            delegate.cleanupSurveys(session)
+        } else {
+            delegate.cleanupSurveys()
+        }
     }
 
     /**
@@ -769,6 +804,8 @@ public class PostHogSurveysIntegration(
 
     // Lifecycle management
     private var isStarted: Boolean = false
+
+    @Volatile private var presentationSession: PostHogSurveyPresentationSession? = null
 
     private fun resolveDisplayLanguage(): String? {
         val override = config.surveysConfig.overrideDisplayLanguage

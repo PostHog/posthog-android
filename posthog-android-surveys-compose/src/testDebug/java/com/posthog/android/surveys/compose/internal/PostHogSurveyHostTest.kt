@@ -1,6 +1,7 @@
 package com.posthog.android.surveys.compose.internal
 
 import android.app.Application
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,15 +14,26 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import com.posthog.PostHog
+import com.posthog.PostHogConfig
+import com.posthog.android.surveys.PostHogSurveysIntegration
+import com.posthog.android.surveys.compose.PostHogSurveysComposeDelegate
+import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.surveys.PostHogDisplayOpenQuestion
 import com.posthog.surveys.PostHogDisplaySurvey
+import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 import com.posthog.surveys.PostHogNextSurveyQuestion
+import com.posthog.surveys.PostHogSurveyPresentation
+import com.posthog.surveys.PostHogSurveyPresentationSession
+import com.posthog.surveys.PostHogSurveysConfig
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.time.Duration
 import kotlin.test.assertEquals
 
 @RunWith(RobolectricTestRunner::class)
@@ -38,6 +50,192 @@ internal class PostHogSurveyHostTest {
     @Test
     fun `finishing host resumes on an already resumed replacement activity`() {
         assertHostTransition(replacementAlreadyResumed = true)
+    }
+
+    @Test
+    fun `reset removes unsent text before a new host resumes`() {
+        assertResetBeforeHostTransition(replacementAlreadyResumed = false)
+    }
+
+    @Test
+    fun `reset removes unsent text when replacement host already resumed`() {
+        assertResetBeforeHostTransition(replacementAlreadyResumed = true)
+    }
+
+    @Test
+    fun `reset discards retained unsent text after host has already finished`() {
+        assertResetBeforeHostTransition(replacementAlreadyResumed = false, resetAfterFinish = true)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun assertResetBeforeHostTransition(
+        replacementAlreadyResumed: Boolean,
+        resetAfterFinish: Boolean = false,
+    ) {
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        val config =
+            PostHogConfig("host-reset", "http://127.0.0.1:1").apply {
+                cachePreferences = PostHogMemoryPreferences()
+                preloadFeatureFlags = false
+                remoteConfig = false
+                reuseAnonymousId = true
+            }
+        val sdk = PostHog.with(config)
+        val integration = PostHogSurveysIntegration(application, config)
+        integration.install(sdk)
+        val delegate = config.surveysConfig.surveysDelegate
+        val survey =
+            PostHogDisplaySurvey(
+                "reset",
+                "Reset",
+                listOf(PostHogDisplayOpenQuestion("q", "Private question?", null, PostHogDisplaySurveyTextContentType.TEXT, false, "Send")),
+            )
+        var closed = 0
+        var replacement: ActivityScenario<ComponentActivity>? = null
+        try {
+            compose.activityRule.scenario.recreate()
+            compose.runOnIdle { delegate.renderSurvey(survey, {}, { _, _, _ -> null }, { closed++ }) }
+            compose.onNode(hasSetTextAction()).performTextInput("Previous user secret")
+            val oldClose =
+                compose.onNodeWithContentDescription(
+                    "Close survey",
+                ).fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+            val oldSubmit = compose.onNodeWithText("Send").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+            val distinctId = sdk.distinctId()
+            if (!resetAfterFinish) {
+                compose.runOnIdle { sdk.reset() }
+                compose.onNodeWithText("Previous user secret").assertDoesNotExist()
+                compose.onNodeWithText("Private question?").assertDoesNotExist()
+            }
+            if (replacementAlreadyResumed) replacement = ActivityScenario.launch(ComponentActivity::class.java)
+            compose.activityRule.scenario.close()
+            if (resetAfterFinish) compose.runOnUiThread { sdk.reset() }
+            if (replacement == null) replacement = ActivityScenario.launch(ComponentActivity::class.java)
+            assertEquals(distinctId, sdk.distinctId())
+            compose.onNodeWithText("Previous user secret").assertDoesNotExist()
+            compose.onNodeWithText("Private question?").assertDoesNotExist()
+            assertEquals(0, closed)
+            compose.runOnIdle { delegate.renderSurvey(survey, {}, { _, _, _ -> null }, { closed++ }) }
+            compose.onNodeWithText("Private question?").assertIsDisplayed()
+            compose.runOnIdle {
+                oldClose()
+                oldSubmit()
+            }
+            compose.onNodeWithText("Private question?").assertIsDisplayed()
+            compose.onNodeWithText("Previous user secret").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Close survey").performSemanticsAction(SemanticsActions.OnClick) { it() }
+            compose.waitForIdle()
+            assertEquals(1, closed)
+        } finally {
+            compose.runOnUiThread { delegate.cleanupSurveys() }
+            replacement?.close()
+            integration.uninstall()
+            sdk.close()
+        }
+    }
+
+    @Test
+    fun `reset cancels queued and delayed shows while an older notification preserves fresh UI`() {
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        val delegate = PostHogSurveysComposeDelegate(application)
+        val owner = PostHogSurveyPresentationSession(PostHogSurveysConfig())
+        delegate.bindSurveySession(owner)
+        val survey =
+            PostHogDisplaySurvey(
+                "pending",
+                "Pending",
+                listOf(PostHogDisplayOpenQuestion("q", "Fresh question?", null, PostHogDisplaySurveyTextContentType.TEXT, false, "Send")),
+            )
+        var shown = 0
+        var closed = 0
+        try {
+            compose.activityRule.scenario.recreate()
+            compose.runOnIdle {
+                // Enqueue a show from the SDK thread, then invalidate it before main executes it.
+                Thread {
+                    delegate.renderSurvey(
+                        PostHogSurveyPresentation(survey, 0, owner),
+                        { shown++ },
+                        { _, _, _ -> null },
+                        { closed++ },
+                    )
+                }.apply {
+                    start()
+                    join()
+                }
+                delegate.onSurveyReset(1, owner.config)
+            }
+            compose.onNodeWithText("Fresh question?").assertDoesNotExist()
+            assertEquals(0, shown)
+            compose.runOnIdle {
+                delegate.renderSurvey(
+                    PostHogSurveyPresentation(
+                        survey.copy(appearance = PostHogDisplaySurveyAppearance(surveyPopupDelaySeconds = 2.0)),
+                        1,
+                        owner,
+                    ),
+                    {
+                        shown++
+                    },
+                    { _, _, _ -> null },
+                    { closed++ },
+                )
+                delegate.onSurveyReset(2, owner.config)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
+            }
+            compose.onNodeWithText("Fresh question?").assertDoesNotExist()
+            assertEquals(0, shown)
+            assertFreshPresentationSurvivesStaleWork(delegate, survey, owner)
+        } finally {
+            compose.runOnUiThread { delegate.cleanupSurveys() }
+        }
+    }
+
+    private fun assertFreshPresentationSurvivesStaleWork(
+        delegate: PostHogSurveysComposeDelegate,
+        survey: PostHogDisplaySurvey,
+        owner: PostHogSurveyPresentationSession,
+    ) {
+        var shown = 0
+        var closed = 0
+        compose.runOnIdle {
+            // Cleanup is queued, but a fresh presentation reaches main first.
+            Thread { delegate.onSurveyReset(3, owner.config) }.apply {
+                start()
+                join()
+            }
+            delegate.renderSurvey(PostHogSurveyPresentation(survey, 4, owner), { shown++ }, { _, _, _ -> null }, { closed++ })
+            delegate.onSurveyReset(2, owner.config)
+            delegate.renderSurvey(
+                PostHogSurveyPresentation(survey.copy(questions = emptyList()), 3, owner),
+                {},
+                { _, _, _ -> null },
+                {},
+            )
+        }
+        compose.onNodeWithText("Fresh question?").assertIsDisplayed()
+        val newOwner = PostHogSurveyPresentationSession(PostHogSurveysConfig())
+        compose.runOnIdle {
+            owner.invalidate()
+            delegate.cleanupSurveys()
+            delegate.bindSurveySession(newOwner)
+            delegate.renderSurvey(PostHogSurveyPresentation(survey, 0, newOwner), { shown++ }, { _, _, _ -> null }, { closed++ })
+            delegate.bindSurveySession(owner)
+            delegate.cleanupSurveys(owner)
+            delegate.onSurveyReset(10, owner.config)
+            delegate.renderSurvey(
+                PostHogSurveyPresentation(survey.copy(questions = emptyList()), 10, owner),
+                {},
+                { _, _, _ -> null },
+                {},
+            )
+        }
+        compose.onNodeWithText("Fresh question?").assertIsDisplayed()
+        assertEquals(2, shown)
+        assertEquals(0, closed)
+        compose.onNodeWithContentDescription("Close survey").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        compose.waitForIdle()
+        assertEquals(1, closed)
     }
 
     private fun assertHostTransition(replacementAlreadyResumed: Boolean) {

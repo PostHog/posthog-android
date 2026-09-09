@@ -1814,6 +1814,20 @@ public final class com/posthog/surveys/PostHogNextSurveyQuestion {
 	public final fun isSurveyCompleted ()Z
 }
 
+public final class com/posthog/surveys/PostHogSurveyPresentation {
+	public fun <init> (Lcom/posthog/surveys/PostHogDisplaySurvey;JLcom/posthog/surveys/PostHogSurveyPresentationSession;)V
+	public final fun getResetGeneration ()J
+	public final fun getSession ()Lcom/posthog/surveys/PostHogSurveyPresentationSession;
+	public final fun getSurvey ()Lcom/posthog/surveys/PostHogDisplaySurvey;
+}
+
+public final class com/posthog/surveys/PostHogSurveyPresentationSession {
+	public fun <init> (Lcom/posthog/surveys/PostHogSurveysConfig;)V
+	public final fun getConfig ()Lcom/posthog/surveys/PostHogSurveysConfig;
+	public final fun invalidate ()V
+	public final fun isActive ()Z
+}
+
 public abstract class com/posthog/surveys/PostHogSurveyResponse {
 	public final fun toResponseValue ()Ljava/lang/Object;
 }
@@ -1893,6 +1907,13 @@ public final class com/posthog/surveys/PostHogSurveysDefaultDelegate : com/posth
 public abstract interface class com/posthog/surveys/PostHogSurveysDelegate {
 	public abstract fun cleanupSurveys ()V
 	public abstract fun renderSurvey (Lcom/posthog/surveys/PostHogDisplaySurvey;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function1;)V
+}
+
+public abstract interface class com/posthog/surveys/PostHogSurveysResetAwareDelegate : com/posthog/surveys/PostHogSurveysDelegate {
+	public abstract fun bindSurveySession (Lcom/posthog/surveys/PostHogSurveyPresentationSession;)V
+	public abstract fun cleanupSurveys (Lcom/posthog/surveys/PostHogSurveyPresentationSession;)V
+	public abstract fun onSurveyReset (JLcom/posthog/surveys/PostHogSurveysConfig;)V
+	public abstract fun renderSurvey (Lcom/posthog/surveys/PostHogSurveyPresentation;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class com/posthog/surveys/RatingSurveyQuestion : com/posthog/surveys/SurveyQuestion {

@@ -20,6 +20,11 @@ import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
+import com.posthog.surveys.PostHogNextSurveyQuestion
+import com.posthog.surveys.PostHogSurveyPresentation
+import com.posthog.surveys.PostHogSurveyPresentationSession
+import com.posthog.surveys.PostHogSurveyResponse
+import com.posthog.surveys.PostHogSurveysConfig
 
 /**
  * Coordinator that presents the survey sheet in its **own window**, on top of
@@ -55,6 +60,17 @@ import com.posthog.surveys.PostHogDisplaySurvey
  */
 internal class PostHogSurveyHost(private val activityProvider: ActivityProvider) {
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val resetLock = Any()
+
+    @Volatile private var minimumGeneration = 0L
+
+    @Volatile private var activeOwner = PostHogSurveyPresentationSession(PostHogSurveysConfig())
+
+    @Volatile private var session = Any()
+    private var currentSession: Any? = null
+    private var currentGeneration = 0L
+    private var currentPresentation: Any? = null
 
     private var dialog: ComponentDialog? = null
     private var composeView: ComposeView? = null
@@ -114,14 +130,30 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         onSurveyShown: OnPostHogSurveyShown,
         onSurveyResponse: OnPostHogSurveyResponse,
         onSurveyClosed: OnPostHogSurveyClosed,
+    ) = show(PostHogSurveyPresentation(survey, minimumGeneration, activeOwner), onSurveyShown, onSurveyResponse, onSurveyClosed)
+
+    fun show(
+        presentation: PostHogSurveyPresentation,
+        onSurveyShown: OnPostHogSurveyShown,
+        onSurveyResponse: OnPostHogSurveyResponse,
+        onSurveyClosed: OnPostHogSurveyClosed,
     ) {
+        bindSession(presentation.session)
+        val survey = presentation.survey
+        val resetGeneration = presentation.resetGeneration
+        val presentationSession = advanceGeneration(resetGeneration, presentation.session) ?: return
         val delayMillis =
             ((survey.appearance?.surveyPopupDelaySeconds ?: 0.0).coerceAtLeast(0.0) * 1000).toLong()
 
         runOnMain {
+            if (!canPresent(presentationSession, presentation)) return@runOnMain
             // Replace any in-flight survey first (notify the SDK it was closed).
             dismissInternal(notifyClosed = true)
+            if (!canPresent(presentationSession, presentation)) return@runOnMain
 
+            currentSession = presentationSession
+            currentGeneration = resetGeneration
+            currentPresentation = Any()
             currentSurvey = survey
             onShownCallback = onSurveyShown
             onResponseCallback = onSurveyResponse
@@ -142,12 +174,74 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         }
     }
 
-    fun cleanup() {
-        runOnMain { dismissInternal(notifyClosed = false) }
+    private fun canPresent(
+        presentationSession: Any,
+        presentation: PostHogSurveyPresentation,
+    ): Boolean = presentationSession === session && presentation.session.isActive && presentation.resetGeneration >= minimumGeneration
+
+    fun bindSession(owner: PostHogSurveyPresentationSession) {
+        val previousSession =
+            synchronized(owner.config) {
+                synchronized(resetLock) {
+                    if (!owner.isActive) return
+                    if (activeOwner === owner) {
+                        minimumGeneration = maxOf(minimumGeneration, owner.config.resetGeneration)
+                        return
+                    }
+                    val previous = session
+                    activeOwner = owner
+                    minimumGeneration = owner.config.resetGeneration
+                    session = Any()
+                    previous
+                }
+            }
+        dismissSession(previousSession)
+    }
+
+    fun onReset(
+        resetGeneration: Long,
+        config: PostHogSurveysConfig,
+    ) {
+        val owner = activeOwner
+        if (owner.config !== config) return
+        val resetSession = advanceGeneration(resetGeneration, owner) ?: return
+        runOnMain {
+            if (currentSession === resetSession && currentGeneration < minimumGeneration) dismissInternal(notifyClosed = false)
+        }
+    }
+
+    private fun advanceGeneration(
+        resetGeneration: Long,
+        owner: PostHogSurveyPresentationSession,
+    ): Any? =
+        synchronized(resetLock) {
+            if (activeOwner !== owner || !owner.isActive) return@synchronized null
+            minimumGeneration = maxOf(minimumGeneration, resetGeneration)
+            session
+        }
+
+    fun cleanup(owner: PostHogSurveyPresentationSession = activeOwner) {
+        val previousSession =
+            synchronized(resetLock) {
+                if (activeOwner !== owner) return
+                val previous = session
+                session = Any()
+                previous
+            }
+        dismissSession(previousSession)
+    }
+
+    private fun dismissSession(previousSession: Any) {
+        runOnMain { if (currentSession === previousSession) dismissInternal(notifyClosed = false) }
     }
 
     private fun present(activity: Activity?) {
         val survey = currentSurvey ?: return
+        val presentation = currentPresentation ?: return
+        if (!isCurrentPresentation(presentation)) {
+            dismissInternal(notifyClosed = false)
+            return
+        }
 
         if (activity == null || activity.isFinishing) {
             // No foreground activity to host the sheet — e.g. the app was backgrounded
@@ -184,11 +278,18 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
                             CompositionLocalProvider(LocalSaveableStateRegistry provides registry) {
                                 SurveySheet(
                                     survey = survey,
-                                    onSurveyShown = { reportShownOnce() },
+                                    onSurveyShown = { reportShownOnce(presentation) },
                                     onSubmit = { questionIndex, response ->
-                                        onResponseCallback?.invoke(survey, questionIndex, response)
+                                        if (isCurrentPresentation(
+                                                presentation,
+                                            )
+                                        ) {
+                                            onResponseCallback?.invoke(survey, questionIndex, response)
+                                        } else {
+                                            null
+                                        }
                                     },
-                                    onClose = { dismissInternal(notifyClosed = true) },
+                                    onClose = { closePresentation(presentation) },
                                 )
                             }
                         }
@@ -217,8 +318,22 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
      * Forwards `survey shown` to the SDK at most once per survey, so re-presenting
      * after a host activity change doesn't emit a duplicate event.
      */
-    private fun reportShownOnce() {
-        if (shownReported) return
+    private fun isCurrentPresentation(presentation: Any): Boolean =
+        currentPresentation === presentation && currentSession === session && activeOwner.isActive && currentGeneration >= minimumGeneration
+
+    private fun closePresentation(presentation: Any) {
+        if (isCurrentPresentation(presentation)) dismissInternal(notifyClosed = true)
+    }
+
+    private fun submitResponse(
+        presentation: Any,
+        survey: PostHogDisplaySurvey,
+        index: Int,
+        response: PostHogSurveyResponse,
+    ): PostHogNextSurveyQuestion? = if (isCurrentPresentation(presentation)) onResponseCallback?.invoke(survey, index, response) else null
+
+    private fun reportShownOnce(presentation: Any) {
+        if (!isCurrentPresentation(presentation) || shownReported) return
         val survey = currentSurvey ?: return
         shownReported = true
         onShownCallback?.invoke(survey)
@@ -278,6 +393,8 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
         composeView = null
         hostActivity = null
         currentSurvey = null
+        currentPresentation = null
+        currentSession = null
         onShownCallback = null
         onResponseCallback = null
         onClosedCallback = null
