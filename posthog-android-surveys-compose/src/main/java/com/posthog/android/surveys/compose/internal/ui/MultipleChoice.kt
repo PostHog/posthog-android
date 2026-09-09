@@ -36,9 +36,7 @@ internal fun MultipleChoice(
     onOpenChoiceInputChange: (String) -> Unit,
 ) {
     ChoiceOptions(
-        options = question.choices,
-        hasOpenChoice = question.hasOpenChoice,
-        allowsMultipleSelection = true,
+        question = question,
         selectedOptions = selectedChoices,
         onSelectedOptionsChange = onSelectedChoicesChange,
         openChoiceInput = openChoiceInput,
