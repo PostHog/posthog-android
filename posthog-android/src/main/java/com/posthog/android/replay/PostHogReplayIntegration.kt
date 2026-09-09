@@ -56,6 +56,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.posthog.PostHogEventName
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
@@ -122,6 +123,10 @@ public class PostHogReplayIntegration(
     // and iteration must hold the map's monitor.
     internal val decorViews: MutableMap<View, ViewTreeSnapshotStatus> =
         Collections.synchronizedMap(WeakHashMap<View, ViewTreeSnapshotStatus>())
+
+    // Guarded by decorViews, together with snapshot-state commits. Stop/resume in the same
+    // session must invalidate work too, so session identity alone is not a sufficient lease.
+    private var snapshotGeneration: Long = 0
 
     private val passwordInputTypes =
         setOf(
@@ -592,6 +597,7 @@ public class PostHogReplayIntegration(
             return
         }
         try {
+            stopRecording()
             this.postHog = null
 
             // Clear buffer delegate
@@ -610,7 +616,6 @@ public class PostHogReplayIntegration(
             }
 
             startedWithAutomaticDisabled = false
-            isSessionReplayActive = false
 
             pixelCopyThread?.quitSafely()
             pixelCopyThread = null
@@ -626,9 +631,12 @@ public class PostHogReplayIntegration(
             integrationInstalled.set(false)
             try {
                 synchronized(pixelCopyBitmapBuffer) {
-                    startedWithAutomaticDisabled = false
-                    isSessionReplayActive = false
-                    pixelCopyBitmapBuffer.close()
+                    synchronized(decorViews) {
+                        startedWithAutomaticDisabled = false
+                        isSessionReplayActive = false
+                        snapshotGeneration++
+                        pixelCopyBitmapBuffer.close()
+                    }
                 }
             } catch (e: Throwable) {
                 config.logger.log("Session Replay screenshot buffer cleanup failed: $e.")
@@ -712,10 +720,12 @@ public class PostHogReplayIntegration(
                         return@submitCapture
                     }
                     if (forceFullSnapshot) {
-                        decorViews[decorView]?.let { status ->
-                            status.sentFullSnapshot = false
-                            status.sentMetaEvent = false
-                            status.lastSnapshot = null
+                        synchronized(decorViews) {
+                            decorViews[decorView]?.let { status ->
+                                status.sentFullSnapshot = false
+                                status.sentMetaEvent = false
+                                status.lastSnapshot = null
+                            }
                         }
                     }
                     val delivered = generateSnapshot(WeakReference(decorView), WeakReference(window), forceScreenshot = true)
@@ -754,12 +764,17 @@ public class PostHogReplayIntegration(
         windowRef: WeakReference<Window>,
         forceScreenshot: Boolean = false,
     ): Boolean {
-        // Early bail if stopped and this is processing previous generateSnapshot() from executor.submit
         if (!isActive()) return false
-
+        val postHog = postHog ?: return false
+        // Resolve expiry before taking the producer lock: this getter can notify session listeners.
+        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString() ?: return false
         val view = viewRef.get() ?: return false
-        val status = decorViews[view] ?: return false
         val window = windowRef.get() ?: return false
+        val (status, generation) =
+            synchronized(decorViews) {
+                if (!isActive() || replaySessionId != sessionId) return false
+                (decorViews[view] ?: return false) to snapshotGeneration
+            }
 
         // Check view is still alive to avoid native crashes
         if (!view.isAlive()) return false
@@ -785,13 +800,47 @@ public class PostHogReplayIntegration(
             }
         }
 
+        val events =
+            synchronized(decorViews) {
+                if (!isActive() || snapshotGeneration != generation || decorViews[view] !== status ||
+                    PostHogSessionManager.peekSessionId()?.toString() != sessionId
+                ) {
+                    return false
+                }
+                snapshotEvents(view, status, wireframe, timestamp) ?: return false
+            }
+
+        // Commit above is the producer boundary. Do not invoke SDK/user callbacks under its lock.
+        // A rotation after commit must not relabel this frame during core enrichment.
+        if (events.isNotEmpty()) {
+            postHog.capture(
+                PostHogEventName.SNAPSHOT.event,
+                properties =
+                    mapOf(
+                        "\$snapshot_data" to events,
+                        "\$snapshot_source" to "mobile",
+                        "\$session_id" to sessionId,
+                        "\$window_id" to sessionId,
+                    ),
+            )
+        }
+        return true
+    }
+
+    // Called under decorViews so a reset cannot be overwritten by an in-flight frame.
+    private fun snapshotEvents(
+        view: View,
+        status: ViewTreeSnapshotStatus,
+        wireframe: RRWireframe,
+        timestamp: Long,
+    ): List<RREvent>? {
         val events = mutableListOf<RREvent>()
 
         if (!status.sentMetaEvent) {
             val title = view.phoneWindow?.attributes?.title?.toString()?.substringAfter("/") ?: ""
             // TODO: cache and compare, if size changes, we send a ViewportResize event
 
-            val screenSizeInfo = view.context.screenSize() ?: return false
+            val screenSizeInfo = view.context.screenSize() ?: return null
 
             val metaEvent =
                 RRMetaEvent(
@@ -865,12 +914,8 @@ public class PostHogReplayIntegration(
             events.add(it)
         }
 
-        if (events.isNotEmpty()) {
-            events.capture(postHog)
-        }
-
         status.lastSnapshot = wireframe
-        return true
+        return events
     }
 
     /**
@@ -2443,10 +2488,12 @@ public class PostHogReplayIntegration(
         val currentSessionId = postHog?.getSessionId()?.toString()
         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
-        // The active flag and buffer lifecycle must move together when start/stop overlap.
+        // Keep producer commits and the bitmap buffer lifecycle on the same recording run.
         synchronized(pixelCopyBitmapBuffer) {
-            pixelCopyBitmapBuffer.open()
-            isSessionReplayActive = true
+            synchronized(decorViews) {
+                pixelCopyBitmapBuffer.open()
+                isSessionReplayActive = true
+            }
         }
 
         if (!resumeCurrent) {
@@ -2464,6 +2511,7 @@ public class PostHogReplayIntegration(
     private fun clearSnapshotStates() {
         // clear state so it starts with a full snapshot again
         synchronized(decorViews) {
+            snapshotGeneration++
             decorViews.entries.forEach {
                 resetViewSnapshotStates(it.value)
             }
@@ -2476,14 +2524,15 @@ public class PostHogReplayIntegration(
 
     private fun stopRecording(resetManualStart: Boolean = false) {
         synchronized(pixelCopyBitmapBuffer) {
-            if (resetManualStart) {
-                startedWithAutomaticDisabled = false
+            synchronized(decorViews) {
+                if (resetManualStart) {
+                    startedWithAutomaticDisabled = false
+                }
+                isSessionReplayActive = false
+                snapshotGeneration++
+                pixelCopyBitmapBuffer.close()
+                decorViews.values.forEach { it.drawState.invalidateMaskCapture() }
             }
-            isSessionReplayActive = false
-            pixelCopyBitmapBuffer.close()
-        }
-        synchronized(decorViews) {
-            decorViews.values.forEach { it.drawState.invalidateMaskCapture() }
         }
     }
 
@@ -2546,6 +2595,8 @@ public class PostHogReplayIntegration(
         // Read-only: getActiveSessionId() can rotate the session and would re-fire this listener.
         val currentSessionId = PostHogSessionManager.peekSessionId()?.toString()
 
+        // Invalidate immediately; reinitialization may be queued behind UI work.
+        if (replaySessionId != currentSessionId) stopRecording()
         resetSessionStateIfNeeded(currentSessionId)
 
         val remoteConfig = config.remoteConfigHolder
@@ -2561,8 +2612,8 @@ public class PostHogReplayIntegration(
             return
         }
 
-        // The listener can fire from any thread that calls capture(); replay state writes
-        // (snapshot WeakHashMap, isSessionReplayActive) must happen on main.
+        // The listener can fire from any thread that calls capture(); automatic restarts
+        // are scheduled on main, after the synchronous producer invalidation above.
         if (currentSessionId == null) {
             if (isSessionReplayActive) {
                 config.logger.log("[Session Replay] Session cleared. Stopping recording.")
@@ -2625,8 +2676,10 @@ public class PostHogReplayIntegration(
             return
         }
 
-        replaySessionId = currentSessionId
-        clearSnapshotStates()
+        synchronized(decorViews) {
+            replaySessionId = currentSessionId
+            clearSnapshotStates()
+        }
         resetBufferingState()
     }
 
@@ -2868,11 +2921,9 @@ public class PostHogReplayIntegration(
     private fun stopIfActive(reason: String) {
         if (isSessionReplayActive) {
             config.logger.log("[Session Replay] $reason")
-            // Flip the active gate synchronously so a concurrent add() on the replay executor stops
-            // persisting immediately (PostHogReplayQueue.shouldPersist reads isActive), instead of
-            // leaking snapshots to the send queue in the window before the posted stopRecording() runs on main.
-            isSessionReplayActive = false
-            mainHandler.handler.post { stopRecording() }
+            // Invalidate both the producer lease and queue persistence synchronously.
+            // Posting the stop would leave in-flight frames eligible until main runs it.
+            stopRecording()
         }
     }
 
