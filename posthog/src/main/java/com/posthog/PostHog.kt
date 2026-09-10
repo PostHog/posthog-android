@@ -8,6 +8,8 @@ import com.posthog.internal.PostHogDefaultPersonPropertiesProvider
 import com.posthog.internal.PostHogFeatureFlagCalledProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogOnRemoteConfigLoaded
+import com.posthog.internal.PostHogPreSetupBuffer
+import com.posthog.internal.PostHogPreSetupCall
 import com.posthog.internal.PostHogPreferences.Companion.ALL_INTERNAL_KEYS
 import com.posthog.internal.PostHogPreferences.Companion.ANONYMOUS_ID
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
@@ -130,6 +132,10 @@ public class PostHog private constructor(
 
     @Volatile
     private var exceptionStepsBuffer: PostHogExceptionStepsBuffer? = null
+
+    // capture/identify/register calls made before setup() enabled the SDK, replayed at the end of
+    // setup() so a host that initializes the SDK late, or off the main thread, does not lose them
+    private val preSetupBuffer = PostHogPreSetupBuffer()
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
@@ -377,8 +383,52 @@ public class PostHog private constructor(
                 // remote-config executor. The $identify merge links any setup-time events captured
                 // under the prior anonymous id to the identified user server-side.
                 reconcileBootstrapIdentityIfNeeded(config)
+
+                replayPreSetupCalls()
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
+            }
+        }
+    }
+
+    /**
+     * Replays the calls the host made before the SDK was enabled, oldest first, so the order they
+     * were made in is kept.
+     */
+    private fun replayPreSetupCalls() {
+        val (calls, dropped) = preSetupBuffer.drain()
+        if (dropped > 0) {
+            config?.logger?.log("$dropped call(s) made before setup were dropped, the buffer was full.")
+        }
+        if (calls.isEmpty()) {
+            return
+        }
+        config?.logger?.log("Replaying ${calls.size} call(s) made before setup.")
+        calls.forEach { call ->
+            try {
+                when (call) {
+                    is PostHogPreSetupCall.Capture ->
+                        capture(
+                            call.event,
+                            distinctId = call.distinctId,
+                            properties = call.properties,
+                            userProperties = call.userProperties,
+                            userPropertiesSetOnce = call.userPropertiesSetOnce,
+                            groups = call.groups,
+                            timestamp = call.timestamp,
+                        )
+
+                    is PostHogPreSetupCall.Identify ->
+                        identify(
+                            call.distinctId,
+                            userProperties = call.userProperties,
+                            userPropertiesSetOnce = call.userPropertiesSetOnce,
+                        )
+
+                    is PostHogPreSetupCall.Register -> register(call.key, call.value)
+                }
+            } catch (e: Throwable) {
+                config?.logger?.log("Replaying a call made before setup failed: $e.")
             }
         }
     }
@@ -548,6 +598,7 @@ public class PostHog private constructor(
 
                 exceptionStepsBuffer?.clear()
                 exceptionStepsBuffer = null
+                preSetupBuffer.clear()
 
                 endSession()
             } catch (e: Throwable) {
@@ -760,7 +811,19 @@ public class PostHog private constructor(
         timestamp: Date?,
     ) {
         try {
-            if (!isEnabled()) {
+            if (!enabled) {
+                preSetupBuffer.add(
+                    PostHogPreSetupCall.Capture(
+                        event = event,
+                        distinctId = distinctId,
+                        properties = properties,
+                        userProperties = userProperties,
+                        userPropertiesSetOnce = userPropertiesSetOnce,
+                        groups = groups,
+                        // stamped now so a replayed event keeps the time it happened
+                        timestamp = timestamp ?: Date(),
+                    ),
+                )
                 return
             }
             if (isOptedOut()) {
@@ -1183,10 +1246,9 @@ public class PostHog private constructor(
         screenTitle: String,
         properties: Map<String, Any>?,
     ) {
-        if (!isEnabled()) {
-            return
-        }
-
+        // No enabled gate here: the rest of this method only caches the title and hands the event
+        // to capture(), which buffers it while the SDK is not set up yet. The first screen view of
+        // a startup is one of the calls that races setup.
         val trimmedTitle = screenTitle.trim()
         if (trimmedTitle.isEmpty()) {
             return
@@ -1311,7 +1373,10 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        if (!isEnabled()) {
+        if (!enabled) {
+            preSetupBuffer.add(
+                PostHogPreSetupCall.Identify(distinctId, userProperties, userPropertiesSetOnce),
+            )
             return
         }
 
@@ -1981,11 +2046,12 @@ public class PostHog private constructor(
         key: String,
         value: Any,
     ) {
-        if (!isEnabled()) {
-            return
-        }
         if (ALL_INTERNAL_KEYS.contains(key)) {
             config?.logger?.log("Key: $key is reserved for internal use.")
+            return
+        }
+        if (!enabled) {
+            preSetupBuffer.add(PostHogPreSetupCall.Register(key, value))
             return
         }
         getPreferences().setValue(key, value)
@@ -2301,17 +2367,42 @@ public class PostHog private constructor(
                 ),
         ): PostHogInterface {
             val instance =
-                PostHog(
-                    queueExecutor = queueExecutor,
-                    replayExecutor = replayExecutor,
-                    logsExecutor = logsExecutor,
-                    remoteConfigExecutor = featureFlagsExecutor,
-                    cachedEventsExecutor = cachedEventsExecutor,
-                    reloadFeatureFlags = reloadFeatureFlags,
+                newInstanceInternal(
+                    queueExecutor,
+                    replayExecutor,
+                    featureFlagsExecutor,
+                    cachedEventsExecutor,
+                    reloadFeatureFlags,
+                    logsExecutor,
                 )
             instance.setup(config)
             return instance
         }
+
+        /**
+         * An instance that has not been set up yet, so a test can exercise the calls a host makes
+         * before `setup()`.
+         */
+        @PostHogVisibleForTesting
+        internal fun newInstanceInternal(
+            queueExecutor: ExecutorService,
+            replayExecutor: ExecutorService,
+            featureFlagsExecutor: ExecutorService,
+            cachedEventsExecutor: ExecutorService,
+            reloadFeatureFlags: Boolean,
+            logsExecutor: ExecutorService =
+                Executors.newSingleThreadScheduledExecutor(
+                    PostHogThreadFactory("PostHogLogsQueueThread"),
+                ),
+        ): PostHogInterface =
+            PostHog(
+                queueExecutor = queueExecutor,
+                replayExecutor = replayExecutor,
+                logsExecutor = logsExecutor,
+                remoteConfigExecutor = featureFlagsExecutor,
+                cachedEventsExecutor = cachedEventsExecutor,
+                reloadFeatureFlags = reloadFeatureFlags,
+            )
 
         public override fun <T : PostHogConfig> setup(config: T) {
             shared.setup(config)

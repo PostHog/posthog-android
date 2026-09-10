@@ -13,6 +13,7 @@ import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import java.util.concurrent.Executor
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,7 +27,8 @@ internal class PostHogAppInstallIntegrationTest {
             PostHogAndroidConfig(API_KEY).apply {
                 cachePreferences = preferences
             }
-        return PostHogAppInstallIntegration(context, config)
+        // runs the install work on the calling thread so the assertions do not have to wait
+        return PostHogAppInstallIntegration(context, config, Executor { it.run() })
     }
 
     @BeforeTest
