@@ -311,7 +311,11 @@ public open class PostHogConfig(
      *
      *  CLI command example:
      *   posthog-cli exp proguard upload --path "app/build/outputs/mapping/release/mapping.txt" --map-id "com.posthog.mobile@1.0.0+1"
+     *
+     *  Set this before setup: the Android SDK resolves the fallback on a background thread during
+     *  setup, so a value assigned after setup can be replaced by it.
      */
+    @Volatile
     public var releaseIdentifier: String? = null,
     /**
      * Optional bootstrap configuration that seeds identity and feature-flag state before any
