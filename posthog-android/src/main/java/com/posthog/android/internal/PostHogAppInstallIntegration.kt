@@ -22,6 +22,7 @@ internal class PostHogAppInstallIntegration(
     private val config: PostHogAndroidConfig,
     private val executor: Executor,
 ) : PostHogIntegration {
+    @Volatile
     private var ownsInstallation = false
 
     private companion object {
@@ -43,7 +44,12 @@ internal class PostHogAppInstallIntegration(
         ownsInstallation = true
 
         executor.executeSafely {
-            captureInstallOrUpdate(postHog)
+            // uninstall() cannot cancel a queued task, so check again here: a run after a close
+            // writes the VERSION and BUILD marker that says the event was already reported, while
+            // its own capture is dropped, hiding that install or update for good.
+            if (ownsInstallation) {
+                captureInstallOrUpdate(postHog)
+            }
         }
     }
 
