@@ -45,11 +45,20 @@ internal sealed class PostHogPreSetupCall {
         val key: String,
         val value: Any,
     ) : PostHogPreSetupCall()
+
+    // Reset and Unregister are buffered too, so a call that undoes an earlier buffered one is
+    // replayed with it. Dropping them would let the replay reinstate an identity or a super
+    // property the host had already asked to clear.
+    object Reset : PostHogPreSetupCall()
+
+    class Unregister(
+        val key: String,
+    ) : PostHogPreSetupCall()
 }
 
 /**
- * Holds `capture`, `screen`, `identify` and `register` calls made before `setup()` so they can be replayed
- * once the SDK is enabled, instead of being dropped.
+ * Holds the `capture`, `screen`, `identify`, `register`, `reset` and `unregister` calls made before
+ * `setup()` so they can be replayed once the SDK is enabled, instead of being dropped.
  *
  * A host that sets the SDK up off the main thread, or from a framework runtime that reaches
  * `setup()` late, still races app open, the first screen view and deep link attribution against

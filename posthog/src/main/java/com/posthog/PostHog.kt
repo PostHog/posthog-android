@@ -133,9 +133,9 @@ public class PostHog private constructor(
     @Volatile
     private var exceptionStepsBuffer: PostHogExceptionStepsBuffer? = null
 
-    // capture/screen/identify/register calls made before setup() enabled the SDK, replayed at the
-    // end of setup() so a host that initializes the SDK late, or off the main thread, does not
-    // lose them
+    // capture/screen/identify/register calls made before setup() enabled the SDK, and the
+    // reset/unregister calls that undo them, replayed at the end of setup() so a host that
+    // initializes the SDK late, or off the main thread, does not lose them
     private val preSetupBuffer = PostHogPreSetupBuffer()
 
     // Tells the two disabled states apart: not set up yet (buffer) from closed (drop). Only the
@@ -465,6 +465,10 @@ public class PostHog private constructor(
                             )
 
                         is PostHogPreSetupCall.Register -> register(call.key, call.value)
+
+                        is PostHogPreSetupCall.Reset -> reset()
+
+                        is PostHogPreSetupCall.Unregister -> unregister(call.key)
                     }
                 } catch (e: Throwable) {
                     config?.logger?.log("Replaying a call made before setup failed: $e.")
@@ -2052,7 +2056,10 @@ public class PostHog private constructor(
     }
 
     public override fun reset() {
-        if (!isEnabled()) {
+        if (!enabled) {
+            // Buffered like the identify it may be undoing: dropped, the replay would identify
+            // the user this call logged out and persist them.
+            bufferPreSetupCall(PostHogPreSetupCall.Reset)
             return
         }
 
@@ -2130,7 +2137,10 @@ public class PostHog private constructor(
     }
 
     public override fun unregister(key: String) {
-        if (!isEnabled()) {
+        if (!enabled) {
+            // Buffered like the register it may be undoing: dropped, the replay would restore the
+            // property this call removed.
+            bufferPreSetupCall(PostHogPreSetupCall.Unregister(key))
             return
         }
         getPreferences().remove(key)

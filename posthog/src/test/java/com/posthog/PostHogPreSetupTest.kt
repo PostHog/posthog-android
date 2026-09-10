@@ -13,6 +13,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -302,6 +303,55 @@ internal class PostHogPreSetupTest {
 
         assertTrue(captured.none { it.event == EVENT }, "expected no replay, got ${captured.map { it.event }}")
         assertEquals(null, preferences.getValue("afterClose"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset made before setup cancels the identify made before it`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val captured = mutableListOf<PostHogEvent>()
+        val config =
+            getConfig(url.toString()).apply {
+                addBeforeSend(
+                    PostHogBeforeSend { event ->
+                        captured.add(event)
+                        null
+                    },
+                )
+            }
+
+        val sut = getNotSetUpSut()
+
+        sut.identify(DISTINCT_ID, userProperties = userProps)
+        sut.reset()
+
+        sut.setup(config)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        // the identify is still replayed, so the events made before it are linked to the user
+        assertTrue(captured.any { it.event == "\$identify" }, "expected an identify, got ${captured.map { it.event }}")
+        assertNotEquals(DISTINCT_ID, sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `unregister made before setup cancels the register made before it`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getNotSetUpSut()
+
+        sut.register("beforeUnregister", "value")
+        sut.unregister("beforeUnregister")
+
+        sut.setup(getConfig(url.toString()))
+
+        assertEquals(null, preferences.getValue("beforeUnregister"))
 
         sut.close()
     }
