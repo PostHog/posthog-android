@@ -4,29 +4,42 @@ import java.util.Date
 
 /**
  * A call the host app made before `setup()` enabled the SDK.
+ *
+ * The maps are copied here: a buffered call waits until `setup()` is reached, so a host that
+ * reuses or mutates the map it passed cannot change what is replayed.
  */
 internal sealed class PostHogPreSetupCall {
     class Capture(
         val event: String,
         val distinctId: String?,
-        val properties: Map<String, Any>?,
-        val userProperties: Map<String, Any>?,
-        val userPropertiesSetOnce: Map<String, Any>?,
-        val groups: Map<String, String>?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
         val timestamp: Date,
-    ) : PostHogPreSetupCall()
+    ) : PostHogPreSetupCall() {
+        val properties: Map<String, Any>? = properties?.toMap()
+        val userProperties: Map<String, Any>? = userProperties?.toMap()
+        val userPropertiesSetOnce: Map<String, Any>? = userPropertiesSetOnce?.toMap()
+        val groups: Map<String, String>? = groups?.toMap()
+    }
 
     class Screen(
         val screenTitle: String,
-        val properties: Map<String, Any>?,
+        properties: Map<String, Any>?,
         val timestamp: Date,
-    ) : PostHogPreSetupCall()
+    ) : PostHogPreSetupCall() {
+        val properties: Map<String, Any>? = properties?.toMap()
+    }
 
     class Identify(
         val distinctId: String,
-        val userProperties: Map<String, Any>?,
-        val userPropertiesSetOnce: Map<String, Any>?,
-    ) : PostHogPreSetupCall()
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+    ) : PostHogPreSetupCall() {
+        val userProperties: Map<String, Any>? = userProperties?.toMap()
+        val userPropertiesSetOnce: Map<String, Any>? = userPropertiesSetOnce?.toMap()
+    }
 
     class Register(
         val key: String,

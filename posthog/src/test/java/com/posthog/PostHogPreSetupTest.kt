@@ -78,6 +78,27 @@ internal class PostHogPreSetupTest {
     }
 
     @Test
+    fun `replayed capture keeps the properties as they were when the call was made`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getNotSetUpSut()
+
+        val properties = mutableMapOf<String, Any>("prop" to "first")
+        sut.capture(EVENT, DISTINCT_ID, properties)
+        properties["prop"] = "second"
+
+        sut.setup(getConfig(url.toString()))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals("first", batch.batch.first().properties!!["prop"] as String)
+
+        sut.close()
+    }
+
+    @Test
     fun `replayed capture keeps the time the call was made`() {
         val http = mockHttp()
         val url = http.url("/")
