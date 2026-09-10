@@ -52,6 +52,7 @@ internal class PostHogPushSubscriptionManagerTest {
             PostHogConfig(API_KEY, host = http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
                 this.networkStatus = networkStatus
+                @Suppress("DEPRECATION")
                 this.maxRetries = maxRetries
                 this.encryption = encryption
             }

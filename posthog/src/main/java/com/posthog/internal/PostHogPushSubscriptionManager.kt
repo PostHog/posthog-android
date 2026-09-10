@@ -603,6 +603,7 @@ internal class PostHogPushSubscriptionManager(
         }
 
         retryCount++
+        @Suppress("DEPRECATION")
         if (retryCount > config.maxRetries) {
             config.logger.log(
                 "Push subscription retries exhausted after $retryCount attempts; " +

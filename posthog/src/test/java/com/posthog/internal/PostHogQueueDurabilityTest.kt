@@ -47,6 +47,7 @@ internal class PostHogQueueDurabilityTest {
                 maxQueueSize = capacity
                 maxBatchSize = batchSize
                 flushAt = 100
+                @Suppress("DEPRECATION")
                 maxRetries = 2
                 dateProvider = clock
                 this.networkStatus = networkStatus

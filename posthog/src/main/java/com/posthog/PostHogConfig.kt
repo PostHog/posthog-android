@@ -126,9 +126,16 @@ public open class PostHogConfig(
     public var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
     /**
      * Maximum number of retries for push subscription registration failures.
-     * Durable ingestion queues retain retryable records and are bounded by their queue size.
+     * Ingestion retries are not count-limited. Use [maxQueueSize] for events and replay,
+     * and [PostHogLogsConfig.maxBufferSize] for logs. This option still controls push subscription registration retries.
      * Defaults to 3
      */
+    @Deprecated(
+        message =
+            "Ingestion retries are not count-limited. Use maxQueueSize for events and replay, " +
+                "and logs.maxBufferSize for logs. This option still controls push subscription registration retries.",
+        level = DeprecationLevel.WARNING,
+    )
     public var maxRetries: Int = 3,
     /**
      * Maximum number of retries for feature flag requests after transient network errors.
