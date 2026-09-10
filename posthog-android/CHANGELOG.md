@@ -1,5 +1,11 @@
 ## Next
 
+## 3.63.1
+
+### Patch Changes
+
+- 231caaf: Discard replay snapshots that cross a recording stop or session change, preserving the next session's initial keyframe and the captured frame's session identity.
+
 ## 3.63.0
 
 ### Minor Changes
