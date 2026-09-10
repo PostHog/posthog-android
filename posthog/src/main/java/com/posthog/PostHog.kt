@@ -598,6 +598,10 @@ public class PostHog private constructor(
         synchronized(setupLock) {
             try {
                 if (!isEnabled()) {
+                    // Nothing was set up to tear down, but calls buffered before the first
+                    // setup() are state the host just asked to discard: kept, they would be
+                    // replayed by a later setup() this close was never part of.
+                    preSetupBuffer.clear()
                     return
                 }
 

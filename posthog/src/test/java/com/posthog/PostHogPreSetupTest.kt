@@ -307,6 +307,38 @@ internal class PostHogPreSetupTest {
     }
 
     @Test
+    fun `close made before setup discards the buffered calls`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val captured = mutableListOf<PostHogEvent>()
+
+        val sut = getNotSetUpSut()
+
+        sut.capture(EVENT, DISTINCT_ID, props)
+        sut.register("beforeClose", "value")
+        sut.close()
+
+        val config =
+            getConfig(url.toString()).apply {
+                addBeforeSend(
+                    PostHogBeforeSend { event ->
+                        captured.add(event)
+                        null
+                    },
+                )
+            }
+        sut.setup(config)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertTrue(captured.none { it.event == EVENT }, "expected no replay, got ${captured.map { it.event }}")
+        assertEquals(null, preferences.getValue("beforeClose"))
+
+        sut.close()
+    }
+
+    @Test
     fun `reserved register keys are rejected instead of buffered`() {
         val http = mockHttp()
         val url = http.url("/")
