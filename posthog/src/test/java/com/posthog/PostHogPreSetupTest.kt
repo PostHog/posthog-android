@@ -252,6 +252,40 @@ internal class PostHogPreSetupTest {
     }
 
     @Test
+    fun `calls made after close are dropped instead of replayed by the next setup`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val captured = mutableListOf<PostHogEvent>()
+
+        val sut = getNotSetUpSut()
+
+        sut.setup(getConfig(url.toString()))
+        sut.close()
+
+        sut.capture(EVENT, DISTINCT_ID, props)
+        sut.register("afterClose", "value")
+
+        val secondConfig =
+            getConfig(url.toString()).apply {
+                addBeforeSend(
+                    PostHogBeforeSend { event ->
+                        captured.add(event)
+                        null
+                    },
+                )
+            }
+        sut.setup(secondConfig)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertTrue(captured.none { it.event == EVENT }, "expected no replay, got ${captured.map { it.event }}")
+        assertEquals(null, preferences.getValue("afterClose"))
+
+        sut.close()
+    }
+
+    @Test
     fun `reserved register keys are rejected instead of buffered`() {
         val http = mockHttp()
         val url = http.url("/")

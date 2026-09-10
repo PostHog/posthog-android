@@ -133,9 +133,15 @@ public class PostHog private constructor(
     @Volatile
     private var exceptionStepsBuffer: PostHogExceptionStepsBuffer? = null
 
-    // capture/identify/register calls made before setup() enabled the SDK, replayed at the end of
-    // setup() so a host that initializes the SDK late, or off the main thread, does not lose them
+    // capture/screen/identify/register calls made before setup() enabled the SDK, replayed at the
+    // end of setup() so a host that initializes the SDK late, or off the main thread, does not
+    // lose them
     private val preSetupBuffer = PostHogPreSetupBuffer()
+
+    // Tells the two disabled states apart: not set up yet (buffer) from closed (drop). Only the
+    // first is a race with init worth holding calls for.
+    @Volatile
+    private var closed = false
 
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
@@ -169,6 +175,10 @@ public class PostHog private constructor(
                 if (!apiKeys.add(config.apiKey)) {
                     config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
                 }
+
+                // Setup is committed from here on, so the calls racing the rest of it are buffered
+                // again even when this instance was closed before.
+                closed = false
 
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
                 config.cachePreferences = cachePreferences
@@ -392,6 +402,18 @@ public class PostHog private constructor(
     }
 
     /**
+     * Holds [call] for the first [setup] to replay. A call made after [close] is dropped instead:
+     * the SDK is torn down, not racing init, and the next [setup] may be a different project.
+     */
+    private fun bufferPreSetupCall(call: PostHogPreSetupCall) {
+        if (closed) {
+            config?.logger?.log("Setup isn't called.")
+            return
+        }
+        preSetupBuffer.add(call)
+    }
+
+    /**
      * Replays the calls the host made before the SDK was enabled, oldest first, so the order they
      * were made in is kept.
      */
@@ -572,6 +594,9 @@ public class PostHog private constructor(
                 flush()
 
                 enabled = false
+                // Set with enabled, not at the end of the teardown, so no call lands in the gap
+                // and gets held for a later setup() to replay.
+                closed = true
 
                 config?.let { config ->
                     apiKeys.remove(config.apiKey)
@@ -819,7 +844,7 @@ public class PostHog private constructor(
     ) {
         try {
             if (!enabled) {
-                preSetupBuffer.add(
+                bufferPreSetupCall(
                     PostHogPreSetupCall.Capture(
                         event = event,
                         distinctId = distinctId,
@@ -1263,7 +1288,7 @@ public class PostHog private constructor(
             // when this call is replayed. Writing it here would name this screen on the earlier
             // pre-setup events, which are stamped from lastScreenName at replay time. The first
             // screen view of a startup is one of the calls that races setup.
-            preSetupBuffer.add(
+            bufferPreSetupCall(
                 PostHogPreSetupCall.Screen(
                     screenTitle = trimmedTitle,
                     properties = properties,
@@ -1406,7 +1431,7 @@ public class PostHog private constructor(
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
         if (!enabled) {
-            preSetupBuffer.add(
+            bufferPreSetupCall(
                 PostHogPreSetupCall.Identify(distinctId, userProperties, userPropertiesSetOnce),
             )
             return
@@ -2083,7 +2108,7 @@ public class PostHog private constructor(
             return
         }
         if (!enabled) {
-            preSetupBuffer.add(PostHogPreSetupCall.Register(key, value))
+            bufferPreSetupCall(PostHogPreSetupCall.Register(key, value))
             return
         }
         getPreferences().setValue(key, value)
