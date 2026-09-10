@@ -44,11 +44,19 @@ internal class PostHogAppInstallIntegration(
         ownsInstallation = true
 
         executor.executeSafely {
-            // uninstall() cannot cancel a queued task, so check again here: a run after a close
-            // writes the VERSION and BUILD marker that says the event was already reported, while
-            // its own capture is dropped, hiding that install or update for good.
-            if (ownsInstallation) {
-                captureInstallOrUpdate(postHog)
+            // executeSafely only guards the submission, so the task carries its own catch: this
+            // work ran inline under setup's per-integration try before, and a host-supplied
+            // preferences or logger that throws would otherwise reach the worker's uncaught
+            // handler, which on Android ends the process.
+            try {
+                // uninstall() cannot cancel a queued task, so check again here: a run after a close
+                // writes the VERSION and BUILD marker that says the event was already reported, while
+                // its own capture is dropped, hiding that install or update for good.
+                if (ownsInstallation) {
+                    captureInstallOrUpdate(postHog)
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Capturing the app install or update failed: $e.")
             }
         }
     }
