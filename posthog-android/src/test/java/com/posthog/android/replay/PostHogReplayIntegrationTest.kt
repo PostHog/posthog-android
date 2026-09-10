@@ -22,6 +22,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.posthog.PostHog
 import com.posthog.PostHogEvent
 import com.posthog.PostHogFake
 import com.posthog.PostHogInterface
@@ -48,6 +49,8 @@ import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.replay.RREvent
 import com.posthog.internal.replay.RREventType
+import com.posthog.internal.replay.RRFullSnapshotEvent
+import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRWireframe
 import curtains.Curtains
 import curtains.DispatchState
@@ -1961,6 +1964,7 @@ internal class PostHogReplayIntegrationTest {
             awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(2, fx.replayQueue.depth)
+            shadowOf(Looper.getMainLooper()).idle()
             assertTrue(fx.sut.isActive())
         } finally {
             fx.sut.uninstall()
@@ -2031,9 +2035,167 @@ internal class PostHogReplayIntegrationTest {
         fx.config.sessionReplayConfig.screenshot = true
         fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = enableMaskAlignmentVerification
         val fake = PostHogFake()
-        fx.sut.install(fake)
+        PostHogSessionManager.startSession()
+        fx.sut.install(
+            object : PostHogInterface by fake {
+                override fun getSessionId(): UUID? = PostHogSessionManager.getActiveSessionId()
+            },
+        )
         fx.sut.start(resumeCurrent = true)
         return fx to fake
+    }
+
+    @Implements(PixelCopy::class)
+    class SnapshotBoundaryShadowPixelCopy {
+        companion object {
+            var afterMasking: (() -> Unit)? = null
+
+            @JvmStatic
+            @Implementation
+            fun request(
+                window: Window,
+                bitmap: Bitmap,
+                listener: PixelCopy.OnPixelCopyFinishedListener,
+                handler: Handler,
+            ) {
+                listener.onPixelCopyFinished(PixelCopy.SUCCESS)
+                // Pause after privacy validation, while generateSnapshot still owns the frame.
+                afterMasking?.invoke()
+            }
+        }
+    }
+
+    private fun assertSnapshotBoundary(boundary: (PostHogReplayIntegration) -> Unit) {
+        val (fx, fake) = screenshotFixture()
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            shadowOf(Looper.getMainLooper()).idle()
+            val window = controller.get().window
+            val view = window.decorView
+            makeWindowVisible(view)
+            val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+            fx.sut.decorViews[view] = status
+            val executor = createReplayExecutor()
+            var boundaryCompleted = false
+            SnapshotBoundaryShadowPixelCopy.afterMasking = {
+                // A separate thread also proves stop/reset do not wait for screenshot processing.
+                executor.submit { boundary(fx.sut) }.get(2, TimeUnit.SECONDS)
+                boundaryCompleted = true
+            }
+
+            val delivered = fx.sut.generateSnapshot(WeakReference(view), WeakReference(window))
+            assertTrue(boundaryCompleted, "Session controls must not wait for screenshot processing")
+            assertFalse(delivered)
+            assertEquals(0, fake.captures)
+            assertFalse(status.sentMetaEvent)
+            assertFalse(status.sentFullSnapshot)
+            assertEquals(null, status.lastSnapshot)
+
+            SnapshotBoundaryShadowPixelCopy.afterMasking = null
+            fx.sut.start(resumeCurrent = true)
+            assertTrue(fx.sut.generateSnapshot(WeakReference(view), WeakReference(window)))
+            val events = fake.properties!!["\$snapshot_data"] as List<*>
+            assertTrue(events[0] is RRMetaEvent)
+            assertTrue(events[1] is RRFullSnapshotEvent)
+            assertEquals(PostHogSessionManager.peekSessionId().toString(), fake.properties!!["\$session_id"])
+            assertEquals(fake.properties!!["\$session_id"], fake.properties!!["\$window_id"])
+        } finally {
+            SnapshotBoundaryShadowPixelCopy.afterMasking = null
+            fx.sut.uninstall()
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
+    fun `in flight snapshot is discarded on stop`() {
+        assertSnapshotBoundary { it.stop() }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
+    fun `in flight snapshot is not revived by same session resume`() {
+        assertSnapshotBoundary {
+            it.stop()
+            it.start(resumeCurrent = true)
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
+    fun `in flight snapshot cannot consume a rotated session keyframe`() {
+        assertSnapshotBoundary {
+            PostHogSessionManager.setSessionId(UUID.randomUUID())
+            it.onSessionIdChanged()
+            it.start(resumeCurrent = true)
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
+    fun `in flight snapshot is discarded before session listener runs`() {
+        assertSnapshotBoundary {
+            PostHogSessionManager.setSessionId(UUID.randomUUID())
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
+    fun `committed snapshot keeps its session when rotation precedes core enrichment`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        @Suppress("DEPRECATION")
+        config.remoteConfig = false
+        config.preloadFeatureFlags = false
+        var captured: PostHogEvent? = null
+        config.addBeforeSend { event ->
+            captured = event
+            null // Inspect enrichment without queuing or sending anything.
+        }
+        val core = PostHog.with(config)
+        PostHogSessionManager.startSession()
+        val sessionId = PostHogSessionManager.peekSessionId().toString()
+        val fx = createIntegrationWithRealQueue(true, true, integrationContext = ApplicationProvider.getApplicationContext())
+        fx.config.sessionReplayConfig.screenshot = true
+        val client =
+            object : PostHogInterface by core {
+                override fun capture(
+                    event: String,
+                    distinctId: String?,
+                    properties: Map<String, Any>?,
+                    userProperties: Map<String, Any>?,
+                    userPropertiesSetOnce: Map<String, Any>?,
+                    groups: Map<String, String>?,
+                    timestamp: Date?,
+                ) {
+                    PostHogSessionManager.setSessionId(UUID.randomUUID())
+                    fx.sut.onSessionIdChanged()
+                    core.capture(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
+                }
+            }
+        fx.sut.install(client)
+        fx.sut.start(resumeCurrent = true)
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            shadowOf(Looper.getMainLooper()).idle()
+            val window = controller.get().window
+            val view = window.decorView
+            makeWindowVisible(view)
+            val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+            fx.sut.decorViews[view] = status
+
+            assertTrue(fx.sut.generateSnapshot(WeakReference(view), WeakReference(window)))
+            val event = assertNotNull(captured)
+            assertEquals(sessionId, event.properties!!["\$session_id"])
+            assertEquals(sessionId, event.properties!!["\$window_id"])
+            assertNotEquals(sessionId, PostHogSessionManager.peekSessionId().toString())
+            assertFalse(status.sentMetaEvent)
+            assertFalse(status.sentFullSnapshot)
+            assertEquals(null, status.lastSnapshot)
+        } finally {
+            fx.sut.uninstall()
+            core.close()
+            controller.pause().stop().destroy()
+        }
     }
 
     @Test
@@ -3028,7 +3190,12 @@ internal class PostHogReplayIntegrationTest {
             )
         fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = true
         val fake = PostHogFake()
-        fx.sut.install(fake)
+        PostHogSessionManager.startSession()
+        fx.sut.install(
+            object : PostHogInterface by fake {
+                override fun getSessionId(): UUID? = PostHogSessionManager.getActiveSessionId()
+            },
+        )
         fx.sut.start(resumeCurrent = true)
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         shadowOf(Looper.getMainLooper()).idle()
