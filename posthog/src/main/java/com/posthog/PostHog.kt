@@ -418,6 +418,13 @@ public class PostHog private constructor(
                             timestamp = call.timestamp,
                         )
 
+                    is PostHogPreSetupCall.Screen ->
+                        screenInternal(
+                            call.screenTitle,
+                            properties = call.properties,
+                            timestamp = call.timestamp,
+                        )
+
                     is PostHogPreSetupCall.Identify ->
                         identify(
                             call.distinctId,
@@ -1246,14 +1253,39 @@ public class PostHog private constructor(
         screenTitle: String,
         properties: Map<String, Any>?,
     ) {
-        // No enabled gate here: the rest of this method only caches the title and hands the event
-        // to capture(), which buffers it while the SDK is not set up yet. The first screen view of
-        // a startup is one of the calls that races setup.
         val trimmedTitle = screenTitle.trim()
         if (trimmedTitle.isEmpty()) {
             return
         }
 
+        if (!enabled) {
+            // Buffered whole rather than handed to capture(), so lastScreenName is only written
+            // when this call is replayed. Writing it here would name this screen on the earlier
+            // pre-setup events, which are stamped from lastScreenName at replay time. The first
+            // screen view of a startup is one of the calls that races setup.
+            preSetupBuffer.add(
+                PostHogPreSetupCall.Screen(
+                    screenTitle = trimmedTitle,
+                    properties = properties,
+                    // stamped now so a replayed screen view keeps the time it happened
+                    timestamp = Date(),
+                ),
+            )
+            return
+        }
+
+        screenInternal(trimmedTitle, properties, timestamp = null)
+    }
+
+    /**
+     * The body of [screen] once the title is validated, with [timestamp] carrying the time the
+     * call was made when this is a call replayed from the pre-setup buffer.
+     */
+    private fun screenInternal(
+        trimmedTitle: String,
+        properties: Map<String, Any>?,
+        timestamp: Date?,
+    ) {
         // Cache for capture-time context snapshot on log records and for the
         // $screen_name auto-attach on subsequent events (see buildProperties).
         this.lastScreenName = trimmedTitle
@@ -1265,7 +1297,7 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
-        capture(PostHogEventName.SCREEN.event, properties = props)
+        capture(PostHogEventName.SCREEN.event, properties = props, timestamp = timestamp)
     }
 
     public override fun alias(alias: String) {

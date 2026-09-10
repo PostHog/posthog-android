@@ -16,6 +16,12 @@ internal sealed class PostHogPreSetupCall {
         val timestamp: Date,
     ) : PostHogPreSetupCall()
 
+    class Screen(
+        val screenTitle: String,
+        val properties: Map<String, Any>?,
+        val timestamp: Date,
+    ) : PostHogPreSetupCall()
+
     class Identify(
         val distinctId: String,
         val userProperties: Map<String, Any>?,
@@ -29,7 +35,7 @@ internal sealed class PostHogPreSetupCall {
 }
 
 /**
- * Holds `capture`, `identify` and `register` calls made before `setup()` so they can be replayed
+ * Holds `capture`, `screen`, `identify` and `register` calls made before `setup()` so they can be replayed
  * once the SDK is enabled, instead of being dropped.
  *
  * A host that sets the SDK up off the main thread, or from a framework runtime that reaches

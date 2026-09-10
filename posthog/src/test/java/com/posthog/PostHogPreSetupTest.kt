@@ -12,6 +12,7 @@ import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -116,6 +117,95 @@ internal class PostHogPreSetupTest {
         val theEvent = batch.batch.first()
         assertEquals("\$screen", theEvent.event)
         assertEquals("Home", theEvent.properties!!["\$screen_name"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `replayed screen keeps the time the call was made`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getNotSetUpSut()
+
+        val before = System.currentTimeMillis()
+        sut.screen("Home")
+        val after = System.currentTimeMillis()
+
+        Thread.sleep(50)
+        sut.setup(getConfig(url.toString()))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val timestamp = assertNotNull(batch.batch.first().timestamp).time
+        assertTrue(timestamp in before..after, "expected $timestamp within $before..$after")
+
+        sut.close()
+    }
+
+    @Test
+    fun `screen made before setup does not name the events captured before it`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val captured = mutableListOf<PostHogEvent>()
+        val config =
+            getConfig(url.toString()).apply {
+                addBeforeSend(
+                    PostHogBeforeSend { event ->
+                        captured.add(event)
+                        null
+                    },
+                )
+            }
+
+        val sut = getNotSetUpSut()
+
+        sut.capture("before")
+        sut.screen("Home")
+        sut.capture("after")
+
+        sut.setup(config)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertFalse(captured.first { it.event == "before" }.properties!!.containsKey("\$screen_name"))
+        assertEquals("Home", captured.first { it.event == "\$screen" }.properties!!["\$screen_name"])
+        assertEquals("Home", captured.first { it.event == "after" }.properties!!["\$screen_name"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `the last screen made before setup names only the events that follow it`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val captured = mutableListOf<PostHogEvent>()
+        val config =
+            getConfig(url.toString()).apply {
+                addBeforeSend(
+                    PostHogBeforeSend { event ->
+                        captured.add(event)
+                        null
+                    },
+                )
+            }
+
+        val sut = getNotSetUpSut()
+
+        sut.screen("Home")
+        sut.capture("onHome")
+        sut.screen("Settings")
+        sut.capture("onSettings")
+
+        sut.setup(config)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals("Home", captured.first { it.event == "onHome" }.properties!!["\$screen_name"])
+        assertEquals("Settings", captured.first { it.event == "onSettings" }.properties!!["\$screen_name"])
 
         sut.close()
     }
