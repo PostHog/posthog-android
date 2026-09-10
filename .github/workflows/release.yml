@@ -236,7 +236,6 @@ jobs:
         if: always() && needs.version-bump.outputs.committed == 'true'
         permissions:
             contents: write
-            actions: write
         env:
             SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
             SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
