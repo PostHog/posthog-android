@@ -397,6 +397,11 @@ public class PostHog private constructor(
                 replayPreSetupCalls()
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
+                // A setup that threw after enabling the SDK still takes live calls, so replay the
+                // buffered ones instead of leaving them to sit until close() discards them.
+                if (enabled) {
+                    replayPreSetupCalls()
+                }
             }
         }
     }
@@ -416,48 +421,54 @@ public class PostHog private constructor(
     /**
      * Replays the calls the host made before the SDK was enabled, oldest first, so the order they
      * were made in is kept.
+     *
+     * Drained until it comes back empty: a caller that read [enabled] as false before setup set it
+     * can still add while an earlier batch is being replayed, and that call would otherwise sit in
+     * the buffer until [close] discarded it.
      */
     private fun replayPreSetupCalls() {
-        val (calls, dropped) = preSetupBuffer.drain()
-        if (dropped > 0) {
-            config?.logger?.log("$dropped call(s) made before setup were dropped, the buffer was full.")
-        }
-        if (calls.isEmpty()) {
-            return
-        }
-        config?.logger?.log("Replaying ${calls.size} call(s) made before setup.")
-        calls.forEach { call ->
-            try {
-                when (call) {
-                    is PostHogPreSetupCall.Capture ->
-                        capture(
-                            call.event,
-                            distinctId = call.distinctId,
-                            properties = call.properties,
-                            userProperties = call.userProperties,
-                            userPropertiesSetOnce = call.userPropertiesSetOnce,
-                            groups = call.groups,
-                            timestamp = call.timestamp,
-                        )
+        while (true) {
+            val (calls, dropped) = preSetupBuffer.drain()
+            if (dropped > 0) {
+                config?.logger?.log("$dropped call(s) made before setup were dropped, the buffer was full.")
+            }
+            if (calls.isEmpty()) {
+                return
+            }
+            config?.logger?.log("Replaying ${calls.size} call(s) made before setup.")
+            calls.forEach { call ->
+                try {
+                    when (call) {
+                        is PostHogPreSetupCall.Capture ->
+                            capture(
+                                call.event,
+                                distinctId = call.distinctId,
+                                properties = call.properties,
+                                userProperties = call.userProperties,
+                                userPropertiesSetOnce = call.userPropertiesSetOnce,
+                                groups = call.groups,
+                                timestamp = call.timestamp,
+                            )
 
-                    is PostHogPreSetupCall.Screen ->
-                        screenInternal(
-                            call.screenTitle,
-                            properties = call.properties,
-                            timestamp = call.timestamp,
-                        )
+                        is PostHogPreSetupCall.Screen ->
+                            screenInternal(
+                                call.screenTitle,
+                                properties = call.properties,
+                                timestamp = call.timestamp,
+                            )
 
-                    is PostHogPreSetupCall.Identify ->
-                        identify(
-                            call.distinctId,
-                            userProperties = call.userProperties,
-                            userPropertiesSetOnce = call.userPropertiesSetOnce,
-                        )
+                        is PostHogPreSetupCall.Identify ->
+                            identify(
+                                call.distinctId,
+                                userProperties = call.userProperties,
+                                userPropertiesSetOnce = call.userPropertiesSetOnce,
+                            )
 
-                    is PostHogPreSetupCall.Register -> register(call.key, call.value)
+                        is PostHogPreSetupCall.Register -> register(call.key, call.value)
+                    }
+                } catch (e: Throwable) {
+                    config?.logger?.log("Replaying a call made before setup failed: $e.")
                 }
-            } catch (e: Throwable) {
-                config?.logger?.log("Replaying a call made before setup failed: $e.")
             }
         }
     }
