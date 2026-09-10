@@ -55,7 +55,6 @@ internal class PostHogQueueTest {
                 this.networkStatus = networkStatus
                 this.maxBatchSize = maxBatchSize
                 this.dateProvider = dateProvider
-                @Suppress("DEPRECATION")
                 this.maxRetries = maxRetries
                 this.httpClient = httpClient
             }

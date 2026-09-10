@@ -63,7 +63,6 @@ internal class PostHogApiTest {
             config.httpClient = httpClient
         }
         if (maxRetries != null) {
-            @Suppress("DEPRECATION")
             config.maxRetries = maxRetries
         }
         if (featureFlagRequestMaxRetries != null) {
