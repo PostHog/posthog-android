@@ -453,6 +453,11 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Each key of `payload["posthog"]` (accepted as a `Map` or a JSON string) is attached as a
      * `$notification_<key>` property.
      *
+     * A notification sent by PostHog is captured once: when `payload["posthog"]` carries an
+     * `invocation_id`, a repeat with the same `invocation_id` and `action_id` within 5 minutes of the
+     * first capture is skipped, whether that first capture came from this method or from the SDK's
+     * automatic capture. Payloads without a `posthog.invocation_id` are always captured.
+     *
      * @param title the notification title, attached as `$notification_title` when non-empty
      * @param body the notification body, attached as `$notification_body` when non-empty
      * @param payload the notification data payload; its `posthog` entry is spread into `$notification_*` props

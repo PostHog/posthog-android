@@ -48,6 +48,15 @@ import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 
+// A duplicate report of one tap arrives within the same launch: milliseconds after a warm tap, seconds
+// after a cold start while the host's JS/Dart handlers register. The window stays finite because a
+// workflow that loops back to a push step re-sends the same `invocation_id`/`action_id` pair as a new
+// notification, and that later open must still count.
+private const val PUSH_OPEN_DEDUPE_WINDOW_NANOS = 5 * 60 * 1_000_000_000L
+
+// Only needs the opens of the last few minutes; the cap bounds memory for hosts that call this in bulk.
+private const val MAX_RECENT_PUSH_OPENS = 20
+
 public class PostHog private constructor(
     private val queueExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -116,6 +125,9 @@ public class PostHog private constructor(
     private val logsRateCapLock = Any()
     private var logsRateCapWindowStartMillis: Long = 0
     private var logsRateCapWindowCount: Int = 0
+
+    // Captured PostHog push opens, by `invocation_id/action_id`, to the dateProvider nanoTime of capture.
+    private val recentPushOpens = LinkedHashMap<String, Long>()
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -2112,18 +2124,50 @@ public class PostHog private constructor(
             return
         }
 
+        val posthogPayload = payload?.get("posthog")?.let { posthogPayloadMap(it) }
+        if (!recordPushOpen(posthogPayload)) {
+            return
+        }
+
         val props = mutableMapOf<String, Any>()
         title?.takeIf { it.isNotEmpty() }?.let { props["\$notification_title"] = it }
         body?.takeIf { it.isNotEmpty() }?.let { props["\$notification_body"] = it }
         action?.takeIf { it.isNotEmpty() }?.let { props["\$notification_action"] = it }
 
-        payload?.get("posthog")?.let { raw ->
-            posthogPayloadMap(raw)?.forEach { (key, value) ->
-                value?.let { props["\$notification_$key"] = it }
-            }
+        posthogPayload?.forEach { (key, value) ->
+            value?.let { props["\$notification_$key"] = it }
         }
 
         capture(PUSH_NOTIFICATION_OPENED_EVENT, properties = props)
+    }
+
+    /**
+     * Records the open of a PostHog-sent push and returns false if the same notification was already
+     * captured within [PUSH_OPEN_DEDUPE_WINDOW_NANOS]. The key is `invocation_id` plus `action_id`,
+     * since every step of one workflow run shares the run's `invocation_id`. A payload without an
+     * `invocation_id` has no key and is always captured.
+     */
+    private fun recordPushOpen(posthogPayload: Map<String, Any?>?): Boolean {
+        val invocationId = posthogPayload?.get("invocation_id") as? String
+        if (posthogPayload == null || invocationId.isNullOrEmpty()) {
+            return true
+        }
+        val key = "$invocationId/${posthogPayload["action_id"] as? String ?: ""}"
+        val now = config?.dateProvider?.nanoTime() ?: return true
+
+        synchronized(recentPushOpens) {
+            val capturedAt = recentPushOpens[key]
+            if (capturedAt != null && now - capturedAt < PUSH_OPEN_DEDUPE_WINDOW_NANOS) {
+                config?.logger?.log("Skipped \$push_notification_opened: notification $key was already captured.")
+                return false
+            }
+            recentPushOpens.remove(key)
+            recentPushOpens[key] = now
+            if (recentPushOpens.size > MAX_RECENT_PUSH_OPENS) {
+                recentPushOpens.remove(recentPushOpens.keys.first())
+            }
+            return true
+        }
     }
 
     /**
