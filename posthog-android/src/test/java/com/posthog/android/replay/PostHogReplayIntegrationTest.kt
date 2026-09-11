@@ -50,7 +50,10 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.replay.RREvent
 import com.posthog.internal.replay.RREventType
 import com.posthog.internal.replay.RRFullSnapshotEvent
+import com.posthog.internal.replay.RRIncrementalMouseInteractionData
+import com.posthog.internal.replay.RRIncrementalMouseInteractionEvent
 import com.posthog.internal.replay.RRMetaEvent
+import com.posthog.internal.replay.RRMouseInteraction
 import com.posthog.internal.replay.RRWireframe
 import curtains.Curtains
 import curtains.DispatchState
@@ -458,6 +461,79 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(DispatchState.Consumed, state)
             assertTrue(submits.get() >= 1)
             assertTrue(dateCalls.get() >= 1)
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    private fun dispatchTouch(
+        sut: PostHogReplayIntegration,
+        action: Int = MotionEvent.ACTION_DOWN,
+    ) {
+        val event = MotionEvent.obtain(0L, 0L, action, 42f, 73f, 0)
+        var dispatched = false
+        try {
+            val state =
+                sut.onTouchEventListener.intercept(event) {
+                    assertTrue(it === event)
+                    dispatched = true
+                    DispatchState.Consumed
+                }
+            assertTrue(dispatched, "Replay must dispatch the original touch to the app")
+            assertEquals(DispatchState.Consumed, state)
+        } finally {
+            event.recycle()
+        }
+    }
+
+    @Test
+    fun `captureTouches enabled by default records touch start and end coordinates`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val executor = QueuedReplayExecutor(createReplayExecutor())
+        val sut = PostHogReplayIntegration(ApplicationProvider.getApplicationContext(), config, MainHandler(), executor)
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+            assertTrue(config.sessionReplayConfig.captureTouches)
+            listOf(
+                MotionEvent.ACTION_DOWN to RRMouseInteraction.TouchStart,
+                MotionEvent.ACTION_UP to RRMouseInteraction.TouchEnd,
+            ).forEach { (action, type) ->
+                dispatchTouch(sut, action)
+                executor.tasks.removeAt(0).run()
+                val events = fake.properties!!["\$snapshot_data"] as List<*>
+                val event = events.single() as RRIncrementalMouseInteractionEvent
+                val data = event.data as RRIncrementalMouseInteractionData
+                assertEquals(type, data.type)
+                assertEquals(42, data.x)
+                assertEquals(73, data.y)
+            }
+            assertEquals(2, fake.captures)
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `captureTouches initially false skips collection without stopping dispatch or replay`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        config.sessionReplayConfig.captureTouches = false
+        val executor = QueuedReplayExecutor(createReplayExecutor())
+        val dateCalls = AtomicInteger(0)
+        val sut = PostHogReplayIntegration(ApplicationProvider.getApplicationContext(), config, MainHandler(), executor)
+        val fake = createPostHogFake()
+        sut.install(fake)
+        try {
+            sut.start(resumeCurrent = true)
+            config.dateProvider = CountingDateProvider(dateCalls)
+            dispatchTouch(sut)
+            dispatchTouch(sut, MotionEvent.ACTION_UP)
+            assertTrue(sut.isActive())
+            assertEquals(0, executor.tasks.size, "Disabled touches must not queue coordinate capture")
+            assertEquals(0, dateCalls.get())
+            assertEquals(0, fake.captures)
         } finally {
             sut.uninstall()
         }
@@ -2025,13 +2101,17 @@ internal class PostHogReplayIntegrationTest {
             .setInt(attachInfo, View.VISIBLE)
     }
 
-    private fun screenshotFixture(enableMaskAlignmentVerification: Boolean = true): Pair<RealQueueFixture, PostHogFake> {
+    private fun screenshotFixture(
+        enableMaskAlignmentVerification: Boolean = true,
+        captureTouches: Boolean = true,
+    ): Pair<RealQueueFixture, PostHogFake> {
         val fx =
             createIntegrationWithRealQueue(
                 flagActive = true,
                 hasFetched = true,
                 integrationContext = ApplicationProvider.getApplicationContext(),
             )
+        fx.config.sessionReplayConfig.captureTouches = captureTouches
         fx.config.sessionReplayConfig.screenshot = true
         fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = enableMaskAlignmentVerification
         val fake = PostHogFake()
@@ -2306,6 +2386,30 @@ internal class PostHogReplayIntegrationTest {
             assertEquals("\$snapshot", fake.event)
         } finally {
             fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `captureTouches disabled leaves screenshot capture active`() {
+        val (fx, fake) = screenshotFixture(captureTouches = false)
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            shadowOf(Looper.getMainLooper()).idle()
+            val window = controller.get().window
+            val view = window.decorView
+            makeWindowVisible(view)
+            fx.sut.decorViews[view] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+
+            assertTrue(fx.sut.isActive())
+            assertTrue(fx.sut.generateSnapshot(WeakReference(view), WeakReference(window)))
+            assertEquals(1, fake.captures)
+            val events = fake.properties!!["\$snapshot_data"] as List<*>
+            assertTrue(events[0] is RRMetaEvent)
+            assertTrue(events[1] is RRFullSnapshotEvent)
+        } finally {
+            fx.sut.uninstall()
+            controller.pause().stop().destroy()
         }
     }
 
